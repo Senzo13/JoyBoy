@@ -1,6 +1,6 @@
-# JoyBoy - Local AI Workstation and Harness
+# JoyBoy - Local AI Harness, Workstation, and Image Editor
 
-**JoyBoy is a local-first AI workstation and harness: a private ChatGPT / Grok-style chat app with image generation, image editing, video experiments, Ollama support, model imports, local addons, model/runtime orchestration, and a Codex-style project mode in development.**
+**JoyBoy is a local AI harness and local AI workstation: a private ChatGPT / Grok-style chat app, local AI image editor, Ollama-assisted image generation workspace, SDXL inpainting UI, CivitAI model imports manager, local addons runtime, and Codex-style project mode in development.**
 
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-3776ab.svg)](scripts/requirements.txt)
@@ -9,6 +9,8 @@
 [![Stable Diffusion](https://img.shields.io/badge/media-SDXL%20%7C%20Flux%20%7C%20Video-2563eb.svg)](#features)
 
 Run AI chat, image workflows, model management, and local creative tools on your own machine. JoyBoy is built for people who want an open source ChatGPT alternative, an offline AI assistant, a local Stable Diffusion / SDXL interface, and a privacy-focused AI harness without relying on a cloud account.
+
+JoyBoy is especially aimed at long-tail local AI workflows: **local AI harness**, **local AI workstation**, **local AI image editor**, **Ollama image generation routing**, **SDXL inpainting UI**, **CivitAI model imports**, and **8GB VRAM Stable Diffusion / SDXL workflows** on consumer hardware.
 
 ## Preview
 
@@ -22,12 +24,13 @@ Run AI chat, image workflows, model management, and local creative tools on your
 
 ## Features
 
-- **Private local AI chat** with Ollama and local model routing.
+- **Private local AI chat** with Ollama UI controls and local model routing.
 - **Local AI harness** for routing prompts, tools, jobs, models, runtime state, and optional extensions from one app.
-- **Text-to-image generation** with local image models and provider imports.
-- **Image editing and inpainting** for background edits, clothing edits, lighting, brush masks, expand/outpaint, and detail fixes.
+- **Local AI workstation** that keeps chat, image generation, image editing, video tests, gallery, model imports, and runtime panels together.
+- **Text-to-image generation** with local image models, Ollama-assisted routing, and provider imports.
+- **Local AI image editor / SDXL inpainting UI** for background edits, clothing edits, lighting, brush masks, expand/outpaint, and detail fixes.
 - **Video experiments** for local image-to-video workflows on consumer GPUs.
-- **Model importer** for Hugging Face and CivitAI sources, with local runtime profiles and 8 GB VRAM-aware defaults.
+- **CivitAI model imports and Hugging Face imports** with local runtime profiles and 8GB VRAM-aware Stable Diffusion / SDXL defaults.
 - **Local addons / packs** that can extend routing rules, prompt assets, model sources, and UI surfaces without polluting the public core.
 - **Gallery and metadata** for generated images/videos, prompts, models, and local artifacts.
 - **Doctor and runtime panels** for VRAM/RAM state, loaded models, provider keys, and machine readiness.
@@ -47,11 +50,13 @@ JoyBoy is designed for local AI users who care about privacy, control, and hardw
 ## Use Cases
 
 - Run a local ChatGPT-like or Grok-like assistant with Ollama.
-- Use a local LLM harness to coordinate chat, tools, model routing, and creative jobs.
-- Generate images locally with SDXL, Flux-style workflows, and imported checkpoints.
-- Edit photos with inpainting, brush masks, background changes, lighting changes, and outpainting.
+- Use a local LLM harness and local AI harness to coordinate chat, tools, model routing, and creative jobs.
+- Use JoyBoy as a local AI workstation for chat, image generation, image editing, runtime jobs, and model management.
+- Generate images locally with SDXL, Flux-style workflows, Ollama-assisted routing, and imported checkpoints.
+- Edit photos in a local AI image editor with SDXL inpainting, brush masks, background changes, lighting changes, and outpainting.
 - Test local image-to-video workflows without a hosted AI platform.
-- Manage Hugging Face and CivitAI model sources from a local UI.
+- Manage Hugging Face and CivitAI model imports from a local UI.
+- Run 8GB VRAM Stable Diffusion / SDXL workflows with profiles designed for consumer GPUs.
 - Build local addons for custom routing, prompts, model presets, and creator workflows.
 - Experiment with a local Codex-style dev assistant that can understand a project workspace.
 
