@@ -605,6 +605,13 @@ def unified_generate():
         if is_inpainting:
             from concurrent.futures import ThreadPoolExecutor
             from core.model_manager import ModelManager
+            _preload_is_single_file = False
+            try:
+                from core.models import SINGLE_FILE_MODELS, _refresh_imported_model_registries
+                _refresh_imported_model_registries()
+                _preload_is_single_file = model in SINGLE_FILE_MODELS
+            except Exception as _preload_registry_error:
+                print(f"[PRELOAD] Registry check skipped: {_preload_registry_error}")
 
             _lora_nsfw = lora_nsfw_enabled and _preload_loras
             _lora_skin = lora_skin_enabled and _preload_loras
@@ -621,6 +628,7 @@ def unified_generate():
             def _preload_pipeline_and_loras():
                 import time as _t
                 _t0 = _t.time()
+                mgr = None
                 try:
                     # Check if still the active preload before heavy work
                     with _preload_lock:
@@ -667,18 +675,31 @@ def unified_generate():
                     print(f"[PRELOAD] ERROR: {type(e).__name__}: {e}")
                     import traceback
                     traceback.print_exc()
+                    if mgr is not None:
+                        try:
+                            print("[PRELOAD] Cleaning partial image pipeline after error...")
+                            mgr._unload_diffusers()
+                            mgr._clear_memory(aggressive=True)
+                        except Exception as cleanup_error:
+                            print(f"[PRELOAD] Cleanup after error failed: {cleanup_error}")
                     raise
 
-            _preload_executor = ThreadPoolExecutor(max_workers=1)
-            _preload_future = _preload_executor.submit(_preload_pipeline_and_loras)
-            parts = [model]
-            if _cn: parts.append("ControlNet")
-            loras_str = []
-            if _lora_nsfw: loras_str.append("nsfw")
-            if _lora_skin: loras_str.append("skin")
-            if _lora_breasts: loras_str.append("breasts")
-            if loras_str: parts.append(f"LoRAs({','.join(loras_str)})")
-            print(f"[PRELOAD] {' + '.join(parts)} lancé IMMÉDIATEMENT")
+            if _preload_is_single_file:
+                with _preload_lock:
+                    if _preload_gen_id == _my_gen_id:
+                        _preload_gen_id = None
+                print(f"[PRELOAD] Skipped for imported single-file model ({model}); direct load after segmentation")
+            else:
+                _preload_executor = ThreadPoolExecutor(max_workers=1)
+                _preload_future = _preload_executor.submit(_preload_pipeline_and_loras)
+                parts = [model]
+                if _cn: parts.append("ControlNet")
+                loras_str = []
+                if _lora_nsfw: loras_str.append("nsfw")
+                if _lora_skin: loras_str.append("skin")
+                if _lora_breasts: loras_str.append("breasts")
+                if loras_str: parts.append(f"LoRAs({','.join(loras_str)})")
+                print(f"[PRELOAD] {' + '.join(parts)} lancé IMMÉDIATEMENT")
 
         def is_cancelled():
             if runtime_jobs.is_cancel_requested(generation_id):
