@@ -142,7 +142,7 @@ if not exist "%PYTHON_EXE%" (
     :: Configurer pip pour l'embedded Python
     :: Decommenter les imports dans python312._pth
     if exist "%PYTHON_DIR%\python312._pth" (
-        powershell -Command "(Get-Content '%PYTHON_DIR%\python312._pth') -replace '#import site', 'import site' | Set-Content '%PYTHON_DIR%\python312._pth'"
+        powershell -Command "$p='%PYTHON_DIR%\python312._pth'; $content = Get-Content $p; $content -replace '#import site', 'import site' | Set-Content $p"
     )
 
     :: Telecharger get-pip.py
@@ -228,27 +228,26 @@ if exist "venv\Scripts\python.exe" (
 :: le démarrage rapide mènera à "Torch not compiled with CUDA enabled".
 :: On bascule donc automatiquement vers le setup/réparation.
 where nvidia-smi >nul 2>&1
-if not errorlevel 1 (
-    "%PY%" -c "import sys; import torch; sys.exit(0 if torch.cuda.is_available() else 1)" >nul 2>nul
-    if errorlevel 1 (
-        echo.
-        echo    [!] GPU NVIDIA detecte mais PyTorch CUDA indisponible dans ce venv.
-        echo    [!] Lancement du setup pour reparer PyTorch CUDA...
-        echo.
-        timeout /t 2 >nul
-        goto setup
-    )
-)
+if errorlevel 1 goto skip_cuda_repair_check
+"%PY%" -c "import sys; import torch; sys.exit(0 if torch.cuda.is_available() else 1)" >nul 2>nul
+if not errorlevel 1 goto skip_cuda_repair_check
+echo.
+echo    [!] GPU NVIDIA detecte mais PyTorch CUDA indisponible dans ce venv.
+echo    [!] Lancement du setup pour reparer PyTorch CUDA...
+echo.
+timeout /t 2 >nul
+goto setup
+:skip_cuda_repair_check
 
 :: Quick check: installer ollama si manquant
 where ollama >nul 2>&1
-if errorlevel 1 (
-    echo.
-    echo    Ollama non detecte, telechargement...
-    "%PY%" -c "import subprocess,os,urllib.request;p=os.path.join(os.environ.get('TEMP','.'),'OllamaSetup.exe');urllib.request.urlretrieve('https://ollama.com/download/OllamaSetup.exe',p);subprocess.run([p,'/VERYSILENT','/NORESTART'],timeout=120);os.path.exists(p) and os.remove(p)"
-    echo    [OK] Ollama installe
-    echo.
-)
+if not errorlevel 1 goto skip_ollama_install
+echo.
+echo    Ollama non detecte, telechargement...
+"%PY%" -c "import subprocess,os,urllib.request;p=os.path.join(os.environ.get('TEMP','.'),'OllamaSetup.exe');urllib.request.urlretrieve('https://ollama.com/download/OllamaSetup.exe',p);subprocess.run([p,'/VERYSILENT','/NORESTART'],timeout=120);os.path.exists(p) and os.remove(p)"
+echo    [OK] Ollama installe
+echo.
+:skip_ollama_install
 
 "%PY%" web/app.py
 set EXIT_CODE=%errorlevel%
