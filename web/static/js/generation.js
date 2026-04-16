@@ -40,6 +40,81 @@ function showGenerationError(result, fallback = '') {
     Toast.error(errorMsg);
 }
 
+const GENERATION_PROGRESS_FALLBACKS = {
+    fine_tuning: 'Fine tuning',
+    refine: 'Affinage',
+    prepare_assets: 'Préparation assets',
+    download_assets: 'Téléchargement assets',
+    download_schp: 'Téléchargement SCHP',
+    download_segmentation: 'Téléchargement segmentation',
+    download_depth: 'Préparation Depth Anything...',
+    download_controlnet: 'Préparation ControlNet...',
+    load_image_model: 'Chargement du modèle image...',
+    download_vae: 'Préparation VAE...',
+    download_fooocus: 'Préparation patch inpaint...',
+    quantize_model: 'Quantification et placement GPU...',
+    runtime_error: 'Erreur runtime',
+};
+
+const GENERATION_SETUP_PHASES = new Set([
+    'prepare_assets',
+    'download_assets',
+    'download_schp',
+    'download_segmentation',
+    'download_depth',
+    'download_controlnet',
+    'load_image_model',
+    'download_vae',
+    'download_fooocus',
+    'quantize_model',
+    'runtime_error',
+]);
+
+function getGenerationProgressLabel(phase, message = '') {
+    if (!phase) return message || '';
+    const fallback = GENERATION_PROGRESS_FALLBACKS[phase] || message || '';
+    const translated = generationT(`generation.progress.${phase}`, fallback);
+    return translated || fallback || message || '';
+}
+
+function formatGenerationProgressText(phase, step, total, message = '') {
+    const label = getGenerationProgressLabel(phase, message);
+    const safeStep = Number(step) || 0;
+    const safeTotal = Number(total) || 0;
+
+    if (label && GENERATION_SETUP_PHASES.has(phase)) {
+        return label;
+    }
+    if (message && !GENERATION_PROGRESS_FALLBACKS[phase]) {
+        return message;
+    }
+    if (label && safeTotal > 0) {
+        return `${label} ${safeStep}/${safeTotal}`;
+    }
+    if (label) {
+        return label;
+    }
+    if (safeStep > 0 && safeTotal > 0) {
+        return `${safeStep}/${safeTotal}`;
+    }
+    return '';
+}
+
+function refreshGenerationProgressTexts() {
+    document.querySelectorAll('.skeleton-preview-container[data-progress-phase]').forEach(container => {
+        const stepText = container.querySelector('.generation-step-text');
+        if (!stepText) return;
+        stepText.textContent = formatGenerationProgressText(
+            container.dataset.progressPhase || '',
+            container.dataset.progressStep || 0,
+            container.dataset.progressTotal || 0,
+            container.dataset.progressMessage || ''
+        );
+    });
+}
+
+window.addEventListener('joyboy:locale-changed', refreshGenerationProgressTexts);
+
 // Queue execution flags
 let executingFromQueue = false;
 let executingFromQueueChat = false;
@@ -1198,21 +1273,12 @@ function updateSkeletonPreview(previewBase64, step, total, phase = 'generation',
     const progressBar = container.querySelector('.generation-progress-bar');
     const stepText = container.querySelector('.generation-step-text');
 
-    // Afficher la phase (downloads/setup inclus, utile au premier lancement).
-    let phaseLabel = '';
-    if (phase === 'fine_tuning') phaseLabel = 'Fine tuning';
-    else if (phase === 'refine') phaseLabel = 'Affinage';
-    else if (phase === 'prepare_assets') phaseLabel = 'Préparation assets';
-    else if (phase === 'download_assets') phaseLabel = 'Téléchargement assets';
-    else if (phase === 'download_schp') phaseLabel = 'Téléchargement SCHP';
-    else if (phase === 'download_segmentation') phaseLabel = 'Téléchargement segmentation';
-    else if (phase === 'download_depth') phaseLabel = 'Téléchargement Depth';
-    else if (phase === 'download_controlnet') phaseLabel = 'Téléchargement ControlNet';
-    else if (phase === 'load_image_model') phaseLabel = 'Chargement modèle';
-    else if (phase === 'download_vae') phaseLabel = 'Téléchargement VAE';
-    else if (phase === 'download_fooocus') phaseLabel = 'Patch inpaint';
-    else if (phase === 'quantize_model') phaseLabel = 'Optimisation modèle';
-    else if (phase === 'runtime_error') phaseLabel = 'Erreur runtime';
+    // Keep raw progress data on the skeleton so a locale switch can re-render
+    // the label without waiting for another backend progress event.
+    container.dataset.progressPhase = phase || '';
+    container.dataset.progressStep = String(step || 0);
+    container.dataset.progressTotal = String(total || 0);
+    container.dataset.progressMessage = message || '';
 
     if (img && previewBase64) {
         // Cacher le skeleton shimmer seulement quand une vraie preview existe.
@@ -1265,15 +1331,10 @@ function updateSkeletonPreview(previewBase64, step, total, phase = 'generation',
         }
     }
 
-    if (stepText && (step > 0 || message || phaseLabel)) {
-        if (message) {
-            stepText.textContent = message;
-        } else if (phaseLabel && total > 0) {
-            stepText.textContent = `${phaseLabel} ${step}/${total}`;
-        } else if (phaseLabel) {
-            stepText.textContent = phaseLabel;
-        } else {
-            stepText.textContent = `${step}/${total}`;
+    if (stepText && (step > 0 || message || phase)) {
+        const progressText = formatGenerationProgressText(phase, step, total, message);
+        if (progressText) {
+            stepText.textContent = progressText;
         }
     }
 
