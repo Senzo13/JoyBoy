@@ -158,6 +158,10 @@ def _make_ip_adapter_zero_embeds(pipe) -> list:
     Keep this as a helper instead of inline shape guessing. We have already hit
     regressions where FaceID and standard IP-Adapter expose different attrs;
     the generation code should only ask for neutral embeds and move on.
+
+    Diffusers expects precomputed IP-Adapter embeds as [negative, positive]
+    when classifier-free guidance is active. A single zero embed crashes later
+    in prepare_ip_adapter_image_embeds() because it tries to chunk the batch.
     """
     unet = getattr(pipe, "unet", None)
     projection = getattr(unet, "encoder_hid_proj", None)
@@ -172,7 +176,7 @@ def _make_ip_adapter_zero_embeds(pipe) -> list:
     embeds = []
     for layer in layers:
         embed_dim = _infer_ip_adapter_embed_dim(layer) if layer is not None else 512
-        embeds.append(torch.zeros(1, 1, embed_dim, device="cpu", dtype=dtype))
+        embeds.append(torch.zeros(2, 1, embed_dim, device="cpu", dtype=dtype))
     return embeds
 
 def _align_text_encoder_dtypes(pipe, preferred_dtype=None, force=False):
@@ -284,10 +288,17 @@ def process_image(image: Image.Image, prompt: str, strength: float, model_name: 
 
     # Fooocus Sharp prompt template — "film grain, grainy, shot on kodak" are critical
     # for realistic skin texture (pores, grain, micro-detail). Without them, skin looks plastic.
-    # Skip for pose_change: "maintaining exact pose" fights against the desired pose change.
+    # Anime/manga prompts must not use this photo wrapper or a negative that bans anime.
     _FOOOCUS_SHARP = "cinematic still {prompt}, maintaining exact pose and body proportions . harmonious, 4k epic detailed, shot on kodak, 35mm photo, sharp focus, high budget, natural lighting, even skin tone, epic, gorgeous, film grain, grainy"
     _FOOOCUS_SHARP_NEG = "anime, cartoon, graphic, (blur, blurry, bokeh), text, painting, crayon, graphite, abstract, glitch, deformed, mutated, ugly, disfigured, changed pose, different proportions"
+    _ANIME_QUALITY = "{prompt}, original anime style, detailed manga art, clean line art, soft shading, vibrant colors, high quality"
+    _ANIME_NEG = "blurry, low quality, deformed, bad anatomy, text, watermark, extra limbs, missing limbs, changed pose, different proportions"
     _is_flux_model = model_name and ('flux' in model_name.lower() or 'kontext' in model_name.lower())
+    _style_probe = f"{full_prompt} {model_name or ''}".lower()
+    _is_anime_style = any(word in _style_probe for word in (
+        "anime", "manga", "2d animation", "2d style", "toon", "cel shading", "line art",
+        "illustrious", "pony", "animagine",
+    ))
     _is_pose_change = intent == 'pose_change'
     _is_fix_details = intent == 'fix_details'
     _is_repose = intent in ('repose', 'background_fill')
@@ -302,8 +313,12 @@ def process_image(image: Image.Image, prompt: str, strength: float, model_name: 
         # Repose/background_fill: prompt already built by generation.py, skip Fooocus wrapping
         # Just add minimal quality suffix without pose/clothing constraints
         if not _is_flux_model:
-            full_prompt = f"cinematic still {full_prompt} . harmonious, 4k epic detailed, sharp focus, natural lighting, film grain, grainy"
-            _repose_neg = "anime, cartoon, graphic, (blur, blurry, bokeh), text, painting, abstract, glitch, deformed, mutated, ugly, disfigured"
+            if _is_anime_style:
+                full_prompt = _ANIME_QUALITY.replace("{prompt}", full_prompt)
+                _repose_neg = _ANIME_NEG
+            else:
+                full_prompt = f"cinematic still {full_prompt} . harmonious, 4k epic detailed, sharp focus, natural lighting, film grain, grainy"
+                _repose_neg = "anime, cartoon, graphic, (blur, blurry, bokeh), text, painting, abstract, glitch, deformed, mutated, ugly, disfigured"
             neg = f"{_repose_neg}, {neg}" if neg else _repose_neg
     elif _is_pose_change:
         # Pose change: quality wrap but NO "maintaining pose" (counterproductive)
@@ -319,12 +334,20 @@ def process_image(image: Image.Image, prompt: str, strength: float, model_name: 
         _has_clothing = bool(_CLOTHING_WORDS.search(full_prompt))
         _clothing_suffix = "" if _has_clothing else ", same clothing, same color, same appearance"
         _neg_clothing = "" if _has_clothing else ", different clothing, different color"
-        full_prompt = f"cinematic still {full_prompt}{_clothing_suffix} . harmonious, 4k epic detailed, sharp focus, high budget, natural lighting, even skin tone, film grain, grainy"
-        _pose_neg = f"anime, cartoon, graphic, (blur, blurry, bokeh), text, painting, abstract, glitch, deformed, mutated, ugly, disfigured, different person{_neg_clothing}"
+        if _is_anime_style:
+            full_prompt = f"{full_prompt}{_clothing_suffix}, original anime style, clean line art, high quality"
+            _pose_neg = f"{_ANIME_NEG}, different person{_neg_clothing}"
+        else:
+            full_prompt = f"cinematic still {full_prompt}{_clothing_suffix} . harmonious, 4k epic detailed, sharp focus, high budget, natural lighting, even skin tone, film grain, grainy"
+            _pose_neg = f"anime, cartoon, graphic, (blur, blurry, bokeh), text, painting, abstract, glitch, deformed, mutated, ugly, disfigured, different person{_neg_clothing}"
         neg = f"{_pose_neg}, {neg}" if neg else _pose_neg
     elif not _is_flux_model:
-        full_prompt = _FOOOCUS_SHARP.replace("{prompt}", full_prompt)
-        neg = _FOOOCUS_SHARP_NEG
+        if _is_anime_style:
+            full_prompt = _ANIME_QUALITY.replace("{prompt}", full_prompt)
+            neg = _ANIME_NEG
+        else:
+            full_prompt = _FOOOCUS_SHARP.replace("{prompt}", full_prompt)
+            neg = _FOOOCUS_SHARP_NEG
 
     try:
         from core.infra.model_imports import apply_imported_model_prompt_hooks
