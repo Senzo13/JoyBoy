@@ -917,10 +917,22 @@ def load_clothes_segmenter(variant: str = None):
         import torch
 
         device = get_device()
+        _publish_asset_download_progress(
+            "download_segmentation",
+            5,
+            100,
+            f"Préparation segmentation {variant}...",
+        )
 
         try:
             processor = AutoImageProcessor.from_pretrained(model_name, local_files_only=True)
         except OSError:
+            _publish_asset_download_progress(
+                "download_segmentation",
+                10,
+                100,
+                f"Téléchargement segmentation {variant}...",
+            )
             processor = AutoImageProcessor.from_pretrained(model_name)
         try:
             model = AutoModelForSemanticSegmentation.from_pretrained(
@@ -928,6 +940,12 @@ def load_clothes_segmenter(variant: str = None):
                 device_map=None, low_cpu_mem_usage=False, local_files_only=True,
             )
         except OSError:
+            _publish_asset_download_progress(
+                "download_segmentation",
+                30,
+                100,
+                f"Téléchargement poids segmentation {variant}...",
+            )
             model = AutoModelForSemanticSegmentation.from_pretrained(
                 model_name, torch_dtype=torch.float32,
                 device_map=None, low_cpu_mem_usage=False,
@@ -953,6 +971,12 @@ def load_clothes_segmenter(variant: str = None):
             'device': device,
             'variant': variant
         }
+        _publish_asset_download_progress(
+            "download_segmentation",
+            100,
+            100,
+            f"Segmentation {variant} prête",
+        )
 
         q_str = " (int8)" if quantized else ""
         print(f"[SEG] {vinfo['label']} loaded on {device}{q_str}")
@@ -2125,9 +2149,11 @@ def _run_b2(image, strategy, classes, device, output_dir, save_debug):
             processor = _fusion_b2_cache['processor']
         else:
             _b2_repo = "mattmdjaga/segformer_b2_clothes"
+            _publish_asset_download_progress("download_segmentation", 15, 100, "Préparation SegFormer B2...")
             try:
                 processor = AutoImageProcessor.from_pretrained(_b2_repo, local_files_only=True)
             except OSError:
+                _publish_asset_download_progress("download_segmentation", 20, 100, "Téléchargement SegFormer B2...")
                 processor = AutoImageProcessor.from_pretrained(_b2_repo)
             try:
                 model = AutoModelForSemanticSegmentation.from_pretrained(
@@ -2135,6 +2161,7 @@ def _run_b2(image, strategy, classes, device, output_dir, save_debug):
                     low_cpu_mem_usage=False, local_files_only=True,
                 )
             except OSError:
+                _publish_asset_download_progress("download_segmentation", 35, 100, "Téléchargement poids SegFormer B2...")
                 model = AutoModelForSemanticSegmentation.from_pretrained(
                     _b2_repo, torch_dtype=torch.float32,
                     low_cpu_mem_usage=False,
@@ -2151,6 +2178,7 @@ def _run_b2(image, strategy, classes, device, output_dir, save_debug):
                 model = model.to(device=device, dtype=torch.float32).eval()
             _fusion_b2_cache = {'model': model, 'processor': processor}
             print("[SEG] B2 chargé et mis en cache RAM")
+            _publish_asset_download_progress("download_segmentation", 50, 100, "SegFormer B2 prêt")
 
         inputs = processor(images=image, return_tensors="pt")
         _model_dtype = next(model.parameters()).dtype
@@ -2211,9 +2239,11 @@ def _run_b4(image, strategy, classes, device, output_dir, save_debug):
             processor = _fusion_b4_cache['processor']
         else:
             _b4_repo = "fashn-ai/fashn-human-parser"
+            _publish_asset_download_progress("download_segmentation", 55, 100, "Préparation SegFormer B4...")
             try:
                 processor = AutoImageProcessor.from_pretrained(_b4_repo, local_files_only=True)
             except OSError:
+                _publish_asset_download_progress("download_segmentation", 60, 100, "Téléchargement SegFormer B4...")
                 processor = AutoImageProcessor.from_pretrained(_b4_repo)
             try:
                 model = AutoModelForSemanticSegmentation.from_pretrained(
@@ -2221,6 +2251,7 @@ def _run_b4(image, strategy, classes, device, output_dir, save_debug):
                     low_cpu_mem_usage=False, local_files_only=True,
                 )
             except OSError:
+                _publish_asset_download_progress("download_segmentation", 75, 100, "Téléchargement poids SegFormer B4...")
                 model = AutoModelForSemanticSegmentation.from_pretrained(
                     _b4_repo, torch_dtype=torch.float32,
                     low_cpu_mem_usage=False,
@@ -2237,6 +2268,7 @@ def _run_b4(image, strategy, classes, device, output_dir, save_debug):
                 model = model.to(device=device, dtype=torch.float32).eval()
             _fusion_b4_cache = {'model': model, 'processor': processor}
             print("[SEG] B4 chargé et mis en cache RAM")
+            _publish_asset_download_progress("download_segmentation", 90, 100, "SegFormer B4 prêt")
 
         inputs = processor(images=image, return_tensors="pt")
         _model_dtype = next(model.parameters()).dtype

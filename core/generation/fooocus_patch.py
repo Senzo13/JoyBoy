@@ -203,9 +203,27 @@ def download_fooocus_patch():
     from huggingface_hub import hf_hub_download
     import os
     os.environ.setdefault("HF_HUB_DOWNLOAD_TIMEOUT", "300")
+    try:
+        from core.generation.state import set_progress_phase
+
+        set_progress_phase("download_fooocus", 62, 100, "Téléchargement patch Fooocus...")
+    except Exception:
+        pass
 
     head_path = hf_hub_download(repo_id=FOOOCUS_REPO, filename=HEAD_FILENAME, resume_download=True)
+    try:
+        from core.generation.state import set_progress_phase
+
+        set_progress_phase("download_fooocus", 70, 100, "Téléchargement poids Fooocus...")
+    except Exception:
+        pass
     patch_path = hf_hub_download(repo_id=FOOOCUS_REPO, filename=PATCH_FILENAME, resume_download=True)
+    try:
+        from core.generation.state import set_progress_phase
+
+        set_progress_phase("download_fooocus", 100, 100, "Patch Fooocus prêt")
+    except Exception:
+        pass
     return head_path, patch_path
 
 

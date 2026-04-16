@@ -311,4 +311,6 @@ if __name__ == '__main__':
 
     print("\n[STARTUP] Prêt! (Modèles image chargés à la demande)\n")
 
-    app.run(host='127.0.0.1', port=7860, debug=False)
+    # The UI polls progress endpoints while long image/video jobs run.
+    # Keep Flask threaded explicitly so first-run downloads can still update cards.
+    app.run(host='127.0.0.1', port=7860, debug=False, threaded=True)

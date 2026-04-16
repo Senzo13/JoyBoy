@@ -1205,6 +1205,13 @@ function updateSkeletonPreview(previewBase64, step, total, phase = 'generation',
     else if (phase === 'prepare_assets') phaseLabel = 'Préparation assets';
     else if (phase === 'download_assets') phaseLabel = 'Téléchargement assets';
     else if (phase === 'download_schp') phaseLabel = 'Téléchargement SCHP';
+    else if (phase === 'download_segmentation') phaseLabel = 'Téléchargement segmentation';
+    else if (phase === 'download_depth') phaseLabel = 'Téléchargement Depth';
+    else if (phase === 'download_controlnet') phaseLabel = 'Téléchargement ControlNet';
+    else if (phase === 'load_image_model') phaseLabel = 'Chargement modèle';
+    else if (phase === 'download_vae') phaseLabel = 'Téléchargement VAE';
+    else if (phase === 'download_fooocus') phaseLabel = 'Patch inpaint';
+    else if (phase === 'quantize_model') phaseLabel = 'Optimisation modèle';
 
     if (img && previewBase64) {
         // Cacher le skeleton shimmer seulement quand une vraie preview existe.

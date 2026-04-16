@@ -90,6 +90,21 @@ def _patch_init_empty_weights():
 _patch_init_empty_weights()
 
 
+def _publish_runtime_progress(phase: str, step: int = 0, total: int = 100, message: str = ""):
+    """Best-effort progress visible from the generation card during model setup.
+
+    First-run downloads often happen inside Hugging Face / Diffusers helpers. We
+    cannot always get byte-level callbacks from those libraries, but publishing
+    the current setup phase prevents the UI from looking frozen.
+    """
+    try:
+        from core.generation.state import set_progress_phase
+
+        set_progress_phase(phase, step=step, total=total, message=message)
+    except Exception:
+        pass
+
+
 def _fix_meta_params(module, label=""):
     """Remplace les meta tensors (sans données) par des zéros sur CPU.
 
@@ -2830,6 +2845,12 @@ class ModelManager:
         from core.models import custom_cache, IS_MAC, VRAM_GB
 
         print("[MM] Loading ControlNet Depth Small...")
+        _publish_runtime_progress(
+            "download_controlnet",
+            8,
+            100,
+            "Préparation ControlNet Depth...",
+        )
         _cn_repo = "diffusers/controlnet-depth-sdxl-1.0-small"
         try:
             self._controlnet_model = ControlNetModel.from_pretrained(
@@ -2837,6 +2858,12 @@ class ModelManager:
                 local_files_only=True,
             )
         except OSError:
+            _publish_runtime_progress(
+                "download_controlnet",
+                10,
+                100,
+                "Téléchargement ControlNet Depth...",
+            )
             self._controlnet_model = ControlNetModel.from_pretrained(
                 _cn_repo, torch_dtype=TORCH_DTYPE, cache_dir=custom_cache,
             )
@@ -2911,6 +2938,12 @@ class ModelManager:
                 self._controlnet_model.to(_target)
         dev_str = _target.upper() if _target else "CPU"
         print(f"[MM] Ready: ControlNet Depth Small{q_str} ({dev_str})")
+        _publish_runtime_progress(
+            "download_controlnet",
+            100,
+            100,
+            "ControlNet Depth prêt",
+        )
 
         # Stocker la ref depth pour swap ultérieur
         self._controlnet_depth = self._controlnet_model
@@ -3015,6 +3048,12 @@ class ModelManager:
         from core.models import custom_cache, IS_MAC, VRAM_GB
 
         print("[MM] Loading Depth Anything V2 Small...")
+        _publish_runtime_progress(
+            "download_depth",
+            8,
+            100,
+            "Préparation Depth Anything...",
+        )
         model_id = "depth-anything/Depth-Anything-V2-Small-hf"
         try:
             self._depth_processor = AutoImageProcessor.from_pretrained(
@@ -3025,6 +3064,12 @@ class ModelManager:
                 low_cpu_mem_usage=False, local_files_only=True,
             )
         except OSError:
+            _publish_runtime_progress(
+                "download_depth",
+                10,
+                100,
+                "Téléchargement Depth Anything...",
+            )
             self._depth_processor = AutoImageProcessor.from_pretrained(
                 model_id, cache_dir=custom_cache,
             )
@@ -3051,6 +3096,12 @@ class ModelManager:
                 self._depth_estimator.to(_target)
         dev_str = _target.upper() if _target else "CPU"
         print(f"[MM] Ready: Depth Anything V2 Small (~100MB, {dev_str})")
+        _publish_runtime_progress(
+            "download_depth",
+            100,
+            100,
+            "Depth Anything prêt",
+        )
 
     @staticmethod
     def _pipeline_has_meta_tensors(pipe):
@@ -3331,6 +3382,12 @@ class ModelManager:
             sfm = SINGLE_FILE_MODELS[model_name]
             model_quant = sfm[2] if len(sfm) > 2 else "int8"
             print(f"[MM] Resolving model file ({sfm[0]})...")
+            _publish_runtime_progress(
+                "load_image_model",
+                18,
+                100,
+                f"Chargement {model_name}...",
+            )
             model_path = resolve_single_file_model(model_name)
             print(f"[MM] Loading from_single_file... ({_t_load.time() - _t0_load:.1f}s)")
             self._inpaint_pipe = StableDiffusionXLControlNetInpaintPipeline.from_single_file(
@@ -3342,11 +3399,23 @@ class ModelManager:
             print(f"[MM] Pipeline loaded ({_t_load.time() - _t0_load:.1f}s)")
         else:
             print(f"[MM] Loading from_pretrained ({model_id})...")
+            _publish_runtime_progress(
+                "load_image_model",
+                18,
+                100,
+                f"Chargement {model_name or model_id}...",
+            )
             self._inpaint_pipe = self._try_load_pretrained_pipeline(
                 StableDiffusionXLControlNetInpaintPipeline,
                 model_id, load_kwargs, controlnet=self._controlnet_model
             )
             print(f"[MM] Pipeline loaded ({_t_load.time() - _t0_load:.1f}s)")
+        _publish_runtime_progress(
+            "load_image_model",
+            45,
+            100,
+            "Pipeline image chargé",
+        )
 
         # Fix meta tensors laissés par from_single_file (low_cpu_mem_usage=True par défaut)
         for _comp_name in ('unet', 'text_encoder', 'text_encoder_2'):
@@ -3364,6 +3433,12 @@ class ModelManager:
         # FIX: Remplacer le VAE SDXL par la version fp16-fix
         _restore_register_parameter()  # Ensure clean state for VAE loading
         print(f"[MM] Loading VAE fp16-fix...")
+        _publish_runtime_progress(
+            "download_vae",
+            50,
+            100,
+            "Préparation VAE fp16-fix...",
+        )
         from diffusers import AutoencoderKL
         try:
             fixed_vae = AutoencoderKL.from_pretrained(
@@ -3371,12 +3446,24 @@ class ModelManager:
                 local_files_only=True,
             )
         except OSError:
+            _publish_runtime_progress(
+                "download_vae",
+                55,
+                100,
+                "Téléchargement VAE fp16-fix...",
+            )
             fixed_vae = AutoencoderKL.from_pretrained(
                 "madebyollin/sdxl-vae-fp16-fix", torch_dtype=TORCH_DTYPE,
             )
         self._inpaint_pipe.vae = fixed_vae
         self._inpaint_pipe.enable_vae_slicing()
         print(f"[MM] VAE remplacé par sdxl-vae-fp16-fix ({DTYPE_NAME}) ({_t_load.time() - _t0_load:.1f}s)")
+        _publish_runtime_progress(
+            "download_vae",
+            100,
+            100,
+            "VAE prêt",
+        )
         self._apply_imported_model_assets(model_name)
 
         # Optimisations: xformers/SDPA, channels_last, torch.compile
@@ -3385,6 +3472,12 @@ class ModelManager:
         # Fooocus Inpaint Patch: apply weight deltas BEFORE quantization
         # Fixes VAE color shift (yellow skin) by training the UNet for inpainting
         print(f"[MM] Applying Fooocus patch... ({_t_load.time() - _t0_load:.1f}s)")
+        _publish_runtime_progress(
+            "download_fooocus",
+            60,
+            100,
+            "Préparation patch Fooocus...",
+        )
         fooocus_applied = False
         if self._inpaint_pipe.unet.config.in_channels == 4:
             try:
@@ -3398,6 +3491,12 @@ class ModelManager:
         from core.models.gpu_profile import should_quantize as _sq
 
         print(f"[MM] Quantification + placement GPU... ({_t_load.time() - _t0_load:.1f}s)")
+        _publish_runtime_progress(
+            "quantize_model",
+            70,
+            100,
+            "Quantification et placement GPU...",
+        )
         do_quant, quant_type = _sq('sdxl', model_quant)
         quantized = False
         q_str = ""
