@@ -1152,6 +1152,47 @@ function getText2ImgModels() {
     return mergeModelCatalog(TEXT2IMG_MODELS, getPackModelEntries('text2img'));
 }
 
+const MODEL_PICKER_DESC_KEYS = new Map([
+    ['6.8gb • recommande', 'recommended6gb'],
+    ['9.8gb • haute qualite', 'highQuality9gb'],
+    ['12.7gb • max qualite', 'maxQuality12gb'],
+    ['12b • supreme • lent (~45s)', 'supremeSlow'],
+    ['12b • int8 • rapide', 'int8Fast'],
+    ['int4 • ultra rapide', 'int4UltraFast'],
+    ['int8 • recommande', 'int8Recommended'],
+    ['fp16 • max qualite', 'fp16MaxQuality'],
+    ['realiste', 'realistic'],
+    ['pony xl v16 • realiste', 'ponyRealistic'],
+    ['nf4 12b • top qualite', 'nf4TopQuality'],
+    ['int8 12b • rapide', 'int8DevFast'],
+    ['rapide (4 steps)', 'fastFourSteps'],
+]);
+
+function normalizePickerText(value) {
+    return String(value || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function translateModelPickerDesc(model) {
+    const raw = String(model?.desc || '');
+    const key = MODEL_PICKER_DESC_KEYS.get(normalizePickerText(raw));
+    return key ? uiT(`modelPicker.descriptions.${key}`, raw) : raw;
+}
+
+function modelPickerBadgeLabel(model) {
+    if (model?.badge === 'fast') return uiT('modelPicker.badges.fast', 'Rapide');
+    if (model?.badge === 'powerful') return uiT('modelPicker.badges.powerful', 'Fort');
+    if (model?.badge === 'vision') return uiT('modelPicker.badges.vision', 'Vision');
+    if (model?.badge === 'download') return uiT('modelPicker.badges.download', 'Télécharger');
+    if (model?.badge === 'tools') return uiT('modelPicker.badges.tools', 'Tools');
+    if (model?.imported) return uiT('modelPicker.badges.local', 'Local');
+    return uiT('modelPicker.badges.balanced', 'Équilibré');
+}
+
 // Compat: selectedImageModel pointe vers inpaint par défaut
 let selectedImageModel = selectedInpaintModel;
 
@@ -1653,16 +1694,10 @@ function renderModelPickerList(pickerId = 'home') {
     list.innerHTML = `
         ${helperText ? `<div class="model-picker-helper">${helperText}</div>` : ''}
         ${sortedModels.map(model => {
-        let badgeText = 'Équilibré';
         let badgeClass = model.badge || 'balanced';
+        const badgeText = modelPickerBadgeLabel(model);
         const useCase = getModelPickerUseCase(model, tab, pickerId);
-
-        if (model.badge === 'fast') badgeText = 'Rapide';
-        else if (model.badge === 'powerful') badgeText = 'Fort';
-        else if (model.badge === 'vision') badgeText = 'Vision';
-        else if (model.badge === 'download') badgeText = 'Télécharger';
-        else if (model.badge === 'tools') badgeText = 'Tools';
-        else if (model.imported) badgeText = 'Local';
+        const modelDesc = translateModelPickerDesc(model);
 
         return `
         <div class="model-picker-item ${model.id === selectedModel ? 'active' : ''}"
@@ -1674,7 +1709,7 @@ function renderModelPickerList(pickerId = 'home') {
             </div>
             <div class="model-picker-info">
                 <div class="model-picker-name">${model.name}</div>
-                <div class="model-picker-desc">${model.desc}</div>
+                <div class="model-picker-desc">${modelDesc}</div>
                 ${useCase ? `<div class="model-picker-meta">${useCase}</div>` : ''}
             </div>
             <span class="model-picker-badge ${badgeClass}">${badgeText}</span>

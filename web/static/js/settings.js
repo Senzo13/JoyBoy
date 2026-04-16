@@ -308,6 +308,17 @@ function refreshLocaleSensitiveSurfaces() {
     if (document.getElementById('pack-settings-list')) {
         loadPackSettings();
     }
+    if (typeof renderCachedImageModelLists === 'function') {
+        renderCachedImageModelLists();
+    }
+    if (typeof renderModelPickerList === 'function') {
+        renderModelPickerList('home');
+        renderModelPickerList('chat');
+        renderModelPickerList('edit');
+    }
+    if (typeof updateModelPickerDisplay === 'function') {
+        updateModelPickerDisplay();
+    }
     if (lastDoctorReport) {
         renderDoctorReport(lastDoctorReport);
     }
@@ -2899,9 +2910,7 @@ async function checkModelsStatus() {
 
 function renderImageModelItem(model, isInstalled) {
     const isNsfw = isAdultImageSurfaceModel(model);
-    const categoryBadge = model.category === 'inpaint' ? 'Inpaint' :
-                          model.category === 'txt2img' ? 'Text2Img' :
-                          model.category === 'image' ? 'Image' : 'Utils';
+    const categoryBadge = imageModelCategoryLabel(model.category);
     const capabilities = Array.isArray(model.capabilities) && model.capabilities.length
         ? model.capabilities
         : (model.category === 'image' ? ['inpaint', 'txt2img'] : [model.category]);
@@ -2914,8 +2923,9 @@ function renderImageModelItem(model, isInstalled) {
     const txt2imgEquipped = isInstalled && currentText2Img === model.name;
     const modelNameAttr = escapeHtml(String(model.name || ''));
     const modelKeyAttr = escapeHtml(String(model.key || ''));
+    const translatedDesc = translateImageModelDesc(model, categoryBadge);
     const providerLine = model.provider_label
-        ? `<span class="model-size">${escapeHtml(model.provider_label)} · ${escapeHtml(model.provider_configured ? t('settings.models.providerKeyReady', 'clé prête') : (model.provider_hint || t('settings.models.providerKeyOptional', 'clé optionnelle')))}</span>`
+        ? `<span class="model-size">${escapeHtml(model.provider_label)} · ${escapeHtml(imageProviderHint(model))}</span>`
         : '';
     const installedActions = capabilities.includes('inpaint') && capabilities.includes('txt2img')
         ? `
@@ -2942,7 +2952,7 @@ function renderImageModelItem(model, isInstalled) {
                 ${isNsfw ? '<span class="uncensored-badge">LOCAL+</span>' : ''}
                     ${isEquipped ? `<span class="uncensored-badge" style="background: rgba(59,130,246,0.15); color: #3b82f6;">${escapeHtml(t('settings.models.activeBadge', 'ACTIF'))}</span>` : ''}
                 </div>
-                <span class="model-desc">${escapeHtml(model.desc || categoryBadge)}</span>
+                <span class="model-desc">${escapeHtml(translatedDesc)}</span>
                 <span class="model-size">${escapeHtml(model.size || '~6 GB')}</span>
                 ${providerLine}
             </div>
@@ -2994,6 +3004,20 @@ function renderAvailableImageModels() {
     }
 }
 
+function renderCachedImageModelLists() {
+    if (!Array.isArray(allImageModels) || !allImageModels.length) return;
+    const installedList = document.getElementById('image-installed-models');
+    if (installedList) {
+        const installed = allImageModels.filter(m => m.downloaded && (isAdultSurfaceEnabled() || !isAdultImageSurfaceModel(m)));
+        DOM.setHtml(installedList, installed.length
+            ? installed.map(model => renderImageModelItem(model, true)).join('')
+            : `<div class="settings-info">${escapeHtml(t('settings.models.noInstalled', 'Aucun modèle installé'))}</div>`
+        );
+    }
+    renderAvailableImageModels();
+    if (window.lucide) lucide.createIcons();
+}
+
 function toggleImageModelFilter(filter) {
     if (filter === 'nsfw' && !isAdultSurfaceEnabled()) {
         filter = 'all';
@@ -3006,6 +3030,96 @@ function toggleImageModelFilter(filter) {
     });
 
     renderAvailableImageModels();
+}
+
+const IMAGE_MODEL_DESC_KEYS = new Map([
+    ['int4 - ultra rapide, qualite reduite', 'int4FastReduced'],
+    ['int8 - bon compromis vitesse/qualite', 'int8Balanced'],
+    ['fp16 - qualite maximale', 'fp16MaxQuality'],
+    ['int8 - local pack ready, meilleure anatomie', 'int8LocalBetterAnatomy'],
+    ['rapide et polyvalent', 'fastVersatile'],
+    ['meilleur global, anatomie parfaite', 'bestOverallAnatomy'],
+    ['ultra realiste, textures top', 'ultraRealisticTextures'],
+    ['tres rapide (4 steps)', 'veryFastFourSteps'],
+    ['int8 - local pack specialist, anatomie top', 'int8LocalSpecialistAnatomy'],
+    ['fp16 - local pack specialist, qualite max', 'fp16LocalSpecialistMaxQuality'],
+    ['int8 - pony xl v16, realiste + mignon', 'int8PonyRealCute'],
+    ['fp16 - pony xl v16, qualite maximale', 'fp16PonyMaxQuality'],
+]);
+
+function normalizeModelText(value) {
+    return String(value || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function imageModelCategoryLabel(category) {
+    const key = String(category || '').toLowerCase();
+    if (key === 'inpaint') return t('settings.models.categoryInpaint', 'Inpaint');
+    if (key === 'txt2img') return t('settings.models.categoryText2Img', 'Text2Img');
+    if (key === 'image') return t('settings.models.categoryImage', 'Image');
+    return t('settings.models.categoryUtils', 'Utils');
+}
+
+function translateImportedModelDescPart(part) {
+    const raw = String(part || '').trim();
+    const normalized = normalizeModelText(raw);
+    if (!raw) return '';
+    if (normalized === 'civitai import') {
+        return t('settings.models.descPartCivitaiImport', 'Import CivitAI');
+    }
+    if (normalized === 'huggingface import') {
+        return t('settings.models.descPartHuggingFaceImport', 'Import Hugging Face');
+    }
+    if (normalized === 'checkpoint') {
+        return t('settings.models.descPartCheckpoint', 'Checkpoint');
+    }
+    if (normalized === 'runtime natif' || normalized === 'runtime native') {
+        return t('settings.models.descPartRuntimeNative', 'exécution native');
+    }
+    const sourceMatch = raw.match(/^source\s+(.+)$/i);
+    if (sourceMatch) {
+        return t('settings.models.descPartSourcePrecision', 'source {precision}', {
+            precision: sourceMatch[1].trim().toUpperCase(),
+        });
+    }
+    const runtimeMatch = raw.match(/^runtime\s+(.+)$/i);
+    if (runtimeMatch) {
+        return t('settings.models.descPartRuntimeQuant', 'exécution {quant}', {
+            quant: runtimeMatch[1].trim().toUpperCase(),
+        });
+    }
+    return raw;
+}
+
+function translateImageModelDesc(model, categoryLabel) {
+    const raw = String(model?.desc || '').trim();
+    if (!raw) return categoryLabel;
+    const knownKey = IMAGE_MODEL_DESC_KEYS.get(normalizeModelText(raw));
+    if (knownKey) {
+        return t(`settings.models.catalogDescriptions.${knownKey}`, raw);
+    }
+    if (model?.imported || raw.includes(' · ')) {
+        return raw.split(' · ').map(translateImportedModelDescPart).filter(Boolean).join(' · ');
+    }
+    return raw;
+}
+
+function imageProviderHint(model) {
+    if (model?.provider_configured) {
+        return t('settings.models.providerKeyReady', 'clé prête');
+    }
+    const provider = String(model?.provider || '').toLowerCase();
+    if (provider === 'local') {
+        return t('settings.models.providerLocalReady', 'déjà présent localement');
+    }
+    if (provider === 'civitai') {
+        return t('settings.models.providerCivitaiHint', 'clé utile pour CivitAI');
+    }
+    return t('settings.models.providerKeyOptional', 'clé optionnelle');
 }
 
 // Équiper un modèle image (inpaint ou text2img selon le type)
