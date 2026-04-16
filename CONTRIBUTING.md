@@ -27,6 +27,10 @@ Useful starting points:
 - [Security and Content Policy](docs/SECURITY_AND_CONTENT_POLICY.md)
 - [Code of Conduct](CODE_OF_CONDUCT.md)
 
+## Branches and pull requests
+
+The public `main` branch is protected. External contributors should fork the repo, create a focused branch, and open a pull request. Maintainers review and merge PRs into `main`.
+
 ## Architecture expectations
 
 JoyBoy is being structured as:
