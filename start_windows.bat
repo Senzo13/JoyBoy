@@ -2,10 +2,10 @@
 chcp 65001 >nul
 cd /d "%~dp0"
 
-:: Mode restart automatique (appelé par le backend)
+REM Auto restart mode used by backend
 if /i "%1"=="--restart" goto start
 
-:: Si on n'est pas déjà dans Windows Terminal, se relancer dedans
+REM Relaunch in Windows Terminal when available
 if not defined WT_SESSION (
     where wt >nul 2>&1
     if not errorlevel 1 (
@@ -88,7 +88,7 @@ goto menu
 
 :setup
 cls
-:: Compteur de retries pour eviter boucle infinie
+REM Retry counter prevents infinite setup loops
 if not defined SETUP_RETRIES set SETUP_RETRIES=0
 set /a SETUP_RETRIES+=1
 if %SETUP_RETRIES% GTR 3 (
@@ -106,9 +106,9 @@ echo                    SETUP - Installation  (tentative %SETUP_RETRIES%/3)
 echo    ================================================================
 echo.
 
-:: ============================================
-:: ETAPE 0: Verifier/Installer Python embarque
-:: ============================================
+REM ============================================
+REM STEP 0: Check/install portable Python
+REM ============================================
 set "PYTHON_DIR=python312"
 set "PYTHON_EXE=%PYTHON_DIR%\python.exe"
 set "PYTHON_URL=https://github.com/indygreg/python-build-standalone/releases/download/20241206/cpython-3.12.8+20241206-x86_64-pc-windows-msvc-install_only_stripped.tar.gz"
@@ -131,7 +131,7 @@ if "%PYTHON_NEEDS_INSTALL%"=="1" (
     if exist "%PYTHON_TMP%" rmdir /s /q "%PYTHON_TMP%" 2>nul
     mkdir "%PYTHON_TMP%"
 
-    :: Telecharger Python avec curl (barre de progression visible)
+    REM Download Python with visible curl progress
     echo           Telechargement de Python 3.12 portable...
     curl.exe -L --progress-bar -o "%PYTHON_ZIP%" "%PYTHON_URL%"
 
@@ -142,14 +142,14 @@ if "%PYTHON_NEEDS_INSTALL%"=="1" (
         goto menu
     )
 
-    :: Extraire l'archive python-build-standalone
+    REM Extract python-build-standalone archive
     echo           Extraction...
     tar.exe -xzf "%PYTHON_ZIP%" -C "%PYTHON_TMP%"
     if exist "%PYTHON_TMP%\python" (
         move "%PYTHON_TMP%\python" "%PYTHON_DIR%" >nul
     )
 
-    :: Nettoyer
+    REM Cleanup
     del "%PYTHON_ZIP%" 2>nul
     if exist "%PYTHON_TMP%" rmdir /s /q "%PYTHON_TMP%" 2>nul
 
@@ -159,9 +159,9 @@ if "%PYTHON_NEEDS_INSTALL%"=="1" (
     echo    [0/4] Python local OK
 )
 
-:: Determiner quel Python utiliser
-:: Le venv doit utiliser Python 3.12. Sinon on le recrée AVANT activation,
-:: pour éviter que check_deps tente de supprimer le venv en cours d'utilisation.
+REM Decide which Python to use.
+REM The venv must use Python 3.12. Otherwise recreate it before activation,
+REM so check_deps never tries to remove the active venv.
 set "VENV_OK=0"
 if exist "venv\Scripts\python.exe" (
     venv\Scripts\python.exe -VV | findstr /B /C:"Python 3.12" >nul
@@ -195,7 +195,7 @@ echo.
 "%PYTHON%" scripts\bootstrap.py setup
 set CHECK_RESULT=%errorlevel%
 
-:: Si code 99 = Python/venv a été recréé
+REM Code 99 means Python/venv was recreated
 if %CHECK_RESULT%==99 (
     echo.
     echo    [!] Venv recree - Relancement du setup...
@@ -203,7 +203,7 @@ if %CHECK_RESULT%==99 (
     goto setup
 )
 
-:: Si code >= 1 = packages installés
+REM Code >= 1 means setup needs another verification pass
 if %CHECK_RESULT% GEQ 1 (
     echo.
     echo    [!] Installation en cours - Verification...
@@ -221,7 +221,7 @@ goto start
 
 :start
 cls
-:: Utiliser le venv si existant, sinon Python embarqué
+REM Use venv if available, otherwise portable Python
 if exist "venv\Scripts\python.exe" (
     call venv\Scripts\activate.bat
     set "PY=python"
@@ -229,9 +229,8 @@ if exist "venv\Scripts\python.exe" (
     set "PY=python312\python.exe"
 )
 
-:: Si une carte NVIDIA existe mais que le venv a un PyTorch CPU-only,
-:: le démarrage rapide mènera à "Torch not compiled with CUDA enabled".
-:: On bascule donc automatiquement vers le setup/réparation.
+REM If NVIDIA exists but PyTorch is CPU-only, quick start would fail.
+REM Automatically switch to setup/repair.
 where nvidia-smi >nul 2>&1
 if errorlevel 1 goto skip_cuda_repair_check
 "%PY%" -c "import sys; import torch; sys.exit(0 if torch.cuda.is_available() else 1)" >nul 2>nul
@@ -244,7 +243,7 @@ timeout /t 2 >nul
 goto setup
 :skip_cuda_repair_check
 
-:: Quick check: installer ollama si manquant
+REM Quick check: install Ollama if missing
 where ollama >nul 2>&1
 if not errorlevel 1 goto skip_ollama_install
 echo.
@@ -257,7 +256,7 @@ echo.
 "%PY%" web/app.py
 set EXIT_CODE=%errorlevel%
 
-:: Si code 42 = restart demandé, fermer cette fenêtre
+REM Code 42 means backend requested restart; close this window
 if %EXIT_CODE%==42 (
     echo    Restart en cours...
     exit
