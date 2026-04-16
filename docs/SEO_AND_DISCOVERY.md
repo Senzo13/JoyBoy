@@ -7,7 +7,7 @@ Use this checklist to keep JoyBoy easy to find on GitHub without keyword spam.
 Recommended repository description:
 
 ```text
-Local-first AI workstation: private ChatGPT/Grok-style chat, SDXL image editing, video experiments, Ollama, model imports, addons, and Codex-style project mode.
+Local-first AI workstation and harness: private ChatGPT/Grok-style chat, SDXL image editing, video experiments, Ollama, model imports, addons, and Codex-style project mode.
 ```
 
 Recommended website/homepage:
@@ -22,6 +22,8 @@ Use up to 20 topics. Keep them lowercase and honest:
 
 ```text
 local-ai
+ai-harness
+llm-harness
 ai-assistant
 chatgpt-alternative
 offline-ai
@@ -37,8 +39,6 @@ inpainting
 local-first
 privacy
 generative-ai
-python
-flask
 agentic-ai
 codex
 ```
@@ -48,6 +48,10 @@ codex
 Keep these phrases naturally present in the README and docs:
 
 - local AI workstation
+- local AI harness
+- LLM harness
+- agent harness
+- model orchestration harness
 - open source ChatGPT alternative
 - Grok-like local assistant
 - offline AI assistant

@@ -1,6 +1,6 @@
-# JoyBoy - Local AI Workstation
+# JoyBoy - Local AI Workstation and Harness
 
-**JoyBoy is a local-first AI workstation: a private ChatGPT / Grok-style chat app with image generation, image editing, video experiments, Ollama support, model imports, local addons, and a Codex-style project mode in development.**
+**JoyBoy is a local-first AI workstation and harness: a private ChatGPT / Grok-style chat app with image generation, image editing, video experiments, Ollama support, model imports, local addons, model/runtime orchestration, and a Codex-style project mode in development.**
 
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-3776ab.svg)](scripts/requirements.txt)
@@ -8,7 +8,7 @@
 [![Ollama](https://img.shields.io/badge/LLM-Ollama-0f172a.svg)](#local-secrets)
 [![Stable Diffusion](https://img.shields.io/badge/media-SDXL%20%7C%20Flux%20%7C%20Video-2563eb.svg)](#features)
 
-Run AI chat, image workflows, model management, and local creative tools on your own machine. JoyBoy is built for people who want an open source ChatGPT alternative, an offline AI assistant, a local Stable Diffusion / SDXL interface, and a privacy-focused creative cockpit without relying on a cloud account.
+Run AI chat, image workflows, model management, and local creative tools on your own machine. JoyBoy is built for people who want an open source ChatGPT alternative, an offline AI assistant, a local Stable Diffusion / SDXL interface, and a privacy-focused AI harness without relying on a cloud account.
 
 ![JoyBoy UI placeholder](docs/assets/readme-hero-placeholder.svg)
 
@@ -17,6 +17,7 @@ Run AI chat, image workflows, model management, and local creative tools on your
 ## Features
 
 - **Private local AI chat** with Ollama and local model routing.
+- **Local AI harness** for routing prompts, tools, jobs, models, runtime state, and optional extensions from one app.
 - **Text-to-image generation** with local image models and provider imports.
 - **Image editing and inpainting** for background edits, clothing edits, lighting, brush masks, expand/outpaint, and detail fixes.
 - **Video experiments** for local image-to-video workflows on consumer GPUs.
@@ -32,6 +33,7 @@ JoyBoy is designed for local AI users who care about privacy, control, and hardw
 
 - **Zero cloud by default**: chats, outputs, provider secrets, and optional packs stay on your computer.
 - **One local app**: chat, image generation, video tests, model picker, gallery, local packs, and runtime status live together.
+- **Harness mindset**: JoyBoy coordinates models, jobs, tools, providers, and packs instead of leaving each workflow as a separate script.
 - **Consumer GPU friendly**: profiles target real machines, including 8 GB VRAM setups.
 - **Open source core**: the public repository ships the neutral local AI workstation; optional packs remain separate.
 - **Extensible by design**: addons can add workflows without turning the core app into a private monolith.
@@ -39,6 +41,7 @@ JoyBoy is designed for local AI users who care about privacy, control, and hardw
 ## Use Cases
 
 - Run a local ChatGPT-like or Grok-like assistant with Ollama.
+- Use a local LLM harness to coordinate chat, tools, model routing, and creative jobs.
 - Generate images locally with SDXL, Flux-style workflows, and imported checkpoints.
 - Edit photos with inpainting, brush masks, background changes, lighting changes, and outpainting.
 - Test local image-to-video workflows without a hosted AI platform.
