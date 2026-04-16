@@ -173,6 +173,9 @@ def generation_pipeline(task_type, generation_id, preload_future=None, **load_kw
                 print("[PIPELINE] Preload timeout (120s), fallback direct load")
                 mgr.load_for_task(task_type, **load_kwargs)
             except Exception as e:
+                if "PyTorch est installé sans CUDA" in str(e):
+                    print(f"[PIPELINE] Preload error: {e}")
+                    raise
                 print(f"[PIPELINE] Preload error: {e}, fallback direct load")
                 mgr.load_for_task(task_type, **load_kwargs)
             else:

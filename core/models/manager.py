@@ -301,17 +301,29 @@ def _materialize_module(module, label=""):
 
 
 _PIPE_COMPONENTS = ('unet', 'controlnet', 'vae', 'text_encoder', 'text_encoder_2', 'image_encoder')
+CUDA_MOVE_ERRORS = (NotImplementedError, RuntimeError, AssertionError)
+
+
+def _cuda_unavailable_message():
+    return (
+        "PyTorch est installé sans CUDA alors qu'une génération image demande le GPU. "
+        "Lance `start_windows.bat` puis choisis Setup complet pour réinstaller PyTorch CUDA "
+        "dans le venv JoyBoy."
+    )
 
 
 def _move_pipe_to_cuda(pipe, label=""):
     """Déplace tous les composants du pipeline vers CUDA, avec fix meta tensors."""
+    if not torch.cuda.is_available():
+        raise RuntimeError(_cuda_unavailable_message())
+
     for comp_name in _PIPE_COMPONENTS:
         comp = getattr(pipe, comp_name, None)
         if comp is not None:
             _fix_meta_params(comp, f"{comp_name} (pre-cuda)")
             try:
                 comp.to("cuda")
-            except (NotImplementedError, RuntimeError):
+            except CUDA_MOVE_ERRORS:
                 # Meta tensors persistants — forcer via to_empty + reload state
                 print(f"[MM] {comp_name}: meta tensors persistants, to_empty fallback")
                 sd = {k: v for k, v in comp.state_dict().items() if not v.is_meta}
@@ -339,6 +351,12 @@ def _place_sdxl_pipe(pipe, model_name, quantized=False, has_controlnet=False):
         pipe.to("mps")
         print(f"[MM] Ready: {label} (MPS)")
         return
+
+    if not torch.cuda.is_available():
+        message = _cuda_unavailable_message()
+        print(f"[MM] CUDA indisponible: {message}")
+        _publish_runtime_progress("runtime_error", 100, 100, message)
+        raise RuntimeError(message)
 
     offload = get_offload_strategy('sdxl')
 
@@ -385,7 +403,7 @@ def _place_sdxl_pipe(pipe, model_name, quantized=False, has_controlnet=False):
             try:
                 pipe.enable_model_cpu_offload()
                 print(f"[MM] Ready: {label} (CPU offload, {VRAM_GB:.0f}GB)")
-            except (NotImplementedError, RuntimeError) as e:
+            except CUDA_MOVE_ERRORS as e:
                 print(f"[MM] CPU offload failed ({e}), fallback GPU direct")
                 _move_pipe_to_cuda(pipe)
                 print(f"[MM] Ready: {label} (GPU direct fallback, {VRAM_GB:.0f}GB)")
@@ -398,7 +416,7 @@ def _place_sdxl_pipe(pipe, model_name, quantized=False, has_controlnet=False):
         try:
             pipe.enable_model_cpu_offload()
             print(f"[MM] Ready: {label} (CPU offload fallback, {VRAM_GB:.0f}GB)")
-        except (NotImplementedError, RuntimeError) as e:
+        except CUDA_MOVE_ERRORS as e:
             print(f"[MM] CPU offload failed ({e}), fallback GPU direct")
             _move_pipe_to_cuda(pipe)
             print(f"[MM] Ready: {label} (GPU direct fallback, {VRAM_GB:.0f}GB)")

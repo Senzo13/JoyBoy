@@ -224,6 +224,22 @@ if exist "venv\Scripts\python.exe" (
     set "PY=python312\python.exe"
 )
 
+:: Si une carte NVIDIA existe mais que le venv a un PyTorch CPU-only,
+:: le démarrage rapide mènera à "Torch not compiled with CUDA enabled".
+:: On bascule donc automatiquement vers le setup/réparation.
+where nvidia-smi >nul 2>&1
+if not errorlevel 1 (
+    "%PY%" -c "import sys; import torch; sys.exit(0 if torch.cuda.is_available() else 1)" >nul 2>nul
+    if errorlevel 1 (
+        echo.
+        echo    [!] GPU NVIDIA detecte mais PyTorch CUDA indisponible dans ce venv.
+        echo    [!] Lancement du setup pour reparer PyTorch CUDA...
+        echo.
+        timeout /t 2 >nul
+        goto setup
+    )
+)
+
 :: Quick check: installer ollama si manquant
 where ollama >nul 2>&1
 if errorlevel 1 (

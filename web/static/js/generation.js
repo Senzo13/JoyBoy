@@ -1212,6 +1212,7 @@ function updateSkeletonPreview(previewBase64, step, total, phase = 'generation',
     else if (phase === 'download_vae') phaseLabel = 'Téléchargement VAE';
     else if (phase === 'download_fooocus') phaseLabel = 'Patch inpaint';
     else if (phase === 'quantize_model') phaseLabel = 'Optimisation modèle';
+    else if (phase === 'runtime_error') phaseLabel = 'Erreur runtime';
 
     if (img && previewBase64) {
         // Cacher le skeleton shimmer seulement quand une vraie preview existe.

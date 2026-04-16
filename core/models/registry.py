@@ -129,7 +129,10 @@ if torch.cuda.is_available():
     except Exception:
         pass
 
-if SUPPORTS_BF16 and VRAM_GB >= 16:
+if not torch.cuda.is_available() and not IS_MAC:
+    TORCH_DTYPE = torch.float32
+    DTYPE_NAME = "fp32"
+elif SUPPORTS_BF16 and VRAM_GB >= 16:
     TORCH_DTYPE = torch.bfloat16
     DTYPE_NAME = "bf16"
 else:
@@ -150,6 +153,9 @@ elif SUPPORTS_BF16:
     print(f"[STARTUP] Ampere+ GPU ({VRAM_GB:.0f}GB): using fp16 (compatible with INT8 quanto)")
 elif VRAM_GB > 0:
     print(f"[STARTUP] GPU ({VRAM_GB:.0f}GB): using fp16")
+elif not IS_MAC:
+    print("[STARTUP] PyTorch CPU-only détecté: CUDA indisponible pour l'image/vidéo")
+    print("[STARTUP] -> Lance Setup complet pour installer PyTorch CUDA si tu as une NVIDIA")
 
 # ========================== GPU MODEL CONFIG ==========================
 GPU_MODEL_CONFIG = {
