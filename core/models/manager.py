@@ -3059,8 +3059,12 @@ class ModelManager:
 
     def _load_depth_estimator(self):
         """Charge Depth Anything V2 Small pour l'estimation de profondeur."""
-        if self._depth_estimator is not None:
+        if self._depth_estimator is not None and self._depth_processor is not None:
             return
+        if self._depth_estimator is not None or self._depth_processor is not None:
+            # A previous parallel preload may have left a half-initialized state.
+            self._depth_estimator = None
+            self._depth_processor = None
 
         from transformers import AutoModelForDepthEstimation, AutoImageProcessor
         from core.models import custom_cache, IS_MAC, VRAM_GB
@@ -3073,28 +3077,48 @@ class ModelManager:
             "Préparation Depth Anything...",
         )
         model_id = "depth-anything/Depth-Anything-V2-Small-hf"
+
+        def _load_depth_from_hf(*, local_files_only=False):
+            processor = AutoImageProcessor.from_pretrained(
+                model_id,
+                cache_dir=custom_cache,
+                local_files_only=local_files_only,
+            )
+            estimator = AutoModelForDepthEstimation.from_pretrained(
+                model_id,
+                torch_dtype=torch.float32,
+                cache_dir=custom_cache,
+                low_cpu_mem_usage=False,
+                local_files_only=local_files_only,
+            )
+            return processor, estimator
+
         try:
-            self._depth_processor = AutoImageProcessor.from_pretrained(
-                model_id, cache_dir=custom_cache, local_files_only=True,
-            )
-            self._depth_estimator = AutoModelForDepthEstimation.from_pretrained(
-                model_id, torch_dtype=torch.float32, cache_dir=custom_cache,
-                low_cpu_mem_usage=False, local_files_only=True,
-            )
-        except OSError:
+            self._depth_processor, self._depth_estimator = _load_depth_from_hf(local_files_only=True)
+        except Exception as e:
+            self._depth_processor = None
+            self._depth_estimator = None
+            print(f"[MM] Depth local cache unavailable/corrupt ({type(e).__name__}: {e})")
             _publish_runtime_progress(
                 "download_depth",
                 10,
                 100,
                 "Téléchargement Depth Anything...",
             )
-            self._depth_processor = AutoImageProcessor.from_pretrained(
-                model_id, cache_dir=custom_cache,
-            )
-            self._depth_estimator = AutoModelForDepthEstimation.from_pretrained(
-                model_id, torch_dtype=torch.float32, cache_dir=custom_cache,
-                low_cpu_mem_usage=False,
-            )
+            try:
+                self._depth_processor, self._depth_estimator = _load_depth_from_hf(local_files_only=False)
+            except Exception as download_error:
+                self._depth_processor = None
+                self._depth_estimator = None
+                print(f"[MM] Depth estimator unavailable ({type(download_error).__name__}: {download_error})")
+                _publish_runtime_progress(
+                    "download_depth",
+                    100,
+                    100,
+                    "Depth indisponible, fallback sans depth",
+                )
+                return
+
         self._depth_estimator.eval()
 
         # Fix meta tensors (parallel loading race with init_empty_weights)
@@ -3106,12 +3130,16 @@ class ModelManager:
         if _target:
             try:
                 self._depth_estimator.to(_target)
-            except (NotImplementedError, RuntimeError):
-                print(f"[MM] Depth: meta tensors persistent, to_empty fallback")
-                sd = {k: v for k, v in self._depth_estimator.state_dict().items() if v.device.type != "meta"}
-                self._depth_estimator.to_empty(device="cpu")
-                self._depth_estimator.load_state_dict(sd, strict=False, assign=True)
-                self._depth_estimator.to(_target)
+            except (NotImplementedError, RuntimeError, AssertionError) as e:
+                print(f"[MM] Depth: GPU placement failed ({e}), trying CPU-safe fallback")
+                try:
+                    sd = {k: v for k, v in self._depth_estimator.state_dict().items() if v.device.type != "meta"}
+                    self._depth_estimator.to_empty(device="cpu")
+                    self._depth_estimator.load_state_dict(sd, strict=False, assign=True)
+                    self._depth_estimator.to(_target)
+                except Exception as fallback_error:
+                    print(f"[MM] Depth: keeping estimator on CPU ({fallback_error})")
+                    _target = None
         dev_str = _target.upper() if _target else "CPU"
         print(f"[MM] Ready: Depth Anything V2 Small (~100MB, {dev_str})")
         _publish_runtime_progress(
