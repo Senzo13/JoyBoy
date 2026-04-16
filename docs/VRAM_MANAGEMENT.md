@@ -1,333 +1,195 @@
 # Gestion VRAM - JoyBoy
 
-## Modèles et leur usage VRAM
+Derniere mise a jour: 2026-04-16.
 
-| Modèle | VRAM | Usage |
-|--------|------|-------|
-| Utility (qwen2.5:1.5b) | ~1-2 GB | Enhance prompt, image check, memory check |
-| Chat (variable) | ~2-5 GB | Conversation texte |
-| Inpainting (SDXL) | ~6-10 GB | Modifier une image avec masque |
-| Text2Img (SDXL) | ~6-10 GB | Créer une image depuis texte |
+Cette page decrit le comportement actuel du runtime. Elle ne doit pas etre lue
+comme une promesse ligne par ligne: JoyBoy garde certains modeles chauds quand
+c'est utile, mais libere ce qui entre en conflit avec la tache en cours.
 
----
+## Principes actuels
 
-## Model Picker - 3 Onglets
+| Principe | Comportement |
+|---|---|
+| Demarrage leger | Aucun gros modele image/video n'est charge au lancement. |
+| Load-on-demand | Les pipelines diffusion, video, caption, segmentation et upscale se chargent quand une tache les demande. |
+| Pas de hard reset au refresh | Le refresh UI ne lance plus `/models/unload-all`. Les modeles peuvent rester en memoire pour accelerer la suite. |
+| Jobs durables | Les generations, imports, downloads et taches terminal sont suivis par `JobManager`, pas par du HTML temporaire. |
+| Groupes VRAM | Les taches sont classees en groupes `diffusion`, `video`, `chat` et `io`. |
+| Low VRAM strict | Sur 8-10 GB VRAM, JoyBoy decharge Ollama avant les jobs diffusion/video quand il faut eviter la saturation. |
+| Reset manuel disponible | Le bouton "Liberer VRAM" et `/models/unload-all` restent des actions explicites de securite. |
 
-Le picker de modèles est organisé en **3 onglets distincts**:
+## Sources de verite
 
-| Onglet | Usage | Sauvegarde |
-|--------|-------|------------|
-| **Inpaint** | Quand une image est dans l'input | `localStorage.selectedInpaintModel` |
-| **Text2Img** | Génération depuis texte seul | `localStorage.selectedText2ImgModel` |
-| **Chat** | Modèles Ollama pour conversation | `userSettings.chatModel` |
+| Fichier | Role |
+|---|---|
+| `core/models/manager.py` | Cycle de vie des modeles, smart unload, quantification, chargement diffusion/video/chat. |
+| `core/runtime/resources.py` | Plans et leases de ressources visibles dans le panneau runtime. |
+| `core/runtime/jobs.py` | Etat durable des jobs, progression, annulation et restauration UI. |
+| `web/app.py` | `generation_pipeline()`, integration du scheduler et du `ModelManager`. |
+| `web/routes/models.py` | Endpoints unload, warmup Ollama, status et downloads. |
+| `web/routes/runtime.py` | API runtime pour jobs, conversations et etat ressources. |
+| `web/static/js/ui.js` | Picker de modeles, selection inpaint/text2img/chat selon le contexte. |
+| `web/static/js/settings.js` | Cartes modeles, imports CivitAI/Hugging Face, equipement de modeles. |
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    MODEL PICKER                             │
-├─────────────────────────────────────────────────────────────┤
-│                                                              │
-│  [Inpaint]  [Text2Img]  [Chat]                              │
-│                                                              │
-│  Sélection automatique selon contexte:                      │
-│                                                              │
-│  ┌─ Image dans input? ─┐                                   │
-│  │                      │                                   │
-│  ▼ OUI                  ▼ NON                               │
-│  Onglet Inpaint         Onglet Text2Img                     │
-│  (modèles *Inpaint)     (modèles sans Inpaint)             │
-│                                                              │
-│  getCurrentImageModel() retourne le bon modèle             │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
-```
+## Groupes de ressources
 
-**Code source:** `web/static/js/ui.js`
-- `INPAINT_MODELS[]` - Liste des modèles inpainting
-- `TEXT2IMG_MODELS[]` - Liste des modèles text-to-image
-- `CHAT_MODELS[]` - Liste dynamique depuis Ollama
-- `getCurrentImageModel()` - Retourne inpaint ou text2img selon contexte
+`ResourceScheduler` ne remplace pas `ModelManager`: il enregistre les plans et
+les leases pour l'UI/runtime. Le vrai chargement/dechargement reste dans
+`ModelManager.load_for_task()`.
 
----
+| Groupe | Taches typiques | Politique |
+|---|---|---|
+| `diffusion` | inpaint, text2img, edit, expand, upscale | Peut reutiliser un pipeline diffusion deja chaud. Decharge la video. Sur low VRAM, decharge aussi Ollama sauf demande explicite de preservation. |
+| `video` | FramePack, SVD, CogVideo, export video | Tache la plus gourmande. Decharge diffusion, utils lourds, segmentation et Ollama sur low VRAM. |
+| `chat` | conversation, terminal, caption | Peut tourner tant qu'aucun job diffusion/video lourd ne reclame la VRAM. |
+| `io` | download, import modele, import pack | Ne devrait pas bloquer la VRAM sauf si une verification charge un modele. |
 
-## Modèles disponibles
+## Model Picker
 
-### Inpainting (avec image)
+Le picker garde trois familles visibles, mais les listes ne sont plus une simple
+liste statique.
 
-| Modèle | Description | Taille |
-|--------|-------------|--------|
-| Local Studio Inpaint | Local pack workflow | ~6 GB |
-| Juggernaut XL Inpaint | Bonne anatomie | ~6 GB |
-| epiCRealism XL Inpaint | Textures réalistes | ~6 GB |
-| Pony Diffusion V6 Inpaint | Polyvalent | ~7 GB |
-| Waifu Inpaint | Style animé | ~7 GB |
-| RealVisXL V4 Inpaint | Réaliste, visages | ~6 GB |
-| Fluently XL v3 Inpaint | Rapide | ~6 GB |
-| SDXL Inpainting | Standard | ~6 GB |
+| Onglet | Usage | Stockage |
+|---|---|---|
+| Inpaint | Une image est presente dans l'input ou l'editeur | `selectedInpaintModel` |
+| Text2Img | Prompt texte sans image source | `selectedText2ImgModel` |
+| Chat | Conversation et mode projet | `userSettings.chatModel` |
 
-### Text2Img (sans image)
+`getCurrentImageModel()` choisit le modele image selon la presence d'une image.
+Les modeles viennent de plusieurs sources:
 
-| Modèle | Description | Taille |
-|--------|-------------|--------|
-| Juggernaut XL v9 | Anatomie | ~6 GB |
-| epiCRealism XL | Réaliste | ~6 GB |
-| RealVisXL V4 | Réaliste | ~6 GB |
-| SDXL Turbo | Rapide (4 steps) | ~6 GB |
+- catalogues integres;
+- modeles installes;
+- imports Hugging Face ou CivitAI;
+- packs locaux actives;
+- variantes runtime comme INT4, INT8, FP16, FP8 ou GGUF quand disponibles.
 
----
+Pour les imports CivitAI/Hugging Face, un checkpoint source peut rester FP16
+sur disque tout en etant execute en INT8 au chargement si le profil local le
+demande et si la quantification reussit.
 
-## Flux au démarrage (PAGE LOAD / REFRESH)
+## Demarrage et refresh
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    PAGE LOAD / REFRESH                       │
-├─────────────────────────────────────────────────────────────┤
-│                                                              │
-│  1. app.js init()                                            │
-│     │                                                        │
-│     ├──► /models/unload-all (POST)                          │
-│     │    └── Décharge TOUS les modèles (sécurité)           │
-│     │        - unload_all_image_models()                    │
-│     │        - unload tous les modèles Ollama warmés        │
-│     │        - clear_vram() / garbage collection            │
-│     │                                                        │
-│     └──► preloadOllamaModel()                               │
-│          │                                                   │
-│          ├──► /ollama/warmup (utility: qwen2.5:1.5b)        │
-│          │    └── Charge le utility model (checks)          │
-│          │                                                   │
-│          └──► /ollama/warmup (chat: userSettings.chatModel) │
-│               └── Charge le chat model sélectionné          │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
-```
+Ancien comportement: refresh = `/models/unload-all` puis warmup utility + chat.
 
-**Code source:**
-- `app.js` ligne ~257: appel `/models/unload-all`
-- `settings.js` fonction `preloadOllamaModel()`: charge utility + chat
-- `app.py` endpoint `/models/unload-all`: décharge tout
+Comportement actuel:
 
----
+1. L'UI demarre vite.
+2. JoyBoy verifie si une generation video est deja active et se reconnecte si besoin.
+3. Le refresh ne decharge plus les modeles par defaut.
+4. Les conversations et jobs sont reconstruits depuis le runtime store.
+5. L'onboarding/Doctor se lance sans bloquer l'affichage initial.
+6. Le warmup Ollama est fait a la demande par le chat, le terminal ou les outils.
 
-## Flux de changement de modèle IMAGE (picker)
+Ce changement evite les cycles inutiles `load -> unload -> reload` apres chaque
+refresh, surtout quand un modele image vient d'etre charge.
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│            CHANGEMENT MODÈLE IMAGE (picker)                  │
-├─────────────────────────────────────────────────────────────┤
-│                                                              │
-│  1. Utilisateur sélectionne un nouveau modèle               │
-│     (onglet Inpaint ou Text2Img)                            │
-│     │                                                        │
-│     ├──► Sauvegarde dans localStorage                       │
-│     │    - selectedInpaintModel (si onglet inpaint)        │
-│     │    - selectedText2ImgModel (si onglet text2img)      │
-│     │                                                        │
-│     └──► /api/log/model-change (POST)                       │
-│          │                                                   │
-│          └──► unload_all_image_models()                     │
-│               - Décharge inpaint_pipe                       │
-│               - Décharge text2img_pipe                      │
-│               - clear_vram()                                │
-│                                                              │
-│  2. À la prochaine génération:                              │
-│     │                                                        │
-│     └──► load_inpaint_model(nouveau_modèle)                 │
-│          ou load_text2img_model(nouveau_modèle)             │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
-```
+## Changement de modele
 
-**Code source:**
-- `ui.js` fonction `selectPickerModel()`: sauvegarde + appelle `/api/log/model-change`
-- `app.py` endpoint `/api/log/model-change`: décharge l'ancien modèle image
+| Action | Comportement actuel |
+|---|---|
+| Equiper un modele inpaint | Sauvegarde `selectedInpaintModel`, reset le flag de chargement local, notifie `/api/log/model-change`. |
+| Equiper un modele text2img | Sauvegarde `selectedText2ImgModel`, reset le flag local, charge a la prochaine generation. |
+| Equiper un modele chat | Sauvegarde `userSettings.chatModel`; Ollama peut etre warmup ensuite selon le contexte. |
+| `/api/log/model-change` | Log uniquement. Ne preload plus et ne decharge plus automatiquement. |
+| `/models/preload-image` | No-op volontaire: les modeles image sont load-on-demand. |
 
----
+Le changement de modele ne doit donc plus etre documente comme un unload
+obligatoire. L'ancien pipeline est decharge quand `ModelManager` detecte qu'un
+autre modele doit vraiment etre charge, ou quand l'utilisateur libere la VRAM.
 
-## Flux de changement de modèle CHAT (picker)
+## Generation image
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│            CHANGEMENT MODÈLE CHAT (picker)                   │
-├─────────────────────────────────────────────────────────────┤
-│                                                              │
-│  1. Utilisateur sélectionne un nouveau modèle (onglet Chat) │
-│     │                                                        │
-│     ├──► Sauvegarde dans userSettings.chatModel             │
-│     │                                                        │
-│     └──► /api/log/model-change (POST)                       │
-│          type: 'chat'                                        │
-│          │                                                   │
-│          ├──► ollama_service.unload_model(ancien)           │
-│          │    └── keep_alive: "0s" pour décharger           │
-│          │                                                   │
-│          └──► ollama_service.preload_model(nouveau)         │
-│               └── Charge le nouveau modèle en VRAM          │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
-```
+Flux simplifie:
 
----
+1. La route cree ou met a jour un job.
+2. `generation_pipeline()` ouvre un lease de ressources.
+3. `ModelManager.load_for_task()` charge uniquement ce qui manque.
+4. Sur low VRAM, Ollama est decharge avant diffusion si sa presence risque de bloquer SDXL/ControlNet.
+5. Les previews et la progression mettent a jour le job actif.
+6. `cleanup()` libere surtout les utilitaires temporaires; il ne fait pas un reset complet.
 
-## Flux de génération d'image
+Pour l'inpainting, JoyBoy essaie de garder le pipeline diffusion chaud quand il
+est probable que l'utilisateur enchaine plusieurs edits. Pour text2img, le
+modele peut aussi rester chaud selon l'etat courant, la pression VRAM et les
+actions utilisateur. Il ne faut plus affirmer "text2img est toujours decharge
+apres generation".
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                  GÉNÉRATION D'IMAGE                          │
-├─────────────────────────────────────────────────────────────┤
-│                                                              │
-│  1. Avant génération (/generate ou /generate-edit):         │
-│     │                                                        │
-│     ├──► log_loaded_models() - Affiche modèles en VRAM      │
-│     │                                                        │
-│     ├──► Décharge TOUS les modèles Ollama                   │
-│     │    - utility model (qwen2.5:1.5b)                     │
-│     │    - chat model                                        │
-│     │    └── Libère ~3-8GB VRAM                             │
-│     │                                                        │
-│     └──► load_inpaint_model() ou load_text2img_model()      │
-│          └── Charge SD en VRAM (~6GB)                       │
-│                                                              │
-│  2. Génération en cours...                                   │
-│     │                                                        │
-│     └──► Previews en temps réel (polling /generate/preview) │
-│                                                              │
-│  3. Après génération:                                        │
-│     │                                                        │
-│     └──► Le modèle SD reste chargé pour les édits suivants  │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
+## Generation video
+
+La video est traitee comme le groupe le plus gourmand.
+
+| Phase | Politique |
+|---|---|
+| Avant video | Decharger diffusion, segmentation lourde, utils et Ollama si la VRAM est faible. |
+| Pendant generation | Garder le modele video comme ressource principale. |
+| Low VRAM FramePack | Reduire resolution/steps/frames selon preset et liberer des composants avant le decodage quand possible. |
+| Export | Eviter de garder inutilement le modele video si l'export/decode risque de saturer RAM/VRAM. |
+| Audio auto | Doit rester optionnel/desactive par defaut sur machines limitees, car MMAudio peut consommer beaucoup de VRAM. |
+
+## Ollama, chat et terminal
+
+| Cas | Comportement |
+|---|---|
+| Chat normal | Le modele chat peut rester chaud pour repondre vite. |
+| Mode projet/terminal | Warmup du modele choisi, puis job terminal cancellable. |
+| Image/video sur low VRAM | Ollama est decharge et JoyBoy attend brievement que `/api/ps` confirme la liberation. |
+| Warmup pendant generation | `/ollama/warmup` peut refuser/skip si une generation lourde est active. |
+| `keep_alive: "0s"` | Demande a Ollama de decharger un modele. |
+| `keep_alive: "5m"` ou `-1` | Garde le modele chaud selon le service appele et le contexte. |
+
+## Endpoints utiles
+
+| Endpoint | Role actuel |
+|---|---|
+| `GET /api/runtime/status` | Etat jobs, conversations, ressources et modeles charges. |
+| `GET/POST /api/runtime/jobs` | Creer/lister les jobs durables. |
+| `POST /api/runtime/jobs/<id>/cancel` | Demander ou forcer l'annulation d'un job. |
+| `POST /models/unload-all` | Reset manuel: annule les generations actives et decharge tout, avec option `keep_video`. |
+| `POST /models/unload-image` | Decharge les pipelines image/diffusion. |
+| `POST /models/preload-image` | No-op load-on-demand, garde pour compat UI. |
+| `POST /ollama/warmup` | Warmup Ollama a la demande, avec protection pendant generation. |
+| `POST /api/log/model-change` | Log changement modele, sans preload ni unload automatique. |
+| `GET /check-models` | Etat des modeles image connus/installes. |
+| `POST /models/download` | Telechargement modele en tache de fond. |
+
+## Transitions resumees
+
+| Evenement | Transition actuelle |
+|---|---|
+| Refresh UI | Reconnecter jobs/video, charger conversations, ne pas unload par defaut. |
+| Chat -> image | Creer job diffusion, liberer Ollama si low VRAM, charger le modele image a la demande. |
+| Image -> chat | Le chat peut warmup a la demande; le modele image peut rester chaud jusqu'a pression VRAM ou unload manuel. |
+| Image -> autre modele image | Le prochain load remplace le pipeline incompatible; pas de preload automatique. |
+| Image/video -> terminal | Le terminal peut warmup Ollama, mais les jobs lourds actifs doivent etre annules/termines ou liberer leurs leases. |
+| Suppression conversation | Annule les jobs non terminaux attaches a cette conversation. |
+| Liberer VRAM | Hard reset volontaire via `unload_all()`. |
+
+## Regles a garder en tete
+
+1. Ne pas documenter un unload automatique si le code ne l'execute pas.
+2. Ne pas supposer un modele utility fixe: le router texte depend de la config et des modeles installes.
+3. Sur 8 GB VRAM, eviter de garder Ollama et SDXL/FramePack ensemble.
+4. `JobManager` stocke l'etat stable; l'UI reconstruit les skeletons depuis les jobs.
+5. Les imports de modeles peuvent etre source FP16 mais runtime INT8.
+6. Les actions explicites de l'utilisateur priment: "Liberer VRAM" doit vraiment tout liberer.
+7. Les caches legers peuvent rester en RAM/VRAM si le gain de reload ne vaut pas le cout.
+
+## Verification rapide
+
+Commandes utiles apres une modification de cette zone:
+
+```bash
+python -m unittest discover -s tests -p "test_*.py"
+node --check web/static/js/app.js
+node --check web/static/js/ui.js
+node --check web/static/js/settings.js
 ```
 
----
+Et cote UI:
 
-## Mode Chat (pas d'image dans l'input)
-
-```
-État initial: utility + chat chargés
-
-Utilisateur envoie un message texte:
-  → utility fait les checks (image? memory?)
-  → chat répond
-  → Rien ne change
-
-Utilisateur demande une image (text2img détecté):
-  1. utility améliore le prompt
-  2. DÉCHARGER utility + chat
-  3. CHARGER text2img (modèle sélectionné dans onglet Text2Img)
-  4. Générer l'image
-  5. DÉCHARGER text2img
-  6. RECHARGER utility + chat
-  → Retour à l'état initial
-```
-
-## Mode Inpainting (image dans l'input)
-
-```
-Image détectée dans l'input:
-  1. DÉCHARGER chat (si chargé)
-  2. CHARGER utility (si pas chargé)
-  3. CHARGER inpainting (modèle sélectionné dans onglet Inpaint)
-
-Utilisateur envoie un prompt:
-  1. utility améliore le prompt
-  2. DÉCHARGER utility
-  3. Générer avec inpainting (déjà chargé)
-  4. Garder inpainting chargé
-  → Prêt pour le prochain inpainting
-
-Prochain inpainting:
-  1. RECHARGER utility
-  2. utility améliore le prompt
-  3. DÉCHARGER utility
-  4. Générer avec inpainting
-  → Répéter...
-
-Utilisateur retire l'image de l'input:
-  1. DÉCHARGER inpainting
-  2. RECHARGER utility + chat
-  → Retour au mode chat
-```
-
----
-
-## Endpoints de gestion VRAM
-
-| Endpoint | Méthode | Description |
-|----------|---------|-------------|
-| `/models/unload-all` | POST | Décharge TOUS les modèles (sécurité au refresh) |
-| `/models/unload-image` | POST | Décharge le modèle image uniquement |
-| `/models/preload-image` | POST | Précharge le modèle image sélectionné |
-| `/ollama/warmup` | POST | Précharge un modèle Ollama en VRAM |
-| `/api/log/model-change` | POST | Gère le changement de modèle (décharge ancien, charge nouveau) |
-| `/check-models` | GET | Vérifie le statut des modèles (téléchargé, en cours, taille) |
-| `/models/download` | POST | Lance le téléchargement d'un modèle en background |
-
----
-
-## Téléchargement de modèles
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│              TÉLÉCHARGEMENT DE MODÈLE                        │
-├─────────────────────────────────────────────────────────────┤
-│                                                              │
-│  1. Utilisateur clique "Télécharger" dans Settings          │
-│     │                                                        │
-│     └──► /models/download (POST)                            │
-│          │                                                   │
-│          ├──► get_model_total_size() - Récupère taille HF  │
-│          │                                                   │
-│          ├──► Thread de téléchargement (background)         │
-│          │    └── snapshot_download()                       │
-│          │                                                   │
-│          └──► Thread de monitoring (progression)            │
-│               └── get_cache_folder_size() toutes les 1s    │
-│                                                              │
-│  2. Frontend poll /check-models toutes les 2s               │
-│     │                                                        │
-│     └──► Affiche progression réelle: "2.3 GB / 6.5 GB"     │
-│                                                              │
-│  3. Téléchargement terminé quand downloaded: true           │
-│     │                                                        │
-│     └──► Toast "Succès: modèle téléchargé"                 │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
-```
-
----
-
-## Résumé des transitions
-
-| De | Vers | Actions |
-|----|------|---------|
-| Chat | Text2img | unload(utility, chat) → load(text2img) → generate → unload(text2img) → load(utility, chat) |
-| Chat | Inpainting | unload(chat) → load(inpainting) → [loop: load(utility) → enhance → unload(utility) → generate] |
-| Inpainting | Chat | unload(inpainting) → load(utility, chat) |
-| Refresh page | - | unload(tout) → load(utility) → load(chat) |
-| Change model inpaint | - | unload(image) → (chargé à la prochaine génération) |
-| Change model text2img | - | unload(image) → (chargé à la prochaine génération) |
-| Change model chat | - | unload(ancien) → load(nouveau) |
-
----
-
-## Règles importantes
-
-1. **Au refresh**: TOUJOURS décharger tout puis recharger utility + chat
-2. **Jamais** utility + image model en même temps (sauf brièvement pour enhance)
-3. **Toujours** décharger utility AVANT de générer
-4. **Inpainting**: garder le modèle image chargé pour enchaîner
-5. **Text2img**: décharger après car l'utilisateur retourne au chat
-6. **Changement modèle image**: décharger immédiatement, charger à la demande
-7. **Changement modèle chat**: décharger ancien, charger nouveau immédiatement
-8. **Picker auto-switch**: L'onglet change automatiquement selon présence d'image
-
----
-
-## Notes techniques
-
-- **GPU 8GB**: Le CPU offload est activé automatiquement (`USE_CPU_OFFLOAD = VRAM_GB <= 10`)
-- **Partage VRAM**: Ollama et SD ne peuvent pas coexister efficacement
-- **keep_alive: "0s"**: Commande Ollama pour décharger un modèle immédiatement
-- **keep_alive: "-1"**: Garde le modèle chargé indéfiniment (utility)
-- **clear_vram()**: Appelle `gc.collect()` et `torch.cuda.empty_cache()`
-- **Progression téléchargement**: Basée sur la taille réelle du dossier cache vs taille totale HF
+- ouvrir le panneau VRAM/runtime;
+- lancer un chat, puis une generation image sur GPU 8 GB;
+- verifier qu'Ollama est libere avant diffusion si la pression VRAM est haute;
+- changer de conversation pendant un job et revenir;
+- verifier que la carte se reconstruit depuis le job, pas depuis un vieux skeleton DOM.

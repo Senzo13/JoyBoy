@@ -10,8 +10,8 @@ Quick setup for Vast.ai, RunPod, Lambda Labs, etc.
 ## One-liner Setup
 
 ```bash
-git clone https://github.com/YOUR_REPO/crock.git
-cd crock
+git clone https://github.com/Senzo13/JoyBoy.git
+cd JoyBoy
 chmod +x setup_linux.sh start_linux.sh
 ./setup_linux.sh
 ```
@@ -32,7 +32,7 @@ pip install -r requirements.txt
 # 4. Install Ollama
 curl -fsSL https://ollama.com/install.sh | sh
 ollama serve &
-ollama pull qwen2.5:1.5b
+ollama pull qwen3.5:2b
 
 # 5. Start app
 python web/app.py
