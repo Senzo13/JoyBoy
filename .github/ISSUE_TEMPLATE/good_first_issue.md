@@ -23,3 +23,9 @@ Describe the small user-facing improvement or cleanup.
 ## Notes for contributors
 
 Keep the pull request narrow. If you discover a larger refactor, mention it in the issue instead of expanding the first PR.
+
+Before starting, read:
+
+- [CONTRIBUTING.md](../../CONTRIBUTING.md)
+- [CODE_OF_CONDUCT.md](../../CODE_OF_CONDUCT.md)
+- [docs/GOOD_FIRST_ISSUES.md](../../docs/GOOD_FIRST_ISSUES.md)

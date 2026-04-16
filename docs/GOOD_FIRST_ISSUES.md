@@ -2,6 +2,10 @@
 
 These issues are intentionally small, useful, and safe for new contributors. They are written so maintainers can copy them directly into GitHub issues and label them `good first issue`.
 
+Active newcomer tasks live in the GitHub issue tracker: [open good first issues](https://github.com/Senzo13/JoyBoy/issues?q=is%3Aissue%20is%3Aopen%20label%3A%22good%20first%20issue%22).
+
+Before starting, read [CONTRIBUTING.md](../CONTRIBUTING.md) and [CODE_OF_CONDUCT.md](../CODE_OF_CONDUCT.md). If an item below already exists as a GitHub issue, use the GitHub issue as the source of truth.
+
 ## 1. Add a Doctor check for missing `.env.example`
 
 Labels: `good first issue`, `docs`, `doctor`

@@ -129,13 +129,16 @@ See [Local Packs](docs/LOCAL_PACKS.md), [Addons](docs/ADDONS.md), and [Third-Par
 - [VRAM Management](docs/VRAM_MANAGEMENT.md)
 - [Security and Content Policy](docs/SECURITY_AND_CONTENT_POLICY.md)
 - [Repository SEO and Discovery](docs/SEO_AND_DISCOVERY.md)
+- [Contributing Guide](CONTRIBUTING.md)
+- [Code of Conduct](CODE_OF_CONDUCT.md)
+- [Security Policy](SECURITY.md)
 - [Good First Issues](docs/GOOD_FIRST_ISSUES.md)
 
 ## Contributing
 
-Start with [CONTRIBUTING.md](CONTRIBUTING.md), [ROADMAP.md](ROADMAP.md), and [docs/GOOD_FIRST_ISSUES.md](docs/GOOD_FIRST_ISSUES.md).
+Start with [CONTRIBUTING.md](CONTRIBUTING.md), [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md), [ROADMAP.md](ROADMAP.md), and [docs/GOOD_FIRST_ISSUES.md](docs/GOOD_FIRST_ISSUES.md).
 
-Good early contributions include docs, Doctor checks, UI polish, model import UX, tests around local packs, and release hygiene.
+Good early contributions include docs, Doctor checks, UI polish, model import UX, tests around local packs, and release hygiene. Browse open [`good first issue`](https://github.com/Senzo13/JoyBoy/issues?q=is%3Aissue%20is%3Aopen%20label%3A%22good%20first%20issue%22) tasks if you want a contained first PR.
 
 ## License
 

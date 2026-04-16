@@ -1,1 +1,11 @@
 blank_issues_enabled: true
+contact_links:
+  - name: Contributing guide
+    url: https://github.com/Senzo13/JoyBoy/blob/main/CONTRIBUTING.md
+    about: Read this before opening a first PR.
+  - name: Good first issues
+    url: https://github.com/Senzo13/JoyBoy/issues?q=is%3Aissue%20is%3Aopen%20label%3A%22good%20first%20issue%22
+    about: Browse beginner-friendly tasks that are still useful to the project.
+  - name: Security policy
+    url: https://github.com/Senzo13/JoyBoy/blob/main/SECURITY.md
+    about: Report sensitive security issues privately instead of opening a public issue.
