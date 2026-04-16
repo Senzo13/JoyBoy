@@ -258,7 +258,7 @@ CUDA_VERSION = get_cuda_version() if HAS_CUDA else None
 # ==========================================
 def get_project_dir():
     """Retourne le dossier du projet"""
-    return os.path.dirname(os.path.abspath(__file__))
+    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 def get_local_python_dir():
     """Retourne le chemin vers Python local (Windows only feature)"""
@@ -586,7 +586,7 @@ CRITICAL_DEPS = {
     "peft": "peft",
     "scipy": "scipy",
     "ftfy": "ftfy",
-    "optimum_quanto": "optimum-quanto",        # Quantification INT8 (indispensable < 18GB VRAM)
+    "optimum.quanto": "optimum-quanto",        # Quantification INT8 (indispensable < 18GB VRAM)
     # Web / System
     "requests": "requests",
     "psutil": "psutil",
@@ -612,8 +612,8 @@ NON_CRITICAL_DEPS = {
 # Combine pour backward compat (check_all_imports, etc.)
 DEPENDENCIES = {**CRITICAL_DEPS, **NON_CRITICAL_DEPS}
 
-# Ces packages on vérifie juste avec pip (imports complexes)
-PIP_ONLY_CHECK = ["protobuf"]
+# Ces packages ont un nom pip différent du module importable.
+PIP_ONLY_CHECK = []
 
 # Packages optionnels (upscaling - incompatibles Python 3.13)
 OPTIONAL_PACKAGES = ["realesrgan", "basicsr"]
@@ -710,7 +710,7 @@ def _get_installed_packages():
     """Charge la liste des packages installés une seule fois"""
     global _installed_packages_cache
     if _installed_packages_cache is None:
-        result = run_pip(["list", "--format=columns"], quiet=True)
+        result = run_pip(["list", "--format=columns"], quiet=False)
         if result.returncode == 0:
             _installed_packages_cache = set()
             for line in result.stdout.strip().split('\n')[2:]:  # Skip header
@@ -724,7 +724,8 @@ def _get_installed_packages():
 def check_pip_installed(package):
     """Vérifie si un package est installé via pip (cache en mémoire)"""
     installed = _get_installed_packages()
-    return package.lower() in installed
+    normalized = package.lower().replace("-", "_")
+    return package.lower() in installed or normalized in {pkg.replace("-", "_") for pkg in installed}
 
 def uninstall_package(package):
     """Désinstalle un package"""
@@ -1405,6 +1406,7 @@ def main():
 
     missing = []
     dll_errors = []
+    optional_broken = []
     ok_count = 0
     total = len(DEPENDENCIES) + len(PIP_ONLY_CHECK)
 
@@ -1422,6 +1424,9 @@ def main():
                 marker_file = os.path.join(get_project_dir(), ".opencv_fix_attempted")
                 if os.path.exists(marker_file):
                     os.remove(marker_file)
+        elif module in NON_CRITICAL_DEPS and check_pip_installed(package):
+            print(f"  [WARN] {module} installé mais indisponible ({error_type})")
+            optional_broken.append(module)
         elif error_type == "dll_error":
             print(f"  [DLL ERROR] {module}")
             dll_errors.append((module, package))
@@ -1783,6 +1788,10 @@ def main():
             print("  Packages critiques OK, démarrage possible")
         else:
             print("  Tous les packages manquants ont été installés!")
+
+    if optional_broken:
+        print(f"  [WARN] Fonctionnalités optionnelles indisponibles: {', '.join(optional_broken)}")
+        print("  (Le setup reste valide; JoyBoy utilisera les chemins alternatifs disponibles)")
 
     if not all_ok:
         # all_ok est basé sur xformers (optionnel) — ne pas bloquer
