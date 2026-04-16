@@ -2024,7 +2024,7 @@ def get_generation_preview():
     import time
 
     try:
-        from core.processing import get_current_preview
+        from core.processing import get_current_preview_status
 
         # Long polling: attendre qu'un nouveau step soit disponible
         last_step = request.args.get('last_step', 0, type=int)
@@ -2034,33 +2034,41 @@ def get_generation_preview():
         last_phase = request.args.get('last_phase', 'generation')
 
         while time.time() - start_time < timeout:
-            preview, step, total, phase = get_current_preview()
+            status = get_current_preview_status()
+            preview = status.get('preview')
+            step = status.get('step', 0)
+            total = status.get('total', 0)
+            phase = status.get('phase', 'generation')
+            message = status.get('message', '')
 
             # Si nouveau step disponible, retourner immediatement
-            if step > last_step and preview is not None:
+            if step > last_step:
                 return jsonify({
                     'preview': preview,
                     'step': step,
                     'total': total,
-                    'phase': phase
+                    'phase': phase,
+                    'message': message,
                 })
 
-            # Changement de phase (fine_tuning ou refine) - retourner pour mettre a jour l'UI
-            # Mais seulement si on a une preview (sinon le frontend affiche une image cassee)
-            if phase in ('fine_tuning', 'refine') and last_phase not in ('fine_tuning', 'refine'):
+            # Changement de phase: retourner meme sans preview pour afficher les
+            # etapes longues de premier lancement (downloads SCHP, assets, etc.).
+            if phase != last_phase:
                 if preview is not None:
                     return jsonify({
                         'preview': preview,
                         'step': step,
                         'total': total,
-                        'phase': phase
+                        'phase': phase,
+                        'message': message,
                     })
                 # Si pas de preview, juste notifier le changement de phase sans image
                 return jsonify({
                     'preview': None,
-                    'step': 0,
+                    'step': step,
                     'total': total,
                     'phase': phase,
+                    'message': message,
                     'phase_changed': True
                 })
 
@@ -2070,7 +2078,8 @@ def get_generation_preview():
                     'preview': preview,
                     'step': step,
                     'total': total,
-                    'phase': phase
+                    'phase': phase,
+                    'message': message,
                 })
 
             # Si generation terminee (step 0 apres avoir eu des steps ET phase normale)
@@ -2082,12 +2091,13 @@ def get_generation_preview():
             time.sleep(0.3)
 
         # Timeout - retourner l'etat actuel
-        preview, step, total, phase = get_current_preview()
+        status = get_current_preview_status()
         return jsonify({
-            'preview': preview,
-            'step': step,
-            'total': total,
-            'phase': phase,
+            'preview': status.get('preview'),
+            'step': status.get('step', 0),
+            'total': status.get('total', 0),
+            'phase': status.get('phase', 'generation'),
+            'message': status.get('message', ''),
             'timeout': True
         })
     except Exception as e:

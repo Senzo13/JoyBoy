@@ -1139,9 +1139,9 @@ function startPreviewPolling() {
         }
 
         // Mettre à jour l'affichage
-        if (data.step > lastPreviewStep || data.phase === 'fine_tuning' || data.phase === 'refine') {
+        if (data.step > lastPreviewStep || data.phase_changed || data.message || data.phase === 'fine_tuning' || data.phase === 'refine') {
             lastPreviewStep = data.step;
-            updateSkeletonPreview(data.preview, data.step, data.total, data.phase);
+            updateSkeletonPreview(data.preview, data.step, data.total, data.phase, data.message || '');
         }
 
         // Continuer le long polling immédiatement
@@ -1184,7 +1184,7 @@ function findActiveImagePreviewContainer(targetChatId = null) {
 }
 
 // Met à jour le skeleton avec la preview
-function updateSkeletonPreview(previewBase64, step, total, phase = 'generation') {
+function updateSkeletonPreview(previewBase64, step, total, phase = 'generation', message = '') {
     const targetChatId = typeof currentGenerationChatId !== 'undefined'
         ? (currentGenerationChatId || currentChatId)
         : currentChatId;
@@ -1198,10 +1198,13 @@ function updateSkeletonPreview(previewBase64, step, total, phase = 'generation')
     const progressBar = container.querySelector('.generation-progress-bar');
     const stepText = container.querySelector('.generation-step-text');
 
-    // Afficher la phase (Fine tuning, Refine, ou normal)
+    // Afficher la phase (downloads/setup inclus, utile au premier lancement).
     let phaseLabel = '';
     if (phase === 'fine_tuning') phaseLabel = 'Fine tuning';
     else if (phase === 'refine') phaseLabel = 'Affinage';
+    else if (phase === 'prepare_assets') phaseLabel = 'Préparation assets';
+    else if (phase === 'download_assets') phaseLabel = 'Téléchargement assets';
+    else if (phase === 'download_schp') phaseLabel = 'Téléchargement SCHP';
 
     if (img && previewBase64) {
         // Cacher le skeleton shimmer seulement quand une vraie preview existe.
@@ -1254,9 +1257,13 @@ function updateSkeletonPreview(previewBase64, step, total, phase = 'generation')
         }
     }
 
-    if (stepText && step > 0) {
-        if (phaseLabel) {
+    if (stepText && (step > 0 || message || phaseLabel)) {
+        if (message) {
+            stepText.textContent = message;
+        } else if (phaseLabel && total > 0) {
             stepText.textContent = `${phaseLabel} ${step}/${total}`;
+        } else if (phaseLabel) {
+            stepText.textContent = phaseLabel;
         } else {
             stepText.textContent = `${step}/${total}`;
         }

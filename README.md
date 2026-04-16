@@ -87,6 +87,8 @@ http://127.0.0.1:7860
 
 On first launch, JoyBoy runs onboarding, detects your machine profile, and shows a Doctor report if something is missing. The launchers include a first-time setup/repair path and a fast start path.
 
+The first inpaint, text-to-image, or video run can take longer than the next ones. JoyBoy may need to download or prepare missing runtime assets such as segmentation checkpoints, SCHP human parsing files, ControlNet helpers, preview VAEs, or video components. The generation card shows setup/download progress while this happens; once cached locally, later generations reuse those assets.
+
 ## Local Secrets
 
 Provider keys are optional and stay local:

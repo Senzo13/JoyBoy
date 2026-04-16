@@ -47,6 +47,7 @@ class GenerationState:
         self.current_preview_step = 0
         self.total_steps = 0
         self.current_phase = "generation"
+        self.current_preview_message = ""
         # Video progress
         self.video_progress = self._DEFAULT_VIDEO_PROGRESS.copy()
         # Context history
@@ -60,19 +61,39 @@ class GenerationState:
         """Retourne (preview, step, total, phase)."""
         return self.current_preview, self.current_preview_step, self.total_steps, self.current_phase
 
+    def get_current_preview_status(self):
+        """Retourne l'etat complet de preview/progression pour le polling UI."""
+        return {
+            "preview": self.current_preview,
+            "step": self.current_preview_step,
+            "total": self.total_steps,
+            "phase": self.current_phase,
+            "message": self.current_preview_message,
+        }
+
     def clear_preview(self):
         """Efface la preview courante."""
         self.current_preview = None
         self.current_preview_step = 0
         self.total_steps = 0
         self.current_phase = "generation"
+        self.current_preview_message = ""
 
-    def set_phase(self, phase: str, steps: int = None):
+    def set_phase(self, phase: str, steps: int = None, message: str = ""):
         """Change la phase de génération (pour le feedback UI)."""
         self.current_phase = phase
         self.current_preview_step = 0
         if steps is not None:
             self.total_steps = steps
+        self.current_preview_message = message or ""
+
+    def set_progress_phase(self, phase: str, step: int = 0, total: int = None, message: str = ""):
+        """Publie une progression sans preview image (downloads, setup, decode, etc.)."""
+        self.current_phase = phase
+        self.current_preview_step = max(0, int(step or 0))
+        if total is not None:
+            self.total_steps = max(0, int(total or 0))
+        self.current_preview_message = message or ""
 
     # --- Video progress ---
 
@@ -128,11 +149,17 @@ def clear_video_progress():
 def get_current_preview():
     return _state.get_current_preview()
 
+def get_current_preview_status():
+    return _state.get_current_preview_status()
+
 def clear_preview():
     _state.clear_preview()
 
-def set_phase(phase: str, steps: int = None):
-    _state.set_phase(phase, steps)
+def set_phase(phase: str, steps: int = None, message: str = ""):
+    _state.set_phase(phase, steps, message=message)
+
+def set_progress_phase(phase: str, step: int = 0, total: int = None, message: str = ""):
+    _state.set_progress_phase(phase, step, total, message=message)
 
 
 # --- Accessor functions ---

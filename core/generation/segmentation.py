@@ -605,7 +605,18 @@ def get_device():
     return "cpu"
 
 
-def download_checkpoint(url: str, filename: str) -> Path:
+def _publish_asset_download_progress(phase: str, step: int, total: int, message: str = ""):
+    """Best-effort UI progress for first-run asset downloads."""
+    try:
+        from core.generation.state import set_progress_phase
+
+        set_progress_phase(phase, step=step, total=total, message=message)
+    except Exception:
+        pass
+
+
+def download_checkpoint(url: str, filename: str, *, progress_label: str = None,
+                        progress_phase: str = "download_assets") -> Path:
     """Telecharge un checkpoint avec barre de progression"""
     import sys
     import urllib.request
@@ -616,7 +627,14 @@ def download_checkpoint(url: str, filename: str) -> Path:
     if checkpoint_path.exists():
         return checkpoint_path
 
+    label = progress_label or filename
     print(f"[SEG] Telechargement {filename}...")
+    _publish_asset_download_progress(
+        progress_phase,
+        1,
+        100,
+        f"Téléchargement {label}...",
+    )
 
     try:
         with urllib.request.urlopen(url) as response:
@@ -624,6 +642,7 @@ def download_checkpoint(url: str, filename: str) -> Path:
             downloaded = 0
             block_size = 8192
             last_percent = -1
+            last_unknown_mb = -1
 
             with open(str(checkpoint_path), 'wb') as f:
                 while True:
@@ -644,9 +663,34 @@ def download_checkpoint(url: str, filename: str) -> Path:
                             sys.stdout.write(f"\r[SEG] [{bar}] {percent}% ({size_mb:.0f}/{total_mb:.0f} MB)")
                             sys.stdout.flush()
                             last_percent = percent
+                            _publish_asset_download_progress(
+                                progress_phase,
+                                max(1, min(percent, 99)),
+                                100,
+                                f"Téléchargement {label} {percent}% ({size_mb:.0f}/{total_mb:.0f} MB)",
+                            )
+                    else:
+                        # Some mirrors do not expose Content-Length, which used
+                        # to make the UI look frozen during first-run downloads.
+                        size_mb = int(downloaded / (1024 * 1024))
+                        if size_mb >= last_unknown_mb + 5:
+                            last_unknown_mb = size_mb
+                            pseudo_percent = min(95, max(1, size_mb // 3))
+                            _publish_asset_download_progress(
+                                progress_phase,
+                                pseudo_percent,
+                                100,
+                                f"Téléchargement {label} ({size_mb} MB reçus)",
+                            )
 
             print()
             print(f"[SEG] {filename} telecharge")
+            _publish_asset_download_progress(
+                progress_phase,
+                100,
+                100,
+                f"{label} téléchargé",
+            )
 
     except Exception as e:
         print(f"\n[SEG] Erreur telechargement: {e}")
@@ -1444,7 +1488,9 @@ def load_schp_segmenter():
     checkpoint_file = vinfo['checkpoint_file']
 
     # S'assurer que les fichiers Python SCHP existent
+    _publish_asset_download_progress("prepare_assets", 1, 3, "Préparation des fichiers SCHP...")
     _ensure_schp_files()
+    _publish_asset_download_progress("prepare_assets", 3, 3, "Fichiers SCHP prêts")
 
     # Télécharger le checkpoint si nécessaire
     CHECKPOINTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -1453,6 +1499,21 @@ def load_schp_segmenter():
     if not checkpoint_path.exists():
         print(f"[SEG] Téléchargement SCHP ATR (~267MB)...")
         try:
+            download_checkpoint(
+                checkpoint_url,
+                checkpoint_file,
+                progress_label="SCHP ATR",
+                progress_phase="download_schp",
+            )
+            print(f"[SEG] SCHP ATR téléchargé")
+        except Exception as e:
+            print(f"[SEG] Erreur téléchargement direct: {e}, fallback Hugging Face Hub...")
+            _publish_asset_download_progress(
+                "download_schp",
+                1,
+                100,
+                "Téléchargement SCHP ATR via Hugging Face...",
+            )
             from huggingface_hub import hf_hub_download
             downloaded = hf_hub_download(
                 repo_id="levihsu/OOTDiffusion",
@@ -1461,10 +1522,12 @@ def load_schp_segmenter():
             # Copier du cache HF vers checkpoints/
             import shutil
             shutil.copy2(str(downloaded), str(checkpoint_path))
-            print(f"[SEG] SCHP ATR téléchargé")
-        except Exception as e:
-            print(f"[SEG] Erreur HF hub: {e}, fallback téléchargement direct...")
-            download_checkpoint(checkpoint_url, checkpoint_file)
+            _publish_asset_download_progress(
+                "download_schp",
+                100,
+                100,
+                "SCHP ATR téléchargé",
+            )
 
     device = get_device()
     print(f"[SEG] Chargement SCHP sur {device}...")
