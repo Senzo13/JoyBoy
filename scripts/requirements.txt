@@ -1,0 +1,64 @@
+# Web Server
+flask>=3.0.0
+requests>=2.31.0
+
+# PyTorch (CUDA auto-detected)
+torch>=2.1.0
+torchvision
+torchaudio
+
+# Stable Diffusion
+diffusers>=0.25.0
+transformers>=4.53.3,<5.0
+tokenizers>=0.21.0,<0.23
+accelerate>=0.25.0
+safetensors
+huggingface_hub>=0.20.0
+
+# Image Processing
+Pillow>=10.0.0
+numpy>=1.24.0
+opencv-python-headless>=4.8.0
+controlnet-aux>=0.0.7
+mediapipe>=0.10.0
+
+# AI Utils
+omegaconf>=2.3.0
+einops>=0.7.0
+sentencepiece>=0.1.99
+bitsandbytes>=0.41.0
+optimum-quanto>=0.2.0
+peft>=0.7.0
+scipy>=1.11.0
+ftfy
+
+# Pre-requisites compilation (AVANT basicsr/insightface qui en ont besoin)
+Cython
+onnxruntime
+
+# Upscaling & Face Restore
+basicsr>=1.4.2
+realesrgan>=0.3.0
+gfpgan>=1.3.0
+insightface>=0.7.0
+
+# Video export
+imageio>=2.31.0
+imageio-ffmpeg>=0.4.8
+av>=10.0.0
+
+# Segmentation avancée (GroundingDINO)
+rf-groundingdino
+
+# Misc
+protobuf>=3.20.0
+python-dotenv>=1.0.0
+
+# System
+psutil
+
+# Web Search (SearXNG, DuckDuckGo)
+beautifulsoup4>=4.12.0
+
+# Chat IA
+ollama>=0.4.0

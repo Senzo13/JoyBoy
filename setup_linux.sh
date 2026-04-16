@@ -1,0 +1,206 @@
+#!/bin/bash
+# ============================================================
+# Setup script for Linux cloud GPU (Lambda Labs, RunPod, Vast.ai)
+# Downloads all models and dependencies in parallel
+# Optimized for Lambda Labs (PyTorch pre-installed)
+# ============================================================
+
+set -e
+
+echo "============================================================"
+echo "   JoyBoy Cloud GPU Setup"
+echo "   Linux + CUDA"
+echo "============================================================"
+echo ""
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+# Check CUDA
+if ! command -v nvidia-smi &> /dev/null; then
+    echo -e "${RED}[ERROR] nvidia-smi not found. Is CUDA installed?${NC}"
+    exit 1
+fi
+
+echo -e "${GREEN}[OK]${NC} CUDA detected:"
+nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
+echo ""
+
+# Check Python
+if ! command -v python3 &> /dev/null; then
+    echo -e "${RED}[ERROR] Python 3 not found${NC}"
+    exit 1
+fi
+
+PYTHON_VERSION=$(python3 --version)
+echo -e "${GREEN}[OK]${NC} $PYTHON_VERSION"
+
+# Add ~/.local/bin to PATH (pip installs binaries there)
+export PATH="$HOME/.local/bin:$PATH"
+
+# Check if PyTorch already installed (Lambda Labs has it)
+if python3 -c "import torch; print(torch.cuda.is_available())" 2>/dev/null | grep -q "True"; then
+    echo -e "${GREEN}[OK]${NC} PyTorch + CUDA already installed (Lambda Labs)"
+    USE_SYSTEM_PYTHON=true
+else
+    USE_SYSTEM_PYTHON=false
+fi
+
+# Create venv if not using system Python
+if [ "$USE_SYSTEM_PYTHON" = false ]; then
+    if [ ! -d "venv" ]; then
+        echo -e "${YELLOW}[SETUP]${NC} Creating virtual environment..."
+        python3 -m venv venv
+    fi
+    source venv/bin/activate
+    echo -e "${GREEN}[OK]${NC} Virtual environment activated"
+
+    # Install PyTorch with CUDA
+    echo -e "${YELLOW}[SETUP]${NC} Installing PyTorch + CUDA..."
+    pip install --upgrade pip
+    pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
+else
+    echo -e "${GREEN}[OK]${NC} Using system Python (no venv needed)"
+    pip install --upgrade pip
+fi
+
+# ============================================================
+# FIX VERSION CONFLICTS (Lambda Labs has system packages that conflict)
+# ============================================================
+echo -e "${YELLOW}[SETUP]${NC} Fixing version conflicts..."
+
+# huggingface-hub 1.x breaks transformers
+pip install "huggingface-hub>=0.25.0,<1.0"
+
+# Install requirements
+echo -e "${YELLOW}[SETUP]${NC} Installing requirements..."
+pip install -r scripts/requirements.txt
+
+# Force reinstall the full ML stack to avoid system package conflicts
+echo -e "${YELLOW}[SETUP]${NC} Reinstalling ML stack (fixing Lambda system conflicts)..."
+pip install --force-reinstall torchvision transformers diffusers accelerate
+
+# IMPORTANT: numpy<2 MUST be installed LAST (torchvision pulls numpy 2.x)
+# mediapipe/tensorflow need numpy<2
+echo -e "${YELLOW}[SETUP]${NC} Forcing numpy<2 (mediapipe/tensorflow compatibility)..."
+pip install "numpy<2" --force-reinstall
+
+# Install additional dependencies for Linux
+echo -e "${YELLOW}[SETUP]${NC} Installing Linux-specific dependencies..."
+pip install triton
+pip install sageattention --no-build-isolation 2>/dev/null || echo -e "${YELLOW}[WARN]${NC} SageAttention build skipped (will retry at runtime)"
+
+echo ""
+echo "============================================================"
+echo "   Downloading Models (parallel)"
+echo "============================================================"
+echo ""
+
+# Create models directory
+mkdir -p models/checkpoints
+
+# ============================================================
+# FUNCTION: Download with progress (using Python module)
+# ============================================================
+download_hf_model() {
+    local repo=$1
+    local name=$2
+    echo -e "${YELLOW}[DL]${NC} $name..."
+    python3 -c "from huggingface_hub import snapshot_download; snapshot_download('$repo')" &
+}
+
+# ============================================================
+# IMAGE MODELS
+# ============================================================
+echo -e "${GREEN}[IMAGE MODELS]${NC}"
+
+# Flux Kontext (editing intelligent, 12B)
+download_hf_model "black-forest-labs/FLUX.1-Kontext-dev" "Flux Kontext 12B"
+
+# SDXL stack (generic inpainting stack)
+echo -e "${YELLOW}[DL]${NC} epicRealismXL (CivitAI → downloaded at runtime)..."
+# Note: CivitAI models are downloaded at runtime, but we can pre-download SDXL base
+download_hf_model "stabilityai/stable-diffusion-xl-base-1.0" "SDXL Base"
+download_hf_model "diffusers/stable-diffusion-xl-1.0-inpainting-0.1" "SDXL Inpaint"
+download_hf_model "lllyasviel/sd_control_collection" "ControlNet Depth"
+
+# ============================================================
+# VIDEO MODELS
+# ============================================================
+echo -e "${GREEN}[VIDEO MODELS]${NC}"
+
+# Wan 2.2 5B (main video model)
+download_hf_model "Wan-AI/Wan2.2-TI2V-5B-Diffusers" "Wan 2.2 5B"
+
+# FastWan (distilled, faster)
+download_hf_model "FastVideo/FastWan2.2-TI2V-5B-FullAttn-Diffusers" "FastWan 2.2 5B"
+
+# LTX-Video 2B (includes distilled 0.9.8)
+download_hf_model "Lightricks/LTX-Video" "LTX-Video 2B"
+
+# ============================================================
+# TEXT ENCODERS (shared)
+# ============================================================
+echo -e "${GREEN}[TEXT ENCODERS]${NC}"
+
+# T5-XXL (used by LTX, Wan, etc.)
+download_hf_model "google/umt5-xxl" "UMT5-XXL"
+
+# ============================================================
+# SUPPORT MODELS
+# ============================================================
+echo -e "${GREEN}[SUPPORT MODELS]${NC}"
+
+# Segmentation
+download_hf_model "mattmdjaga/segformer_b2_clothes" "SegFormer B2 Clothes"
+
+# Depth estimation
+download_hf_model "LiheYoung/depth-anything-large-hf" "Depth Anything Large"
+
+# Face detection/restoration
+download_hf_model "IDEA-Research/grounding-dino-base" "GroundingDINO"
+
+# ============================================================
+# OLLAMA (for chat/prompts)
+# ============================================================
+echo ""
+echo -e "${GREEN}[OLLAMA]${NC}"
+
+if ! command -v ollama &> /dev/null; then
+    echo -e "${YELLOW}[DL]${NC} Installing Ollama..."
+    curl -fsSL https://ollama.com/install.sh | sh
+fi
+
+# Start Ollama in background
+echo -e "${YELLOW}[OLLAMA]${NC} Starting Ollama service..."
+ollama serve &>/dev/null &
+sleep 3
+
+# Download models
+echo -e "${YELLOW}[DL]${NC} Downloading Ollama models..."
+ollama pull dolphin-phi:2.7b &
+ollama pull qwen2.5vl:3b &
+
+# ============================================================
+# WAIT FOR ALL DOWNLOADS
+# ============================================================
+echo ""
+echo -e "${YELLOW}[WAIT]${NC} Waiting for all downloads to complete..."
+wait
+
+echo ""
+echo -e "${GREEN}============================================================${NC}"
+echo -e "${GREEN}   Setup Complete!${NC}"
+echo -e "${GREEN}============================================================${NC}"
+echo ""
+echo "To start the app:"
+echo ""
+echo "  cd ~/JoyBoy && python3 web/app.py"
+echo ""
+echo "Then use SSH tunnel from your PC:"
+echo "  ssh -L 7860:localhost:7860 ubuntu@YOUR_IP"
+echo "  Open http://localhost:7860 in browser"
+echo ""

@@ -1,0 +1,104 @@
+# Getting Started
+
+## 1. Start JoyBoy
+
+Clone the repository, then run the platform launcher from the repo root.
+
+### Windows
+
+Double-click `start_windows.bat` or run:
+
+```bat
+start_windows.bat
+```
+
+### macOS
+
+From Terminal:
+
+```bash
+./start_mac.command
+```
+
+### Linux
+
+```bash
+./start_linux.sh
+```
+
+## 2. Open the app
+
+```text
+http://127.0.0.1:7860
+```
+
+## 3. Finish onboarding
+
+On first launch, JoyBoy will:
+
+- ask how you use the app
+- store your local profile
+- inspect your machine
+- recommend default models and settings
+- surface a readiness summary from the Doctor
+
+## 4. Configure providers
+
+Open `Settings > Models` to:
+
+- save `HF_TOKEN`
+- save `CIVITAI_API_KEY`
+- inspect the Doctor report
+- import local packs
+- resolve and import model sources
+
+Provider keys are optional at startup. Add them only when you need downloads that require auth:
+
+- `HF_TOKEN`: useful for gated/private Hugging Face models or more reliable Hugging Face downloads.
+- `CIVITAI_API_KEY`: useful for importing CivitAI model sources.
+- `OLLAMA_BASE_URL`: optional if your Ollama server is not on `http://127.0.0.1:11434`.
+
+If you only use already-installed local models, you can skip keys and add them later.
+
+UI-managed secrets are stored outside git in `~/.joyboy/config.json`.
+
+## 4b. Optional local packs
+
+JoyBoy can import local packs from a `.zip` archive or local folder.
+
+1. Open `Settings > Models`.
+2. Go to local packs/addons.
+3. Import the pack zip or folder.
+4. Activate the pack.
+
+Third-party packs are optional and are not part of the public core. See `docs/THIRD_PARTY_PACKS.md`.
+
+## 5. Run the Bootstrap Doctor
+
+From the repo root you can also run:
+
+```bash
+python scripts/bootstrap.py doctor
+```
+
+## 6. Verify the Doctor
+
+The Doctor reports whether the machine is ready for:
+
+- runtime
+- GPU / VRAM
+- Ollama
+- provider downloads
+- storage
+- packs
+
+## FR
+
+Le chemin conseillé est simple:
+
+1. lancer le script de démarrage
+2. ouvrir JoyBoy
+3. terminer l’onboarding
+4. configurer les providers dans `Paramètres > Modèles`
+5. vérifier le Doctor avant d’ajouter des modèles
+6. utiliser `python scripts/bootstrap.py doctor` si tu veux un check terminal rapide

@@ -1,0 +1,554 @@
+/* ===== EFFECTS - Stars, Comets, Animations ===== */
+
+/* Fond etoile — container plein écran, drift géré par JS */
+.stars {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 0;
+    overflow: hidden;
+}
+
+.star {
+    position: absolute;
+    background: white;
+    border-radius: 50%;
+    opacity: 0;
+    animation: star-twinkle-a var(--duration) infinite;
+    animation-delay: var(--delay);
+}
+
+.star.tw-b { animation-name: star-twinkle-b; }
+.star.tw-c { animation-name: star-twinkle-c; }
+
+@keyframes star-twinkle-a {
+    0%, 100% { opacity: calc(var(--opacity) * 0.4); }
+    12% { opacity: 1; }
+    28% { opacity: calc(var(--opacity) * 0.2); }
+    48% { opacity: calc(var(--opacity) * 0.8); }
+    66% { opacity: calc(var(--opacity) * 0.3); }
+    82% { opacity: calc(var(--opacity) * 0.6); }
+}
+
+@keyframes star-twinkle-b {
+    0%, 100% { opacity: calc(var(--opacity) * 0.35); }
+    8% { opacity: calc(var(--opacity) * 0.7); }
+    22% { opacity: 1; }
+    40% { opacity: calc(var(--opacity) * 0.25); }
+    55% { opacity: calc(var(--opacity) * 0.5); }
+    75% { opacity: calc(var(--opacity) * 0.15); }
+    90% { opacity: calc(var(--opacity) * 0.8); }
+}
+
+@keyframes star-twinkle-c {
+    0%, 100% { opacity: calc(var(--opacity) * 0.5); }
+    15% { opacity: calc(var(--opacity) * 0.2); }
+    30% { opacity: calc(var(--opacity) * 0.9); }
+    50% { opacity: 1; }
+    65% { opacity: calc(var(--opacity) * 0.3); }
+    85% { opacity: calc(var(--opacity) * 0.7); }
+}
+
+/* Comete */
+.comet {
+    position: absolute;
+    width: 100px;
+    height: 1px;
+    background: linear-gradient(270deg,
+        rgba(255,255,255,0.8) 0%,
+        rgba(220,220,240,0.4) 30%,
+        rgba(180,180,200,0.15) 60%,
+        transparent 100%);
+    border-radius: 50%;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.comet::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: -1.5px;
+    width: 4px;
+    height: 4px;
+    background: rgba(255,255,255,0.85);
+    border-radius: 50%;
+    box-shadow:
+        0 0 4px 2px rgba(255,255,255,0.6),
+        0 0 8px 4px rgba(200,210,255,0.25);
+}
+
+@keyframes comet-fall {
+    0% { opacity: 0; }
+    10% { opacity: 0.7; }
+    65% { opacity: 0.5; }
+    100% { opacity: 0; }
+}
+
+/* Pirate Ship Lottie */
+.pirate-ship {
+    position: fixed;
+    width: 500px;
+    height: 500px;
+    pointer-events: none;
+    z-index: 1;
+    opacity: 0;
+    filter: brightness(0.6);
+}
+
+.pirate-ship svg {
+    transform: scaleX(var(--flip, 1)) scaleY(1) !important;
+}
+
+/* Bateau déjà proche — simple fade */
+@keyframes pirate-fade {
+    0% { opacity: 0; }
+    5% { opacity: 0.5; }
+    85% { opacity: 0.5; }
+    100% { opacity: 0; }
+}
+
+/* Bateau arrive de loin — scale + blur */
+@keyframes pirate-fade-far {
+    0% { opacity: 0; transform: scale(0.08); filter: brightness(0.15) blur(5px); }
+    8% { opacity: 0.2; transform: scale(0.35); filter: brightness(0.3) blur(2px); }
+    20% { opacity: 0.5; transform: scale(1); filter: brightness(0.6) blur(0); }
+    85% { opacity: 0.5; transform: scale(1); filter: brightness(0.6) blur(0); }
+    100% { opacity: 0; transform: scale(1); filter: brightness(0.6) blur(0); }
+}
+
+/* Loading pulse */
+.loading-text {
+    margin-top: 20px;
+    color: #888;
+    font-size: 14px;
+    animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 0.5; }
+    50% { opacity: 1; }
+}
+
+/* Typing indicator */
+/* Legacy 3-dot typing indicator (kept for terminal mode) */
+.typing-indicator {
+    display: flex;
+    gap: 3px;
+    padding: 0;
+    height: 12px;
+    align-items: center;
+}
+
+.typing-indicator span {
+    width: 5px;
+    height: 5px;
+    background: #666;
+    border-radius: 50%;
+    animation: typing 1.4s infinite;
+}
+
+.typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+.typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes typing {
+    0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+    30% { transform: translateY(-5px); opacity: 1; }
+}
+
+/* 9-dot grid typing indicator */
+.typing-dots {
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.typing-dots svg {
+    width: 100%;
+    height: 100%;
+}
+
+.typing-dots .td {
+    fill: #fff;
+    animation: dotFade 1.2s ease-in-out infinite;
+}
+
+.typing-dots .td:nth-child(1) { animation-delay: 0.00s; }
+.typing-dots .td:nth-child(2) { animation-delay: 0.08s; }
+.typing-dots .td:nth-child(3) { animation-delay: 0.16s; }
+.typing-dots .td:nth-child(4) { animation-delay: 0.72s; }
+.typing-dots .td:nth-child(5) { animation-delay: 0.80s; }
+.typing-dots .td:nth-child(6) { animation-delay: 0.24s; }
+.typing-dots .td:nth-child(7) { animation-delay: 0.64s; }
+.typing-dots .td:nth-child(8) { animation-delay: 0.56s; }
+.typing-dots .td:nth-child(9) { animation-delay: 0.32s; }
+
+@keyframes dotFade {
+    0%, 100% { opacity: 0.15; }
+    25% { opacity: 1; }
+    50% { opacity: 0.3; }
+}
+
+/* Searching status (web search feedback) */
+.searching-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 2px 0;
+    color: #a78bfa;
+    font-size: 0.9rem;
+}
+
+.searching-icon {
+    width: 15px;
+    height: 15px;
+    flex-shrink: 0;
+    stroke: #a78bfa;
+    animation: searchPulse 1.5s ease-in-out infinite;
+}
+
+.searching-text {
+    opacity: 0.9;
+    white-space: nowrap;
+}
+
+.searching-query {
+    color: #666;
+    font-size: 0.8rem;
+    margin-top: 2px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.searching-dots {
+    display: inline-flex;
+    gap: 1px;
+}
+
+.searching-dots span {
+    animation: searchDots 1.4s infinite;
+    opacity: 0;
+    font-weight: bold;
+}
+
+.searching-dots span:nth-child(1) {
+    animation-delay: 0s;
+}
+
+.searching-dots span:nth-child(2) {
+    animation-delay: 0.2s;
+}
+
+.searching-dots span:nth-child(3) {
+    animation-delay: 0.4s;
+}
+
+@keyframes searchDots {
+    0%, 20% { opacity: 0; }
+    30%, 70% { opacity: 1; }
+    80%, 100% { opacity: 0; }
+}
+
+@keyframes searchPulse {
+    0%, 100% { opacity: 0.5; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.1); }
+}
+
+/* Shimmer effect */
+.shimmer-loading {
+    position: relative;
+    overflow: hidden;
+}
+
+.shimmer-loading::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(255, 255, 255, 0.15) 50%,
+        transparent 100%
+    );
+    animation: shimmer 1.5s infinite;
+    pointer-events: none;
+    border-radius: 12px;
+}
+
+@keyframes shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+/* Skeleton loading */
+.skeleton {
+    background: linear-gradient(90deg, #1a1a1a 25%, #2a2a2a 50%, #1a1a1a 75%);
+    background-size: 200% 100%;
+    animation: shimmer 2s ease-in-out infinite;
+    border-radius: 12px;
+}
+
+.skeleton-image {
+    width: 300px;
+    height: 300px;
+    border-radius: 12px;
+    background: linear-gradient(90deg, #1a1a1a 25%, #2a2a2a 50%, #1a1a1a 75%);
+    background-size: 200% 100%;
+    animation: shimmer 2s ease-in-out infinite;
+}
+
+.ai-response.loading {
+    justify-content: flex-end;
+}
+
+/* Privacy glow */
+@keyframes privacyGlow {
+    0%, 100% {
+        filter: drop-shadow(0 0 6px rgba(168, 85, 247, 0.5))
+                drop-shadow(0 0 12px rgba(168, 85, 247, 0.3));
+    }
+    50% {
+        filter: drop-shadow(0 0 10px rgba(168, 85, 247, 0.8))
+                drop-shadow(0 0 20px rgba(168, 85, 247, 0.5));
+    }
+}
+
+/* ===== BUTTON READY EFFECT (rotating glow) ===== */
+.send-btn.ready {
+    position: relative;
+}
+
+.send-btn.ready::before {
+    content: '';
+    position: absolute;
+    top: -2px;
+    left: -2px;
+    right: -2px;
+    bottom: -2px;
+    border-radius: 50%;
+    background: conic-gradient(
+        from 0deg,
+        transparent 0deg,
+        rgba(255, 255, 255, 0.5) 60deg,
+        transparent 120deg,
+        transparent 360deg
+    );
+    animation: btnRotate 2s linear infinite;
+    z-index: -1;
+}
+
+@keyframes btnRotate {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+/* Send button invite glow after placeholder typing */
+.send-btn.invite-glow {
+    background: white;
+    cursor: pointer;
+    pointer-events: auto;
+    box-shadow: 0 0 16px rgba(255, 255, 255, 0.4),
+                0 0 40px rgba(255, 255, 255, 0.15);
+    animation: inviteBreath 2s ease-in-out infinite;
+}
+
+@keyframes inviteBreath {
+    0%, 100% {
+        box-shadow: 0 0 16px rgba(255, 255, 255, 0.4),
+                    0 0 40px rgba(255, 255, 255, 0.15);
+    }
+    50% {
+        box-shadow: 0 0 24px rgba(255, 255, 255, 0.6),
+                    0 0 50px rgba(255, 255, 255, 0.25);
+    }
+}
+
+/* Entrance pulse on top */
+.send-btn.entrance-pulse {
+    animation: sendPulse 0.6s ease-out;
+}
+
+@keyframes sendPulse {
+    0% {
+        transform: scale(1);
+        box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.7);
+    }
+    40% {
+        transform: scale(1.25);
+        box-shadow: 0 0 0 14px rgba(255, 255, 255, 0);
+    }
+    100% {
+        transform: scale(1);
+        box-shadow: 0 0 0 0 rgba(255, 255, 255, 0);
+    }
+}
+
+/* ===== LIGHTNING BOLT ===== */
+.lightning-bolt {
+    position: fixed;
+    top: 0;
+    left: calc(50% - 100px);
+    width: 200px;
+    height: 350px;
+    z-index: 1001;
+    pointer-events: none;
+    opacity: 0;
+    transform: rotate(-10deg);
+    filter: drop-shadow(0 0 4px #fff)
+            drop-shadow(0 0 8px rgba(100, 180, 255, 1))
+            drop-shadow(0 0 15px rgba(60, 140, 255, 0.8));
+}
+
+.lightning-bolt svg {
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+}
+
+.lightning-bolt path {
+    fill: none;
+    stroke: url(#lightning-gradient);
+    stroke-width: 4;
+    stroke-linecap: round;
+    stroke-linejoin: bevel;
+}
+
+.lightning-bolt.strike path {
+    stroke-dasharray: 1500;
+    stroke-dashoffset: 1500;
+    animation: drawBolt 0.12s ease-out forwards;
+}
+
+.lightning-bolt.strike {
+    opacity: 1;
+    animation: boltFlash 0.4s ease-out forwards;
+}
+
+@keyframes drawBolt {
+    0% {
+        stroke-dashoffset: 1500;
+    }
+    100% {
+        stroke-dashoffset: 0;
+    }
+}
+
+@keyframes boltFlash {
+    0% {
+        opacity: 1;
+    }
+    15% {
+        opacity: 1;
+    }
+    25% {
+        opacity: 0.3;
+    }
+    35% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.5;
+    }
+    100% {
+        opacity: 0;
+    }
+}
+
+/* ===== APP REVEAL (after onboarding) ===== */
+
+/* Hide app elements before onboarding */
+body.app-hidden .sidebar,
+body.app-hidden .conversations-sidebar,
+body.app-hidden #home-view,
+body.app-hidden #chat-view,
+body.app-hidden .mobile-menu-btn {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+}
+
+/* Reveal animation */
+body.app-revealing .sidebar,
+body.app-revealing .conversations-sidebar,
+body.app-revealing #home-view,
+body.app-revealing #chat-view,
+body.app-revealing .mobile-menu-btn {
+    animation: appReveal 1.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Stagger the reveal */
+body.app-revealing .conversations-sidebar {
+    animation-delay: 0.1s;
+}
+
+body.app-revealing #home-view,
+body.app-revealing #chat-view {
+    animation-delay: 0.2s;
+}
+
+body.app-revealing .sidebar {
+    animation-delay: 0.3s;
+}
+
+@keyframes appReveal {
+    0% {
+        opacity: 0;
+        transform: scale(0.8) translateY(30px);
+        filter: blur(20px);
+    }
+    40% {
+        opacity: 0.5;
+        transform: scale(1.02) translateY(-5px);
+        filter: blur(5px);
+    }
+    70% {
+        opacity: 0.9;
+        transform: scale(0.99) translateY(2px);
+        filter: blur(1px);
+    }
+    100% {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+        filter: blur(0);
+        visibility: visible;
+        pointer-events: auto;
+    }
+}
+
+/* Flash effect during reveal */
+body.app-revealing::after {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: radial-gradient(circle at center, rgba(59, 130, 246, 0.3) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 9999;
+    animation: flashReveal 1s ease-out forwards;
+}
+
+@keyframes flashReveal {
+    0% {
+        opacity: 1;
+        transform: scale(0.5);
+    }
+    50% {
+        opacity: 0.6;
+        transform: scale(1.5);
+    }
+    100% {
+        opacity: 0;
+        transform: scale(3);
+    }
+}

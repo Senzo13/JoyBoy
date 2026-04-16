@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "prompt_presets": [
+    {
+      "id": "clean-product-lighting",
+      "label": "Clean product lighting",
+      "prompt": "softbox lighting, clean studio surface, subtle reflection, realistic shadows"
+    }
+  ],
+  "negative_presets": [
+    {
+      "id": "basic-photo-cleanup",
+      "prompt": "watermark, text artifacts, over-sharpened edges, muddy colors"
+    }
+  ]
+}

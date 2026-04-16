@@ -1,0 +1,97 @@
+{
+    "_comment": "GPU Profile: 8GB VRAM (RTX 3060, 3070, 4060, etc.)",
+    "_vram_range": [0, 9],
+
+    "general": {
+        "use_cpu_offload": true,
+        "skip_quantization": false,
+        "torch_compile": false,
+        "warmup_enabled": true
+    },
+
+    "image": {
+        "visible_models": [
+            "epiCRealism XL (Fast)", "epiCRealism XL (Moyen)",
+            "Juggernaut XL (Moyen)",
+            "CyberRealistic Pony (Moyen)",
+            "LUSTIFY (Moyen)",
+            "Juggernaut XL v9", "epiCRealism XL", "SDXL Turbo",
+            "Flux Kontext Q2", "Flux Kontext Q4"
+        ],
+        "default_inpaint_model": "epiCRealism XL (Moyen)",
+        "default_model": "epiCRealism XL (Fast)",
+        "default_steps": 25,
+        "default_strength": 0.70,
+        "default_dilation": 30,
+        "text2img_steps": 25,
+        "recommended_models": {
+            "inpainting": "epiCRealism XL (Fast)",
+            "generation": "SDXL Turbo"
+        }
+    },
+
+    "sdxl": {
+        "quantization": "int4",
+        "offload_strategy": "model_cpu_offload",
+        "vae_dtype": "float32",
+        "vae_slicing": true,
+        "vae_tiling": false
+    },
+
+    "flux_fill": {
+        "quantization": "int4",
+        "offload_strategy": "model_cpu_offload",
+        "guidance_scale": 30.0,
+        "steps": 50,
+        "max_resolution": [768, 768],
+        "_note": "NF4 pré-quantifié (~12GB) + cpu_offload, VRAM < 20GB"
+    },
+
+    "flux_kontext": {
+        "quantization": "int4",
+        "offload_strategy": "model_cpu_offload",
+        "guidance_scale": 3.5,
+        "steps": 28,
+        "lora": "enhanceaiteam/Flux-Uncensored-V2"
+    },
+
+    "pose_controlnet": {
+        "enabled": true,
+        "quantization": "int8",
+        "scale": 0.4,
+        "strength": 0.75,
+        "_note": "OpenPose SDXL INT8 ~180MB, swap with depth on demand"
+    },
+
+    "video": {
+        "default_model": "wan_i2v_480p",
+        "wan": {
+            "quantization": "int4",
+            "offload_strategy": "sequential_cpu_offload",
+            "resolution": "480p",
+            "max_frames": 33,
+            "guidance_scale": 5.0,
+            "steps": 30,
+            "fps": 24,
+            "vae_dtype": "float32",
+            "vae_slicing": true,
+            "vae_tiling": false,
+            "sage_attention": true
+        },
+        "ltx": {
+            "quantization": "int8",
+            "offload_strategy": "model_cpu_offload",
+            "resolution": "480p",
+            "max_frames": 97,
+            "guidance_scale": 1.0,
+            "steps": 13,
+            "fps": 24
+        }
+    },
+
+    "ollama": {
+        "max_vram_gb": 2,
+        "default_chat_model": "qwen2.5:3b",
+        "utility_model": "dolphin-phi:2.7b"
+    }
+}

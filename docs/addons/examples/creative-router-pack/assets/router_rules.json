@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "rules": [
+    {
+      "id": "golden-hour-portrait",
+      "description": "Route short golden-hour portrait requests toward a warmer image prompt.",
+      "match": {
+        "any": [
+          "golden hour portrait",
+          "portrait at sunset",
+          "portrait lumière dorée"
+        ]
+      },
+      "intent_patch": {
+        "prompt_prefix": "warm editorial portrait, golden hour light, natural skin texture",
+        "negative_prompt_additions": [
+          "overexposed",
+          "muddy colors"
+        ]
+      }
+    }
+  ]
+}

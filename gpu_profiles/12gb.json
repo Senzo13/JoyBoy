@@ -1,0 +1,96 @@
+{
+    "_comment": "GPU Profile: 12GB VRAM (RTX 3060 12GB, RTX 4070, etc.)",
+    "_vram_range": [9, 14],
+
+    "general": {
+        "use_cpu_offload": true,
+        "skip_quantization": false,
+        "torch_compile": false,
+        "warmup_enabled": true
+    },
+
+    "image": {
+        "visible_models": [
+            "epiCRealism XL (Fast)", "epiCRealism XL (Moyen)",
+            "Juggernaut XL (Moyen)",
+            "CyberRealistic Pony (Moyen)",
+            "LUSTIFY (Moyen)",
+            "Flux Kontext Q2", "Flux Kontext Q4", "Flux Kontext Q6"
+        ],
+        "default_inpaint_model": "epiCRealism XL (Moyen)",
+        "default_model": "epiCRealism XL (Moyen)",
+        "default_steps": 30,
+        "default_strength": 0.75,
+        "default_dilation": 30,
+        "text2img_steps": 30,
+        "recommended_models": {
+            "inpainting": "epiCRealism XL (Moyen)",
+            "generation": "epiCRealism XL"
+        }
+    },
+
+    "sdxl": {
+        "quantization": "int8",
+        "offload_strategy": "model_cpu_offload",
+        "vae_dtype": "float32",
+        "vae_slicing": true,
+        "vae_tiling": false
+    },
+
+    "flux_fill": {
+        "quantization": "int4",
+        "offload_strategy": "model_cpu_offload",
+        "guidance_scale": 30.0,
+        "steps": 50,
+        "max_resolution": [768, 768],
+        "_note": "NF4 pre-quantifie (~12GB) + cpu_offload, risque OOM en 1024"
+    },
+
+    "flux_kontext": {
+        "quantization": "int4",
+        "offload_strategy": "model_cpu_offload",
+        "guidance_scale": 3.5,
+        "steps": 28,
+        "lora": "enhanceaiteam/Flux-Uncensored-V2"
+    },
+
+    "pose_controlnet": {
+        "enabled": true,
+        "quantization": "int8",
+        "scale": 0.4,
+        "strength": 0.75,
+        "_note": "OpenPose SDXL INT8 ~180MB, swap with depth"
+    },
+
+    "video": {
+        "default_model": "wan_i2v_480p",
+        "wan": {
+            "quantization": "int4",
+            "offload_strategy": "sequential_cpu_offload",
+            "resolution": "480p",
+            "max_frames": 49,
+            "guidance_scale": 5.0,
+            "steps": 30,
+            "fps": 24,
+            "vae_dtype": "float32",
+            "vae_slicing": true,
+            "vae_tiling": false,
+            "sage_attention": true
+        },
+        "ltx": {
+            "quantization": "int8",
+            "offload_strategy": "model_cpu_offload",
+            "resolution": "480p",
+            "max_frames": 97,
+            "guidance_scale": 1.0,
+            "steps": 13,
+            "fps": 24
+        }
+    },
+
+    "ollama": {
+        "max_vram_gb": 3,
+        "default_chat_model": "qwen2.5:7b",
+        "utility_model": "dolphin-phi:2.7b"
+    }
+}

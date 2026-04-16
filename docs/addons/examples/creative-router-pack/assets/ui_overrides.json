@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "surfaces": [
+    {
+      "id": "creative-pack-note",
+      "area": "settings.models.packs",
+      "label": "Creative Pack",
+      "description": "Example UI surface for a neutral addon."
+    }
+  ]
+}

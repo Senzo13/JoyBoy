@@ -1,0 +1,18 @@
+{
+  "id": "my-local-addon",
+  "name": "My Local Addon",
+  "version": "0.1.0",
+  "kind": "creative",
+  "description": "A local addon template for JoyBoy.",
+  "capabilities": [
+    "router_rules",
+    "prompt_assets",
+    "model_sources",
+    "ui_overrides"
+  ],
+  "router_rules_path": "assets/router_rules.json",
+  "prompt_assets_path": "assets/prompt_assets.json",
+  "model_sources_path": "assets/model_sources.json",
+  "ui_overrides_path": "assets/ui_overrides.json",
+  "feature_flags_required": []
+}

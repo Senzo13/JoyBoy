@@ -1,0 +1,78 @@
+# Models (trop lourds pour GitHub)
+/models/
+weights/
+core/models/quantized/
+core/ext_weights/
+*.pt
+*.pt2
+*.pth
+*.safetensors
+*.ckpt
+*.bin
+!scripts/*.bin
+
+# Checkpoints (SAM, GroundingDINO, etc.)
+checkpoints/
+
+# External weights
+ext_weights/
+
+# Cloudflared binary
+bin/
+
+# Config locale (tunnel, etc.)
+tunnel_config.json
+
+# Output files
+output/
+
+# Python virtual environment
+venv/
+python312/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Training data & output
+training_data/
+trained_loras/
+
+# Environment variables
+.env
+.env.local
+
+# JoyBoy local UI config (provider keys, local flags)
+.joyboy/
+
+# Local/private packs used outside the public core
+local_pack_sources/
+
+# Local assistant / scratch files
+.claude/
+Fooocus/
+nul
+tmp_old_processing.py
+_public_mirror_ready/
+_public_mirror_ready_check/
+_public_mirror_preview/
+_public_mirror_*/
+public_live_*.log

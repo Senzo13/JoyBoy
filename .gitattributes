@@ -1,0 +1,6 @@
+# Force correct line endings regardless of user git config
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.sh  text eol=lf
+*.command text eol=lf
+ext_weights/*.pth filter=lfs diff=lfs merge=lfs -text

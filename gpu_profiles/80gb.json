@@ -1,0 +1,117 @@
+{
+    "_comment": "GPU Profile: 80GB VRAM (A100 80GB, H100, H200, etc.)",
+    "_vram_range": [48, 999],
+
+    "general": {
+        "use_cpu_offload": false,
+        "skip_quantization": true,
+        "torch_compile": true,
+        "warmup_enabled": false
+    },
+
+    "image": {
+        "visible_models": [
+            "epiCRealism XL (Fast)", "epiCRealism XL (Moyen)", "epiCRealism XL (Normal)",
+            "Juggernaut XL (Moyen)",
+            "CyberRealistic Pony (Moyen)", "CyberRealistic Pony (Normal)",
+            "LUSTIFY (Moyen)", "LUSTIFY (Normal)",
+            "Flux Fill INT4", "Flux Fill INT8", "Flux.1 Fill Dev",
+            "Juggernaut XL v9", "epiCRealism XL", "SDXL Turbo", "Flux Dev INT4", "Flux Dev INT8",
+            "Flux Kontext Uncensored", "Flux Kontext INT8",
+            "Flux Kontext Q2", "Flux Kontext Q4", "Flux Kontext Q6", "Flux Kontext Q8"
+        ],
+        "default_inpaint_model": "Flux Fill INT4",
+        "default_model": "epiCRealism XL (Moyen)",
+        "default_steps": 45,
+        "default_strength": 0.85,
+        "default_dilation": 30,
+        "text2img_steps": 50,
+        "recommended_models": {
+            "inpainting": "epiCRealism XL (Moyen)",
+            "generation": "epiCRealism XL"
+        }
+    },
+
+    "sdxl": {
+        "quantization": "none",
+        "offload_strategy": "none",
+        "vae_dtype": "float32",
+        "vae_slicing": false,
+        "vae_tiling": false
+    },
+
+    "flux_fill": {
+        "quantization": "none",
+        "offload_strategy": "none",
+        "guidance_scale": 30.0,
+        "steps": 50,
+        "max_resolution": [1536, 1536],
+        "_note_bf16": "bf16 ~30GB → GPU direct",
+        "_note_int4": "NF4 ~12GB → GPU direct"
+    },
+
+    "flux_kontext": {
+        "quantization": "none",
+        "offload_strategy": "none",
+        "guidance_scale": 3.5,
+        "steps": 28,
+        "lora": "enhanceaiteam/Flux-Uncensored-V2"
+    },
+
+    "pose_controlnet": {
+        "enabled": true,
+        "quantization": "none",
+        "scale": 0.5,
+        "strength": 0.65,
+        "_note": "OpenPose SDXL FP16, both CN always in VRAM"
+    },
+
+    "video": {
+        "default_model": "wan_i2v_720p",
+        "wan": {
+            "quantization": "none",
+            "offload_strategy": "none",
+            "resolution": "720p",
+            "max_frames": 161,
+            "guidance_scale": 5.0,
+            "steps": 30,
+            "fps": 24,
+            "vae_dtype": "float32",
+            "vae_slicing": false,
+            "vae_tiling": false,
+            "sage_attention": true
+        },
+        "ltx": {
+            "quantization": "none",
+            "offload_strategy": "none",
+            "resolution": "720p",
+            "max_frames": 257,
+            "guidance_scale": 1.0,
+            "steps": 13,
+            "fps": 24
+        },
+        "ltx2": {
+            "quantization": "none",
+            "offload_strategy": "none",
+            "resolution": "1024p",
+            "max_frames": 257,
+            "guidance_scale": 1.0,
+            "steps": 8,
+            "fps": 24
+        },
+        "ltx2_fp8": {
+            "quantization": "fp8",
+            "offload_strategy": "none",
+            "resolution": "768p",
+            "max_frames": 257,
+            "steps": 40,
+            "fps": 24
+        }
+    },
+
+    "ollama": {
+        "max_vram_gb": 16,
+        "default_chat_model": "qwen2.5:72b",
+        "utility_model": "dolphin-phi:2.7b"
+    }
+}

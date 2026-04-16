@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="520" viewBox="0 0 1200 520" role="img" aria-labelledby="title desc">
+  <title id="title">JoyBoy before and after placeholder</title>
+  <desc id="desc">Placeholder image for a safe before and after JoyBoy edit.</desc>
+  <rect width="1200" height="520" rx="32" fill="#070a10"/>
+  <rect x="70" y="76" width="500" height="320" rx="26" fill="#111827" stroke="#263244"/>
+  <rect x="630" y="76" width="500" height="320" rx="26" fill="#111827" stroke="#263244"/>
+  <path d="M178 296 L258 206 L338 268 L414 168 L498 296 Z" fill="#26384f"/>
+  <circle cx="428" cy="150" r="38" fill="#f5c76b"/>
+  <path d="M738 296 L822 186 L902 254 L982 152 L1058 296 Z" fill="#1f4f45"/>
+  <circle cx="988" cy="146" r="38" fill="#78e3bc"/>
+  <rect x="70" y="420" width="500" height="48" rx="18" fill="#0d121b"/>
+  <rect x="630" y="420" width="500" height="48" rx="18" fill="#0d121b"/>
+  <text x="320" y="451" text-anchor="middle" fill="#c8d3e4" font-family="Inter, Arial, sans-serif" font-size="24">Before placeholder</text>
+  <text x="880" y="451" text-anchor="middle" fill="#c8d3e4" font-family="Inter, Arial, sans-serif" font-size="24">After placeholder</text>
+  <text x="600" y="48" text-anchor="middle" fill="#8ea0b8" font-family="Inter, Arial, sans-serif" font-size="22">TODO: replace with a safe, consent-based before/after</text>
+</svg>

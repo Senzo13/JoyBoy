@@ -1,0 +1,152 @@
+{
+  "_comment": "Comportement pipeline par famille de modèle. Détermine ce que le router et la génération doivent skip ou adapter.",
+  "_version": "1.0",
+
+  "model_families": {
+    "sdxl": {
+      "description": "SDXL Inpainting — pipeline complet avec masque, ControlNet, IP-Adapter",
+      "match_patterns": ["SDXL", "Fluently", "LUSTIFY", "Juggernaut", "epiCRealism"],
+      "architecture": "sdxl",
+      "pipeline": {
+        "uses_mask": true,
+        "uses_negative_prompt": true,
+        "uses_segmentation": true,
+        "uses_controlnet": true,
+        "uses_ip_adapter": true,
+        "uses_enhance": true,
+        "uses_loras": true
+      },
+      "generation": {
+        "resize_mode": "warmup_snap",
+        "align_to": 8,
+        "guidance_scale": 5.0,
+        "min_steps": 20,
+        "max_steps": 50,
+        "default_steps": 35,
+        "adjust_steps_for_strength": true,
+        "vae_dtype": "float32"
+      },
+      "prompt": {
+        "format": "descriptive",
+        "translate_to_english": true,
+        "enhance_with_llm": true,
+        "nudity_rewrite": "completely nude"
+      }
+    },
+
+    "flux_fill": {
+      "description": "Flux Fill 12B — inpainting Flux architecture, pas de ControlNet/IP-Adapter Flux natif",
+      "match_patterns": ["Flux Fill", "Flux.1 Fill"],
+      "architecture": "flux",
+      "pipeline": {
+        "uses_mask": true,
+        "uses_negative_prompt": false,
+        "uses_segmentation": true,
+        "uses_controlnet": false,
+        "uses_ip_adapter": false,
+        "uses_enhance": true,
+        "uses_loras": false
+      },
+      "generation": {
+        "resize_mode": "warmup_snap",
+        "align_to": 16,
+        "guidance_scale": 30.0,
+        "min_steps": 20,
+        "max_steps": 50,
+        "default_steps": 28,
+        "adjust_steps_for_strength": false,
+        "vae_dtype": "float32"
+      },
+      "prompt": {
+        "format": "descriptive",
+        "translate_to_english": true,
+        "enhance_with_llm": true,
+        "nudity_rewrite": "completely nude"
+      }
+    },
+
+    "flux_kontext": {
+      "description": "Flux Kontext — editing intelligent via prompt, PAS de masque, PAS de segmentation",
+      "match_patterns": ["Kontext"],
+      "architecture": "kontext",
+      "pipeline": {
+        "uses_mask": false,
+        "uses_negative_prompt": false,
+        "uses_segmentation": false,
+        "uses_controlnet": false,
+        "uses_ip_adapter": false,
+        "uses_enhance": false,
+        "uses_loras": true
+      },
+      "generation": {
+        "resize_mode": "original",
+        "align_to": null,
+        "guidance_scale": 4.5,
+        "min_steps": 28,
+        "max_steps": 50,
+        "default_steps": 28,
+        "adjust_steps_for_strength": false,
+        "vae_dtype": "float32"
+      },
+      "prompt": {
+        "format": "instruction",
+        "translate_to_english": true,
+        "enhance_with_llm": false,
+        "nudity_rewrite": null
+      }
+    },
+
+    "gguf": {
+      "description": "GGUF quantifié via stable-diffusion.cpp — pas de ControlNet, pipeline externe",
+      "match_patterns": ["GGUF"],
+      "architecture": "gguf",
+      "pipeline": {
+        "uses_mask": true,
+        "uses_negative_prompt": true,
+        "uses_segmentation": true,
+        "uses_controlnet": false,
+        "uses_ip_adapter": false,
+        "uses_enhance": true,
+        "uses_loras": false
+      },
+      "generation": {
+        "resize_mode": "warmup_snap",
+        "align_to": 8,
+        "guidance_scale": 7.5,
+        "min_steps": 20,
+        "max_steps": 50,
+        "default_steps": 30,
+        "adjust_steps_for_strength": true,
+        "vae_dtype": null
+      },
+      "prompt": {
+        "format": "descriptive",
+        "translate_to_english": true,
+        "enhance_with_llm": true,
+        "nudity_rewrite": "completely nude"
+      }
+    }
+  },
+
+  "intent_overrides": {
+    "_comment": "Override pipeline capabilities par intent — si un model ne supporte pas, on adapte",
+    "nudity": {
+      "fallback_if_no_controlnet": {
+        "strength": 0.90,
+        "note": "Sans ControlNet, augmenter la strength pour compenser l'absence de guidance corporelle"
+      },
+      "fallback_if_no_ip_adapter": {
+        "note": "Le visage peut changer légèrement sans IP-Adapter, acceptable pour nudity"
+      }
+    },
+    "pose_change": {
+      "fallback_if_no_controlnet": {
+        "strength": 0.90,
+        "note": "Sans ControlNet Depth, la pose sera plus libre mais moins contrôlée"
+      },
+      "fallback_if_no_ip_adapter": {
+        "note": "Pose change sans face preservation — résultat variable"
+      }
+    }
+  }
+}

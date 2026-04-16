@@ -1,0 +1,58 @@
+# Future public mirror exclusions
+# One path or glob per line. Paths are relative to the repo root.
+
+.git/
+.github/workflows/
+.github/workflows/*.log
+.joyboy/
+.claude/
+.env
+venv/
+_public_mirror_ready/
+_public_mirror_preview/
+_public_mirror_*
+public_live_*.log
+*.log
+__pycache__/
+*.pyc
+
+# Local/generated assets
+output/
+web/output/
+models/
+python312/
+training_data/
+trained_loras/
+weights/
+tunnel_config.json
+tmp_old_processing.py
+memory/
+checkpoints/
+gfpgan/weights/
+core/models/quantized/
+core/ext_weights/
+core/ext_weights/loras/
+ext_weights/loras/
+ext_weights/sd_cpp/
+ext_weights/*.pth
+ext_weights/*.zip
+bin/cloudflared.exe
+dist/packs/uncensored-*.zip
+dist/packs/*nudity*.zip
+
+# Private or machine-specific extensions
+local_pack_sources/
+prompts/jailbreak.json
+Fooocus/.git/
+Fooocus/.github/
+Fooocus/tests/
+Fooocus/fooocus_colab.ipynb
+Fooocus/sdxl_styles/samples/
+
+# Internal notes not meant for the public mirror
+AGENT_TEAMS.md
+docs/TERMINAL_LOGIC.md
+docs/apprentissage/
+docs/apprentissage.html
+docs/PLAN_GGUF.md
+docs/TERMINAL_BRAIN_PLAN.md

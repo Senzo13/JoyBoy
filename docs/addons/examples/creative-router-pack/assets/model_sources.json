@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "sources": [
+    {
+      "id": "example-hf-model",
+      "provider": "huggingface",
+      "ref": "owner/model-name",
+      "family": "image",
+      "required": false,
+      "notes": "Replace with a real public model ref if this addon needs one."
+    }
+  ]
+}

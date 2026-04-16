@@ -1,0 +1,255 @@
+@echo off
+chcp 65001 >nul
+cd /d "%~dp0"
+
+:: Mode restart automatique (appelé par le backend)
+if /i "%1"=="--restart" goto start
+
+:: Si on n'est pas déjà dans Windows Terminal, se relancer dedans
+if not defined WT_SESSION (
+    where wt >nul 2>&1
+    if not errorlevel 1 (
+        wt new-tab -p "Command Prompt" cmd /k "cd /d %~dp0 && %~nx0"
+        exit /b
+    )
+)
+
+:menu
+cls
+echo.
+echo                                     ████████
+echo                                    █████████
+echo                                    ██████████
+echo                                   ████████████
+echo                             ███████████████████████
+echo               ███       ███████████████████████████████         ███
+echo             █████████████████████████████████████████████████████
+echo            ███████████████████████            █████████████████   ███
+echo            ██████████████████                      ██████████   ██████
+echo            ███████████████                            ██████  ███████
+echo             ████████████                                 █  ████████
+echo             █████████                ███████               █████████
+echo            █████████           ██████████████████           █████████
+echo           ████████           ██████████████████████           ████████
+echo          ████████          ████████████████████████            ████████
+echo          ███████         ████████████████████████   ███         ███████
+echo         ███████         ███████████████████████   ██████         ███████
+echo         ███████        ██████████████████████   █████████        ███████
+echo        ████████       ██████████████████████   ███████████        ███████
+echo   ████████████        ████                            ████        ███████████
+echo  █████████████  ███████████████████████    ██████████████████████ █████████████
+echo  █████████████ ███████████████████████   ██████████████████████████████████████
+echo  █████████████       █████                            █████       █████████████
+echo  █████████████        ████                            ████        █████████████
+echo     ██████████        ████                            ████        ███████████
+echo         ███████        ████                          ████        ████████
+echo         ███████         ████                        ████         ███████
+echo          ███████         ██                       █████         ████████
+echo          ████████           █████               ██████         ████████
+echo           ████████          ████████████████████████          ████████
+echo            ████████            ██████████████████            ████████
+echo             ████████               ██████████              ██████████
+echo             ███████  ██                                  ███████████
+echo             █████   █████                              ██████████████
+echo            ████   ██████████                        █████████████████
+echo            ███  █████████████████              ███████████████████████
+echo               ███████████████████████████████████████████████████████
+echo              █████      ████████████████████████████████      █████
+echo            █                ████████████████████████
+echo          █                        ████████████
+echo                                    ██████████
+echo                                    █████████
+echo                                     ████████
+echo.
+echo    ========================================================================
+echo.
+echo                              J O Y B O Y
+echo.
+echo                      "Dream. Create. Be Free."
+echo.
+echo                100%% Local  -  Zero Cloud  -  No Limits
+echo.
+echo    ========================================================================
+echo.
+echo.
+echo       [1]  Setup complet (premiere fois / reparer)
+echo.
+echo       [2]  Demarrer rapidement
+echo.
+echo       [Q]  Quitter
+echo.
+echo.
+set /p choice="       Choix: "
+
+if /i "%choice%"=="1" goto setup
+if /i "%choice%"=="2" goto start
+if /i "%choice%"=="q" goto quit
+goto menu
+
+:setup
+cls
+:: Compteur de retries pour eviter boucle infinie
+if not defined SETUP_RETRIES set SETUP_RETRIES=0
+set /a SETUP_RETRIES+=1
+if %SETUP_RETRIES% GTR 3 (
+    echo.
+    echo    [!] Setup a boucle 3 fois sans succes.
+    echo    [!] Certains packages n'ont pas pu etre installes.
+    echo    [!] Demarrage quand meme...
+    echo.
+    timeout /t 3 >nul
+    goto start
+)
+echo.
+echo    ================================================================
+echo                    SETUP - Installation  (tentative %SETUP_RETRIES%/3)
+echo    ================================================================
+echo.
+
+:: ============================================
+:: ETAPE 0: Verifier/Installer Python embarque
+:: ============================================
+set "PYTHON_DIR=python312"
+set "PYTHON_EXE=%PYTHON_DIR%\python.exe"
+set "PYTHON_URL=https://www.python.org/ftp/python/3.12.4/python-3.12.4-embed-amd64.zip"
+set "PYTHON_ZIP=python312.zip"
+
+if not exist "%PYTHON_EXE%" (
+    echo    [0/4] Python non trouve, telechargement...
+    echo.
+
+    :: Creer le dossier si besoin
+    if not exist "%PYTHON_DIR%" mkdir "%PYTHON_DIR%"
+
+    :: Telecharger Python avec curl (barre de progression visible)
+    echo           Telechargement de Python 3.12...
+    curl.exe -L --progress-bar -o "%PYTHON_ZIP%" "%PYTHON_URL%"
+
+    if not exist "%PYTHON_ZIP%" (
+        echo    [ERREUR] Echec du telechargement de Python
+        echo    Verifiez votre connexion internet
+        pause
+        goto menu
+    )
+
+    :: Extraire le zip
+    echo           Extraction...
+    powershell -Command "Expand-Archive -Path '%PYTHON_ZIP%' -DestinationPath '%PYTHON_DIR%' -Force"
+
+    :: Supprimer le zip
+    del "%PYTHON_ZIP%" 2>nul
+
+    :: Configurer pip pour l'embedded Python
+    :: Decommenter les imports dans python312._pth
+    if exist "%PYTHON_DIR%\python312._pth" (
+        powershell -Command "(Get-Content '%PYTHON_DIR%\python312._pth') -replace '#import site', 'import site' | Set-Content '%PYTHON_DIR%\python312._pth'"
+    )
+
+    :: Telecharger get-pip.py
+    echo           Installation de pip...
+    powershell -Command "& {[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://bootstrap.pypa.io/get-pip.py' -OutFile 'get-pip.py'}"
+
+    if exist "get-pip.py" (
+        "%PYTHON_EXE%" get-pip.py
+        del get-pip.py 2>nul
+    )
+
+    echo    [OK] Python 3.12 installe localement
+    echo.
+) else (
+    echo    [0/4] Python local OK
+)
+
+:: Determiner quel Python utiliser
+:: Priorite: venv existant > Python systeme (pour creer venv) > Python embarque
+if exist "venv\Scripts\python.exe" (
+    echo    [1/4] Environnement virtuel existant detecte
+    call venv\Scripts\activate.bat
+    set "PYTHON=python"
+) else (
+    :: Essayer de creer un venv avec Python systeme
+    where python >nul 2>&1
+    if not errorlevel 1 (
+        echo    [1/4] Creation de l'environnement virtuel...
+        python -m venv venv 2>nul
+        if exist "venv\Scripts\python.exe" (
+            call venv\Scripts\activate.bat
+            set "PYTHON=python"
+        ) else (
+            echo           Echec venv, utilisation Python embarque
+            set "PYTHON=%PYTHON_EXE%"
+        )
+    ) else (
+        echo    [1/4] Utilisation du Python embarque
+        set "PYTHON=%PYTHON_EXE%"
+    )
+)
+
+echo    [2/4] Bootstrap dependances + verification...
+echo.
+"%PYTHON%" scripts\bootstrap.py setup
+set CHECK_RESULT=%errorlevel%
+
+:: Si code 99 = Python/venv a été recréé
+if %CHECK_RESULT%==99 (
+    echo.
+    echo    [!] Venv recree - Relancement du setup...
+    timeout /t 3 >nul
+    goto setup
+)
+
+:: Si code >= 1 = packages installés
+if %CHECK_RESULT% GEQ 1 (
+    echo.
+    echo    [!] Installation en cours - Verification...
+    timeout /t 3 >nul
+    goto setup
+)
+
+echo.
+echo    ================================================================
+echo                    Setup termine !
+echo    ================================================================
+echo.
+timeout /t 2 >nul
+goto start
+
+:start
+cls
+:: Utiliser le venv si existant, sinon Python embarqué
+if exist "venv\Scripts\python.exe" (
+    call venv\Scripts\activate.bat
+    set "PY=python"
+) else (
+    set "PY=python312\python.exe"
+)
+
+:: Quick check: installer ollama si manquant
+where ollama >nul 2>&1
+if errorlevel 1 (
+    echo.
+    echo    Ollama non detecte, telechargement...
+    "%PY%" -c "import subprocess,os,urllib.request;p=os.path.join(os.environ.get('TEMP','.'),'OllamaSetup.exe');urllib.request.urlretrieve('https://ollama.com/download/OllamaSetup.exe',p);subprocess.run([p,'/VERYSILENT','/NORESTART'],timeout=120);os.path.exists(p) and os.remove(p)"
+    echo    [OK] Ollama installe
+    echo.
+)
+
+"%PY%" web/app.py
+set EXIT_CODE=%errorlevel%
+
+:: Si code 42 = restart demandé, fermer cette fenêtre
+if %EXIT_CODE%==42 (
+    echo    Restart en cours...
+    exit
+)
+
+echo.
+echo    ================================================================
+echo                    Serveur arrete
+echo    ================================================================
+echo.
+pause
+goto menu
+
+:quit
+exit

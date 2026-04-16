@@ -1,0 +1,205 @@
+import os
+import unittest
+from unittest.mock import patch
+
+from core.models.video_policy import (
+    LOW_VRAM_SAFE_DEFAULT,
+    build_video_model_catalog,
+    get_runtime_video_defaults,
+    resolve_video_model_for_runtime,
+)
+
+
+class VideoPolicyTests(unittest.TestCase):
+    def test_cogvideox_reroutes_on_low_vram(self):
+        with patch.dict(os.environ, {}, clear=True):
+            decision = resolve_video_model_for_runtime("cogvideox", vram_gb=8)
+
+        self.assertEqual(decision.model, LOW_VRAM_SAFE_DEFAULT)
+        self.assertTrue(decision.changed)
+        self.assertIn("pas encore un profil rapide et fiable", decision.warning)
+
+    def test_cogvideox_can_be_forced_with_env(self):
+        with patch.dict(os.environ, {"JOYBOY_ALLOW_EXPERIMENTAL_VIDEO": "1"}, clear=True):
+            decision = resolve_video_model_for_runtime("cogvideox", vram_gb=8)
+
+        self.assertEqual(decision.model, "cogvideox")
+        self.assertFalse(decision.changed)
+
+    def test_cogvideox_can_be_forced_from_ui(self):
+        with patch.dict(os.environ, {}, clear=True):
+            decision = resolve_video_model_for_runtime("cogvideox", vram_gb=8, allow_experimental=True)
+
+        self.assertEqual(decision.model, "cogvideox")
+        self.assertFalse(decision.changed)
+
+    def test_ltx_reroutes_on_low_vram(self):
+        decision = resolve_video_model_for_runtime("ltx", vram_gb=8)
+
+        self.assertEqual(decision.model, LOW_VRAM_SAFE_DEFAULT)
+        self.assertTrue(decision.changed)
+
+    def test_framepack_reroutes_on_low_vram_without_opt_in(self):
+        with patch.dict(os.environ, {}, clear=True):
+            decision = resolve_video_model_for_runtime("framepack", vram_gb=8)
+
+        self.assertEqual(decision.model, LOW_VRAM_SAFE_DEFAULT)
+        self.assertTrue(decision.changed)
+        self.assertIn("pas encore un profil rapide et fiable", decision.warning)
+        self.assertIn("Pour forcer", decision.warning)
+
+    def test_framepack_can_be_forced_from_ui(self):
+        with patch.dict(os.environ, {}, clear=True):
+            decision = resolve_video_model_for_runtime("framepack", vram_gb=8, allow_experimental=True)
+
+        self.assertEqual(decision.model, "framepack")
+        self.assertFalse(decision.changed)
+
+    def test_catalog_hides_low_vram_advanced_models_by_default(self):
+        models = {
+            "ltx": {"name": "LTX", "low_vram_tier": "recommended", "supports_image": True},
+            "svd": {"name": "SVD", "low_vram_tier": "recommended", "supports_image": True},
+            "cogvideox": {"name": "Cog", "experimental_low_vram": True, "supports_image": True},
+            "wan": {"name": "Wan", "low_vram_tier": "advanced", "supports_image": True},
+        }
+
+        catalog = build_video_model_catalog(models, vram_gb=8)
+        visible_ids = {model["id"] for model in catalog["models"]}
+        advanced_ids = {model["id"] for model in catalog["advanced_models"]}
+
+        self.assertEqual(visible_ids, {"ltx", "svd"})
+        self.assertEqual(advanced_ids, {"cogvideox", "wan"})
+        self.assertEqual(catalog["advanced_count"], 2)
+        self.assertEqual(catalog["default_model"], LOW_VRAM_SAFE_DEFAULT)
+
+    def test_low_vram_defaults_are_conservative(self):
+        catalog = build_video_model_catalog(
+            {
+                "svd": {
+                    "name": "SVD",
+                    "low_vram_tier": "recommended",
+                    "supports_image": True,
+                    "default_frames": 25,
+                    "default_steps": 25,
+                    "default_fps": 8,
+                },
+                "ltx": {
+                    "name": "LTX",
+                    "low_vram_tier": "advanced",
+                    "supports_image": True,
+                    "default_frames": 97,
+                    "default_steps": 30,
+                    "default_fps": 24,
+                },
+            },
+            vram_gb=8,
+            include_advanced=True,
+        )
+
+        by_id = {model["id"]: model for model in catalog["models"]}
+        self.assertEqual(by_id["svd"]["default_frames"], 18)
+        self.assertEqual(by_id["svd"]["default_steps"], 10)
+        self.assertEqual(by_id["svd"]["default_fps"], 8)
+        self.assertEqual(by_id["ltx"]["default_frames"], 41)
+        self.assertEqual(by_id["ltx"]["default_steps"], 8)
+        self.assertEqual(by_id["ltx"]["default_fps"], 8)
+
+    def test_catalog_marks_framepack_as_manual_test_model(self):
+        with patch.dict(os.environ, {}, clear=True):
+            catalog = build_video_model_catalog(
+                {
+                    "svd": {"name": "SVD", "low_vram_tier": "recommended", "supports_image": True},
+                    "framepack": {
+                        "name": "FramePack",
+                        "low_vram_tier": "advanced",
+                        "supports_image": True,
+                        "supports_prompt": True,
+                        "experimental_low_vram": True,
+                        "backend_status": "experimental",
+                    },
+                },
+                vram_gb=8,
+                include_advanced=True,
+            )
+
+        visible_ids = {model["id"] for model in catalog["models"]}
+        advanced_ids = {model["id"] for model in catalog["advanced_models"]}
+
+        self.assertIn("framepack", visible_ids)
+        self.assertIn("framepack", advanced_ids)
+        self.assertEqual(catalog["roadmap_count"], 0)
+        by_id = {model["id"]: model for model in catalog["models"]}
+        self.assertEqual(by_id["framepack"]["category"], "try")
+        self.assertEqual(by_id["framepack"]["backend_status"], "experimental")
+        self.assertEqual(by_id["framepack"]["launch_status"], "manual_test")
+        self.assertTrue(by_id["framepack"]["requires_experimental_env"])
+        self.assertTrue(by_id["framepack"]["override_required"])
+
+    def test_catalog_marks_manual_test_models(self):
+        with patch.dict(os.environ, {}, clear=True):
+            catalog = build_video_model_catalog(
+                {
+                    "svd": {"name": "SVD", "low_vram_tier": "recommended", "supports_image": True},
+                    "ltx": {
+                        "name": "LTX",
+                        "low_vram_tier": "advanced",
+                        "supports_image": True,
+                        "supports_prompt": True,
+                        "experimental_low_vram": True,
+                        "backend_status": "experimental",
+                    },
+                },
+                vram_gb=8,
+                include_advanced=True,
+            )
+
+        by_id = {model["id"]: model for model in catalog["models"]}
+        self.assertEqual(by_id["ltx"]["category"], "try")
+        self.assertEqual(by_id["ltx"]["launch_status"], "manual_test")
+        self.assertTrue(by_id["ltx"]["requires_experimental_env"])
+        self.assertTrue(by_id["ltx"]["override_required"])
+
+    def test_catalog_ui_advanced_enables_manual_test_models(self):
+        with patch.dict(os.environ, {}, clear=True):
+            catalog = build_video_model_catalog(
+                {
+                    "svd": {"name": "SVD", "low_vram_tier": "recommended", "supports_image": True},
+                    "ltx": {
+                        "name": "LTX",
+                        "low_vram_tier": "advanced",
+                        "supports_image": True,
+                        "supports_prompt": True,
+                        "experimental_low_vram": True,
+                        "backend_status": "experimental",
+                    },
+                },
+                vram_gb=8,
+                include_advanced=True,
+                allow_experimental=True,
+            )
+
+        by_id = {model["id"]: model for model in catalog["models"]}
+        self.assertTrue(by_id["ltx"]["experimental_enabled"])
+        self.assertFalse(by_id["ltx"]["override_required"])
+
+    def test_runtime_defaults_apply_low_vram_overrides(self):
+        defaults = get_runtime_video_defaults(
+            "svd",
+            {"default_frames": 120, "default_steps": 30, "default_fps": 24},
+            vram_gb=8,
+        )
+
+        self.assertEqual(defaults, {"default_frames": 18, "default_steps": 10, "default_fps": 8})
+
+    def test_framepack_fast_low_vram_defaults(self):
+        defaults = get_runtime_video_defaults(
+            "framepack-fast",
+            {"default_frames": 90, "default_steps": 9, "default_fps": 18},
+            vram_gb=8,
+        )
+
+        self.assertEqual(defaults, {"default_frames": 60, "default_steps": 7, "default_fps": 12})
+
+
+if __name__ == "__main__":
+    unittest.main()
