@@ -10,9 +10,15 @@
 
 Run AI chat, image workflows, model management, and local creative tools on your own machine. JoyBoy is built for people who want an open source ChatGPT alternative, an offline AI assistant, a local Stable Diffusion / SDXL interface, and a privacy-focused AI harness without relying on a cloud account.
 
-![JoyBoy UI placeholder](docs/assets/readme-hero-placeholder.svg)
+## Preview
 
-> Replace this placeholder with a short GIF or screenshot showing: prompt -> preview -> result.
+| Local chat and runtime | Image edit result |
+| --- | --- |
+| ![JoyBoy local chat with Ollama model selector and runtime meters](docs/assets/joyboy-chat.jpg) | ![JoyBoy image editing result with original and modified previews](docs/assets/joyboy-image-edit-result.jpg) |
+
+| Edit mode | Before/after viewer |
+| --- | --- |
+| ![JoyBoy edit mode with brush, mask controls, quick prompts, and model picker](docs/assets/joyboy-edit-mode.jpg) | ![JoyBoy before and after comparison viewer](docs/assets/joyboy-before-after-viewer.jpg) |
 
 ## Features
 
@@ -48,18 +54,6 @@ JoyBoy is designed for local AI users who care about privacy, control, and hardw
 - Manage Hugging Face and CivitAI model sources from a local UI.
 - Build local addons for custom routing, prompts, model presets, and creator workflows.
 - Experiment with a local Codex-style dev assistant that can understand a project workspace.
-
-## Demo
-
-![Before/after placeholder](docs/assets/readme-before-after-placeholder.svg)
-
-Good public demo assets:
-
-- a short GIF showing prompt -> preview -> final image;
-- a safe before/after edit with non-sensitive content;
-- screenshots of onboarding, Doctor, model picker, gallery, and local addons.
-
-Keep public README media safe, consent-based, and non-explicit.
 
 ## Quick Start
 
