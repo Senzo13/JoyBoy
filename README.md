@@ -122,22 +122,6 @@ Some optional local packs may target mature or adult workflows where legal, cons
 
 See [Local Packs](docs/LOCAL_PACKS.md), [Addons](docs/ADDONS.md), and [Third-Party Packs](docs/THIRD_PARTY_PACKS.md) for the pack contract.
 
-## Public Mirror
-
-The public repository must not include real provider tokens, private `.env` files, downloaded model weights, generated outputs, local caches, or private pack assets.
-
-Preview the clean public mirror:
-
-```bash
-python scripts/bootstrap.py mirror --dry-run
-```
-
-Build it locally:
-
-```bash
-python scripts/build_public_mirror.py --target _public_mirror_ready --overwrite
-```
-
 ## Documentation
 
 - [Getting Started](docs/GETTING_STARTED.md)
@@ -154,7 +138,7 @@ python scripts/build_public_mirror.py --target _public_mirror_ready --overwrite
 
 Start with [CONTRIBUTING.md](CONTRIBUTING.md), [ROADMAP.md](ROADMAP.md), and [docs/GOOD_FIRST_ISSUES.md](docs/GOOD_FIRST_ISSUES.md).
 
-Good early contributions include docs, Doctor checks, UI polish, model import UX, tests around local packs, and public mirror hygiene.
+Good early contributions include docs, Doctor checks, UI polish, model import UX, tests around local packs, and release hygiene.
 
 ## License
 

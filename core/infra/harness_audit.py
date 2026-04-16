@@ -11,7 +11,6 @@ from __future__ import annotations
 from pathlib import Path
 
 from core.infra.local_config import get_local_config_overview
-from core.infra.public_mirror import DEFAULT_PUBLIC_MIRROR_EXCLUDE_FILE, load_public_mirror_patterns
 
 
 PROJECT_DIR = Path(__file__).resolve().parents[2]
@@ -35,7 +34,7 @@ PUBLIC_DOCS = [
     "docs/DOCTOR.md",
     "docs/LOCAL_PACKS.md",
     "docs/ARCHITECTURE.md",
-    "docs/PUBLIC_MIRROR_CHECKLIST.md",
+    "docs/SEO_AND_DISCOVERY.md",
 ]
 
 
@@ -104,7 +103,6 @@ def run_harness_audit() -> dict:
     readme_text = _read_text("README.md")
 
     local_config = get_local_config_overview()
-    mirror_excludes = set(load_public_mirror_patterns(DEFAULT_PUBLIC_MIRROR_EXCLUDE_FILE))
 
     docker_files = [
         relative_path for relative_path in ("Dockerfile", "docker-compose.yml", "compose.yml")
@@ -113,13 +111,16 @@ def run_harness_audit() -> dict:
     public_risk_hits = [
         relative_path
         for relative_path in PUBLIC_RISK_FILES
-        if _exists(relative_path) and relative_path not in mirror_excludes
+        if _exists(relative_path)
     ]
     tests_present = any(_exists(relative_path) for relative_path in ("tests", "pytest.ini", "pyproject.toml"))
     community_ready = all(_exists(relative_path) for relative_path in COMMUNITY_FILES)
     public_docs_ready = all(_exists(relative_path) for relative_path in PUBLIC_DOCS)
     bootstrap_present = _exists("scripts/bootstrap.py")
-    mirror_manifest_present = _exists(DEFAULT_PUBLIC_MIRROR_EXCLUDE_FILE.name)
+    release_ignores_ready = all(
+        entry in gitignore_text
+        for entry in ("output/", "models/", "venv/", ".env", ".joyboy/")
+    )
 
     launchers = [
         relative_path for relative_path in ("start_windows.bat", "start_mac.command", "start_linux.sh")
@@ -238,19 +239,19 @@ def run_harness_audit() -> dict:
             "pass" if readme_text and public_docs_ready else "warn",
             "README et docs publiques de base détectés."
             if readme_text and public_docs_ready
-            else "La doc publique n'est pas encore complète pour un miroir open source propre.",
-            "Documenter clairement ce qu'est JoyBoy, comment le lancer et comment préparer le miroir public."
+            else "La doc publique n'est pas encore complète pour une release open source propre.",
+            "Documenter clairement ce qu'est JoyBoy, comment le lancer et quelles extensions restent locales."
         ),
         _check(
-            "public_mirror_manifest",
+            "release_ignore_rules",
             "release",
-            "Manifest miroir public",
+            "Hygiène fichiers locaux",
             8,
-            "pass" if mirror_manifest_present else "warn",
-            f"Manifest détecté: {DEFAULT_PUBLIC_MIRROR_EXCLUDE_FILE.name}."
-            if mirror_manifest_present
-            else "Aucun manifeste d'exclusion du miroir public détecté.",
-            "Ajouter un fichier d'exclusion du miroir public pour documenter ce qui doit rester privé."
+            "pass" if release_ignores_ready else "warn",
+            "Les principaux dossiers locaux/générés sont ignorés par Git."
+            if release_ignores_ready
+            else "Le .gitignore ne couvre pas encore tous les dossiers locaux/générés importants.",
+            "Vérifier que outputs, modèles, caches, venv et secrets locaux restent hors git."
         ),
         _check(
             "public_surface_review",
@@ -261,12 +262,8 @@ def run_harness_audit() -> dict:
             "Des fichiers de surface publique à revoir existent encore: "
             + ", ".join(public_risk_hits)
             if public_risk_hits
-            else (
-                "Les fichiers sensibles ciblés sont déjà exclus du miroir public."
-                if mirror_manifest_present
-                else "Pas de fichier public à haut risque détecté dans la liste ciblée."
-            ),
-            "Garder les extensions locales si tu veux, mais exclure les assets/docs sensibles du miroir public."
+            else "Pas de fichier public à haut risque détecté dans la liste ciblée.",
+            "Garder les extensions locales séparées du core public et des releases."
         ),
         _check(
             "community_health",

@@ -8,7 +8,7 @@ JoyBoy addons are local packs that extend the public core without editing core f
 - Addons live locally in `~/.joyboy/packs/<pack_id>/`.
 - A pack is imported from a local folder or a `.zip` archive in `Settings > Models > Local packs`.
 - JoyBoy validates `pack.json` before activating a pack.
-- Private or sensitive packs should stay outside git and outside the future public mirror.
+- Private or sensitive packs should stay outside git and outside public release archives.
 
 ## Minimal Structure
 
@@ -85,10 +85,10 @@ From the UI:
 3. Import a `.zip` archive or paste a local folder path.
 4. Activate the pack.
 
-From a private/dev workstation, the bootstrap helper can install the bundled local source pack:
+From the CLI, the bootstrap helper can import an explicit local pack folder:
 
 ```bash
-python scripts/bootstrap.py pack-install
+python scripts/bootstrap.py pack-install --source /path/to/my-addon
 ```
 
 ## Creating a Zip
@@ -123,7 +123,7 @@ Les addons JoyBoy sont des packs locaux qui étendent le core public sans modifi
 - Les addons vivent localement dans `~/.joyboy/packs/<pack_id>/`.
 - Un pack s’importe depuis un dossier local ou une archive `.zip` dans `Paramètres > Modèles > Packs locaux`.
 - JoyBoy valide `pack.json` avant activation.
-- Les packs privés ou sensibles restent hors git et hors futur miroir public.
+- Les packs privés ou sensibles restent hors git et hors archives de release publiques.
 
 ## Structure Minimale
 

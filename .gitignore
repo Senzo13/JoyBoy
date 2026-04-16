@@ -71,8 +71,4 @@ local_pack_sources/
 Fooocus/
 nul
 tmp_old_processing.py
-_public_mirror_ready/
-_public_mirror_ready_check/
-_public_mirror_preview/
-_public_mirror_*/
 public_live_*.log

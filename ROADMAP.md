@@ -32,5 +32,5 @@
 
 - packaging and reproducible setup
 - smoke tests for launcher flows
-- public mirror review tooling
+- release hygiene checks
 - docs examples and contributor experience

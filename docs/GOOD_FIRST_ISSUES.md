@@ -52,22 +52,22 @@ Acceptance criteria:
 - Test covers inactive pack returning no editor prompt.
 - Full test module passes with `python -m unittest tests.test_packs_smoke`.
 
-## 4. Improve public mirror dry-run output
+## 4. Improve release hygiene warnings for generated files
 
 Labels: `good first issue`, `cli`, `developer-experience`
 
 Problem:
-`python scripts/bootstrap.py mirror --dry-run` is useful, but the output is long and hard to scan.
+New contributors can accidentally keep generated outputs, local caches, or provider artifacts in their working tree.
 
 Suggested files:
-- `scripts/build_public_mirror.py`
-- `scripts/bootstrap.py`
-- `docs/PUBLIC_MIRROR_CHECKLIST.md`
+- `.gitignore`
+- `docs/SECURITY_AND_CONTENT_POLICY.md`
+- `docs/GETTING_STARTED.md`
 
 Acceptance criteria:
-- Dry-run prints file count, excluded pattern count, and sanitized file count.
-- JSON output remains unchanged for automation.
-- Docs mention the improved summary.
+- Docs explain which local files should never be committed.
+- `.gitignore` covers one missing generated/cache path if needed.
+- The guidance is short and does not mention private repo workflows.
 
 ## 5. Add a README media checklist
 
@@ -217,18 +217,19 @@ Acceptance criteria:
 - Button text is clear and translated.
 - No adult/sensitive pack is shown as a default public example.
 
-## 14. Add a public mirror regression test for excluded pack archives
+## 14. Add a pack archive hygiene regression test
 
 Labels: `good first issue`, `tests`, `security`
 
 Problem:
-Private or sensitive pack archives should never leak into the public mirror.
+Private or sensitive pack archives should stay out of normal commits and public release bundles.
 
 Suggested files:
-- `tests/test_public_mirror.py`
-- `public_mirror.exclude`
+- `.gitignore`
+- `core/infra/packs.py`
+- `tests/test_packs_smoke.py`
 
 Acceptance criteria:
-- Test creates a fake `dist/packs/uncensored-demo.zip`.
-- Public mirror dry-run excludes it.
-- Existing public mirror tests pass.
+- Test or docs cover a fake sensitive pack archive under `dist/packs/`.
+- The expected behavior is clear: keep it local, do not commit it.
+- Existing pack smoke tests pass.

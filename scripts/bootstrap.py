@@ -17,7 +17,6 @@ from pathlib import Path
 PROJECT_DIR = Path(__file__).resolve().parents[1]
 INSTALL_DEPS = PROJECT_DIR / "scripts" / "install_deps.py"
 CHECK_DEPS = PROJECT_DIR / "scripts" / "check_deps.py"
-PUBLIC_MIRROR_BUILDER = PROJECT_DIR / "scripts" / "build_public_mirror.py"
 DEFAULT_LOCAL_ADULT_PACK_SOURCE = PROJECT_DIR / "local_pack_sources" / "local-advanced-runtime"
 
 if str(PROJECT_DIR) not in sys.path:
@@ -61,21 +60,6 @@ def run_doctor(json_mode: bool = False) -> int:
         if check.get("action"):
             print(f"  Action: {check['action']}")
     return 0 if report.get("status") != "error" else 1
-
-
-def run_mirror(target: str | None = None, dry_run: bool = False, json_mode: bool = False, overwrite: bool = False) -> int:
-    command = [sys.executable, str(PUBLIC_MIRROR_BUILDER)]
-    if target:
-        command.extend(["--target", target])
-    if dry_run:
-        command.append("--dry-run")
-    if json_mode:
-        command.append("--json")
-    if overwrite:
-        command.append("--overwrite")
-    return _run(command, "Build public mirror")
-
-
 def run_pack_install(source: str | None = None, kind: str = "adult", activate: bool = True, replace: bool = True) -> int:
     from core.infra.packs import import_pack_from_directory, set_pack_active
 
@@ -102,11 +86,6 @@ def main() -> int:
     subparsers.add_parser("setup", help="Install/update Python dependencies and run dependency checks")
     doctor_parser = subparsers.add_parser("doctor", help="Run JoyBoy doctor checks")
     doctor_parser.add_argument("--json", action="store_true", help="Print doctor report as JSON")
-    mirror_parser = subparsers.add_parser("mirror", help="Preview or build a clean public mirror")
-    mirror_parser.add_argument("--target", help="Target directory for the public mirror")
-    mirror_parser.add_argument("--dry-run", action="store_true", help="Preview files without copying")
-    mirror_parser.add_argument("--json", action="store_true", help="Print mirror result as JSON")
-    mirror_parser.add_argument("--overwrite", action="store_true", help="Overwrite target directory if it exists")
     pack_parser = subparsers.add_parser("pack-install", help="Install a local pack source into ~/.joyboy/packs")
     pack_parser.add_argument("--source", help="Local pack source directory")
     pack_parser.add_argument("--kind", default="adult", help="Pack kind to activate after import")
@@ -119,13 +98,6 @@ def main() -> int:
         return run_setup()
     if args.command == "doctor":
         return run_doctor(json_mode=bool(args.json))
-    if args.command == "mirror":
-        return run_mirror(
-            target=args.target,
-            dry_run=bool(args.dry_run),
-            json_mode=bool(args.json),
-            overwrite=bool(args.overwrite),
-        )
     if args.command == "pack-install":
         return run_pack_install(
             source=args.source,
