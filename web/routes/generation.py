@@ -729,14 +729,27 @@ def unified_generate():
                 if loras_str: parts.append(f"LoRAs({','.join(loras_str)})")
                 print(f"[PRELOAD] {' + '.join(parts)} lancé IMMÉDIATEMENT")
 
+        _cancel_logged = False
+
         def is_cancelled():
+            nonlocal _cancel_logged
+            reason = None
             if runtime_jobs.is_cancel_requested(generation_id):
+                reason = "runtime job cancel_requested"
+            elif _is_generation_cancelled():
+                reason = "global generation_cancelled flag"
+            else:
+                with generations_lock:
+                    gen = active_generations.get(generation_id, {})
+                    if gen.get("cancelled", False):
+                        reason = "active_generations flag"
+
+            if reason:
+                if not _cancel_logged:
+                    print(f"[CANCEL] Generation {generation_id} cancel source: {reason}")
+                    _cancel_logged = True
                 return True
-            if _is_generation_cancelled():
-                return True
-            with generations_lock:
-                gen = active_generations.get(generation_id, {})
-                return gen.get("cancelled", False)
+            return False
 
         # ===== LOG =====
         from core.log_utils import big
@@ -2292,10 +2305,11 @@ def cancel_generation():
     generations_lock = _get_generations_lock()
     from core.model_manager import ModelManager
 
-    data = request.json
+    data = request.json or {}
     generation_id = data.get('generationId')
     chat_id = data.get('chatId')
     force_unload = data.get('forceUnload', False)
+    cancel_by_chat = bool(data.get('cancelByChat', False))
 
     cancelled_count = 0
     try:
@@ -2303,10 +2317,6 @@ def cancel_generation():
         runtime_jobs = get_job_manager()
     except Exception:
         runtime_jobs = None
-
-    # Clear preview immédiatement pour éviter que la prochaine gen affiche l'ancien step
-    from core.processing import clear_preview
-    clear_preview()
 
     with generations_lock:
         if generation_id and generation_id in active_generations:
@@ -2316,8 +2326,9 @@ def cancel_generation():
                 runtime_jobs.request_cancel(generation_id)
             print(f"[CANCEL] Generation {generation_id} cancelled")
 
-        # Annuler aussi par chat_id (si on change de conversation)
-        if chat_id:
+        # Chat-wide cancellation is destructive and must be explicit. This keeps
+        # stale frontend state from cancelling the current image job by chat id.
+        if chat_id and cancel_by_chat:
             for gen_id, gen_info in list(active_generations.items()):
                 if gen_info.get("chat_id") == chat_id and not gen_info.get("cancelled"):
                     gen_info["cancelled"] = True
@@ -2325,6 +2336,13 @@ def cancel_generation():
                     if runtime_jobs:
                         runtime_jobs.request_cancel(gen_id)
                     print(f"[CANCEL] Generation {gen_id} cancelled (chat {chat_id})")
+        elif chat_id and not generation_id:
+            print(f"[CANCEL] Ignored chat-scoped cancel without cancelByChat=true (chat {chat_id})")
+
+    if cancelled_count > 0:
+        # Clear preview immédiatement pour éviter que la prochaine gen affiche l'ancien step
+        from core.processing import clear_preview
+        clear_preview()
 
     # Si force_unload, decharger immediatement tous les modeles
     if force_unload and cancelled_count > 0:

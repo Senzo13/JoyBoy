@@ -661,9 +661,12 @@ async function stopAllGenerations() {
 
 // Annuler les générations côté serveur (gardé pour compatibilité)
 async function cancelCurrentGenerations() {
-    if (currentGenerationId || currentChatId) {
-        await apiGeneration.cancel(currentGenerationId, currentChatId).catch(() => {});
+    if (currentGenerationId) {
+        const chatId = currentGenerationChatId || currentChatId || null;
+        await apiGeneration.cancel(currentGenerationId, chatId).catch(() => {});
         console.log('[CANCEL] Generations cancelled');
+    } else {
+        console.log('[CANCEL] No active generation id, skip server cancel');
     }
     currentGenerationId = null;
 }
@@ -1403,6 +1406,12 @@ async function generateImageFromChat(imagePrompt) {
 
     // Générer un ID pour cette génération
     currentGenerationId = generateUUID();
+    currentGenerationChatId = targetChatId;
+    currentGenerationMode = 'text2img';
+    isGenerating = true;
+    setSendButtonsMode(true);
+    currentController = new AbortController();
+    const imageAbortSignal = currentController.signal;
 
     const genStartTime = Date.now();
     const imageModel = getCurrentImageModel();
@@ -1440,7 +1449,7 @@ async function generateImageFromChat(imagePrompt) {
             pose_strength: userSettings.poseStrength ?? 0.5,
             export_presets: JSON.stringify(userSettings.exportPresets || {}),
             ...adultPayload,
-        }, currentController?.signal);
+        }, imageAbortSignal);
 
         // Arrêter le polling
         stopPreviewPolling();
@@ -1461,12 +1470,18 @@ async function generateImageFromChat(imagePrompt) {
         }
     } catch (genErr) {
         stopPreviewPolling();
-        if (genErr.name !== 'AbortError') {
+        if (genErr.name !== 'AbortError' && !imageAbortSignal.aborted) {
             replaceImageSkeletonWithError(genErr.message, targetChatId);
         } else {
             replaceImageSkeletonWithError(generationT('generation.cancelled', 'Génération annulée'), targetChatId);
         }
         currentGenerationId = null;
+    } finally {
+        currentController = null;
+        currentGenerationChatId = null;
+        currentGenerationMode = null;
+        isGenerating = false;
+        setSendButtonsMode(false);
     }
 
     // Sauvegarder le HTML final

@@ -420,12 +420,13 @@ const apiGeneration = {
      * @param {string} chatId - Chat ID (optional)
      * @param {boolean} forceUnload - Force unload models after cancel
      */
-    async cancel(generationId, chatId = null, forceUnload = false) {
+    async cancel(generationId, chatId = null, forceUnload = false, cancelByChat = false) {
         console.log(`[API] Cancelling generation: ${generationId}`);
         return apiPost('/cancel-generation', {
             generationId,
             chatId,
-            forceUnload
+            forceUnload,
+            cancelByChat
         });
     },
 

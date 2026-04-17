@@ -452,19 +452,8 @@ async function refreshRuntimeJobs() {
     try {
         const result = await apiRuntime.listJobs();
         const jobs = Array.isArray(result.data?.jobs) ? result.data.jobs : [];
-        const orphanJobs = jobs.filter(job =>
-            isRuntimeJobActive(job) && isRuntimeJobOrphan(job) && !isCurrentRuntimeJob(job)
-        );
-        orphanJobs.forEach(job => {
-            if (!job.id || runtimeJobsCancelRequests.has(job.id) || !apiRuntime.cancelJob) return;
-            runtimeJobsCancelRequests.add(job.id);
-            apiRuntime.cancelJob(job.id, { force: true, reason: 'orphan_conversation' })
-                .catch(e => console.warn('[RUNTIME] Orphan job cancel failed:', e))
-                .finally(() => {
-                    runtimeJobsCancelRequests.delete(job.id);
-                    refreshRuntimeJobs();
-                });
-        });
+        // Do not auto-cancel server work from a local cache guess. Conversation
+        // deletion uses /cancel-jobs explicitly; this poller only hides orphans.
         runtimeJobsCache = jobs.filter(job =>
             !(isRuntimeJobActive(job) && isRuntimeJobOrphan(job) && !isCurrentRuntimeJob(job))
         );
