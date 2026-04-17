@@ -183,6 +183,14 @@ _CAPTURE_DEVICE_STYLE_WORDS = (
 )
 
 
+def _is_mps_runtime() -> bool:
+    return (
+        not torch.cuda.is_available()
+        and hasattr(torch.backends, "mps")
+        and torch.backends.mps.is_available()
+    )
+
+
 def _should_suppress_visible_capture_devices(prompt: str, style_prefix: str | None, style_suffix: str | None) -> bool:
     """Avoid literal cameras unless the user/style explicitly asks for capture-device aesthetics."""
     text = " ".join(part for part in (prompt or "", style_prefix or "", style_suffix or "")).lower()
@@ -424,10 +432,15 @@ def generate_from_text(prompt: str, model_name: str = "Automatique", enhance: bo
     _state.total_steps = steps
 
     # Créer le callback avec preview (tous les 1 step pour Turbo car peu de steps)
+    # Sur macOS/MPS, le decode preview peut dominer le coût du denoising. On garde
+    # la progression par step, mais on espace les images preview pour préserver la
+    # vitesse de génération.
     # Passer height/width pour unpack des latents Flux (3D packed → 4D)
-    preview_every = 1 if is_turbo else 2
+    is_mps_runtime = _is_mps_runtime()
+    preview_every = 1 if is_turbo else (8 if is_mps_runtime else 2)
     callback = make_preview_callback(cancel_check, preview_every=preview_every,
-                                     image_height=height, image_width=width)
+                                     image_height=height, image_width=width,
+                                     preview_first_step=not is_mps_runtime or is_turbo)
 
     # Détecter le type de pipeline
     is_inpaint_pipe = hasattr(pipe, 'mask_processor') or 'Inpaint' in pipe.__class__.__name__

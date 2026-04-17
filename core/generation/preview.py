@@ -18,6 +18,15 @@ _taef1 = None
 _taef1_loading = False
 
 
+def _get_preview_device_and_dtype():
+    """Return the fastest available tiny-decoder placement for previews."""
+    if torch.cuda.is_available():
+        return "cuda", torch.float16
+    if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+        return "mps", torch.float16
+    return "cpu", torch.float32
+
+
 def make_cancel_callback(cancel_check):
     """
     Crée un callback pour diffusers qui vérifie l'annulation à chaque step.
@@ -42,10 +51,11 @@ def _get_taesd():
     try:
         from diffusers import AutoencoderTiny
         from core.models import custom_cache
+        device, dtype = _get_preview_device_and_dtype()
         _taesd = AutoencoderTiny.from_pretrained(
-            "madebyollin/taesdxl", torch_dtype=torch.float16, cache_dir=custom_cache
-        ).to("cuda" if torch.cuda.is_available() else "cpu").eval()
-        print("[TAESD] Ready (~2MB, previews ultra-rapides)")
+            "madebyollin/taesdxl", torch_dtype=dtype, cache_dir=custom_cache
+        ).to(device).eval()
+        print(f"[TAESD] Ready (~2MB, previews ultra-rapides, {device})")
     except Exception as e:
         print(f"[TAESD] Indisponible: {e}")
         _taesd = None
@@ -64,10 +74,11 @@ def _get_taef1():
     try:
         from diffusers import AutoencoderTiny
         from core.models import custom_cache
+        device, dtype = _get_preview_device_and_dtype()
         _taef1 = AutoencoderTiny.from_pretrained(
-            "madebyollin/taef1", torch_dtype=torch.float16, cache_dir=custom_cache
-        ).to("cuda" if torch.cuda.is_available() else "cpu").eval()
-        print("[TAEF1] Ready (~2MB, previews Flux ultra-rapides)")
+            "madebyollin/taef1", torch_dtype=dtype, cache_dir=custom_cache
+        ).to(device).eval()
+        print(f"[TAEF1] Ready (~2MB, previews Flux ultra-rapides, {device})")
     except Exception as e:
         print(f"[TAEF1] Indisponible: {e}")
         _taef1 = None
@@ -88,13 +99,16 @@ def _unpack_flux_latents(latents, height, width):
 
 
 def make_preview_callback(cancel_check=None, preview_every=5, target_size=None,
-                          image_height=None, image_width=None, uncrop_info=None):
+                          image_height=None, image_width=None, uncrop_info=None,
+                          preview_first_step=True):
     """
     Crée un callback qui génère des previews pendant la génération.
     Utilise TAESD (~2MB) pour décoder les latents SDXL, TAEF1 (~2MB) pour Flux.
     Utilise pred_original_sample (x0) pour des previews propres.
     image_height/image_width: dimensions pixel pour unpack des latents Flux (3D→4D).
     uncrop_info: dict {crop: (a,b,c,d), base_image: PIL} pour recoller le crop dans l'original.
+    preview_first_step: désactive le decode au step 2 sur MPS, où il peut
+        coûter plusieurs minutes avant que le tiny decoder soit chaud.
     """
     import base64
     from io import BytesIO
@@ -154,7 +168,12 @@ def make_preview_callback(cancel_check=None, preview_every=5, target_size=None,
 
         _patch_scheduler(pipe)
 
-        if step == 1 or (step > 0 and step % preview_every == 0):
+        should_decode_preview = (
+            (preview_first_step and step == 1)
+            or (step > 0 and preview_every > 0 and step % preview_every == 0)
+        )
+
+        if should_decode_preview:
             try:
                 latents = callback_kwargs.get("latents")
                 if latents is not None:

@@ -1107,17 +1107,17 @@ const INPAINT_MODELS = [
     { id: 'Flux Fill INT8', name: 'Flux Fill INT8', desc: '12B • INT8 • Rapide', badge: 'supreme', icon: 'star', backend: 'diffusers' },
     // === epiCRealism XL - 3 niveaux de quantification ===
     { id: 'epiCRealism XL (Fast)', name: 'epiCRealism (Fast)', desc: 'INT4 • Ultra rapide', badge: 'fast', icon: 'zap', backend: 'diffusers' },
-    { id: 'epiCRealism XL (Moyen)', name: 'epiCRealism (Moyen)', desc: 'INT8 • Recommandé', badge: 'powerful', icon: 'zap', backend: 'diffusers' },
+    { id: 'epiCRealism XL (Moyen)', name: 'epiCRealism (Moyen)', desc: 'INT8 • Recommandé', badge: 'balanced', icon: 'zap', backend: 'diffusers' },
     { id: 'epiCRealism XL (Normal)', name: 'epiCRealism (Normal)', desc: 'FP16 • Max qualité', badge: 'powerful', icon: 'zap', backend: 'diffusers' },
     // === CyberRealistic Pony XL v16 ===
-    { id: 'CyberRealistic Pony (Moyen)', name: 'CyberRealistic Pony (Moyen)', desc: 'INT8 • Pony XL v16', badge: 'powerful', icon: 'sparkles', backend: 'diffusers' },
+    { id: 'CyberRealistic Pony (Moyen)', name: 'CyberRealistic Pony (Moyen)', desc: 'INT8 • Pony XL v16', badge: 'balanced', icon: 'sparkles', backend: 'diffusers' },
     { id: 'CyberRealistic Pony (Normal)', name: 'CyberRealistic Pony (Normal)', desc: 'FP16 • Pony XL v16', badge: 'powerful', icon: 'sparkles', backend: 'diffusers' },
 ];
 
 // Modèles TEXT2IMG (génération depuis texte seul)
 const TEXT2IMG_MODELS = [
-    { id: 'epiCRealism XL', name: 'epiCRealism XL', desc: 'Réaliste', badge: 'powerful', icon: 'zap' },
-    { id: 'CyberRealistic Pony (Moyen)', name: 'CyberRealistic Pony', desc: 'Pony XL v16 • Réaliste', badge: 'powerful', icon: 'sparkles' },
+    { id: 'epiCRealism XL', name: 'epiCRealism (Moyen)', desc: 'INT8 • Recommandé', badge: 'balanced', icon: 'zap' },
+    { id: 'CyberRealistic Pony (Moyen)', name: 'CyberRealistic Pony (Moyen)', desc: 'INT8 • Pony XL v16', badge: 'balanced', icon: 'sparkles' },
     // === Flux ===
     { id: 'Flux Dev INT4', name: 'Flux Dev INT4', desc: 'NF4 12B • Top qualité', badge: 'powerful', icon: 'sparkles' },
     { id: 'Flux Dev INT8', name: 'Flux Dev INT8', desc: 'INT8 12B • Rapide', badge: 'supreme', icon: 'sparkles' },
