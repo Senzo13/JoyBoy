@@ -199,7 +199,23 @@ class SettingsContext {
             console.warn('[Settings] Video audio migration skipped:', e);
         }
 
-        // 5. Save if we migrated anything
+        // 5. FaceRef is now smart-capped server-side. Reset old aggressive local
+        // values once so users do not keep a misleading high slider from older builds.
+        try {
+            const faceRefMigrationKey = 'joyboyFaceRefSmartCapMigrated';
+            if (localStorage.getItem(faceRefMigrationKey) !== '1') {
+                const rawFaceScale = parseFloat(this._data.faceRefScale ?? this._defaults.faceRefScale);
+                if (Number.isFinite(rawFaceScale) && rawFaceScale > 0.35) {
+                    this._data.faceRefScale = 0.35;
+                    migrated = true;
+                }
+                localStorage.setItem(faceRefMigrationKey, '1');
+            }
+        } catch (e) {
+            console.warn('[Settings] FaceRef migration skipped:', e);
+        }
+
+        // 6. Save if we migrated anything
         if (migrated) {
             this._save();
         }

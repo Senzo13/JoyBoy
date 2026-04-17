@@ -13,8 +13,27 @@ let currentImage = null;
 let originalImage = null;
 let modifiedImage = null;
 let pendingImage = null;
-let faceRefImage = null;  // Base64 du visage de référence pour text2img
+const MAX_FACE_REF_IMAGES = 5;
+let faceRefImages = [];  // Base64 refs visage pour text2img (1-5 images)
+let faceRefImage = null;  // Compat legacy: première image de faceRefImages
 let styleRefImage = null;  // Base64 de l'image de style pour text2img (IP-Adapter CLIP)
+
+function getFaceRefImages() {
+    if (Array.isArray(faceRefImages)) {
+        return faceRefImages.filter(Boolean).slice(0, MAX_FACE_REF_IMAGES);
+    }
+    return faceRefImage ? [faceRefImage] : [];
+}
+
+function syncFaceRefLegacy() {
+    const refs = getFaceRefImages();
+    faceRefImages = refs;
+    faceRefImage = refs[0] || null;
+}
+
+function getFaceRefPayload() {
+    return getFaceRefImages();
+}
 
 // Generation
 let currentController = null;

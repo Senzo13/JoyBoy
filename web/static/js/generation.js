@@ -893,6 +893,9 @@ async function generate() {
         const enhanceVal = userSettings.enhancePrompt;
         const enhanceModeVal = userSettings.enhanceMode || 'light';
         const adultPayload = window.getAdultGenerationPayload ? window.getAdultGenerationPayload() : {};
+        const faceRefs = typeof getFaceRefPayload === 'function'
+            ? getFaceRefPayload()
+            : (faceRefImage ? [faceRefImage] : []);
         console.log(`[GEN] enhance=${enhanceVal}, enhance_mode=${enhanceModeVal}`);
         const result = await apiGeneration.generate({
             image: pendingImage,
@@ -905,11 +908,12 @@ async function generate() {
             controlnet_depth: userSettings.controlnetDepth ?? null,
             composite_radius: userSettings.compositeRadius ?? null,
             skip_auto_refine: userSettings.skipAutoRefine === true,
-            face_ref: faceRefImage || null,
+            face_ref: faceRefs[0] || null,
+            face_refs: faceRefs,
             text2img_guidance: userSettings.text2imgGuidance ?? 7.5,
             face_ref_scale: userSettings.faceRefScale ?? 0.35,
             style_ref: styleRefImage || null,
-            style_ref_scale: userSettings.styleRefScale ?? 0.4,
+            style_ref_scale: userSettings.styleRefScale ?? 0.55,
             export_format: userSettings.exportFormat || 'auto',
             export_width: userSettings.exportWidth || 768,
             export_height: userSettings.exportHeight || 1344,
@@ -1069,6 +1073,9 @@ async function continueChat() {
 
         try {
             const adultPayload = window.getAdultGenerationPayload ? window.getAdultGenerationPayload() : {};
+            const faceRefs = typeof getFaceRefPayload === 'function'
+                ? getFaceRefPayload()
+                : (faceRefImage ? [faceRefImage] : []);
             const result = await apiGeneration.generate({
                 prompt: prompt,
                 model: inpaintModel,
@@ -1081,11 +1088,12 @@ async function continueChat() {
                 controlnet_depth: userSettings.controlnetDepth ?? null,
                 composite_radius: userSettings.compositeRadius ?? null,
                 skip_auto_refine: userSettings.skipAutoRefine === true,
-                face_ref: faceRefImage || null,
+                face_ref: faceRefs[0] || null,
+                face_refs: faceRefs,
                 text2img_guidance: userSettings.text2imgGuidance ?? 7.5,
                 face_ref_scale: userSettings.faceRefScale ?? 0.35,
                 style_ref: styleRefImage || null,
-                style_ref_scale: userSettings.styleRefScale ?? 0.4,
+                style_ref_scale: userSettings.styleRefScale ?? 0.55,
                 export_format: userSettings.exportFormat || 'auto',
                 export_width: userSettings.exportWidth || 768,
                 export_height: userSettings.exportHeight || 1344,
@@ -1405,6 +1413,9 @@ async function generateImageFromChat(imagePrompt) {
 
     try {
         const adultPayload = window.getAdultGenerationPayload ? window.getAdultGenerationPayload() : {};
+        const faceRefs = typeof getFaceRefPayload === 'function'
+            ? getFaceRefPayload()
+            : (faceRefImage ? [faceRefImage] : []);
         const result = await apiGeneration.generate({
             image: null,
             prompt: imagePrompt,
@@ -1414,11 +1425,12 @@ async function generateImageFromChat(imagePrompt) {
             steps: userSettings.text2imgSteps || 30,
             chatId: targetChatId,
             generationId: currentGenerationId,
-            face_ref: faceRefImage || null,
+            face_ref: faceRefs[0] || null,
+            face_refs: faceRefs,
             text2img_guidance: userSettings.text2imgGuidance ?? 7.5,
             face_ref_scale: userSettings.faceRefScale ?? 0.35,
             style_ref: styleRefImage || null,
-            style_ref_scale: userSettings.styleRefScale ?? 0.4,
+            style_ref_scale: userSettings.styleRefScale ?? 0.55,
             export_format: userSettings.exportFormat || 'auto',
             export_width: userSettings.exportWidth || 768,
             export_height: userSettings.exportHeight || 1344,

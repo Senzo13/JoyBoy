@@ -77,7 +77,7 @@
             <span class="composer-action-item-icon"><i data-lucide="scan-face"></i></span>
             <span class="composer-action-item-copy">
                 <span class="composer-action-item-label" id="composer-action-face-label">Visage de référence</span>
-                <span class="composer-action-item-desc" id="composer-action-face-desc">Aider JoyBoy à préserver une identité</span>
+                <span class="composer-action-item-desc" id="composer-action-face-desc">Ajouter 1 à 5 photos nettes pour stabiliser l’identité</span>
             </span>
         </button>
         <button class="composer-action-item" type="button" onclick="chooseComposerAction('style')">
@@ -621,11 +621,11 @@
                         </div>
                         <div class="settings-slider-row">
                             <div class="settings-slider-header">
-                                <div class="settings-label" id="gen-txt2img-face-ref-label">Face ref scale (IP-Adapter)</div>
+                                <div class="settings-label" id="gen-txt2img-face-ref-label">Face ref scale (auto-plafonné)</div>
                                 <div class="settings-slider-value" id="settings-face-ref-scale-value">0.35</div>
                             </div>
                             <input type="range" class="settings-slider" id="settings-face-ref-scale" min="0" max="1" step="0.05" value="0.35" oninput="updateSettingSlider('faceRefScale', this.value)">
-                            <div class="settings-slider-hint" id="gen-txt2img-face-ref-hint">Ressemblance au visage de référence. Bas = léger. Haut = copie exacte mais cartoon.</div>
+                            <div class="settings-slider-hint" id="gen-txt2img-face-ref-hint">Ressemblance au visage. 0.35 pour portrait; JoyBoy baisse automatiquement pour corps entier, pose, style ref ou ControlNet. 2-5 photos nettes aident.</div>
                         </div>
                         <div class="settings-slider-row">
                             <div class="settings-slider-header">
@@ -1766,7 +1766,7 @@
     </div>
 
     <input type="file" id="file-input" accept="image/*">
-    <input type="file" id="face-ref-input" accept="image/*" style="display:none">
+    <input type="file" id="face-ref-input" accept="image/*" multiple style="display:none">
     <input type="file" id="style-ref-input" accept="image/*" style="display:none">
     <input type="file" id="pack-archive-input" accept=".zip,application/zip" style="display:none" onchange="handlePackArchiveSelected(event)">
 
@@ -1808,7 +1808,7 @@
                 <button id="clear-image-btn" class="clear-image-btn" onclick="clearImage()">✕</button>
             </div>
             <div class="face-ref-container" id="face-ref-container">
-                <img id="face-ref-preview" class="face-ref-preview">
+                <div class="face-ref-slots" id="face-ref-slots"></div>
                 <button id="clear-face-ref-btn" class="clear-face-ref-btn" onclick="clearFaceRef()">✕</button>
             </div>
             <div class="style-ref-container" id="style-ref-container">
@@ -1974,7 +1974,7 @@
                     <button id="chat-clear-image-btn" class="clear-image-btn" onclick="clearImage()">✕</button>
                 </div>
                 <div class="face-ref-container" id="chat-face-ref-container">
-                    <img id="chat-face-ref-preview" class="face-ref-preview">
+                    <div class="face-ref-slots" id="chat-face-ref-slots"></div>
                     <button id="chat-clear-face-ref-btn" class="clear-face-ref-btn" onclick="clearFaceRef()">✕</button>
                 </div>
                 <div class="style-ref-container" id="chat-style-ref-container">

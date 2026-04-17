@@ -1,6 +1,15 @@
 import unittest
 
-from core.generation.face_reference import resolve_text2img_face_reference_policy
+try:
+    import torch
+except ModuleNotFoundError:  # pragma: no cover - optional in light CI envs
+    torch = None
+
+from core.generation.face_reference import (
+    merge_faceid_embeddings,
+    resolve_text2img_face_reference_policy,
+)
+from web.routes.generation import _normalize_face_ref_payload
 
 
 class FaceReferencePolicyTests(unittest.TestCase):
@@ -43,6 +52,37 @@ class FaceReferencePolicyTests(unittest.TestCase):
 
         self.assertEqual(policy.scale, 0.16)
         self.assertIn("style reference", policy.reason)
+
+    def test_face_ref_payload_accepts_legacy_and_caps_to_five(self):
+        refs = _normalize_face_ref_payload({
+            "face_ref": "legacy",
+            "face_refs": ["new-1", "new-2", "new-3", "new-4", "new-5", "new-6"],
+        })
+
+        self.assertEqual(refs, ["legacy", "new-1", "new-2", "new-3", "new-4"])
+
+    def test_face_ref_payload_dedupes_legacy_ref(self):
+        refs = _normalize_face_ref_payload({
+            "face_ref": "same",
+            "face_refs": ["same", "other"],
+        })
+
+        self.assertEqual(refs, ["same", "other"])
+
+    @unittest.skipIf(torch is None, "torch not installed")
+    def test_multiple_faceid_embeddings_are_averaged_and_normalized(self):
+        first = torch.zeros(2, 1, 4)
+        first[1, 0, 0] = 1
+        second = torch.zeros(2, 1, 4)
+        second[1, 0, 1] = 1
+
+        merged = merge_faceid_embeddings([first, second])
+
+        self.assertEqual(tuple(merged.shape), (2, 1, 4))
+        self.assertTrue(torch.allclose(merged[0], torch.zeros_like(merged[0])))
+        self.assertAlmostEqual(float(merged[1].norm(dim=-1).item()), 1.0, places=5)
+        self.assertGreater(float(merged[1, 0, 0]), 0)
+        self.assertGreater(float(merged[1, 0, 1]), 0)
 
 
 if __name__ == "__main__":

@@ -482,23 +482,64 @@
 /* ===== FACE REF (IP-Adapter FaceID) ===== */
 .face-ref-container {
   position: relative;
-  display: inline-flex;
+  display: none;
   align-items: center;
 }
 
-.face-ref-preview {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  object-fit: cover;
-  display: none;
-  cursor: pointer;
-  border: 2px solid var(--accent, #7c3aed);
-  transition: transform 0.15s ease;
+.face-ref-container.has-image {
+  display: inline-flex;
 }
 
-.face-ref-preview:hover {
+.face-ref-slots {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 4px;
+  border-radius: 999px;
+  background: rgba(124, 58, 237, 0.08);
+  border: 1px solid rgba(124, 58, 237, 0.18);
+}
+
+.face-ref-slot {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  padding: 0;
+  cursor: pointer;
+  border: 1px solid rgba(167, 139, 250, 0.65);
+  background: rgba(255, 255, 255, 0.04);
+  color: #c4b5fd;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.face-ref-slot img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.face-ref-slot.empty {
+  border-style: dashed;
+  background: rgba(124, 58, 237, 0.08);
+  opacity: 0.45;
+}
+
+.face-ref-slot.empty.next {
+  opacity: 0.9;
+}
+
+.face-ref-slot:hover {
   transform: scale(1.08);
+  border-color: #c4b5fd;
+  background: rgba(124, 58, 237, 0.16);
 }
 
 .face-ref-btn {
@@ -541,11 +582,6 @@
   justify-content: center;
   line-height: 1;
   z-index: 1;
-}
-
-/* Hide face-ref button when preview is shown */
-.face-ref-container.has-image .face-ref-btn {
-  display: none;
 }
 
 /* ===== STYLE REF (IP-Adapter CLIP) ===== */

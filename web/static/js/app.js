@@ -160,17 +160,42 @@ document.getElementById('file-input')?.addEventListener('change', function(e) {
     }
 });
 
-// Face ref input handler
-document.getElementById('face-ref-input')?.addEventListener('change', function(e) {
-    const file = e.target.files[0];
-    if (file) {
+function readFileAsDataUrl(file) {
+    return new Promise((resolve, reject) => {
         const reader = new FileReader();
-        reader.onload = function(e) {
-            faceRefImage = e.target.result;
-            if (typeof updateFaceRefPreviews === 'function') updateFaceRefPreviews();
-        };
+        reader.onload = event => resolve(event.target.result);
+        reader.onerror = reject;
         reader.readAsDataURL(file);
+    });
+}
+
+// Face ref input handler (1-5 images, merged server-side)
+document.getElementById('face-ref-input')?.addEventListener('change', async function(e) {
+    const currentRefs = typeof getFaceRefImages === 'function' ? getFaceRefImages() : [];
+    const maxRefs = typeof MAX_FACE_REF_IMAGES !== 'undefined' ? MAX_FACE_REF_IMAGES : 5;
+    const remainingSlots = Math.max(0, maxRefs - currentRefs.length);
+    if (remainingSlots <= 0) {
+        e.target.value = '';
+        return;
     }
+    const files = Array.from(e.target.files || [])
+        .filter(file => file.type?.startsWith('image/'))
+        .slice(0, remainingSlots);
+
+    if (!files.length) {
+        e.target.value = '';
+        return;
+    }
+
+    const images = await Promise.all(files.map(readFileAsDataUrl));
+    faceRefImages = [...currentRefs, ...images].slice(0, maxRefs);
+    syncFaceRefLegacy();
+    if (typeof updateFaceRefPreviews === 'function') updateFaceRefPreviews();
+    if (typeof updateSendButtonState === 'function') {
+        updateSendButtonState('home');
+        updateSendButtonState('chat');
+    }
+    e.target.value = '';
 });
 
 // Style ref input handler

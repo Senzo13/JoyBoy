@@ -1884,31 +1884,76 @@ function clearImage() {
 // ===== FACE REF PREVIEWS =====
 function updateFaceRefPreviews() {
     const ids = [
-        { preview: 'face-ref-preview', clear: 'clear-face-ref-btn', container: 'face-ref-container' },
-        { preview: 'chat-face-ref-preview', clear: 'chat-clear-face-ref-btn', container: 'chat-face-ref-container' },
+        { slots: 'face-ref-slots', clear: 'clear-face-ref-btn', container: 'face-ref-container' },
+        { slots: 'chat-face-ref-slots', clear: 'chat-clear-face-ref-btn', container: 'chat-face-ref-container' },
     ];
-    for (const { preview, clear, container } of ids) {
-        const img = document.getElementById(preview);
+    const refs = typeof getFaceRefImages === 'function'
+        ? getFaceRefImages()
+        : (faceRefImage ? [faceRefImage] : []);
+    const maxRefs = typeof MAX_FACE_REF_IMAGES !== 'undefined' ? MAX_FACE_REF_IMAGES : 5;
+
+    for (const { slots, clear, container } of ids) {
+        const slotsWrap = document.getElementById(slots);
         const btn = document.getElementById(clear);
         const wrap = document.getElementById(container);
-        if (img) {
-            img.src = faceRefImage || '';
-            img.style.display = faceRefImage ? 'block' : 'none';
+        if (slotsWrap) {
+            slotsWrap.innerHTML = '';
+            refs.forEach((src, index) => {
+                const slot = document.createElement('button');
+                slot.type = 'button';
+                slot.className = 'face-ref-slot has-image';
+                slot.title = uiT('composer.faceRefSlotTitle', 'Face reference {count}/{max}', {
+                    count: index + 1,
+                    max: maxRefs,
+                });
+                slot.onclick = () => document.getElementById('face-ref-input')?.click();
+
+                const img = document.createElement('img');
+                img.src = src;
+                img.alt = uiT('composer.faceRefAlt', 'Face reference {count}', { count: index + 1 });
+                slot.appendChild(img);
+                slotsWrap.appendChild(slot);
+            });
+
+            for (let slotIndex = refs.length; refs.length > 0 && slotIndex < maxRefs; slotIndex += 1) {
+                const addSlot = document.createElement('button');
+                addSlot.type = 'button';
+                addSlot.className = `face-ref-slot empty${slotIndex === refs.length ? ' next' : ''}`;
+                addSlot.title = uiT('composer.faceRefAddTitle', '{count}/{max} face refs - add another', {
+                    count: refs.length,
+                    max: maxRefs,
+                });
+                addSlot.textContent = slotIndex === refs.length ? '+' : '';
+                addSlot.onclick = () => document.getElementById('face-ref-input')?.click();
+                slotsWrap.appendChild(addSlot);
+            }
         }
         if (btn) {
-            btn.style.display = faceRefImage ? 'flex' : 'none';
+            btn.style.display = refs.length ? 'flex' : 'none';
         }
         if (wrap) {
-            wrap.classList.toggle('has-image', !!faceRefImage);
+            wrap.classList.toggle('has-image', refs.length > 0);
+            wrap.title = refs.length
+                ? uiT('composer.faceRefsSummary', '{count}/{max} face references. 2-5 clear photos can stabilize identity.', {
+                    count: refs.length,
+                    max: maxRefs,
+                })
+                : '';
         }
     }
 }
 
 function clearFaceRef() {
+    faceRefImages = [];
     faceRefImage = null;
+    if (typeof syncFaceRefLegacy === 'function') syncFaceRefLegacy();
     updateFaceRefPreviews();
     const input = document.getElementById('face-ref-input');
     if (input) input.value = '';
+    if (typeof updateSendButtonState === 'function') {
+        updateSendButtonState('home');
+        updateSendButtonState('chat');
+    }
 }
 
 // ===== STYLE REF PREVIEWS =====

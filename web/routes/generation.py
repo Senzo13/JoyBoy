@@ -35,6 +35,33 @@ def _adult_mode_locked_response(error_response):
     )
 
 
+def _normalize_face_ref_payload(data, limit=5):
+    """Accept legacy `face_ref` plus new `face_refs` list, capped to 1-5 images."""
+    values = []
+    refs = data.get("face_refs")
+    if isinstance(refs, list):
+        values.extend(refs)
+    elif isinstance(refs, str):
+        values.append(refs)
+
+    legacy_ref = data.get("face_ref")
+    if isinstance(legacy_ref, str) and legacy_ref:
+        values.insert(0, legacy_ref)
+
+    deduped = []
+    seen = set()
+    for value in values:
+        if not isinstance(value, str) or not value:
+            continue
+        if value in seen:
+            continue
+        seen.add(value)
+        deduped.append(value)
+        if len(deduped) >= limit:
+            break
+    return deduped
+
+
 # ─── Helper: lazy imports from web.app to avoid circular imports ───
 
 def _get_state():
@@ -482,7 +509,7 @@ def unified_generate():
         controlnet_depth_override = data.get('controlnet_depth')  # Settings slider override
         composite_radius_override = data.get('composite_radius')  # Settings slider override (None=auto)
         crop_inpaint = data.get('crop_inpaint', True)
-        face_ref_b64 = data.get('face_ref')  # Base64 du visage de référence pour IP-Adapter FaceID
+        face_ref_b64s = _normalize_face_ref_payload(data)  # 1-5 visages de référence pour IP-Adapter FaceID
         text2img_guidance = data.get('text2img_guidance', 7.5)
         face_ref_scale = data.get('face_ref_scale', 0.35)
         style_ref_b64 = data.get('style_ref')  # Base64 de l'image de style pour IP-Adapter CLIP
@@ -1146,7 +1173,10 @@ def unified_generate():
 
             try:
                 # Style ref = init image pure (img2img). Face ref = IP-Adapter FaceID.
-                from core.generation.face_reference import resolve_text2img_face_reference_policy
+                from core.generation.face_reference import (
+                    merge_faceid_embeddings,
+                    resolve_text2img_face_reference_policy,
+                )
 
                 face_embeds = None
                 style_init_img = None
@@ -1171,8 +1201,8 @@ def unified_generate():
                     has_pose_control=needs_cn_pose,
                 )
                 face_ref_scale = _face_policy.scale
-                needs_face = face_ref_b64 is not None and face_ref_scale > 0
-                if face_ref_b64 is not None and _face_policy.was_adjusted:
+                needs_face = bool(face_ref_b64s) and face_ref_scale > 0
+                if face_ref_b64s and _face_policy.was_adjusted:
                     print(
                         "[TEXT2IMG] Face reference scale auto-cap "
                         f"{_face_policy.requested_scale:.2f} → {face_ref_scale:.2f} "
@@ -1186,15 +1216,25 @@ def unified_generate():
                                          use_depth_controlnet=_use_depth_cn) as mgr:
                     pipe = mgr.get_pipeline('text2img')
                     if needs_face:
-                        face_ref_img = base64_to_pil(face_ref_b64)
-                        face_embeds = mgr.extract_face_embedding(face_ref_img)
+                        valid_face_embeds = []
+                        for idx, face_ref_b64_item in enumerate(face_ref_b64s[:5], start=1):
+                            try:
+                                face_ref_img = base64_to_pil(face_ref_b64_item)
+                                face_embed = mgr.extract_face_embedding(face_ref_img)
+                            except Exception as _face_ref_err:
+                                print(f"[TEXT2IMG] Face reference {idx}/5 ignorée ({_face_ref_err})")
+                                face_embed = None
+                            if face_embed is not None:
+                                valid_face_embeds.append(face_embed)
+                        face_embeds = merge_faceid_embeddings(valid_face_embeds)
                         if face_embeds is not None:
                             print(
                                 f"[TEXT2IMG] Face reference → IP-Adapter FaceID "
-                                f"activé (scale={face_ref_scale:.2f}, policy={_face_policy.reason})"
+                                f"activé ({len(valid_face_embeds)}/{len(face_ref_b64s)} refs, "
+                                f"scale={face_ref_scale:.2f}, policy={_face_policy.reason})"
                             )
                         else:
-                            print(f"[TEXT2IMG] Aucun visage détecté dans la référence, ignoré")
+                            print(f"[TEXT2IMG] Aucun visage détecté dans les références, ignoré")
                     if has_style:
                         set_progress_phase("prepare_text2img", 20, 100)
                         style_init_img = base64_to_pil(style_ref_b64)
