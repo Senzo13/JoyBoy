@@ -46,3 +46,9 @@ Avoid putting explicit adult, private, or identity-sensitive outputs directly in
 ## Contributor rule of thumb
 
 If a capability depends on machine-local assets, sensitive prompts, private tokens, or optional behavior, prefer expressing it through a local pack or a local configuration gate rather than hardcoding it directly into the public core.
+
+## Screenshort and GIF Safety Checklist
+- [ ] Screenshot content is safe for public viewing
+- [ ] Proper consent has been obtained if people or user data are shown
+- [ ] No secrets are visible (API keys, passwords, tokens)
+- [ ] No private files or sensitive data are included
