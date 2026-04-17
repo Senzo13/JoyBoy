@@ -348,7 +348,10 @@ def _place_sdxl_pipe(pipe, model_name, quantized=False, has_controlnet=False):
     label = f"{model_name}{cn_str}"
 
     if IS_MAC:
+        from core.models.runtime_env import apply_mps_pipeline_optimizations
+
         pipe.to("mps")
+        apply_mps_pipeline_optimizations(pipe, label)
         print(f"[MM] Ready: {label} (MPS)")
         return
 

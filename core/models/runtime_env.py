@@ -39,3 +39,33 @@ def configure_huggingface_env(
     env["HF_ENABLE_PARALLEL_LOADING"] = (
         "YES" if should_enable_hf_parallel_loading(system_name) else "NO"
     )
+
+
+def apply_mps_pipeline_optimizations(
+    pipe: object,
+    label: str = "pipeline",
+    *,
+    log_skip: bool = True,
+) -> bool:
+    """Apply conservative Diffusers pipeline tweaks for macOS/MPS.
+
+    Apple Silicon generation is often limited by unified-memory pressure. The
+    Diffusers MPS guide recommends attention slicing for machines with less
+    than 64GB RAM or larger-than-512px generations, which matches JoyBoy's SDXL
+    text2img and inpaint use cases.
+    """
+    enable_attention_slicing = getattr(pipe, "enable_attention_slicing", None)
+    if not callable(enable_attention_slicing):
+        if log_skip:
+            print(f"[MM] {label}: attention slicing unavailable (MPS)")
+        return False
+
+    try:
+        enable_attention_slicing()
+    except Exception as exc:
+        if log_skip:
+            print(f"[MM] {label}: attention slicing skip ({exc})")
+        return False
+
+    print(f"[MM] {label}: attention slicing active (MPS)")
+    return True

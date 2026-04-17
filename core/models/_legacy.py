@@ -186,7 +186,10 @@ def move_to_device(pipe, name="pipeline", quantized=False):
     from core.models.gpu_profile import get_offload_strategy
 
     if IS_MAC:
+        from core.models.runtime_env import apply_mps_pipeline_optimizations
+
         pipe.to("mps")
+        apply_mps_pipeline_optimizations(pipe, name, log_skip=False)
         return
 
     if not torch.cuda.is_available():
