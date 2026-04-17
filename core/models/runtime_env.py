@@ -57,6 +57,7 @@ def apply_mps_pipeline_optimizations(
     """
     enabled_any = _enable_mps_vae_force_upcast(pipe, label, log_skip=log_skip)
     enabled_any = _enable_mps_full_vae_fp32_decode(pipe, label, log_skip=log_skip) or enabled_any
+    enabled_any = _enable_mps_contiguous_vae_modules(pipe, label, log_skip=log_skip) or enabled_any
     enabled_any = _enable_mps_postprocess_nan_guard(pipe, label, log_skip=log_skip) or enabled_any
     enabled_any = _enable_mps_attention_upcast(pipe, label, log_skip=log_skip) or enabled_any
 
@@ -167,6 +168,70 @@ def _enable_mps_full_vae_fp32_decode(
         return False
 
     print(f"[MM] {label}: full VAE fp32 decode active (MPS)")
+    return True
+
+
+def _enable_mps_contiguous_vae_modules(
+    pipe: object,
+    label: str,
+    *,
+    log_skip: bool = True,
+) -> bool:
+    """Make VAE tiled encode/decode inputs contiguous on MPS.
+
+    Diffusers' VAE tiling slices tensors into views. On Apple MPS, conv2d can
+    fail on those non-contiguous tile views with a stride/view RuntimeError.
+    Keeping the module patch local avoids disabling VAE tiling globally.
+    """
+    vae = getattr(pipe, "vae", None)
+    if vae is None:
+        return False
+
+    enabled = False
+    for module_name in ("encoder", "decoder"):
+        module = getattr(vae, module_name, None)
+        if _patch_mps_contiguous_forward(module, label, f"VAE {module_name}"):
+            enabled = True
+
+    if not enabled and log_skip:
+        print(f"[MM] {label}: VAE contiguous tile guard unavailable (MPS)")
+
+    return enabled
+
+
+def _patch_mps_contiguous_forward(module: object, label: str, module_label: str) -> bool:
+    forward = getattr(module, "forward", None)
+    if module is None or not callable(forward):
+        return False
+
+    if getattr(module, "_joyboy_mps_contiguous_forward", False):
+        _log_once(
+            module,
+            "_joyboy_mps_contiguous_forward_logged",
+            f"[MM] {label}: {module_label} contiguous tile guard active (MPS)",
+        )
+        return True
+
+    try:
+        import torch
+
+        original_forward = forward
+
+        def _joyboy_contiguous_forward(self, sample, *args, **kwargs):
+            try:
+                if torch.is_tensor(sample) and not sample.is_contiguous():
+                    sample = sample.contiguous()
+            except Exception:
+                pass
+            return original_forward(sample, *args, **kwargs)
+
+        module.forward = types.MethodType(_joyboy_contiguous_forward, module)
+        setattr(module, "_joyboy_mps_contiguous_forward", True)
+    except Exception as exc:
+        print(f"[MM] {label}: {module_label} contiguous tile guard skip ({exc})")
+        return False
+
+    print(f"[MM] {label}: {module_label} contiguous tile guard active (MPS)")
     return True
 
 

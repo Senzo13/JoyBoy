@@ -110,6 +110,41 @@ class ModelRuntimeEnvTest(unittest.TestCase):
         self.assertTrue(pipe.vae.config.force_upcast)
         self.assertTrue(pipe._joyboy_mps_full_vae_fp32_decode)
 
+    def test_mps_pipeline_optimizations_make_vae_tiles_contiguous(self) -> None:
+        class FakeStage:
+            def __init__(self) -> None:
+                self.last_was_contiguous = None
+
+            def forward(self, sample):
+                self.last_was_contiguous = sample.is_contiguous()
+                return sample
+
+        class FakeVae:
+            def __init__(self) -> None:
+                self.config = type("Config", (), {"force_upcast": False})()
+                self.encoder = FakeStage()
+                self.decoder = FakeStage()
+
+            def register_to_config(self, **kwargs) -> None:
+                for key, value in kwargs.items():
+                    setattr(self.config, key, value)
+
+        class FakePipe:
+            def __init__(self) -> None:
+                self.vae = FakeVae()
+
+        pipe = FakePipe()
+        sample = torch.zeros(1, 4, 8, 8)[:, :, :, ::2]
+        self.assertFalse(sample.is_contiguous())
+
+        enabled = apply_mps_pipeline_optimizations(pipe, "fake", log_skip=False)
+        pipe.vae.encoder.forward(sample)
+        pipe.vae.decoder.forward(sample)
+
+        self.assertTrue(enabled)
+        self.assertTrue(pipe.vae.encoder.last_was_contiguous)
+        self.assertTrue(pipe.vae.decoder.last_was_contiguous)
+
     def test_ensure_mps_sdxl_vae_ready_for_call_aligns_cpu_vae(self) -> None:
         class FakeParam:
             def __init__(self, device: str) -> None:
