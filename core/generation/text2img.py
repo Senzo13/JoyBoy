@@ -2,6 +2,8 @@
 Text-to-image generation: styles, format detection, generate_from_text.
 Depends on: state.py, preview.py
 """
+from __future__ import annotations
+
 from PIL import Image
 import numpy as np
 import torch

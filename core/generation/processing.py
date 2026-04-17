@@ -3,6 +3,8 @@ Traitement d'images: masques, segmentation, generation.
 Hub module — re-exports from submodules for backward compatibility.
 Keeps process_image() (main inpainting pipeline).
 """
+from __future__ import annotations
+
 from PIL import Image, ImageDraw, ImageFilter, ImageEnhance
 import numpy as np
 import torch

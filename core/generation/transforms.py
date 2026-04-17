@@ -2,6 +2,8 @@
 Image transforms: upscale, reframe (zoom out), expand (outpaint).
 Depends on: state.py, preview.py, compositing.py
 """
+from __future__ import annotations
+
 from PIL import Image, ImageFilter, ImageDraw, ImageEnhance
 import numpy as np
 import time
