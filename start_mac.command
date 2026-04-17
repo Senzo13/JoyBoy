@@ -59,14 +59,14 @@ show_menu() {
     echo "   ========================================================================"
     echo ""
     echo ""
-    echo "      [1]  Setup complet (premiere fois / reparer)"
+    echo "      [1]  Full setup (first run / repair)"
     echo ""
-    echo "      [2]  Demarrer rapidement"
+    echo "      [2]  Quick start"
     echo ""
-    echo "      [Q]  Quitter"
+    echo "      [Q]  Quit"
     echo ""
     echo ""
-    read -p "      Choix: " choice
+    read -p "      Choice: " choice
 
     case $choice in
         1) setup ;;
@@ -84,24 +84,47 @@ setup() {
     echo "   ================================================================"
     echo ""
 
-    # Creer venv si n'existe pas
+    # Create venv if missing
     if [ ! -d "venv" ]; then
-        echo "   [1/4] Creation de l'environnement virtuel..."
-        python3 -m venv venv
+        echo "   [1/4] Creating virtual environment..."
+        if ! command -v python3 >/dev/null 2>&1; then
+            echo "   [ERROR] python3 was not found."
+            echo "           Install Python 3.12+ first, then run setup again."
+            read -p "   Press Enter..."
+            show_menu
+            return
+        fi
+        if ! python3 -m venv venv; then
+            echo "   [ERROR] Could not create the virtual environment."
+            read -p "   Press Enter..."
+            show_menu
+            return
+        fi
     else
-        echo "   [1/4] Environnement virtuel OK"
+        echo "   [1/4] Virtual environment OK"
     fi
 
-    # Activer venv
-    source venv/bin/activate
+    # Activate venv
+    if ! source venv/bin/activate; then
+        echo "   [ERROR] Could not activate the virtual environment."
+        read -p "   Press Enter..."
+        show_menu
+        return
+    fi
 
-    echo "   [2/4] Bootstrap dependances + verification..."
+    echo "   [2/4] Installing dependencies + verification..."
     echo ""
-    python scripts/bootstrap.py setup
+    if ! python scripts/bootstrap.py setup; then
+        echo ""
+        echo "   [ERROR] Setup failed. Check the messages above, then run setup again."
+        read -p "   Press Enter..."
+        show_menu
+        return
+    fi
 
     echo ""
     echo "   ================================================================"
-    echo "                   Setup termine !"
+    echo "                   Setup complete!"
     echo "   ================================================================"
     echo ""
     sleep 2
@@ -112,17 +135,17 @@ start_app() {
     clear
     echo ""
     echo "   ================================================================"
-    echo "                      JOYBOY - Demarrage"
+    echo "                      JOYBOY - Startup"
     echo "   ================================================================"
     echo ""
 
-    # Activer venv
+    # Activate venv
     if [ -f "venv/bin/activate" ]; then
         source venv/bin/activate
     else
-        echo "   [!] Environnement virtuel non trouve."
-        echo "       Lance le Setup d'abord (option 1)"
-        read -p "   Appuie sur Entree..."
+        echo "   [!] Virtual environment not found."
+        echo "       Run Setup first (option 1)"
+        read -p "   Press Enter..."
         show_menu
         return
     fi
@@ -135,18 +158,18 @@ start_app() {
     echo ""
     echo "   ----------------------------------------------------------------"
     echo ""
-    echo "   (Ctrl+C pour arreter)"
+    echo "   (Ctrl+C to stop)"
     echo ""
     python web/app.py
 
     echo ""
     echo "   ================================================================"
-    echo "                   Serveur arrete"
+    echo "                   Server stopped"
     echo "   ================================================================"
     echo ""
-    read -p "   Appuie sur Entree..."
+    read -p "   Press Enter..."
     show_menu
 }
 
-# Lancer le menu
+# Start the menu
 show_menu

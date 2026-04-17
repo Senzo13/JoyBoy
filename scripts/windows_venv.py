@@ -67,14 +67,14 @@ def _remove_partial_venv() -> bool:
     if not VENV_DIR.exists():
         return True
 
-    print("    Suppression ancien venv incomplet/incompatible...")
+    print("    Removing old incomplete/incompatible venv...")
     try:
         shutil.rmtree(VENV_DIR, onerror=_make_writable)
         return True
     except Exception as exc:
         _write_log(f"Failed to remove venv: {exc}")
-        print("    [ERREUR] Impossible de supprimer l'ancien venv.")
-        print("    Ferme les terminaux JoyBoy/Python qui l'utilisent puis relance.")
+        print("    [ERROR] Could not remove the old venv.")
+        print("    Close any JoyBoy/Python terminals using it, then run setup again.")
         print(f"    Log: {LOG_PATH}")
         return False
 
@@ -95,15 +95,15 @@ def _python_version_ok(python_exe: Path) -> bool:
 
 def _portable_python_ok() -> bool:
     if not PYTHON_EXE.exists():
-        print(f"    [ERREUR] Python portable introuvable: {PYTHON_EXE}")
+        print(f"    [ERROR] Portable Python not found: {PYTHON_EXE}")
         return False
     if not _python_version_ok(PYTHON_EXE):
-        print("    [ERREUR] Python portable invalide: version 3.12 attendue")
+        print("    [ERROR] Invalid portable Python: expected version 3.12")
         print(f"    Log: {LOG_PATH}")
         return False
     result = _run([str(PYTHON_EXE), "-c", "import ensurepip; import venv"], timeout=15)
     if result.returncode != 0:
-        print("    [ERREUR] Python portable incomplet: ensurepip/venv indisponible")
+        print("    [ERROR] Portable Python is incomplete: ensurepip/venv unavailable")
         print(f"    Log: {LOG_PATH}")
         return False
     return True
@@ -125,43 +125,43 @@ def ensure_venv() -> int:
         return 10
 
     if _venv_ok():
-        print("    [OK] Venv Python 3.12 fonctionnel")
+        print("    [OK] Python 3.12 venv is working")
         return 0
 
     if not _remove_partial_venv():
         return 20
 
-    print("    Creation du venv Python 3.12...")
+    print("    Creating Python 3.12 venv...")
     result = _run([str(PYTHON_EXE), "-m", "venv", str(VENV_DIR)], timeout=180)
     if result.returncode != 0:
-        print("    [ERREUR] Impossible de creer le venv Python 3.12")
+        print("    [ERROR] Could not create the Python 3.12 venv")
         if result.stderr:
-            print("    Derniere erreur:")
+            print("    Last error:")
             print(_tail(result.stderr))
-        print(f"    Log complet: {LOG_PATH}")
+        print(f"    Full log: {LOG_PATH}")
         return 30
 
     if not VENV_PYTHON.exists():
-        print("    [ERREUR] Le venv a ete cree mais python.exe est introuvable")
-        print(f"    Chemin attendu: {VENV_PYTHON}")
-        print(f"    Log complet: {LOG_PATH}")
+        print("    [ERROR] Venv was created, but python.exe was not found")
+        print(f"    Expected path: {VENV_PYTHON}")
+        print(f"    Full log: {LOG_PATH}")
         return 31
 
     result = _run([str(VENV_PYTHON), "-m", "ensurepip", "--upgrade"], timeout=180)
     if result.returncode != 0:
-        print("    [ERREUR] Pip indisponible dans le venv")
+        print("    [ERROR] Pip is unavailable in the venv")
         if result.stderr:
             print(_tail(result.stderr))
-        print(f"    Log complet: {LOG_PATH}")
+        print(f"    Full log: {LOG_PATH}")
         return 32
 
     result = _run([str(VENV_PYTHON), "-m", "pip", "--version"], timeout=30)
     if result.returncode != 0:
-        print("    [ERREUR] Verification pip impossible dans le venv")
-        print(f"    Log complet: {LOG_PATH}")
+        print("    [ERROR] Could not verify pip inside the venv")
+        print(f"    Full log: {LOG_PATH}")
         return 33
 
-    print("    [OK] Venv cree et verifie")
+    print("    [OK] Venv created and verified")
     return 0
 
 

@@ -107,20 +107,20 @@ def install_build_tools():
     print("\n" + "=" * 50)
     print("  INSTALLATION VISUAL C++ BUILD TOOLS")
     print("=" * 50)
-    print("\n  Certains packages Python nécessitent un compilateur C++")
+    print("\n  Some Python packages require a C++ compiler")
     print("  (basicsr, gfpgan, insightface)")
-    print("  Téléchargement de Visual Studio Build Tools...\n")
+    print("  Downloading Visual Studio Build Tools...\n")
 
     installer_path = os.path.join(os.environ.get("TEMP", "."), "vs_BuildTools.exe")
 
     try:
         # Télécharger l'installeur
         if not download_file(VS_BUILD_TOOLS_URL, installer_path):
-            print("  [!] Échec du téléchargement")
+            print("  [!] Download failed")
             return False
 
         # Lancer l'installation avec le workload C++
-        print("  Installation en cours (quelques minutes, acceptez les droits admin)...")
+        print("  Installing now (this may take a few minutes; accept the admin prompt)...")
         result = subprocess.run(
             [installer_path,
              "--add", "Microsoft.VisualStudio.Workload.VCTools",
@@ -135,23 +135,23 @@ def install_build_tools():
             os.remove(installer_path)
 
         if result.returncode == 0 or result.returncode == 3010:  # 3010 = success, reboot suggested
-            print("  [OK] Visual C++ Build Tools installé!")
+            print("  [OK] Visual C++ Build Tools installed!")
             return True
         else:
-            print(f"  [!] Installation terminée (code {result.returncode})")
+            print(f"  [!] Installer finished with code {result.returncode}")
             # Vérifier quand même si ça a marché
             if has_build_tools():
-                print("  [OK] Build tools détectés!")
+                print("  [OK] Build tools detected!")
                 return True
             return False
 
     except subprocess.TimeoutExpired:
-        print("  [!] Installation trop longue (timeout)")
+        print("  [!] Installation timed out")
         if os.path.exists(installer_path):
             os.remove(installer_path)
         return False
     except Exception as e:
-        print(f"  [!] Erreur: {e}")
+        print(f"  [!] Error: {e}")
         if os.path.exists(installer_path):
             os.remove(installer_path)
         return False
@@ -308,15 +308,15 @@ def is_python_compatible():
 
 def download_file(url, dest):
     """Télécharge un fichier avec barre de progression"""
-    print(f"    Téléchargement: {os.path.basename(dest)}")
+    print(f"    Downloading: {os.path.basename(dest)}")
     try:
         # Obtenir la taille du fichier
-        with urllib.request.urlopen(url) as response:
+        with urllib.request.urlopen(url, timeout=60) as response:
             total_size = int(response.headers.get('Content-Length', 0))
 
             # Télécharger avec progression
             downloaded = 0
-            block_size = 8192
+            block_size = 1024 * 1024
             last_percent = -1
 
             with open(dest, 'wb') as f:
@@ -339,10 +339,10 @@ def download_file(url, dest):
                             sys.stdout.flush()
                             last_percent = percent
 
-            print()  # Nouvelle ligne après la barre
+            print()  # New line after the progress bar
         return True
     except Exception as e:
-        print(f"\n    [!] Erreur téléchargement: {e}")
+        print(f"\n    [!] Download error: {e}")
         return False
 
 def install_python_312_local():
@@ -354,12 +354,12 @@ def install_python_312_local():
     On Linux/Mac: users should install Python 3.12 via their package manager.
     """
     if not IS_WINDOWS:
-        print("    [!] Installation Python locale supportée uniquement sur Windows")
+        print("    [!] Local Python installation is supported on Windows only")
         if IS_MAC:
-            print("    [!] Sur Mac: brew install python@3.12")
+            print("    [!] On Mac: brew install python@3.12")
         elif IS_LINUX:
-            print("    [!] Sur Linux (Ubuntu/Debian): sudo apt install python3.12 python3.12-venv")
-            print("    [!] Sur Linux (Fedora): sudo dnf install python3.12")
+            print("    [!] On Linux (Ubuntu/Debian): sudo apt install python3.12 python3.12-venv")
+            print("    [!] On Linux (Fedora): sudo dnf install python3.12")
         return None
 
     project_dir = get_project_dir()
@@ -381,29 +381,29 @@ def install_python_312_local():
                     capture_output=True, text=True, timeout=10
                 )
                 if result2.returncode == 0:
-                    print(f"    [OK] Python 3.12 local déjà présent et fonctionnel")
+                    print(f"    [OK] Local Python 3.12 already present and working")
                     return python_exe
         except:
             pass
         # Si on arrive ici, Python local existe mais est cassé, on réinstalle
-        print("    [!] Python local existant mais incomplet, réinstallation...")
+        print("    [!] Existing local Python is incomplete, reinstalling...")
         shutil.rmtree(python_dir, ignore_errors=True)
 
     print("\n" + "="*50)
-    print("  INSTALLATION PYTHON 3.12 PORTABLE")
+    print("  PORTABLE PYTHON 3.12 INSTALLATION")
     print("="*50)
-    print(f"\n  Python {sys.version.split()[0]} détecté (incompatible xformers)")
-    print("  Téléchargement de Python 3.12 portable...")
-    print("  (python-build-standalone - inclut pip et venv)\n")
+    print(f"\n  Python {sys.version.split()[0]} detected (incompatible with xformers)")
+    print("  Downloading portable Python 3.12...")
+    print("  (python-build-standalone - includes pip and venv)\n")
 
     # Télécharger l'archive Python standalone
     archive_path = os.path.join(project_dir, "python312.tar.gz")
-    print("    Téléchargement (~30 MB)...")
+    print("    Downloading (~30 MB)...")
     if not download_file(PYTHON_312_STANDALONE_URL, archive_path):
         return None
 
     # Extraire l'archive
-    print("    Extraction de l'archive...")
+    print("    Extracting archive...")
     try:
         # Créer un dossier temporaire pour l'extraction
         temp_extract = os.path.join(project_dir, "python312_temp")
@@ -430,7 +430,7 @@ def install_python_312_local():
         os.remove(archive_path)
 
     except Exception as e:
-        print(f"    [!] Erreur extraction: {e}")
+        print(f"    [!] Extraction error: {e}")
         # Nettoyer en cas d'erreur
         if os.path.exists(archive_path):
             os.remove(archive_path)
@@ -442,7 +442,7 @@ def install_python_312_local():
         for root, dirs, files in os.walk(python_dir):
             if "python.exe" in files:
                 found_exe = os.path.join(root, "python.exe")
-                print(f"    [INFO] Python trouvé dans: {root}")
+                print(f"    [INFO] Python found in: {root}")
                 # Déplacer tout vers python_dir si dans un sous-dossier
                 if root != python_dir:
                     for item in os.listdir(root):
@@ -458,10 +458,10 @@ def install_python_312_local():
 
     # Re-vérifier
     if not os.path.exists(python_exe):
-        print(f"    [!] Erreur: Python non trouvé après extraction")
-        print(f"    [!] Chemin attendu: {python_exe}")
+        print(f"    [!] Error: Python not found after extraction")
+        print(f"    [!] Expected path: {python_exe}")
         # Lister ce qui a été extrait pour debug
-        print(f"    [DEBUG] Contenu de {python_dir}:")
+        print(f"    [DEBUG] Contents of {python_dir}:")
         if os.path.exists(python_dir):
             for item in os.listdir(python_dir)[:10]:
                 print(f"      - {item}")
@@ -473,7 +473,7 @@ def install_python_312_local():
         capture_output=True, text=True, timeout=10
     )
     if result.returncode != 0:
-        print(f"    [!] Erreur: module venv non disponible")
+        print(f"    [!] Error: venv module unavailable")
         print(f"    [DEBUG] {result.stderr}")
         return None
 
@@ -483,10 +483,10 @@ def install_python_312_local():
         capture_output=True, text=True, timeout=10
     )
     if result.returncode != 0:
-        print(f"    [!] Erreur: pip non disponible")
+        print(f"    [!] Error: pip unavailable")
         return None
 
-    print(f"\n  [OK] Python 3.12 portable installé dans: {python_dir}")
+    print(f"\n  [OK] Portable Python 3.12 installed in: {python_dir}")
     return python_exe
 
 def recreate_venv_with_python312():
@@ -509,12 +509,12 @@ def recreate_venv_with_python312():
         venv_python = os.path.join(venv_dir, "bin", "python")
 
     print("\n" + "-"*50)
-    print("  Recréation du venv avec Python 3.12")
+    print("  Recreating the venv with Python 3.12")
     print("-"*50 + "\n")
 
     # Supprimer l'ancien venv (plusieurs tentatives si fichiers verrouillés)
     if os.path.exists(venv_dir):
-        print("    Suppression ancien venv...")
+        print("    Removing old venv...")
         max_attempts = 3
         for attempt in range(max_attempts):
             try:
@@ -526,24 +526,24 @@ def recreate_venv_with_python312():
                 break
             except Exception as e:
                 if attempt < max_attempts - 1:
-                    print(f"    [!] Tentative {attempt+1}/{max_attempts} échouée, réessai...")
+                    print(f"    [!] Attempt {attempt+1}/{max_attempts} failed, retrying...")
                     import time
                     time.sleep(2)
                 else:
-                    print(f"    [!] Erreur suppression venv: {e}")
-                    print("    [!] Ferme toutes les fenêtres CMD/terminal utilisant le venv et réessaie")
+                    print(f"    [!] Error removing venv: {e}")
+                    print("    [!] Close every CMD/terminal using this venv, then retry")
                     return False
 
     # Vérifier que l'ancien venv est bien supprimé
     if os.path.exists(venv_dir):
-        print(f"    [!] Le dossier venv existe encore!")
+        print(f"    [!] The venv folder still exists!")
         return False
 
-    print("    [OK] Ancien venv supprimé")
+    print("    [OK] Old venv removed")
 
     # Créer nouveau venv avec Python 3.12
-    print("    Création nouveau venv avec Python 3.12...")
-    print(f"    Python utilisé: {python_exe}")
+    print("    Creating new venv with Python 3.12...")
+    print(f"    Python used: {python_exe}")
 
     result = subprocess.run(
         [python_exe, "-m", "venv", venv_dir],
@@ -553,12 +553,12 @@ def recreate_venv_with_python312():
     )
 
     if result.returncode != 0:
-        print(f"    [!] Erreur création venv: {result.stderr}")
+        print(f"    [!] Venv creation error: {result.stderr}")
         return False
 
     # Vérifier que le venv a été créé
     if not os.path.exists(venv_python):
-        print(f"    [!] Le venv n'a pas été créé correctement")
+        print(f"    [!] Venv was not created correctly")
         return False
 
     # Vérifier que le venv utilise bien Python 3.12
@@ -570,17 +570,17 @@ def recreate_venv_with_python312():
     )
 
     if result.returncode != 0 or "3.12" not in result.stdout:
-        print(f"    [!] Le venv n'utilise pas Python 3.12: {result.stdout.strip()}")
+        print(f"    [!] Venv is not using Python 3.12: {result.stdout.strip()}")
         return False
 
-    print(f"    [OK] Venv créé avec Python {result.stdout.strip()}")
+    print(f"    [OK] Venv created with Python {result.stdout.strip()}")
 
     print("\n" + "="*50)
-    print("  VENV RECRÉÉ AVEC PYTHON 3.12")
+    print("  VENV RECREATED WITH PYTHON 3.12")
     print("  ")
-    print("  Le script va maintenant retourner le code 99")
-    print("  pour que le batch relance le setup complet")
-    print("  avec le nouveau venv Python 3.12")
+    print("  This script will now return code 99")
+    print("  so the launcher can restart the full setup")
+    print("  with the new Python 3.12 venv")
     print("="*50 + "\n")
 
     return True
@@ -766,12 +766,12 @@ def check_pip_installed(package):
 
 def uninstall_package(package):
     """Désinstalle un package"""
-    print(f"    Désinstallation de {package}...")
+    print(f"    Uninstalling {package}...")
     run_pip(["uninstall", "-y", package], quiet=True)
 
 def install_package(package, extra_args=None):
     """Installe un package"""
-    print(f"    Installation de {package}...")
+    print(f"    Installing {package}...")
     args = ["install", package]
     if extra_args:
         args.extend(extra_args)
@@ -816,11 +816,11 @@ def install_pytorch_cuda(force_reinstall=False):
     """Installe PyTorch depuis l'index CUDA dans le venv courant."""
     pip_index = get_pytorch_cuda_index()
     if not pip_index:
-        print("  [!] Aucun GPU NVIDIA CUDA détecté, installation PyTorch CUDA ignorée")
+        print("  [!] No NVIDIA CUDA GPU detected, skipping PyTorch CUDA install")
         return False
 
     print(f"  Index CUDA: {pip_index}")
-    print("  Note: RTX non requis — JoyBoy tente CUDA sur toute carte NVIDIA compatible.")
+    print("  Note: RTX is not required; JoyBoy tries CUDA on any compatible NVIDIA card.")
     cmd = [
         sys.executable, "-m", "pip", "install", "--upgrade",
         "torch", "torchvision", "torchaudio",
@@ -837,7 +837,7 @@ def install_pytorch_cuda(force_reinstall=False):
             timeout=1800,
         )
     except subprocess.TimeoutExpired:
-        print("  [!] Installation PyTorch CUDA trop longue (timeout 30 min)")
+        print("  [!] PyTorch CUDA install timed out (30 min)")
         return False
 
     reset_dependency_caches()
@@ -852,46 +852,46 @@ def fix_pytorch_cuda():
 
     # Vérifier si PyTorch a déjà CUDA
     if check_pytorch_cuda():
-        print("  [OK] PyTorch avec CUDA")
+        print("  [OK] PyTorch with CUDA")
         return True
 
     print("\n" + "-" * 50)
-    print("  RÉINSTALLATION PYTORCH AVEC CUDA")
+    print("  REINSTALLING PYTORCH WITH CUDA")
     print("-" * 50)
-    print("\n  PyTorch actuel n'a pas le support CUDA")
-    print("  Réinstallation avec CUDA...")
+    print("\n  Current PyTorch has no CUDA support")
+    print("  Reinstalling with CUDA...")
 
     # Désinstaller PyTorch actuel
-    print("  Désinstallation de PyTorch CPU...")
+    print("  Uninstalling CPU PyTorch...")
     run_pip(["uninstall", "-y", "torch", "torchvision", "torchaudio"], quiet=True)
 
     # Réinstaller avec CUDA
-    print("  Installation de PyTorch avec CUDA (peut prendre quelques minutes)...")
+    print("  Installing PyTorch with CUDA (this can take a few minutes)...")
     if not install_pytorch_cuda(force_reinstall=True):
-        print("  [!] Erreur installation PyTorch CUDA")
+        print("  [!] PyTorch CUDA install error")
         return False
 
     # Vérifier que ça a marché
     if check_pytorch_cuda():
-        print("\n  [OK] PyTorch avec CUDA installé!")
+        print("\n  [OK] PyTorch with CUDA installed!")
         return True
     else:
-        print("\n  [!] PyTorch CUDA installé mais CUDA non détecté")
+        print("\n  [!] PyTorch CUDA installed, but CUDA is not detected")
         return False
 
 def fix_opencv():
     """Répare OpenCV (problèmes DLL fréquents sur Windows)"""
-    print("\n[REPAIR] Réparation d'OpenCV...")
+    print("\n[REPAIR] Repairing OpenCV...")
 
     # Vérifier si on a déjà essayé de réparer (éviter boucle infinie)
     marker_file = os.path.join(get_project_dir(), ".opencv_fix_attempted")
     if os.path.exists(marker_file):
-        print("    [!] Réparation déjà tentée - le problème persiste")
+        print("    [!] Repair already attempted - the problem persists")
         print("    [!] Solutions:")
-        print("        1. Redémarre ton PC")
-        print("        2. Installe Visual C++ Redistributable manuellement:")
+        print("        1. Restart your PC")
+        print("        2. Install Visual C++ Redistributable manually:")
         print("           https://aka.ms/vs/17/release/vc_redist.x64.exe")
-        print("        3. Après installation, relance le setup")
+        print("        3. After installation, run setup again")
         return False
 
     # Marquer qu'on a tenté la réparation
@@ -919,14 +919,14 @@ def fix_xformers():
     Installe xformers depuis l'index PyTorch officiel.
     Nécessite la bonne combinaison PyTorch + CUDA + Python.
     """
-    print("\n[INSTALL] Installation de xformers...")
+    print("\n[INSTALL] Installing xformers...")
 
     # D'abord désinstaller si présent
     run_pip(["uninstall", "-y", "xformers"], quiet=True)
 
     torch_version = get_torch_version()
     if not torch_version:
-        print("    [!] PyTorch non détecté")
+        print("    [!] PyTorch not detected")
         return False
 
     print(f"    PyTorch: {torch_version}")
@@ -935,11 +935,11 @@ def fix_xformers():
 
     pip_index = get_pytorch_cuda_index()
     if not pip_index:
-        print("    [!] CUDA non détecté")
+        print("    [!] CUDA not detected")
         return False
 
     print(f"    Index: {pip_index}")
-    print("    Installation en cours (peut prendre 1-2 min)...")
+    print("    Installing now (this can take 1-2 min)...")
 
     # Installer xformers depuis l'index PyTorch
     result = subprocess.run(
@@ -949,36 +949,36 @@ def fix_xformers():
     )
 
     if result.returncode != 0:
-        print(f"    [!] Échec installation: {result.stderr[:200] if result.stderr else 'erreur inconnue'}")
+        print(f"    [!] Install failed: {result.stderr[:200] if result.stderr else 'unknown error'}")
         # Python 3.13 n'a souvent pas de wheel pré-compilé
         if "3.13" in sys.version:
-            print("    [!] Python 3.13 détecté - xformers n'a pas de wheel pré-compilé")
-            print("    [!] Solution: utiliser Python 3.11 ou 3.12")
+            print("    [!] Python 3.13 detected - xformers has no prebuilt wheel")
+            print("    [!] Solution: use Python 3.11 or 3.12")
         return False
 
     # Tester si ça marche vraiment
-    print("    Test d'import...")
+    print("    Testing import...")
     success, error_type, error_msg = check_import("xformers")
 
     if success:
         # Test plus poussé - importer xformers.ops
         success2, _, _ = check_import("xformers.ops")
         if success2:
-            print("    [OK] xformers installé et fonctionnel!")
+            print("    [OK] xformers installed and working!")
             return True
         else:
-            print("    [!] xformers.ops ne fonctionne pas (erreur DLL)")
+            print("    [!] xformers.ops is not working (DLL error)")
 
     # Échec - désinstaller
-    print("    [!] xformers ne fonctionne pas, désinstallation...")
+    print("    [!] xformers is not working, uninstalling...")
     run_pip(["uninstall", "-y", "xformers"], quiet=True)
 
     if "3.13" in sys.version:
         print("\n    ╔════════════════════════════════════════════════════╗")
-        print("    ║  PYTHON 3.13 NON SUPPORTÉ PAR XFORMERS             ║")
+        print("    ║  PYTHON 3.13 IS NOT SUPPORTED BY XFORMERS          ║")
         print("    ║  Solutions:                                         ║")
-        print("    ║  1. Installer Python 3.11 ou 3.12                   ║")
-        print("    ║  2. Utiliser SDPA (intégré, presque aussi rapide)   ║")
+        print("    ║  1. Install Python 3.11 or 3.12                     ║")
+        print("    ║  2. Use SDPA (built in, nearly as fast)             ║")
         print("    ╚════════════════════════════════════════════════════╝")
 
     return False
@@ -987,10 +987,10 @@ def fix_tensorrt():
     """
     TensorRT est complexe à installer. On essaie, sinon on skip.
     """
-    print("\n[REPAIR] Vérification TensorRT...")
+    print("\n[REPAIR] Checking TensorRT...")
 
     if not HAS_CUDA:
-        print("    Pas de GPU NVIDIA, skip TensorRT")
+        print("    No NVIDIA GPU, skipping TensorRT")
         return False
 
     # Vérifier si déjà installé et fonctionnel
@@ -1000,7 +1000,7 @@ def fix_tensorrt():
         return True
 
     # Essayer d'installer
-    print("    Installation de tensorrt...")
+    print("    Installing tensorrt...")
     result = run_pip(["install", "tensorrt"], quiet=False)
 
     if result.returncode == 0:
@@ -1008,10 +1008,10 @@ def fix_tensorrt():
         if success:
             # Installer aussi torch-tensorrt
             run_pip(["install", "torch-tensorrt"], quiet=False)
-            print("    TensorRT installé!")
+            print("    TensorRT installed!")
             return True
 
-    print("    TensorRT non disponible (optionnel, pas grave)")
+    print("    TensorRT unavailable (optional, not a blocker)")
     return False
 
 def install_vc_redist():
@@ -1019,7 +1019,7 @@ def install_vc_redist():
     if not IS_WINDOWS:
         return False
 
-    print("\n[REPAIR] Installation de Visual C++ Redistributable...")
+    print("\n[REPAIR] Installing Visual C++ Redistributable...")
     temp_path = os.path.join(os.environ.get('TEMP', '.'), 'vc_redist.x64.exe')
 
     try:
@@ -1030,12 +1030,12 @@ def install_vc_redist():
         ], check=False, capture_output=True)
 
         if os.path.exists(temp_path):
-            print("    Lancement de l'installateur (acceptez les droits admin)...")
+            print("    Launching installer (accept the admin prompt)...")
             subprocess.run([temp_path, "/install", "/passive", "/norestart"], check=False)
             os.remove(temp_path)
             return True
     except Exception as e:
-        print(f"    Erreur: {e}")
+        print(f"    Error: {e}")
 
     return False
 
@@ -1128,7 +1128,7 @@ def check_homebrew():
 
 def install_homebrew():
     """Installe Homebrew sur Mac"""
-    print("  [INSTALL] Installation de Homebrew...")
+    print("  [INSTALL] Installing Homebrew...")
     try:
         # Commande officielle d'installation de Homebrew
         install_cmd = '/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'
@@ -1138,31 +1138,31 @@ def install_homebrew():
             timeout=300  # 5 minutes max
         )
         if result.returncode == 0:
-            print("  [OK] Homebrew installé")
+            print("  [OK] Homebrew installed")
             return True
         else:
-            print("  [ERREUR] Échec installation Homebrew")
+            print("  [ERROR] Homebrew install failed")
             return False
     except Exception as e:
-        print(f"  [ERREUR] {e}")
+        print(f"  [ERROR] {e}")
         return False
 
 def install_ollama_mac():
     """Installe Ollama via Homebrew sur Mac"""
-    print("  [INSTALL] Installation d'Ollama via Homebrew...")
+    print("  [INSTALL] Installing Ollama via Homebrew...")
     try:
         result = subprocess.run(
             ["brew", "install", "ollama"],
             timeout=300
         )
         if result.returncode == 0:
-            print("  [OK] Ollama installé")
+            print("  [OK] Ollama installed")
             return True
         else:
-            print("  [ERREUR] Échec installation Ollama")
+            print("  [ERROR] Ollama install failed")
             return False
     except Exception as e:
-        print(f"  [ERREUR] {e}")
+        print(f"  [ERROR] {e}")
         return False
 
 def check_winget():
@@ -1180,17 +1180,17 @@ def check_winget():
 
 def install_winget():
     """Installe winget sur Windows via le Microsoft Store"""
-    print("  [INSTALL] Installation de winget...")
+    print("  [INSTALL] Installing winget...")
     try:
         # Télécharger le package App Installer (contient winget)
         winget_url = "https://aka.ms/getwinget"
         winget_path = os.path.join(os.environ.get("TEMP", "."), "Microsoft.DesktopAppInstaller.msixbundle")
 
-        print("  [DOWNLOAD] Téléchargement de winget...")
+        print("  [DOWNLOAD] Downloading winget...")
         urllib.request.urlretrieve(winget_url, winget_path)
 
         # Installer le package
-        print("  [INSTALL] Installation du package...")
+        print("  [INSTALL] Installing package...")
         result = subprocess.run(
             ["powershell", "-Command", f"Add-AppxPackage -Path '{winget_path}'"],
             capture_output=True,
@@ -1202,46 +1202,46 @@ def install_winget():
             os.remove(winget_path)
 
         if result.returncode == 0:
-            print("  [OK] winget installé")
+            print("  [OK] winget installed")
             return True
         else:
-            print("  [ERREUR] Échec installation winget")
-            print("    -> Installe 'App Installer' depuis le Microsoft Store")
+            print("  [ERROR] winget install failed")
+            print("    -> Install 'App Installer' from the Microsoft Store")
             return False
     except Exception as e:
-        print(f"  [ERREUR] {e}")
-        print("    -> Installe 'App Installer' depuis le Microsoft Store")
+        print(f"  [ERROR] {e}")
+        print("    -> Install 'App Installer' from the Microsoft Store")
         return False
 
 def install_ollama_windows():
     """Installe Ollama sur Windows (winget → fallback téléchargement direct)"""
     # Essayer winget d'abord
     if check_winget():
-        print("  [INSTALL] Installation d'Ollama via winget...")
+        print("  [INSTALL] Installing Ollama via winget...")
         try:
             result = subprocess.run(
                 ["winget", "install", "--id", "Ollama.Ollama", "-e", "--accept-source-agreements", "--accept-package-agreements"],
                 timeout=300
             )
             if result.returncode == 0:
-                print("  [OK] Ollama installé via winget")
+                print("  [OK] Ollama installed via winget")
                 return True
         except Exception:
             pass
-        print("  [!] winget a échoué, téléchargement direct...")
+        print("  [!] winget failed, trying direct download...")
 
     # Fallback: téléchargement direct de l'installeur
-    print("  [INSTALL] Téléchargement direct d'Ollama...")
+    print("  [INSTALL] Direct Ollama download...")
     ollama_url = "https://ollama.com/download/OllamaSetup.exe"
     ollama_installer = os.path.join(os.environ.get("TEMP", "."), "OllamaSetup.exe")
 
     try:
         if not download_file(ollama_url, ollama_installer):
-            print("  [ERREUR] Échec du téléchargement")
+            print("  [ERROR] Download failed")
             return False
 
         # Installer silencieusement
-        print("  [INSTALL] Installation en cours...")
+        print("  [INSTALL] Installing now...")
         result = subprocess.run(
             [ollama_installer, "/VERYSILENT", "/NORESTART"],
             timeout=120,
@@ -1253,7 +1253,7 @@ def install_ollama_windows():
             os.remove(ollama_installer)
 
         if result.returncode == 0:
-            print("  [OK] Ollama installé")
+            print("  [OK] Ollama installed")
             return True
         else:
             # Certains installeurs NSIS retournent un code non-zero mais installent quand même
@@ -1261,12 +1261,12 @@ def install_ollama_windows():
             import time
             time.sleep(2)
             if get_ollama_path():
-                print("  [OK] Ollama installé")
+                print("  [OK] Ollama installed")
                 return True
-            print("  [ERREUR] Échec installation Ollama")
+            print("  [ERROR] Ollama install failed")
             return False
     except Exception as e:
-        print(f"  [ERREUR] {e}")
+        print(f"  [ERROR] {e}")
         if os.path.exists(ollama_installer):
             os.remove(ollama_installer)
         return False
@@ -1293,22 +1293,22 @@ def pull_ollama_model(model_name="qwen2.5vl:3b"):
     """Télécharge un modèle Ollama"""
     ollama_path = get_ollama_path()
     if not ollama_path:
-        print(f"  [ERREUR] Ollama non trouvé")
+        print(f"  [ERROR] Ollama not found")
         return False
-    print(f"  [DOWNLOAD] Téléchargement du modèle {model_name}...")
+    print(f"  [DOWNLOAD] Downloading model {model_name}...")
     try:
         result = subprocess.run(
             [ollama_path, "pull", model_name],
             timeout=600  # 10 minutes max
         )
         if result.returncode == 0:
-            print(f"  [OK] Modèle {model_name} prêt")
+            print(f"  [OK] Model {model_name} ready")
             return True
         else:
-            print(f"  [ERREUR] Échec téléchargement {model_name}")
+            print(f"  [ERROR] Failed to download {model_name}")
             return False
     except Exception as e:
-        print(f"  [ERREUR] {e}")
+        print(f"  [ERROR] {e}")
         return False
 
 def is_model_installed(model_name):
@@ -1350,12 +1350,12 @@ def ensure_ollama_models(profile=None):
     vram_level = get_vram_level()
 
     # 1. Utility model - TOUJOURS requis
-    print(f"\n  -- Modèles requis --")
+    print(f"\n  -- Required models --")
     if is_model_installed(UTILITY_MODEL):
         print(f"  [OK] Utility model: {UTILITY_MODEL}")
     else:
         print(f"  [DOWNLOAD] Utility model: {UTILITY_MODEL}")
-        print(f"      (Modèle rapide pour les checks image/mémoire)")
+        print(f"      (Fast model for image/memory checks)")
         pull_ollama_model(UTILITY_MODEL)
 
     # 2. Modèle de chat — juste vérifier, pas forcer le téléchargement
@@ -1367,36 +1367,36 @@ def ensure_ollama_models(profile=None):
     if is_model_installed(recommended):
         print(f"  [OK] Chat model: {recommended}")
     else:
-        print(f"  [INFO] Chat model recommandé: {recommended}")
-        print(f"      -> Installe-le depuis les settings ou: ollama pull {recommended}")
+        print(f"  [INFO] Recommended chat model: {recommended}")
+        print(f"      -> Install it from Settings or run: ollama pull {recommended}")
 
     # Résumé
-    print(f"\n  -- Configuration Ollama --")
+    print(f"\n  -- Ollama configuration --")
     print(f"  Utility (checks):  {UTILITY_MODEL}")
-    print(f"  Chat recommandé:   {recommended}")
+    print(f"  Recommended chat:  {recommended}")
 
 # ==========================================
 # MAIN
 # ==========================================
 def main():
     print("\n" + "=" * 50)
-    print(f"  {AI_NAME.upper()} - Vérification des dépendances")
+    print(f"  {AI_NAME.upper()} - Dependency check")
     print("=" * 50)
 
     # Info système
-    print(f"\n  Système: {platform.system()} {platform.machine()}")
+    print(f"\n  System: {platform.system()} {platform.machine()}")
     print(f"  Python: {sys.version.split()[0]}")
     if HAS_CUDA:
         vram = get_vram_gb()
         vram_label = f", {vram:.1f}GB VRAM" if vram else ""
         name_label = f"{NVIDIA_GPU_NAME} " if NVIDIA_GPU_NAME else ""
-        print(f"  GPU: {name_label}({NVIDIA_GPU_FAMILY}, CUDA {CUDA_VERSION or 'driver inconnu'}{vram_label})")
+        print(f"  GPU: {name_label}({NVIDIA_GPU_FAMILY}, CUDA {CUDA_VERSION or 'unknown driver'}{vram_label})")
         if NVIDIA_GPU_FAMILY != "RTX":
-            print("  Note: RTX non requis; les cartes GTX/NVIDIA CUDA restent supportées avec des profils prudents.")
+            print("  Note: RTX is not required; GTX/NVIDIA CUDA cards are supported with conservative profiles.")
     elif IS_MAC:
         print("  GPU: Apple Metal (MPS)")
     else:
-        print("  GPU: aucune accélération CUDA/MPS détectée (profil CPU/non-CUDA)")
+        print("  GPU: no CUDA/MPS acceleration detected (CPU/non-CUDA profile)")
 
     torch_ver = get_torch_version()
     if torch_ver:
@@ -1407,24 +1407,24 @@ def main():
     # ==========================================
     if not is_python_compatible():
         print("\n" + "=" * 50)
-        print("  PYTHON INCOMPATIBLE AVEC XFORMERS")
+        print("  PYTHON INCOMPATIBLE WITH XFORMERS")
         print("=" * 50)
-        print(f"\n  Python actuel: {sys.version.split()[0]}")
-        print("  xformers nécessite: Python 3.8 à 3.12")
+        print(f"\n  Current Python: {sys.version.split()[0]}")
+        print("  xformers requires Python 3.8 to 3.12")
 
         # Vérifier si Python 3.12 local existe déjà
         local_python = get_local_python_exe()
         if os.path.exists(local_python):
-            print(f"\n  [OK] Python 3.12 local trouvé: {local_python}")
-            print("  [!] MAIS le venv utilise encore Python 3.13!")
-            print("\n  Recréation du venv avec Python 3.12...")
+            print(f"\n  [OK] Local Python 3.12 found: {local_python}")
+            print("  [!] BUT the venv is still using Python 3.13!")
+            print("\n  Recreating the venv with Python 3.12...")
         else:
-            print("\n  Installation de Python 3.12 local...")
+            print("\n  Installing local Python 3.12...")
 
         if recreate_venv_with_python312():
             return 99  # Relancer le script avec le nouveau venv
         else:
-            print("\n  [!] Échec - installe Python 3.12 manuellement")
+            print("\n  [!] Failed - install Python 3.12 manually")
             return 1
 
     # ==========================================
@@ -1434,8 +1434,8 @@ def main():
         if has_build_tools():
             print("  Build Tools: Visual C++ OK")
         else:
-            print("  Build Tools: Non détecté")
-            print("  (Sera installé automatiquement si nécessaire)")
+            print("  Build Tools: Not detected")
+            print("  (Will be installed automatically if needed)")
 
     # Nettoyer les dossiers pip corrompus (~ prefix = install interrompue)
     try:
@@ -1444,7 +1444,7 @@ def main():
             for item in os.listdir(site_packages):
                 if item.startswith('~'):
                     corrupt_path = os.path.join(site_packages, item)
-                    print(f"  [CLEANUP] Suppression dossier pip corrompu: {item}")
+                    print(f"  [CLEANUP] Removing corrupted pip folder: {item}")
                     shutil.rmtree(corrupt_path, ignore_errors=True)
     except Exception:
         pass
@@ -1452,11 +1452,11 @@ def main():
     # Nettoyer les anciens packages qui créent des conflits
     for pkg in CLEANUP_PACKAGES:
         if check_pip_installed(pkg):
-            print(f"  [CLEANUP] Suppression de {pkg} (obsolète)...")
+            print(f"  [CLEANUP] Removing {pkg} (obsolete)...")
             run_pip(["uninstall", "-y", pkg], quiet=True)
 
     print("\n" + "-" * 50)
-    print("  Dépendances de base")
+    print("  Base dependencies")
     print("-" * 50 + "\n")
 
     missing = []
@@ -1480,7 +1480,7 @@ def main():
                 if os.path.exists(marker_file):
                     os.remove(marker_file)
         elif module in NON_CRITICAL_DEPS and check_pip_installed(package):
-            print(f"  [WARN] {module} installé mais indisponible ({error_type})")
+            print(f"  [WARN] {module} installed but unavailable ({error_type})")
             optional_broken.append(module)
         elif error_type == "dll_error":
             print(f"  [DLL ERROR] {module}")
@@ -1498,29 +1498,29 @@ def main():
             print(f"  [MISSING] {package}")
             missing.append((package, package))
 
-    print(f"\n  {ok_count}/{total} dépendances OK")
+    print(f"\n  {ok_count}/{total} dependencies OK")
 
     # Packages optionnels (upscaling)
-    print("\n  Packages optionnels (upscaling):")
+    print("\n  Optional packages (upscaling):")
     for package in OPTIONAL_PACKAGES:
         if check_pip_installed(package):
             print(f"  [OK] {package}")
         elif is_python_compatible():
             # Python 3.12 ou moins, on peut installer
-            print(f"  [MISSING] {package} - installation...")
+            print(f"  [MISSING] {package} - installing...")
             install_package(package)
         else:
             # Python 3.13+, skip car incompatible
             print(f"  [SKIP] {package} (incompatible Python 3.13+)")
 
     # Nunchaku (Flux Fill INT4 — wheel spécial, pas sur PyPI)
-    print("\n  Package optionnel (quantification INT4):")
+    print("\n  Optional package (INT4 quantization):")
     success, _, _ = check_import("nunchaku")
     if success:
         print(f"  [OK] nunchaku (Flux Fill INT4)")
     else:
-        print(f"  [SKIP] nunchaku (optionnel — requis pour Flux Fill INT4)")
-        print(f"         Installer depuis: https://huggingface.co/nunchaku-tech/nunchaku/tree/main/wheels")
+        print(f"  [SKIP] nunchaku (optional - required for Flux Fill INT4)")
+        print(f"         Install from: https://huggingface.co/nunchaku-tech/nunchaku/tree/main/wheels")
 
     # ==========================================
     # REPARATIONS
@@ -1531,7 +1531,7 @@ def main():
     # Réparer les erreurs DLL
     if dll_errors:
         print(f"\n" + "-" * 50)
-        print(f"  Réparation de {len(dll_errors)} erreur(s) DLL")
+        print(f"  Repairing {len(dll_errors)} DLL error(s)")
         print("-" * 50)
 
         for module, package in dll_errors:
@@ -1539,7 +1539,7 @@ def main():
                 if fix_opencv():
                     print(f"  [FIXED] {module}")
                 else:
-                    print(f"  [FAILED] {module} - Installez Visual C++ Redistributable")
+                    print(f"  [FAILED] {module} - Install Visual C++ Redistributable")
                     if IS_WINDOWS:
                         install_vc_redist()
                         needs_restart = True
@@ -1547,14 +1547,14 @@ def main():
     # Installer les packages manquants
     if missing:
         print(f"\n" + "-" * 50)
-        print(f"  Installation de {len(missing)} package(s) manquant(s)")
+        print(f"  Installing {len(missing)} missing package(s)")
         print("-" * 50 + "\n")
 
         # Vérifier si des packages manquants nécessitent un compilateur C++
         needs_compiler = any(package in NEEDS_BUILD_TOOLS for _, package in missing)
         if needs_compiler and IS_WINDOWS and not has_build_tools():
-            print("  [!] Compilateur C++ requis pour: basicsr, gfpgan, insightface")
-            print("  [!] Installation automatique de Visual C++ Build Tools...\n")
+            print("  [!] C++ compiler required for: basicsr, gfpgan, insightface")
+            print("  [!] Installing Visual C++ Build Tools automatically...\n")
             install_build_tools()
 
         # Installer les pré-requis d'abord (Cython avant basicsr, onnxruntime avant insightface)
@@ -1566,26 +1566,26 @@ def main():
                 prereqs_needed.append("onnxruntime")
         for prereq in dict.fromkeys(prereqs_needed):  # unique, ordered
             if not check_pip_installed(prereq):
-                print(f"  [PRE-REQ] Installation de {prereq}...")
+                print(f"  [PRE-REQ] Installing {prereq}...")
                 install_package(prereq)
 
         for module, package in missing:
             if package == "torch":
-                print("  Installation PyTorch avec CUDA..." if HAS_CUDA else "  Installation PyTorch CPU...")
+                print("  Installing PyTorch with CUDA..." if HAS_CUDA else "  Installing PyTorch CPU...")
                 if HAS_CUDA:
                     if not install_pytorch_cuda(force_reinstall=False):
                         cuda_repair_failed = True
                 else:
                     run_pip(["install", "torch", "torchvision", "torchaudio"], quiet=False)
             elif package == "rembg":
-                print("  Installation rembg...")
+                print("  Installing rembg...")
                 if HAS_CUDA:
                     run_pip(["install", "onnxruntime-gpu"], quiet=False)
                 run_pip(["install", "rembg"], quiet=False)
             else:
                 if not install_package(package):
                     # Retry avec --no-cache-dir (cache pip corrompu possible)
-                    print(f"    Retry {package} sans cache...")
+                    print(f"    Retrying {package} without cache...")
                     install_package(package, extra_args=["--no-cache-dir"])
 
     # ==========================================
@@ -1593,29 +1593,29 @@ def main():
     # ==========================================
     if HAS_CUDA:
         print(f"\n" + "-" * 50)
-        print("  Optimisations GPU (NVIDIA)")
+        print("  GPU optimizations (NVIDIA)")
         print("-" * 50 + "\n")
 
         # D'abord vérifier/réparer PyTorch CUDA (nécessaire pour xformers)
         if not fix_pytorch_cuda():
             cuda_repair_failed = True
-            print("  [!] PyTorch CUDA non disponible, xformers ne fonctionnera pas")
-            print("  [!] JoyBoy peut démarrer, mais l'image/vidéo NVIDIA sera limitée tant que CUDA n'est pas réparé")
+            print("  [!] PyTorch CUDA unavailable, xformers will not work")
+            print("  [!] JoyBoy can start, but NVIDIA image/video workflows are limited until CUDA is fixed")
 
         # xformers
         if cuda_repair_failed:
-            print("  [SKIP] xformers (PyTorch CUDA indisponible)")
+            print("  [SKIP] xformers (PyTorch CUDA unavailable)")
         else:
             success, error_type, _ = check_import("xformers")
             if success:
                 print("  [OK] xformers")
             elif check_pip_installed("xformers"):
                 # Installé mais cassé
-                print("  [BROKEN] xformers - réparation...")
+                print("  [BROKEN] xformers - repairing...")
                 fix_xformers()
             else:
                 # Pas installé, essayer
-                print("  [MISSING] xformers - installation...")
+                print("  [MISSING] xformers - installing...")
                 fix_xformers()
 
         # TensorRT (optionnel)
@@ -1623,31 +1623,31 @@ def main():
         if success:
             print("  [OK] tensorrt")
         else:
-            print("  [SKIP] tensorrt (optionnel)")
+            print("  [SKIP] tensorrt (optional)")
 
         # SDPA (toujours dispo avec PyTorch 2.0+)
-        print("  [OK] SDPA (PyTorch natif)")
+        print("  [OK] SDPA (native PyTorch)")
 
     elif IS_MAC:
         print(f"\n" + "-" * 50)
-        print("  Optimisations GPU (Mac)")
+        print("  GPU optimizations (Mac)")
         print("-" * 50 + "\n")
-        print("  [OK] MPS (Metal) - automatique avec PyTorch")
+        print("  [OK] MPS (Metal) - automatic with PyTorch")
         print("  [SKIP] xformers/tensorrt (NVIDIA only)")
     else:
         print(f"\n" + "-" * 50)
-        print("  Profil CPU / non-CUDA")
+        print("  CPU / non-CUDA profile")
         print("-" * 50 + "\n")
-        print("  [OK] JoyBoy peut démarrer sans RTX/NVIDIA")
-        print("  [INFO] Chat, providers, packs, imports et outils légers restent disponibles")
-        print("  [INFO] Image/vidéo locale lourde sera limitée ou très lente sans CUDA/MPS")
-        print("  [SKIP] PyTorch CUDA, xformers et TensorRT")
+        print("  [OK] JoyBoy can start without RTX/NVIDIA")
+        print("  [INFO] Chat, providers, packs, imports, and lightweight tools remain available")
+        print("  [INFO] Heavy local image/video will be limited or very slow without CUDA/MPS")
+        print("  [SKIP] PyTorch CUDA, xformers, and TensorRT")
 
     # ==========================================
     # OLLAMA
     # ==========================================
     print(f"\n" + "-" * 50)
-    print("  Ollama (Chat IA)")
+    print("  Ollama (AI chat)")
     print("-" * 50 + "\n")
 
     # Afficher info VRAM
@@ -1656,10 +1656,10 @@ def main():
     if vram:
         print(f"  VRAM: {vram:.1f} GB ({vram_level})")
     else:
-        print(f"  VRAM: Non détectée ({vram_level})")
+        print(f"  VRAM: Not detected ({vram_level})")
 
     if check_ollama():
-        print(f"  [OK] Ollama installé")
+        print(f"  [OK] Ollama installed")
         start_ollama_service()
 
         # Vérifier et installer les modèles requis
@@ -1672,8 +1672,8 @@ def main():
             if not check_homebrew():
                 print("  [MISSING] Homebrew - installation...")
                 if not install_homebrew():
-                    print("  [ERREUR] Impossible d'installer Homebrew")
-                    print("    -> Installe manuellement: https://brew.sh")
+                    print("  [ERROR] Could not install Homebrew")
+                    print("    -> Install manually: https://brew.sh")
                 else:
                     # Réessayer après installation Homebrew
                     if install_ollama_mac():
@@ -1697,46 +1697,46 @@ def main():
 
         elif IS_LINUX:
             # Linux - try automatic installation via curl
-            print("  [INSTALL] Installation d'Ollama via script officiel...")
+            print("  [INSTALL] Installing Ollama via official script...")
             try:
                 result = subprocess.run(
                     ["bash", "-c", "curl -fsSL https://ollama.ai/install.sh | sh"],
                     timeout=300
                 )
                 if result.returncode == 0:
-                    print("  [OK] Ollama installé")
+                    print("  [OK] Ollama installed")
                     start_ollama_service()
                     ensure_ollama_models()
                 else:
-                    print("  [ERREUR] Échec installation Ollama")
+                    print("  [ERROR] Ollama install failed")
                     print("    -> curl -fsSL https://ollama.ai/install.sh | sh")
-                    print(f"    -> Puis lance: ollama pull {UTILITY_MODEL}")
+                    print(f"    -> Then run: ollama pull {UTILITY_MODEL}")
             except Exception as e:
-                print(f"  [ERREUR] {e}")
+                print(f"  [ERROR] {e}")
                 print("    -> curl -fsSL https://ollama.ai/install.sh | sh")
-                print(f"    -> Puis lance: ollama pull {UTILITY_MODEL}")
+                print(f"    -> Then run: ollama pull {UTILITY_MODEL}")
 
         else:
             # Unknown platform - manual instructions
-            print("    -> Visitez: https://ollama.ai/download")
-            print(f"    -> Puis lance: ollama pull {UTILITY_MODEL}")
+            print("    -> Visit: https://ollama.ai/download")
+            print(f"    -> Then run: ollama pull {UTILITY_MODEL}")
 
     # ==========================================
     # GGUF BACKEND (optionnel)
     # ==========================================
     print(f"\n" + "-" * 50)
-    print("  Backend GGUF (modèles quantizés)")
+    print("  GGUF backend (quantized models)")
     print("-" * 50 + "\n")
 
     gguf_installed = check_pip_installed(GGUF_PACKAGE)
     if gguf_installed:
-        print(f"  [OK] {GGUF_PACKAGE} installé")
-        print("  Le backend GGUF est disponible dans les settings")
+        print(f"  [OK] {GGUF_PACKAGE} installed")
+        print("  The GGUF backend is available in Settings")
     else:
-        print(f"  [INFO] {GGUF_PACKAGE} non installé")
-        print("  Le backend GGUF permet de réduire l'utilisation VRAM de 50-70%")
-        print("  Pour l'installer: pip install stable-diffusion-cpp-python")
-        print("  (Optionnel - le backend Diffusers standard fonctionne sans)")
+        print(f"  [INFO] {GGUF_PACKAGE} not installed")
+        print("  The GGUF backend can reduce VRAM usage by 50-70%")
+        print("  To install it: pip install stable-diffusion-cpp-python")
+        print("  (Optional - the standard Diffusers backend works without it)")
 
     # Pré-télécharger sd-cli pour la conversion GGUF
     if IS_WINDOWS:
@@ -1745,19 +1745,19 @@ def main():
         sd_cli_name = "sd-cli"
     sd_cli_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "ext_weights", "sd_cpp", sd_cli_name)
     if os.path.exists(sd_cli_path):
-        print(f"  [OK] {sd_cli_name} (convertisseur GGUF) présent")
+        print(f"  [OK] {sd_cli_name} (GGUF converter) present")
     else:
         if IS_WINDOWS or IS_LINUX:
-            print(f"  [INFO] {sd_cli_name} sera téléchargé automatiquement à la première conversion")
+            print(f"  [INFO] {sd_cli_name} will be downloaded automatically on first conversion")
         else:
-            print(f"  [INFO] {sd_cli_name} non disponible pré-compilé pour cette plateforme")
-            print(f"  [INFO] Compilez depuis: https://github.com/leejet/stable-diffusion.cpp")
+            print(f"  [INFO] {sd_cli_name} has no prebuilt binary for this platform")
+            print(f"  [INFO] Build from: https://github.com/leejet/stable-diffusion.cpp")
 
     # ==========================================
     # PRE-DOWNLOAD MODEL WEIGHTS
     # ==========================================
     print(f"\n" + "-" * 50)
-    print("  Poids modèles (pré-téléchargement)")
+    print("  Model weights (pre-download)")
     print("-" * 50 + "\n")
 
     # Fooocus Inpaint Patch (élimine le color shift VAE sur SDXL)
@@ -1780,20 +1780,20 @@ def main():
             print(f"  [OK] Fooocus inpaint patch (cached)")
         else:
             print(f"  [DOWNLOAD] Fooocus inpaint patch (1.3GB)...")
-            print(f"      (Corrige le color shift VAE pour SDXL inpainting)")
+            print(f"      (Fixes VAE color shift for SDXL inpainting)")
             os.environ.setdefault("HF_HUB_DOWNLOAD_TIMEOUT", "300")
             hf_hub_download(repo_id=fooocus_repo, filename=fooocus_head, resume_download=True)
             hf_hub_download(repo_id=fooocus_repo, filename=fooocus_patch, resume_download=True)
-            print(f"  [OK] Fooocus inpaint patch téléchargé")
+            print(f"  [OK] Fooocus inpaint patch downloaded")
     except Exception as e:
         print(f"  [SKIP] Fooocus inpaint patch: {e}")
-        print(f"      (Sera téléchargé au premier chargement SDXL)")
+        print(f"      (Will be downloaded on first SDXL load)")
 
     # ==========================================
     # VÉRIFICATION FINALE
     # ==========================================
     print("\n" + "-" * 50)
-    print("  Vérification finale")
+    print("  Final verification")
     print("-" * 50 + "\n")
 
     all_ok = True
@@ -1804,12 +1804,12 @@ def main():
         if success:
             success2, _, _ = check_import("xformers.ops")
             if success2:
-                print("  [OK] xformers fonctionnel")
+                print("  [OK] xformers working")
             else:
-                print("  [!] xformers.ops ne fonctionne pas")
+                print("  [!] xformers.ops is not working")
                 all_ok = False
         else:
-            print("  [!] xformers non fonctionnel")
+            print("  [!] xformers is not working")
             all_ok = False
 
     # Vérifier les dépendances critiques
@@ -1817,7 +1817,7 @@ def main():
     for module in critical_imports:
         success, _, _ = check_import(module)
         if not success:
-            print(f"  [!] {module} ne fonctionne pas")
+            print(f"  [!] {module} is not working")
             all_ok = False
 
     # ==========================================
@@ -1826,8 +1826,8 @@ def main():
     print("\n" + "=" * 50)
 
     if needs_restart:
-        print("  REDÉMARRAGE REQUIS")
-        print("  Redémarre ton PC puis relance le setup")
+        print("  RESTART REQUIRED")
+        print("  Restart your PC, then run setup again")
         print("=" * 50 + "\n")
         return 2
 
@@ -1846,41 +1846,41 @@ def main():
                     still_optional.append(module)
 
         if still_optional:
-            print(f"  [WARN] Packages optionnels non installés: {', '.join(still_optional)}")
-            print("  (L'app fonctionne sans, certaines features seront désactivées)")
+            print(f"  [WARN] Optional packages not installed: {', '.join(still_optional)}")
+            print("  (The app works without them; some features will be disabled)")
 
         if still_critical:
-            print(f"  [!] {len(still_critical)} package(s) CRITIQUE(S) en erreur: {', '.join(still_critical)}")
+            print(f"  [!] {len(still_critical)} CRITICAL package(s) failed: {', '.join(still_critical)}")
             print("=" * 50 + "\n")
             return 1
         elif still_optional:
-            print("  Packages critiques OK, démarrage possible")
+            print("  Critical packages OK, startup possible")
         else:
-            print("  Tous les packages manquants ont été installés!")
+            print("  All missing packages were installed!")
 
     if optional_broken:
-        print(f"  [WARN] Fonctionnalités optionnelles indisponibles: {', '.join(optional_broken)}")
-        print("  (Le setup reste valide; JoyBoy utilisera les chemins alternatifs disponibles)")
+        print(f"  [WARN] Optional features unavailable: {', '.join(optional_broken)}")
+        print("  (Setup remains valid; JoyBoy will use available fallback paths)")
 
     if cuda_repair_failed:
-        print("  SETUP TERMINÉ AVEC AVERTISSEMENT")
-        print("  - PyTorch CUDA reste indisponible dans ce venv")
-        print("  - JoyBoy peut démarrer, mais les workflows image/vidéo NVIDIA seront limités")
-        print("  - RTX non requis: une GTX CUDA compatible doit aussi fonctionner si le driver/PyTorch sont OK")
-        print("  - Relance Setup complet après avoir vérifié le driver NVIDIA et la connexion")
+        print("  SETUP COMPLETED WITH WARNING")
+        print("  - PyTorch CUDA is still unavailable in this venv")
+        print("  - JoyBoy can start, but NVIDIA image/video workflows will be limited")
+        print("  - RTX is not required: a compatible GTX CUDA card should also work if driver/PyTorch are OK")
+        print("  - Run Full setup again after checking the NVIDIA driver and connection")
         print("=" * 50 + "\n")
         return 0
 
     if not all_ok:
         # all_ok est basé sur xformers (optionnel) — ne pas bloquer
-        print("  [WARN] Certaines optimisations non disponibles (voir ci-dessus)")
+        print("  [WARN] Some optimizations are unavailable (see above)")
 
-    print("  TOUT EST OK!")
+    print("  EVERYTHING IS OK!")
     if HAS_CUDA:
-        print("  - xformers: " + ("ACTIF" if check_import("xformers")[0] else "INACTIF (SDPA utilisé)"))
-        print("  - SDPA: ACTIF (fallback)")
+        print("  - xformers: " + ("ACTIVE" if check_import("xformers")[0] else "INACTIVE (using SDPA)"))
+        print("  - SDPA: ACTIVE (fallback)")
     elif not IS_MAC:
-        print("  - Accélération image locale: CPU/non-CUDA (support limité, pas bloquant)")
+        print("  - Local image acceleration: CPU/non-CUDA (limited support, not blocking)")
     print("=" * 50 + "\n")
     return 0
 

@@ -75,14 +75,14 @@ echo.
 echo    ========================================================================
 echo.
 echo.
-echo       [1]  Setup complet (premiere fois / reparer)
+echo       [1]  Full setup (first run / repair)
 echo.
-echo       [2]  Demarrer rapidement
+echo       [2]  Quick start
 echo.
-echo       [Q]  Quitter
+echo       [Q]  Quit
 echo.
 echo.
-set /p choice="       Choix: "
+set /p choice="       Choice: "
 
 if /i "%choice%"=="1" goto menu_setup
 if /i "%choice%"=="2" goto start
@@ -100,16 +100,16 @@ if not defined SETUP_RETRIES set SETUP_RETRIES=0
 set /a SETUP_RETRIES+=1
 if %SETUP_RETRIES% GTR 3 (
     echo.
-    echo    [!] Setup a boucle 3 fois sans succes.
-    echo    [!] Certains packages n'ont pas pu etre installes ou repares.
-    echo    [!] Retour au menu pour eviter une boucle automatique.
+    echo    [!] Setup ran 3 times without success.
+    echo    [!] Some packages could not be installed or repaired.
+    echo    [!] Returning to the menu to avoid an automatic loop.
     echo.
     pause
     goto menu
 )
 echo.
 echo    ================================================================
-echo                    SETUP - Installation  (tentative %SETUP_RETRIES%/3)
+echo                    SETUP - Installation  (attempt %SETUP_RETRIES%/3)
 echo    ================================================================
 echo.
 
@@ -132,60 +132,60 @@ if not exist "%PYTHON_EXE%" (
 )
 
 if "%PYTHON_NEEDS_INSTALL%"=="1" (
-    echo    [0/4] Python non trouve, telechargement...
+    echo    [0/4] Python not found, downloading...
     echo.
 
     if exist "%PYTHON_DIR%" rmdir /s /q "%PYTHON_DIR%" 2>nul
     if exist "%PYTHON_DIR%" (
-        echo    [ERREUR] Impossible de supprimer l'ancien Python portable.
-        echo    Ferme les terminaux JoyBoy/Python qui l'utilisent puis relance.
+        echo    [ERROR] Could not remove the old portable Python.
+        echo    Close any JoyBoy/Python terminals using it, then run setup again.
         pause
         goto menu
     )
     if exist "%PYTHON_TMP%" rmdir /s /q "%PYTHON_TMP%" 2>nul
     if exist "%PYTHON_TMP%" (
-        echo    [ERREUR] Impossible de nettoyer le dossier temporaire Python.
-        echo    Supprime %PYTHON_TMP% puis relance le setup.
+        echo    [ERROR] Could not clean the temporary Python folder.
+        echo    Delete %PYTHON_TMP%, then run setup again.
         pause
         goto menu
     )
     mkdir "%PYTHON_TMP%"
     if errorlevel 1 (
-        echo    [ERREUR] Impossible de creer le dossier temporaire Python.
+        echo    [ERROR] Could not create the temporary Python folder.
         pause
         goto menu
     )
 
     REM Download Python with visible curl progress
-    echo           Telechargement de Python 3.12 portable...
-    curl.exe -L --progress-bar -o "%PYTHON_ZIP%" "%PYTHON_URL%"
+    echo           Downloading portable Python 3.12...
+    curl.exe -L --retry 5 --retry-delay 2 --connect-timeout 30 --progress-bar -o "%PYTHON_ZIP%" "%PYTHON_URL%"
     if errorlevel 1 (
-        echo    [ERREUR] Echec du telechargement de Python
-        echo    Verifiez votre connexion internet
+        echo    [ERROR] Python download failed
+        echo    Check your internet connection
         pause
         goto menu
     )
 
     if not exist "%PYTHON_ZIP%" (
-        echo    [ERREUR] Echec du telechargement de Python
-        echo    Verifiez votre connexion internet
+        echo    [ERROR] Python download failed
+        echo    Check your internet connection
         pause
         goto menu
     )
 
     REM Extract python-build-standalone archive
-    echo           Extraction...
+    echo           Extracting...
     tar.exe -xzf "%PYTHON_ZIP%" -C "%PYTHON_TMP%"
     if errorlevel 1 (
-        echo    [ERREUR] Echec extraction Python
-        echo    Archive invalide ou extraction Windows indisponible.
+        echo    [ERROR] Python extraction failed
+        echo    Invalid archive or Windows extraction is unavailable.
         del "%PYTHON_ZIP%" 2>nul
         if exist "%PYTHON_TMP%" rmdir /s /q "%PYTHON_TMP%" 2>nul
         pause
         goto menu
     )
     if not exist "%PYTHON_TMP%\python" (
-        echo    [ERREUR] Archive Python inattendue: dossier python introuvable
+        echo    [ERROR] Unexpected Python archive: python folder not found
         del "%PYTHON_ZIP%" 2>nul
         if exist "%PYTHON_TMP%" rmdir /s /q "%PYTHON_TMP%" 2>nul
         pause
@@ -197,25 +197,25 @@ if "%PYTHON_NEEDS_INSTALL%"=="1" (
     del "%PYTHON_ZIP%" 2>nul
     if exist "%PYTHON_TMP%" rmdir /s /q "%PYTHON_TMP%" 2>nul
 
-    echo    [OK] Python 3.12 installe localement
+    echo    [OK] Python 3.12 installed locally
     echo.
 ) else (
-    echo    [0/4] Python local OK
+    echo    [0/4] Local Python OK
 )
 
-echo    [1/4] Verification / creation du venv...
+echo    [1/4] Checking / creating the venv...
 "%PYTHON_EXE%" scripts\windows_venv.py ensure
 if errorlevel 1 (
     echo.
-    echo    [ERREUR] Venv non fonctionnel.
-    echo    Log complet: %SETUP_LOG%
+    echo    [ERROR] Venv is not working.
+    echo    Full log: %SETUP_LOG%
     echo.
     pause
     goto menu
 )
 set "PYTHON=venv\Scripts\python.exe"
 
-echo    [2/4] Bootstrap dependances + verification...
+echo    [2/4] Installing dependencies + verification...
 echo.
 "%PYTHON%" scripts\bootstrap.py setup
 set CHECK_RESULT=%errorlevel%
@@ -223,7 +223,7 @@ set CHECK_RESULT=%errorlevel%
 REM Code 99 means Python/venv was recreated
 if %CHECK_RESULT%==99 (
     echo.
-    echo    [!] Venv recree - Relancement du setup...
+    echo    [!] Venv recreated - restarting setup...
     timeout /t 3 >nul
     goto setup
 )
@@ -231,14 +231,14 @@ if %CHECK_RESULT%==99 (
 REM Code >= 1 means setup needs another verification pass
 if %CHECK_RESULT% GEQ 1 (
     echo.
-    echo    [!] Setup incomplet ou en erreur (code %CHECK_RESULT%) - Verification...
+    echo    [!] Setup incomplete or failed (code %CHECK_RESULT%) - verifying again...
     timeout /t 3 >nul
     goto setup
 )
 
 echo.
 echo    ================================================================
-echo                    Setup termine !
+echo                    Setup complete!
 echo    ================================================================
 echo.
 set "SETUP_RETRIES=0"
@@ -252,8 +252,8 @@ if exist "venv\Scripts\python.exe" (
     set "PY=venv\Scripts\python.exe"
 ) else (
     echo.
-    echo    [!] Venv JoyBoy introuvable.
-    echo    [!] Lance "Setup complet" une premiere fois pour creer le venv.
+    echo    [!] JoyBoy venv not found.
+    echo    [!] Run "Full setup" once to create the venv.
     echo.
     pause
     goto menu
@@ -267,9 +267,9 @@ if errorlevel 1 goto skip_cuda_repair_check
 "%PY%" -c "import sys; import torch; sys.exit(0 if torch.cuda.is_available() else 1)" >nul 2>nul
 if not errorlevel 1 goto skip_cuda_repair_check
 echo.
-echo    [!] GPU NVIDIA detecte mais PyTorch CUDA indisponible dans ce venv.
-echo    [!] Lance "Setup complet" depuis le menu pour reparer PyTorch CUDA.
-echo    [!] JoyBoy demarre quand meme pour eviter une boucle automatique.
+echo    [!] NVIDIA GPU detected, but PyTorch CUDA is unavailable in this venv.
+echo    [!] Run "Full setup" from the menu to repair PyTorch CUDA.
+echo    [!] JoyBoy will still start to avoid an automatic setup loop.
 echo.
 timeout /t 5 >nul
 :skip_cuda_repair_check
@@ -278,9 +278,9 @@ REM Quick check: install Ollama if missing
 where ollama >nul 2>&1
 if not errorlevel 1 goto skip_ollama_install
 echo.
-echo    Ollama non detecte, telechargement...
+echo    Ollama not detected, downloading...
 "%PY%" -c "import subprocess,os,urllib.request;p=os.path.join(os.environ.get('TEMP','.'),'OllamaSetup.exe');urllib.request.urlretrieve('https://ollama.com/download/OllamaSetup.exe',p);subprocess.run([p,'/VERYSILENT','/NORESTART'],timeout=120);os.path.exists(p) and os.remove(p)"
-echo    [OK] Ollama installe
+echo    [OK] Ollama installed
 echo.
 :skip_ollama_install
 
@@ -289,13 +289,13 @@ set EXIT_CODE=%errorlevel%
 
 REM Code 42 means backend requested restart; close this window
 if %EXIT_CODE%==42 (
-    echo    Restart en cours...
+    echo    Restarting...
     exit
 )
 
 echo.
 echo    ================================================================
-echo                    Serveur arrete
+echo                    Server stopped
 echo    ================================================================
 echo.
 pause

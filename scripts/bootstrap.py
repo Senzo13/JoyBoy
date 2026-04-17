@@ -53,7 +53,7 @@ def run_doctor(json_mode: bool = False) -> int:
     print("\nJoyBoy Doctor")
     print("=" * 40)
     print(f"Status : {report['status'].upper()}")
-    print(f"Résumé : {report['summary']}")
+    print(f"Summary: {report['summary']}")
     print("")
     for check in report.get("checks", []):
         print(f"- [{check['status'].upper()}] {check['label']}: {check['detail']}")
@@ -65,16 +65,16 @@ def run_pack_install(source: str | None = None, kind: str = "adult", activate: b
 
     source_path = Path(source).expanduser() if source else DEFAULT_LOCAL_ADULT_PACK_SOURCE
     if not source_path.exists():
-        print(f"[PACK] Source introuvable: {source_path}")
+        print(f"[PACK] Source not found: {source_path}")
         return 1
 
-    print(f"[PACK] Import depuis {source_path}")
+    print(f"[PACK] Importing from {source_path}")
     pack = import_pack_from_directory(str(source_path), replace=replace)
-    print(f"[PACK] Installé: {pack['name']} ({pack['id']})")
+    print(f"[PACK] Installed: {pack['name']} ({pack['id']})")
 
     if activate:
         set_pack_active(pack["id"], enabled=True)
-        print(f"[PACK] Activé localement pour kind={kind}")
+        print(f"[PACK] Enabled locally for kind={kind}")
 
     return 0
 
