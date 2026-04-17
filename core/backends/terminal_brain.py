@@ -102,7 +102,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "write_file",
-            "description": "Crée ou remplace entièrement un fichier. Pour modifier une partie, utiliser edit_file.",
+            "description": "Crée ou remplace entièrement un fichier. Si le fichier existe déjà, read_file est obligatoire avant sinon l'outil échoue.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -123,7 +123,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "edit_file",
-            "description": "Remplace une portion de texte dans un fichier existant. Plus sûr que write_file pour les modifications.",
+            "description": "Remplace une portion de texte dans un fichier existant. Échoue si le fichier n'a pas été lu avec read_file avant.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -354,6 +354,7 @@ class TerminalBrain:
         self.max_non_autonomous_tokens = 12000
         self._active_context_size = 4096
         self.current_plan: Optional[ExecutionPlan] = None
+        self._read_files_by_workspace = defaultdict(dict)
 
         # Protection écriture
         self.current_intent: str = 'question'
@@ -367,6 +368,61 @@ class TerminalBrain:
         # policy layer first so future packs/plugins do not bypass safety.
         self.tool_registry = build_default_terminal_tool_registry(TOOLS)
         self.permission_engine = PermissionEngine(self.tool_registry)
+
+    def _workspace_key(self, workspace_path: str) -> str:
+        return os.path.normcase(os.path.realpath(os.path.abspath(workspace_path or "")))
+
+    def _canonical_file_key(self, full_path: str) -> str:
+        return os.path.normcase(os.path.realpath(os.path.abspath(full_path)))
+
+    def _track_read_file(self, workspace_path: str, relative_path: str):
+        full_path = self._resolve_for_snapshot(workspace_path, relative_path)
+        if full_path and os.path.isfile(full_path):
+            stat = os.stat(full_path)
+            self._read_files_by_workspace[self._workspace_key(workspace_path)][
+                self._canonical_file_key(full_path)
+            ] = (stat.st_mtime_ns, stat.st_size)
+
+    def _has_read_file(self, workspace_path: str, relative_path: str) -> bool:
+        full_path = self._resolve_for_snapshot(workspace_path, relative_path)
+        if not full_path:
+            return False
+        return self._canonical_file_key(full_path) in self._read_files_by_workspace.get(self._workspace_key(workspace_path), {})
+
+    def _read_guard_error(self, workspace_path: str, relative_path: str, full_path: str) -> Optional[str]:
+        workspace_reads = self._read_files_by_workspace.get(self._workspace_key(workspace_path), {})
+        file_key = self._canonical_file_key(full_path)
+        read_marker = workspace_reads.get(file_key)
+        if not read_marker:
+            return (
+                "BLOQUÉ: fichier existant non lu. Appelle read_file sur ce fichier avant "
+                "de le modifier, puis relance l'édition."
+            )
+
+        try:
+            stat = os.stat(full_path)
+        except OSError as exc:
+            return f"BLOQUÉ: impossible de vérifier l'état du fichier avant écriture: {exc}"
+
+        current_marker = (stat.st_mtime_ns, stat.st_size)
+        if current_marker != read_marker:
+            return (
+                "BLOQUÉ: le fichier a changé depuis le dernier read_file. Relis le fichier "
+                "avec read_file avant de le modifier."
+            )
+        return None
+
+    def _require_read_before_existing_write(self, workspace_path: str, relative_path: str, full_path: str, tool_name: str) -> Optional[ToolResult]:
+        if os.path.exists(full_path):
+            error = self._read_guard_error(workspace_path, relative_path, full_path)
+            if not error:
+                return None
+            return ToolResult(
+                success=False,
+                tool_name=tool_name,
+                error=error,
+            )
+        return None
 
     # ===== TOOL EXECUTION =====
 
@@ -412,6 +468,8 @@ class TerminalBrain:
                 path = args.get('path', '')
                 max_lines = args.get('max_lines', 220)
                 result = read_file(workspace_path, path, max_lines=max_lines)
+                if result.get('success'):
+                    self._track_read_file(workspace_path, path)
                 return ToolResult(success=result.get('success', False), tool_name=tool_name, data=result)
 
             # === WRITE FILE ===
@@ -424,6 +482,9 @@ class TerminalBrain:
 
                 # Snapshot si existe
                 if os.path.exists(full_path):
+                    blocked = self._require_read_before_existing_write(workspace_path, path, full_path, tool_name)
+                    if blocked:
+                        return blocked
                     self._create_snapshot(full_path, path)
                     # Validation anti-écrasement
                     is_valid, error = self._validate_write(full_path, content)
@@ -449,6 +510,9 @@ class TerminalBrain:
                     return ToolResult(success=False, tool_name=tool_name, error="Chemin hors du workspace")
 
                 if os.path.exists(full_path):
+                    blocked = self._require_read_before_existing_write(workspace_path, path, full_path, tool_name)
+                    if blocked:
+                        return blocked
                     self._create_snapshot(full_path, path)
 
                 result = edit_file(workspace_path, path, old_text, new_text)
@@ -705,7 +769,7 @@ class TerminalBrain:
                     message_dict = {'role': 'assistant', 'content': content}
                     if tool_calls:
                         message_dict['tool_calls'] = [
-                            {'function': {'name': tc.function.name, 'arguments': tc.function.arguments}}
+                            {'type': 'function', 'function': {'name': tc.function.name, 'arguments': tc.function.arguments}}
                             for tc in tool_calls
                         ]
                 else:
@@ -852,7 +916,7 @@ class TerminalBrain:
                             f"[GARDE-FOU TERMINAL] {guard_reason}. "
                             "Arrete les outils repetitifs et produis une synthese finale maintenant."
                         )
-                        messages.append({"role": "tool", "content": guard_text})
+                        messages.append({"role": "tool", "tool_name": tool_name, "content": guard_text})
                         if guard_hits >= 2:
                             final_text = self._guardrail_fallback_answer(initial_message, executed_tools)
                             full_response += final_text
@@ -888,6 +952,7 @@ class TerminalBrain:
                     result_text = self._format_result_for_llm(result)
                     messages.append({
                         "role": "tool",
+                        "tool_name": result.tool_name,
                         "content": result_text
                     })
 
@@ -1292,6 +1357,19 @@ Utilise-les pour accomplir les tâches demandées."""
     def _format_result_for_llm(self, result: ToolResult) -> str:
         """Formate le résultat d'un tool pour le LLM"""
         if not result.success:
+            if result.tool_name == 'bash' and result.data:
+                data = result.data
+                output = data.get('output', '')
+                verification = data.get('verification')
+                if verification:
+                    output += (
+                        f"\n[VERIFICATION]\n"
+                        f"{verification.get('kind', 'artifact')}: ECHEC - "
+                        f"{verification.get('path', '')}"
+                    )
+                    if verification.get('package_json') is not None:
+                        output += f" (package.json: {'oui' if verification.get('package_json') else 'non'})"
+                return f"[ERREUR bash] {result.error or 'Commande échouée'}\n```\n{output}\n```"
             return f"[ERREUR {result.tool_name}] {result.error}"
 
         data = result.data
@@ -1343,6 +1421,16 @@ Utilise-les pour accomplir les tâches demandées."""
             output = data.get('output', '')
             code = data.get('return_code', -1)
             status = 'OK' if code == 0 else 'ERREUR'
+            verification = data.get('verification')
+            if verification:
+                verified_label = "OK" if verification.get('verified') else "ECHEC"
+                output += (
+                    f"\n[VERIFICATION]\n"
+                    f"{verification.get('kind', 'artifact')}: {verified_label} - "
+                    f"{verification.get('path', '')}"
+                )
+                if verification.get('package_json') is not None:
+                    output += f" (package.json: {'oui' if verification.get('package_json') else 'non'})"
             return f"[RÉSULTAT bash] {status} (code: {code})\n```\n{output}\n```"
 
         elif result.tool_name == 'web_search':
@@ -1421,6 +1509,115 @@ Utilise-les pour accomplir les tâches demandées."""
             'timestamp': datetime.now().isoformat()
         })
 
+    def _verify_bash_side_effects(self, command: str, workspace_path: str, parts: Optional[List[str]] = None) -> Optional[Dict]:
+        """Verify common filesystem side effects so the agent cannot claim fake scaffolds."""
+        import shlex
+
+        try:
+            tokens = parts or shlex.split(command)
+        except Exception:
+            tokens = command.split()
+
+        if not tokens:
+            return None
+
+        main_cmd = tokens[0].lower()
+        operators = {'&&', '||', ';', '|'}
+
+        def clean_targets(raw_tokens: List[str]) -> List[str]:
+            targets = []
+            skip_next = False
+            for token in raw_tokens:
+                if skip_next:
+                    skip_next = False
+                    continue
+                if token in operators:
+                    break
+                if token in {'--template', '-t', '--variant'}:
+                    skip_next = True
+                    continue
+                if token == '--' or token.startswith('-'):
+                    continue
+                targets.append(token)
+            return targets
+
+        def artifact_status(kind: str, rel_path: str, require_package_json: bool = False) -> Dict:
+            display_path = rel_path or '.'
+            full_path = os.path.abspath(workspace_path) if display_path == '.' else self._resolve_for_snapshot(workspace_path, display_path)
+            exists = bool(full_path and os.path.exists(full_path))
+            package_json = bool(full_path and os.path.isfile(os.path.join(full_path, 'package.json')))
+            verified = exists and (package_json if require_package_json else True)
+            result = {
+                'kind': kind,
+                'path': display_path.replace('\\', '/'),
+                'exists': exists,
+                'verified': verified,
+            }
+            if require_package_json:
+                result['package_json'] = package_json
+            return result
+
+        if main_cmd == 'mkdir':
+            targets = clean_targets(tokens[1:])
+            if targets:
+                checks = [artifact_status('mkdir', target) for target in targets]
+                return {
+                    'kind': 'mkdir',
+                    'path': ', '.join(check['path'] for check in checks),
+                    'verified': all(check['verified'] for check in checks),
+                    'items': checks,
+                }
+
+        if main_cmd == 'touch':
+            targets = clean_targets(tokens[1:])
+            if targets:
+                checks = [artifact_status('touch', target) for target in targets]
+                return {
+                    'kind': 'touch',
+                    'path': ', '.join(check['path'] for check in checks),
+                    'verified': all(check['verified'] for check in checks),
+                    'items': checks,
+                }
+
+        target = self._detect_vite_target(tokens)
+        if target is not None:
+            return artifact_status('vite_scaffold', target, require_package_json=True)
+
+        return None
+
+    def _detect_vite_target(self, tokens: List[str]) -> Optional[str]:
+        if not tokens:
+            return None
+
+        lowered = [token.lower() for token in tokens]
+        start = None
+        if len(tokens) >= 3 and lowered[0] == 'npm' and lowered[1] in {'create', 'init'} and 'vite' in lowered[2]:
+            start = 3
+        elif len(tokens) >= 2 and lowered[0] == 'npx' and 'create-vite' in lowered[1]:
+            start = 2
+        elif len(tokens) >= 3 and lowered[0] in {'pnpm', 'yarn'} and lowered[1] == 'create' and 'vite' in lowered[2]:
+            start = 3
+
+        if start is None:
+            return None
+
+        skip_next = False
+        for token in tokens[start:]:
+            lower = token.lower()
+            if skip_next:
+                skip_next = False
+                continue
+            if token in {'&&', '||', ';', '|'}:
+                break
+            if lower in {'--template', '-t', '--variant'}:
+                skip_next = True
+                continue
+            if token == '--' or token.startswith('-'):
+                continue
+            return token
+
+        return '.'
+
     def _execute_bash(self, command: str, workspace_path: str) -> Dict:
         """Exécute une commande bash de manière sécurisée"""
         import subprocess
@@ -1467,12 +1664,22 @@ Utilise-les pour accomplir les tâches demandées."""
             if len(output) > 8000:
                 output = output[:8000] + "\n... (tronqué)"
 
-            return {
+            response = {
                 "success": result.returncode == 0,
                 "output": output,
                 "return_code": result.returncode,
                 "error": result.stderr if result.returncode != 0 else None
             }
+            verification = self._verify_bash_side_effects(command, workspace_path, parts)
+            if verification:
+                response["verification"] = verification
+                if result.returncode == 0 and not verification.get("verified"):
+                    response["success"] = False
+                    response["error"] = (
+                        f"Commande terminée mais artefact attendu introuvable: "
+                        f"{verification.get('path', '')}"
+                    )
+            return response
 
         except subprocess.TimeoutExpired:
             return {"success": False, "error": "Timeout (60s)"}
