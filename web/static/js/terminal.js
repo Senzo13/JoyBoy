@@ -19,11 +19,11 @@ function showContextSizePopup() {
     const currentSize = userSettings.contextSize || 4096;
 
     const sizes = [
-        { value: 2048, label: '2K', desc: 'Économe (~1GB)' },
-        { value: 4096, label: '4K', desc: 'Standard (~2GB)' },
-        { value: 8192, label: '8K', desc: 'Moyen (~3GB)' },
-        { value: 16384, label: '16K', desc: 'Grand (~5GB)' },
-        { value: 32768, label: '32K', desc: 'Max (~8GB)' },
+        { value: 2048, label: '2K', desc: terminalT('terminal.contextEconomy', 'Économe (~1GB)') },
+        { value: 4096, label: '4K', desc: terminalT('terminal.contextStandard', 'Standard (~2GB)') },
+        { value: 8192, label: '8K', desc: terminalT('terminal.contextMedium', 'Moyen (~3GB)') },
+        { value: 16384, label: '16K', desc: terminalT('terminal.contextLarge', 'Grand (~5GB)') },
+        { value: 32768, label: '32K', desc: terminalT('terminal.contextMax', 'Max (~8GB)') },
     ];
 
     const optionsHtml = sizes.map(s => `
@@ -42,7 +42,7 @@ function showContextSizePopup() {
     const popup = document.createElement('div');
     popup.className = 'context-size-popup';
     popup.innerHTML = `
-        <h4><i data-lucide="database"></i> Taille du contexte</h4>
+        <h4><i data-lucide="database"></i> ${escapeHtml(terminalT('terminal.contextPopupTitle', 'Taille du contexte'))}</h4>
         <div class="context-size-options">
             ${optionsHtml}
         </div>
@@ -145,7 +145,7 @@ function showToolResults() {
                         <span class="tool-result-time">${item.timestamp}</span>
                     </div>
                     <div class="tool-result-args">${argsStr}</div>
-                    <div class="tool-result-output">${outputStr || '(no output)'}</div>
+                    <div class="tool-result-output">${outputStr || escapeHtml(terminalT('terminal.toolOutputEmpty', '(no output)'))}</div>
                 </div>
             `;
         }
@@ -157,7 +157,7 @@ function showToolResults() {
     modal.innerHTML = `
         <div class="tool-results-content">
             <div class="tool-results-header">
-                <h3><i data-lucide="terminal"></i> Tool Results (Ctrl+O)</h3>
+                <h3><i data-lucide="terminal"></i> ${escapeHtml(terminalT('terminal.toolResultsTitle', 'Tool Results (Ctrl+O)'))}</h3>
                 <button class="tool-results-close" onclick="this.closest('.tool-results-modal').remove()">
                     <i data-lucide="x"></i>
                 </button>
@@ -386,7 +386,7 @@ function showTerminalTasks() {
     terminalTasksElement.className = 'terminal-tasks';
     terminalTasksElement.innerHTML = `
         <div class="terminal-tasks-header">
-            <span class="tasks-count">0 tâche</span>
+            <span class="tasks-count">${escapeHtml(terminalT('terminal.taskCount', '{done}/{total} tâches', { done: 0, total: 0 }))}</span>
             <span class="tasks-toggle" onclick="toggleTerminalTasks()">▼</span>
         </div>
         <div class="terminal-tasks-list"></div>
@@ -438,7 +438,7 @@ function renderTerminalTasks() {
 
     const done = terminalTasks.filter(t => t.status === 'done').length;
     const total = terminalTasks.length;
-    count.textContent = `${done}/${total} tâches`;
+    count.textContent = terminalT('terminal.taskCount', '{done}/{total} tâches', { done, total });
 
     list.innerHTML = terminalTasks.map(task => {
         let iconName = 'square';
@@ -792,7 +792,7 @@ let terminalInputLocked = false;
 /**
  * Verrouille l'input du terminal (pendant téléchargement)
  */
-function lockTerminalInput(reason = 'Téléchargement en cours...') {
+function lockTerminalInput(reason = terminalT('terminal.inputDownloadInProgress', 'Téléchargement en cours...')) {
     terminalInputLocked = true;
     const input = document.getElementById('chat-prompt');
     const sendBtn = document.getElementById('send-btn');
@@ -817,7 +817,7 @@ function unlockTerminalInput() {
 
     if (input) {
         input.disabled = false;
-        input.placeholder = 'Que veux-tu faire ?';
+        input.placeholder = terminalT('terminal.inputReady', 'Que veux-tu faire ?');
         input.classList.remove('terminal-locked');
     }
     if (sendBtn) {
@@ -842,14 +842,14 @@ function showTerminalDownloadProgress(model) {
         <div id="terminal-download-progress" class="terminal-download-box">
             <div class="terminal-download-header">
                 <span class="terminal-download-icon"><i data-lucide="download"></i></span>
-                <span class="terminal-download-title">Téléchargement requis</span>
+                <span class="terminal-download-title">${escapeHtml(terminalT('terminal.downloadRequiredTitle', 'Téléchargement requis'))}</span>
             </div>
             <div class="terminal-download-model">${model}</div>
             <div class="terminal-download-bar">
                 <div class="terminal-download-fill" style="width: 0%"></div>
             </div>
-            <div class="terminal-download-status">Connexion...</div>
-            <div class="terminal-download-hint">Ce modèle est nécessaire pour le mode terminal. Ne ferme pas cette page.</div>
+            <div class="terminal-download-status">${escapeHtml(terminalT('terminal.connectionStatus', 'Connexion...'))}</div>
+            <div class="terminal-download-hint">${escapeHtml(terminalT('terminal.downloadHint', 'Ce modèle est nécessaire pour le mode terminal. Ne ferme pas cette page.'))}</div>
         </div>
     `;
     messagesDiv.insertAdjacentHTML('beforeend', progressHtml);
@@ -886,7 +886,7 @@ function hideTerminalDownloadProgress(success = true) {
             progressBox.innerHTML = `
                 <div class="terminal-download-header">
                     <span class="terminal-download-icon"><i data-lucide="check-circle"></i></span>
-                    <span class="terminal-download-title">Modèle installé !</span>
+                    <span class="terminal-download-title">${escapeHtml(terminalT('terminal.modelInstalledTitle', 'Modèle installé !'))}</span>
                 </div>
             `;
             if (window.lucide) lucide.createIcons();
@@ -907,13 +907,13 @@ async function downloadTerminalModelWithProgress(model) {
         isDownloading: true,
         model: model,
         progress: 0,
-        status: 'Démarrage...',
+        status: terminalT('terminal.downloadStarting', 'Démarrage...'),
         startedAt: Date.now()
     };
     saveTerminalDownloadState();
 
     // Verrouiller l'input
-    lockTerminalInput(`Téléchargement de ${model}...`);
+    lockTerminalInput(terminalT('terminal.downloadModel', 'Téléchargement de {model}...', { model }));
 
     // Afficher la UI
     showTerminalDownloadProgress(model);
@@ -977,8 +977,8 @@ async function downloadTerminalModelWithProgress(model) {
         console.error('[TERMINAL] Erreur téléchargement:', err);
         hideTerminalDownloadProgress(false);
         unlockTerminalInput();
-        addTerminalLine(`Erreur: ${err.message}`, 'error');
-        addTerminalLine(`Installe manuellement: ollama pull ${model}`, 'code');
+        addTerminalLine(terminalT('terminal.downloadErrorLine', 'Erreur : {error}', { error: err.message }), 'error');
+        addTerminalLine(terminalT('terminal.manualInstallLine', 'Installe manuellement : ollama pull {model}', { model }), 'code');
         return { ok: false, error: err.message };
     }
 }
@@ -1003,13 +1003,17 @@ function setTerminalBodyState(active, workspace = null) {
     if (wsNameEl) {
         wsNameEl.textContent = terminalMode
             ? (workspace?.name || workspace?.path || 'Workspace')
-            : 'Aucun workspace';
+            : terminalT('terminal.noWorkspace', 'Aucun workspace');
     }
 
     if (typeof updateModelPickerDisplay === 'function') {
         updateModelPickerDisplay();
     }
 }
+
+window.addEventListener('joyboy:locale-changed', () => {
+    setTerminalBodyState(terminalMode, terminalWorkspace);
+});
 
 function applyTerminalChatState(record = null) {
     if (isTerminalWorkspaceRecord(record)) {
@@ -1079,7 +1083,7 @@ async function enterTerminalMode(workspace = null, pendingMessage = '') {
     // === VÉRIFIER SI UN TÉLÉCHARGEMENT ÉTAIT EN COURS (F5) ===
     if (loadTerminalDownloadState() && terminalDownloadState.isDownloading) {
         console.log('[TERMINAL] Reprise du téléchargement après F5:', terminalDownloadState.model);
-        addTerminalLine(`Reprise du téléchargement de ${terminalDownloadState.model}...`, 'info');
+        addTerminalLine(terminalT('terminal.resumeDownload', 'Reprise du téléchargement de {model}...', { model: terminalDownloadState.model }), 'info');
 
         const result = await downloadTerminalModelWithProgress(terminalDownloadState.model);
         if (result.ok) {
@@ -1113,18 +1117,18 @@ async function enterTerminalMode(workspace = null, pendingMessage = '') {
         console.log('[TERMINAL] Aucun modèle tool-capable, téléchargement de', DEFAULT_TERMINAL_MODEL);
 
         addTerminalLine(``, 'blank');
-        addTerminalLine(`Modèle terminal requis`, 'warning');
-        addTerminalLine(`Le mode terminal nécessite un modèle capable de lire/écrire des fichiers.`, 'dim');
+        addTerminalLine(terminalT('terminal.requiredModelTitle', 'Modèle terminal requis'), 'warning');
+        addTerminalLine(terminalT('terminal.requiredModelBody', 'Le mode terminal nécessite un modèle capable de lire/écrire des fichiers.'), 'dim');
         addTerminalLine(``, 'blank');
 
         const result = await downloadTerminalModelWithProgress(DEFAULT_TERMINAL_MODEL);
 
         if (result.ok) {
             toolModel = DEFAULT_TERMINAL_MODEL;
-            addTerminalLine(`Modèle ${DEFAULT_TERMINAL_MODEL} prêt !`, 'success');
+            addTerminalLine(terminalT('terminal.modelReadyLine', 'Modèle {model} prêt !', { model: DEFAULT_TERMINAL_MODEL }), 'success');
         } else {
             addTerminalLine(``, 'blank');
-            addTerminalLine(`Le mode terminal est limité sans ce modèle.`, 'warning');
+            addTerminalLine(terminalT('terminal.limitedWithoutModel', 'Le mode terminal est limité sans ce modèle.'), 'warning');
         }
     }
 
@@ -1137,11 +1141,11 @@ async function enterTerminalMode(workspace = null, pendingMessage = '') {
         await apiModels.unloadAll();
 
         // Précharger le modèle tool-capable avec loading animé
-        const loadingEl = showTerminalLoading(`Chargement de ${toolModel}...`);
+        const loadingEl = showTerminalLoading(terminalT('terminal.loadingModel', 'Chargement de {model}...', { model: toolModel }));
         const warmupResult = await apiOllama.warmup(toolModel, true);
         if (warmupResult.ok) {
             // Affiche "Prêt !" puis disparaît avec animation
-            await hideTerminalLoading(loadingEl, `Prêt ! Modèle: ${toolModel}`);
+            await hideTerminalLoading(loadingEl, terminalT('terminal.readyModel', 'Prêt ! Modèle : {model}', { model: toolModel }));
         } else {
             // En cas d'erreur, juste supprimer le loading
             await hideTerminalLoading(loadingEl);
@@ -1163,15 +1167,15 @@ async function enterTerminalMode(workspace = null, pendingMessage = '') {
     if (pendingMessage) {
         await sendTerminalMessage(pendingMessage);
     } else if (workspace) {
-        const welcome = `Projet **${workspace.name || workspace.path}** ouvert. Je travaille dans ce dossier.`;
+        const welcome = terminalT('terminal.workspaceOpened', 'Projet **{name}** ouvert. Je travaille dans ce dossier.', { name: workspace.name || workspace.path });
         chatHistory.push({ role: 'assistant', content: welcome });
         addAiMessageToChat(welcome);
         persistCurrentChat({ html: getCurrentChatHtml(), messages: chatHistory })
             .catch(e => console.warn('[TERMINAL] Welcome persist failed:', e));
     } else {
         addTerminalLine(``, 'blank');
-        addTerminalLine(`Aucun workspace sélectionné.`, 'warning');
-        addTerminalLine(`Sur quel projet veux-tu travailler ?`, 'prompt');
+        addTerminalLine(terminalT('terminal.noWorkspaceSelected', 'Aucun workspace sélectionné.'), 'warning');
+        addTerminalLine(terminalT('terminal.projectPrompt', 'Sur quel projet veux-tu travailler ?'), 'prompt');
     }
 
     scrollToBottom(true);
@@ -1192,7 +1196,7 @@ function exitTerminalMode() {
             .catch(e => console.warn('[TERMINAL] Persist exit failed:', e));
     }
 
-    addAiMessageToChat('Mode terminal désactivé. Je redeviens JoyBoy normal !');
+    addAiMessageToChat(terminalT('terminal.terminalDisabled', 'Mode terminal désactivé. Je redeviens JoyBoy normal !'));
     scrollToBottom(true);
 
     console.log('[TERMINAL] Mode désactivé');
@@ -1230,7 +1234,7 @@ function stopTerminalChat() {
     const autoIndicator = document.getElementById('autonomous-indicator');
     if (autoIndicator) autoIndicator.style.display = 'none';
 
-    addTerminalLine('Génération interrompue.', 'warning');
+    addTerminalLine(terminalT('terminal.interrupted', 'Génération interrompue.'), 'warning');
 }
 
 // ===== TERMINAL IMAGE HANDLING =====
@@ -1250,7 +1254,7 @@ async function onImageAddedTerminal() {
         // Aucun modèle vision installé -> proposer d'en télécharger un
         console.log('[TERMINAL/VISION] Aucun modèle vision, téléchargement de', DEFAULT_VISION_MODEL);
 
-        addTerminalLine(`Téléchargement du modèle vision (${DEFAULT_VISION_MODEL})...`, 'system');
+        addTerminalLine(terminalT('terminal.visionDownload', 'Téléchargement du modèle vision ({model})...', { model: DEFAULT_VISION_MODEL }), 'system');
 
         try {
             const result = await apiOllama.pull(DEFAULT_VISION_MODEL);
@@ -1262,10 +1266,10 @@ async function onImageAddedTerminal() {
                     await loadTextModelsForPicker();
                 }
 
-                addTerminalLine(`Modèle ${DEFAULT_VISION_MODEL} installé !`, 'success');
+                addTerminalLine(terminalT('terminal.visionInstalled', 'Modèle {model} installé !', { model: DEFAULT_VISION_MODEL }), 'success');
             } else {
                 console.error('[TERMINAL/VISION] Erreur téléchargement:', result.error);
-                addTerminalLine(`Impossible de télécharger. Installe manuellement:`, 'error');
+                addTerminalLine(terminalT('terminal.visionManualInstall', 'Impossible de télécharger. Installe manuellement :'), 'error');
                 addTerminalLine(`ollama pull ${DEFAULT_VISION_MODEL}`, 'code');
                 return;
             }
@@ -1383,25 +1387,25 @@ function openProjectLauncher(pendingMessage = '') {
         if (event.target === overlay) closeProjectLauncher();
     };
     overlay.innerHTML = `
-        <div class="project-launcher-panel" role="dialog" aria-modal="true" aria-label="Ouvrir un projet">
+        <div class="project-launcher-panel" role="dialog" aria-modal="true" aria-label="${escapeHtml(terminalT('terminal.projectLauncherAria', 'Ouvrir un projet'))}">
             <div class="project-launcher-header">
                 <div>
-                    <div class="project-launcher-kicker">Mode projet</div>
-                    <div class="project-launcher-title">Ouvrir un projet</div>
+                    <div class="project-launcher-kicker">${escapeHtml(terminalT('terminal.projectLauncherKicker', 'Mode projet'))}</div>
+                    <div class="project-launcher-title">${escapeHtml(terminalT('terminal.projectLauncherTitle', 'Ouvrir un projet'))}</div>
                 </div>
-                <button class="project-launcher-close" onclick="closeProjectLauncher()" title="Fermer">
+                <button class="project-launcher-close" onclick="closeProjectLauncher()" title="${escapeHtml(terminalT('terminal.close', 'Fermer'))}">
                     <i data-lucide="x"></i>
                 </button>
             </div>
             <div class="project-launcher-copy">
-                Parcours tes dossiers pour créer une nouvelle conversation dev avec le nom du projet au-dessus.
+                ${escapeHtml(terminalT('terminal.projectLauncherCopy', 'Parcours tes dossiers pour créer une nouvelle conversation dev avec le nom du projet au-dessus.'))}
             </div>
             <div class="project-launcher-list">
-                ${projectItems || '<div class="project-launcher-empty">Aucun projet enregistré pour l’instant.</div>'}
+                ${projectItems || `<div class="project-launcher-empty">${escapeHtml(terminalT('terminal.noSavedProjects', 'Aucun projet enregistré pour l’instant.'))}</div>`}
             </div>
             <button class="project-launcher-browse-btn" onclick="browseProjectFolder()">
                 <i data-lucide="folder-open"></i>
-                Choisir un dossier projet
+                ${escapeHtml(terminalT('terminal.chooseProjectFolder', 'Choisir un dossier projet'))}
             </button>
         </div>
     `;
@@ -1425,7 +1429,7 @@ async function browseProjectFolder() {
     const previousHtml = button?.innerHTML;
     if (button) {
         button.disabled = true;
-        button.innerHTML = '<i data-lucide="loader-2" class="spin"></i> Sélection du dossier...';
+        button.innerHTML = `<i data-lucide="loader-2" class="spin"></i> ${escapeHtml(terminalT('terminal.selectingFolder', 'Sélection du dossier...'))}`;
         if (window.lucide) lucide.createIcons();
     }
 
@@ -1439,7 +1443,7 @@ async function browseProjectFolder() {
 
         if (data.cancelled) return;
         if (!response.ok || !data.valid) {
-            setProjectLauncherError(data.error || 'Impossible d’ouvrir le sélecteur de dossier.');
+            setProjectLauncherError(data.error || terminalT('terminal.folderSelectorError', 'Impossible d’ouvrir le sélecteur de dossier.'));
             return;
         }
 
@@ -1449,7 +1453,7 @@ async function browseProjectFolder() {
         await openWorkspaceConversation(workspace, pending);
     } catch (err) {
         console.error('[TERMINAL] Erreur parcours dossier:', err);
-        setProjectLauncherError(`Impossible d’ouvrir le sélecteur de dossier: ${err.message}`);
+        setProjectLauncherError(terminalT('terminal.folderSelectorErrorWithMessage', 'Impossible d’ouvrir le sélecteur de dossier : {error}', { error: err.message }));
     } finally {
         if (button) {
             button.disabled = false;
@@ -1842,7 +1846,7 @@ async function streamTerminalChat(message, isAutoContinue = false) {
                         // tokens consommés. Le backend renvoie alors un fallback
                         // durable; sinon on crée quand même une vraie bulle.
                         if (!fullResponse.trim()) {
-                            const fallbackText = serverFinalText || 'Le modèle local a terminé sans produire de réponse lisible. Relance avec une demande plus ciblée ou choisis un modèle terminal plus robuste.';
+                            const fallbackText = serverFinalText || terminalT('terminal.noReadableResponse', 'Le modèle local a terminé sans produire de réponse lisible. Relance avec une demande plus ciblée ou choisis un modèle terminal plus robuste.');
                             firstContentReceived = true;
                             createTerminalOutput();
                             fullResponse = fallbackText;
@@ -1892,7 +1896,7 @@ async function streamTerminalChat(message, isAutoContinue = false) {
     setSendButtonsMode(false);
 
     if (terminalInterrupted) {
-        addTerminalLine('Interrompu (Ctrl+C) - "continue" pour reprendre', 'warning');
+        addTerminalLine(terminalT('terminal.interruptedContinue', 'Interrompu (Ctrl+C) - écris "continue" pour reprendre'), 'warning');
         terminalInterrupted = false;
     } else {
         // Traiter le prochain élément de la queue (sauf si interrompu)

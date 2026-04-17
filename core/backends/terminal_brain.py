@@ -91,7 +91,7 @@ TOOLS = [
                     },
                     "max_lines": {
                         "type": "integer",
-                        "description": "Nombre max de lignes à lire. Défaut: 500"
+                        "description": "Nombre max de lignes à lire. Défaut: 220. Lis par petits blocs pour préserver le contexte."
                     }
                 },
                 "required": ["path"]
@@ -352,6 +352,7 @@ class TerminalBrain:
         # `/auto` can still raise the budget for longer coding tasks.
         self.max_iterations = 8
         self.max_non_autonomous_tokens = 12000
+        self._active_context_size = 4096
         self.current_plan: Optional[ExecutionPlan] = None
 
         # Protection écriture
@@ -409,7 +410,7 @@ class TerminalBrain:
             # === READ FILE ===
             elif tool_name == "read_file":
                 path = args.get('path', '')
-                max_lines = args.get('max_lines', 500)
+                max_lines = args.get('max_lines', 220)
                 result = read_file(workspace_path, path, max_lines=max_lines)
                 return ToolResult(success=result.get('success', False), tool_name=tool_name, data=result)
 
@@ -417,7 +418,9 @@ class TerminalBrain:
             elif tool_name == "write_file":
                 path = args.get('path', '')
                 content = args.get('content', '')
-                full_path = os.path.join(workspace_path, path)
+                full_path = self._resolve_for_snapshot(workspace_path, path)
+                if not full_path:
+                    return ToolResult(success=False, tool_name=tool_name, error="Chemin hors du workspace")
 
                 # Snapshot si existe
                 if os.path.exists(full_path):
@@ -428,6 +431,11 @@ class TerminalBrain:
                         return ToolResult(success=False, tool_name=tool_name, error=error)
 
                 result = write_file(workspace_path, path, content)
+                if result.get('success'):
+                    verified = self._verify_file_write(workspace_path, path)
+                    result.update(verified)
+                    if not verified.get('verified'):
+                        return ToolResult(success=False, tool_name=tool_name, data=result, error=verified.get('error', 'Verification failed'))
                 self._log_action('write_file', path, result.get('success', False))
                 return ToolResult(success=result.get('success', False), tool_name=tool_name, data=result)
 
@@ -436,24 +444,38 @@ class TerminalBrain:
                 path = args.get('path', '')
                 old_text = args.get('old_text', '')
                 new_text = args.get('new_text', '')
-                full_path = os.path.join(workspace_path, path)
+                full_path = self._resolve_for_snapshot(workspace_path, path)
+                if not full_path:
+                    return ToolResult(success=False, tool_name=tool_name, error="Chemin hors du workspace")
 
                 if os.path.exists(full_path):
                     self._create_snapshot(full_path, path)
 
                 result = edit_file(workspace_path, path, old_text, new_text)
+                if result.get('success'):
+                    verified = self._verify_file_write(workspace_path, path)
+                    result.update(verified)
+                    if not verified.get('verified'):
+                        return ToolResult(success=False, tool_name=tool_name, data=result, error=verified.get('error', 'Verification failed'))
                 self._log_action('edit_file', path, result.get('success', False))
                 return ToolResult(success=result.get('success', False), tool_name=tool_name, data=result)
 
             # === DELETE FILE ===
             elif tool_name == "delete_file":
                 path = args.get('path', '')
-                full_path = os.path.join(workspace_path, path)
+                full_path = self._resolve_for_snapshot(workspace_path, path)
+                if not full_path:
+                    return ToolResult(success=False, tool_name=tool_name, error="Chemin hors du workspace")
 
                 if os.path.exists(full_path):
                     self._create_snapshot(full_path, path)
 
                 result = delete_file(workspace_path, path)
+                if result.get('success'):
+                    verified = self._verify_file_deleted(workspace_path, path)
+                    result.update(verified)
+                    if not verified.get('verified'):
+                        return ToolResult(success=False, tool_name=tool_name, data=result, error=verified.get('error', 'Verification failed'))
                 self._log_action('delete_file', path, result.get('success', False))
                 return ToolResult(success=result.get('success', False), tool_name=tool_name, data=result)
 
@@ -531,6 +553,7 @@ class TerminalBrain:
             return
 
         model = model or self.default_model
+        self._active_context_size = max(2048, int(context_size or 4096))
         resource_scheduler = None
         resource_lease_id = None
 
@@ -629,6 +652,7 @@ class TerminalBrain:
         full_response = ""
         iteration = 0
         iteration_budget = 20 if autonomous else (3 if repo_brief else self.max_iterations)
+        turn_token_budget = max(3500, min(self.max_non_autonomous_tokens, int(self._active_context_size * 1.35)))
         total_token_stats = {'prompt_tokens': 0, 'completion_tokens': 0, 'total': 0}
         tool_seen = defaultdict(int)
         guard_hits = 0
@@ -642,6 +666,7 @@ class TerminalBrain:
             try:
                 # Appel Ollama avec tools
                 tools_for_model = [] if force_final else self.tool_registry.ollama_tools()
+                messages = self._compact_loop_messages(messages, context_size=self._active_context_size)
                 print(f"[BRAIN] Calling ollama.chat with model={model}, tools={len(tools_for_model)} tools")
                 chat_kwargs = {
                     "model": model,
@@ -653,7 +678,7 @@ class TerminalBrain:
                     "think": False,
                     "keep_alive": "10m",
                     "options": {
-                        'num_ctx': context_size,  # Utiliser la config utilisateur
+                        'num_ctx': self._active_context_size,  # Utiliser la config utilisateur
                         'num_predict': 4096 if autonomous else 2048,
                         'temperature': 0.2,
                     },
@@ -707,12 +732,12 @@ class TerminalBrain:
                 print(f"[BRAIN] Tool calls: {len(tool_calls) if tool_calls else 0}")
                 print(f"[BRAIN] Tokens this call: {token_stats.get('total', 0)} | Total session: {total_token_stats['total']}")
 
-                if not autonomous and total_token_stats['total'] >= self.max_non_autonomous_tokens and not force_final:
+                if not autonomous and total_token_stats['total'] >= turn_token_budget and not force_final:
                     force_final = True
                     yield {
                         'type': 'loop_warning',
                         'action': 'token_budget',
-                        'reason': 'Budget token atteint, passage en synthese finale.'
+                        'reason': 'Budget token du tour atteint, passage en synthese finale.'
                     }
                     messages.append({
                         'role': 'user',
@@ -750,6 +775,22 @@ class TerminalBrain:
                     ]
                     content_lower = (content or '').lower()
                     wants_to_continue = any(kw in content_lower for kw in continuation_keywords)
+
+                    if self._looks_like_unverified_write_claim(content, executed_tools) and iteration < iteration_budget - 1:
+                        print("[BRAIN] Réponse finale non vérifiée - relance avec exigence de preuve")
+                        messages.append({
+                            'role': 'assistant',
+                            'content': content
+                        })
+                        messages.append({
+                            'role': 'user',
+                            'content': (
+                                "Tu viens d'affirmer une creation/modification, mais aucun outil d'ecriture "
+                                "n'a reussi dans cette session. Utilise write_file/edit_file/bash maintenant "
+                                "puis verifie avec list_files/read_file, ou dis clairement que rien n'a ete cree."
+                            )
+                        })
+                        continue
 
                     if wants_to_continue and iteration < iteration_budget - 1:
                         # Le modèle voulait continuer mais n'a pas fait de tool call
@@ -868,22 +909,62 @@ class TerminalBrain:
         the latest turns, skip empty messages, and let files be re-read by tools
         instead of pasting the whole world back into the prompt.
         """
-        max_chars = max(4000, min(24000, int(context_size) * 2))
+        max_chars = max(3000, min(12000, int(context_size) * 1))
         compact: List[Dict] = []
         total = 0
-        for msg in reversed(history[-24:]):
+        for msg in reversed(history[-12:]):
             content = str(msg.get("content", "")).strip()
             role = msg.get("role", "user")
             if not content:
                 continue
-            if len(content) > 2500:
-                content = content[:2500] + "\n... (conversation tronquée)"
+            if len(content) > 1200:
+                content = content[:1200] + "\n... (conversation tronquee)"
             if total + len(content) > max_chars and compact:
                 break
             compact.append({"role": role, "content": content})
             total += len(content)
         compact.reverse()
         return compact
+
+    def _compact_loop_messages(self, messages: List[Dict], context_size: int = 4096) -> List[Dict]:
+        """Bound the live agent loop context before each Ollama call.
+
+        Tool loops repeat the entire prompt every iteration. Without a hard
+        projection step, one read_file result can make the next turn eat the
+        user's whole context slider. Keep the system prompt and newest evidence,
+        but trim old assistant/tool chatter aggressively.
+        """
+        if not messages:
+            return messages
+
+        max_chars = max(6000, min(22000, int(context_size) * 3))
+        system = messages[0]
+        tail = messages[1:]
+        kept: List[Dict] = []
+        total = len(str(system.get("content", "")))
+
+        for msg in reversed(tail):
+            compact_msg = dict(msg)
+            role = compact_msg.get("role", "user")
+            content = str(compact_msg.get("content", "") or "")
+
+            if role == "tool" and len(content) > 3500:
+                content = content[:3500] + "\n... (tool result truncated for context)"
+            elif role == "assistant" and len(content) > 1600:
+                content = content[:1600] + "\n... (assistant text truncated for context)"
+            elif role == "user" and len(content) > 3500:
+                suffix = "older user text truncated for context" if kept else "user text truncated for context"
+                content = content[:3500] + f"\n... ({suffix})"
+
+            compact_msg["content"] = content
+            msg_len = len(content)
+            if kept and total + msg_len > max_chars:
+                break
+            kept.append(compact_msg)
+            total += msg_len
+
+        kept.reverse()
+        return [system] + kept
 
     def _is_repo_overview_request(self, message: str) -> bool:
         """Detect broad repo audits that should not rely on free-form tool loops.
@@ -1101,6 +1182,74 @@ class TerminalBrain:
             summary["summary"] = "ok"
         return summary
 
+    def _has_successful_mutation(self, executed_tools: List[Dict]) -> bool:
+        for item in executed_tools:
+            if not item.get("success"):
+                continue
+            tool = item.get("tool")
+            if tool in {"write_file", "edit_file", "delete_file"}:
+                return True
+            if tool == "bash":
+                command = str((item.get("args") or {}).get("command", "")).lower()
+                mutation_markers = (
+                    "npm create", "npx create", "create-vite", "mkdir", "touch",
+                    "copy ", "cp ", "move ", "mv ", "git init", "pnpm create",
+                    "yarn create", "npm install", "pnpm install", "yarn install",
+                )
+                if any(marker in command for marker in mutation_markers):
+                    return True
+        return False
+
+    def _looks_like_unverified_write_claim(self, content: str, executed_tools: List[Dict]) -> bool:
+        if self.is_read_only_intent(self.current_intent) or self._has_successful_mutation(executed_tools):
+            return False
+
+        text = (content or "").lower()
+        if not text:
+            return False
+
+        claim_markers = (
+            "j'ai créé", "j ai créé", "j'ai cree", "j ai cree", "j'ai ajouté",
+            "j ai ajoute", "j'ai modifié", "j ai modifie", "j'ai corrigé",
+            "j ai corrige", "c'est fait", "terminé", "j'ai mis en place",
+            "i created", "i've created", "i have created", "i added",
+            "i updated", "i modified", "i implemented", "i fixed",
+            "created the", "added the", "updated the", "implemented the",
+            "the file has been", "template has been", "project has been created",
+        )
+        return any(marker in text for marker in claim_markers)
+
+    def _verify_file_write(self, workspace_path: str, relative_path: str) -> Dict:
+        try:
+            from core.workspace_tools import _resolve_workspace_path
+
+            full_path = _resolve_workspace_path(workspace_path, relative_path)
+            if not full_path or not os.path.isfile(full_path):
+                return {"verified": False, "error": f"Fichier introuvable après écriture: {relative_path}"}
+            size = os.path.getsize(full_path)
+            return {"verified": True, "path": relative_path, "size": size}
+        except Exception as exc:
+            return {"verified": False, "error": str(exc)}
+
+    def _verify_file_deleted(self, workspace_path: str, relative_path: str) -> Dict:
+        try:
+            from core.workspace_tools import _resolve_workspace_path
+
+            full_path = _resolve_workspace_path(workspace_path, relative_path)
+            if full_path and os.path.exists(full_path):
+                return {"verified": False, "error": f"Fichier encore présent après suppression: {relative_path}"}
+            return {"verified": True, "path": relative_path}
+        except Exception as exc:
+            return {"verified": False, "error": str(exc)}
+
+    def _resolve_for_snapshot(self, workspace_path: str, relative_path: str) -> Optional[str]:
+        try:
+            from core.workspace_tools import _resolve_workspace_path
+
+            return _resolve_workspace_path(workspace_path, relative_path)
+        except Exception:
+            return None
+
     def _guardrail_fallback_answer(self, initial_message: str, executed_tools: List[Dict]) -> str:
         observed = executed_tools[-8:]
         if not observed:
@@ -1134,6 +1283,8 @@ RÈGLES:
 6. Ne boucle jamais sur list_files/glob/ls/dir/pwd: une exploration racine suffit
 7. Ne lis jamais "." avec read_file: read_file cible uniquement un fichier précis
 8. Quand tu donnes du code en réponse finale, utilise toujours un bloc Markdown fenced avec le langage
+9. Ne conclus jamais qu'un fichier/projet est créé ou modifié sans résultat d'outil réussi
+10. Après une écriture ou un scaffold, vérifie avec list_files/read_file ou la sortie de commande
 
 Tu as accès aux tools suivants pour interagir avec le filesystem et exécuter des commandes.
 Utilise-les pour accomplir les tâches demandées."""
@@ -1157,18 +1308,24 @@ Utilise-les pour accomplir les tâches demandées."""
             content = data.get('content', '')
             lines = data.get('lines', 0)
             # Tronquer si trop long
-            if len(content) > 10000:
-                content = content[:10000] + "\n... (tronqué)"
+            max_chars = max(2500, min(6500, int(self._active_context_size * 1.2)))
+            if len(content) > max_chars:
+                content = content[:max_chars] + "\n... (tronqué pour préserver le contexte)"
             return f"[RÉSULTAT read_file] ({lines} lignes)\n```\n{content}\n```"
 
         elif result.tool_name == 'write_file':
-            return f"[RÉSULTAT write_file] OK - Fichier {'créé' if data.get('created') else 'modifié'}"
+            verified = " vérifié" if data.get('verified') else ""
+            size = f", {data.get('size')} bytes" if data.get('size') is not None else ""
+            return f"[RÉSULTAT write_file] OK{verified} - Fichier {'créé' if data.get('created') else 'modifié'}: {data.get('path', '')}{size}"
 
         elif result.tool_name == 'edit_file':
-            return f"[RÉSULTAT edit_file] OK - {data.get('replacements', 0)} remplacement(s)"
+            verified = " vérifié" if data.get('verified') else ""
+            size = f", {data.get('size')} bytes" if data.get('size') is not None else ""
+            return f"[RÉSULTAT edit_file] OK{verified} - {data.get('replacements', 0)} remplacement(s): {data.get('path', '')}{size}"
 
         elif result.tool_name == 'delete_file':
-            return f"[RÉSULTAT delete_file] OK - Supprimé"
+            verified = " vérifié" if data.get('verified') else ""
+            return f"[RÉSULTAT delete_file] OK{verified} - Supprimé: {data.get('path', '')}"
 
         elif result.tool_name == 'search':
             results = data.get('results', [])

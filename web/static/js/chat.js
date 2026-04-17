@@ -622,8 +622,8 @@ function copyCodeBlock(btn) {
     const codeBlock = btn.closest('.code-block');
     const code = codeBlock.querySelector('code').textContent;
     navigator.clipboard.writeText(code).then(() => {
-        btn.textContent = 'Copié!';
-        setTimeout(() => btn.textContent = 'Copier', 2000);
+        btn.textContent = `${chatT('common.copied', 'Copié')}!`;
+        setTimeout(() => btn.textContent = chatT('common.copy', 'Copier'), 2000);
     });
 }
 
@@ -668,18 +668,18 @@ function finalizeStreamingMessage(msgId, responseTime, tokenStatsData = null) {
     // Afficher les tokens si disponibles
     let tokenDisplay = '';
     if (tokenStatsData && tokenStatsData.total_tokens) {
-        tokenDisplay = `<span class="token-count" title="Prompt: ${tokenStatsData.prompt_tokens} | Réponse: ${tokenStatsData.completion_tokens}">${tokenStatsData.total_tokens} tok</span>`;
+        tokenDisplay = `<span class="token-count" title="Prompt: ${tokenStatsData.prompt_tokens} | ${chatT('chat.responseLabel', 'Réponse')}: ${tokenStatsData.completion_tokens}">${tokenStatsData.total_tokens} tok</span>`;
     }
 
     const actionsHtml = `
         <div class="chat-actions">
-            <button class="chat-action-btn" onclick="copyText('${msgId}')" title="Copier">
+            <button class="chat-action-btn" onclick="copyText('${msgId}')" title="${chatT('common.copy', 'Copier')}">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
                     <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
                 </svg>
             </button>
-            <button class="chat-action-btn" onclick="speakText('${msgId}')" title="Lire">
+            <button class="chat-action-btn" onclick="speakText('${msgId}')" title="${chatT('common.readAloud', 'Lire')}">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
                     <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
@@ -722,7 +722,7 @@ function addMessage(prompt, userImage, original, modified, generationTime = null
                     <div class="result-image-container">
                         <div class="result-image-wrapper">
                             <img src="${original}" class="result-image" onclick="openModalFromPair(this, true)">
-                            <button class="edit-btn" onclick="openEditModal(this.closest('.result-image-wrapper').querySelector('img').src)" title="Editer">${editIcon}</button>
+                            <button class="edit-btn" onclick="openEditModal(this.closest('.result-image-wrapper').querySelector('img').src)" title="${chatT('common.edit', 'Éditer')}">${editIcon}</button>
                         </div>
                         <div class="image-label" ${imageLabelAttr('original')}>${imageLabelT('original', 'Original')}</div>
                     </div>
@@ -730,7 +730,7 @@ function addMessage(prompt, userImage, original, modified, generationTime = null
                         <div class="result-image-wrapper">
                             <img src="${modified}" class="result-image" onclick="openModalFromPair(this, false)">
                             <div class="image-actions">
-                                <button class="edit-btn" onclick="openEditModal(this.closest('.result-image-wrapper').querySelector('img').src)" title="Editer">${editIcon}</button>
+                                <button class="edit-btn" onclick="openEditModal(this.closest('.result-image-wrapper').querySelector('img').src)" title="${chatT('common.edit', 'Éditer')}">${editIcon}</button>
                                 <button class="edit-btn refine-btn" onclick="fixDetailsImage(this.closest('.result-image-wrapper').querySelector('img').src)" title="Fix Details">${fixDetailsIcon}</button>
                             </div>
                         </div>
@@ -777,7 +777,7 @@ function addMessageEdit(prompt, original, modified, mask = null, generationTime 
                 <div class="result-image-container">
                     <div class="result-image-wrapper">
                         <img src="${original}" class="result-image" onclick="openModalFromPair(this, true)">
-                        <button class="edit-btn" onclick="openEditModal(this.closest('.result-image-wrapper').querySelector('img').src)" title="Editer">${editIcon}</button>
+                        <button class="edit-btn" onclick="openEditModal(this.closest('.result-image-wrapper').querySelector('img').src)" title="${chatT('common.edit', 'Éditer')}">${editIcon}</button>
                     </div>
                     <div class="image-label" ${imageLabelAttr('original')}>${imageLabelT('original', 'Original')}</div>
                 </div>
@@ -791,7 +791,7 @@ function addMessageEdit(prompt, original, modified, mask = null, generationTime 
                     <div class="result-image-wrapper">
                         <img src="${modified}" class="result-image" onclick="openModalFromPair(this, false)">
                         <div class="image-actions">
-                            <button class="edit-btn" onclick="openEditModal(this.closest('.result-image-wrapper').querySelector('img').src)" title="Editer">${editIcon}</button>
+                            <button class="edit-btn" onclick="openEditModal(this.closest('.result-image-wrapper').querySelector('img').src)" title="${chatT('common.edit', 'Éditer')}">${editIcon}</button>
                             <button class="edit-btn refine-btn" onclick="fixDetailsImage(this.closest('.result-image-wrapper').querySelector('img').src)" title="Fix Details">${fixDetailsIcon}</button>
                         </div>
                     </div>
@@ -805,7 +805,7 @@ function addMessageEdit(prompt, original, modified, mask = null, generationTime 
                 <div class="result-image-container">
                     <div class="result-image-wrapper">
                         <img src="${original}" class="result-image" onclick="openModalFromPair(this, true)">
-                        <button class="edit-btn" onclick="openEditModal(this.closest('.result-image-wrapper').querySelector('img').src)" title="Editer">${editIcon}</button>
+                        <button class="edit-btn" onclick="openEditModal(this.closest('.result-image-wrapper').querySelector('img').src)" title="${chatT('common.edit', 'Éditer')}">${editIcon}</button>
                     </div>
                     <div class="image-label" ${imageLabelAttr('original')}>${imageLabelT('original', 'Original')}</div>
                 </div>
@@ -813,7 +813,7 @@ function addMessageEdit(prompt, original, modified, mask = null, generationTime 
                     <div class="result-image-wrapper">
                         <img src="${modified}" class="result-image" onclick="openModalFromPair(this, false)">
                         <div class="image-actions">
-                            <button class="edit-btn" onclick="openEditModal(this.closest('.result-image-wrapper').querySelector('img').src)" title="Editer">${editIcon}</button>
+                            <button class="edit-btn" onclick="openEditModal(this.closest('.result-image-wrapper').querySelector('img').src)" title="${chatT('common.edit', 'Éditer')}">${editIcon}</button>
                             <button class="edit-btn refine-btn" onclick="fixDetailsImage(this.closest('.result-image-wrapper').querySelector('img').src)" title="Fix Details">${fixDetailsIcon}</button>
                         </div>
                     </div>
@@ -867,7 +867,7 @@ function addMessageTxt2Img(prompt, generated, generationTime = null, seed = null
                         <div class="result-image-wrapper">
                             <img src="${generated}" class="result-image" onclick="openModalSingle(this.src)">
                             <div class="image-actions">
-                                <button class="edit-btn" onclick="openEditModal(this.closest('.result-image-wrapper').querySelector('img').src)" title="Editer">${editIcon}</button>
+                                <button class="edit-btn" onclick="openEditModal(this.closest('.result-image-wrapper').querySelector('img').src)" title="${chatT('common.edit', 'Éditer')}">${editIcon}</button>
                                 <button class="edit-btn refine-btn" onclick="fixDetailsImage(this.closest('.result-image-wrapper').querySelector('img').src)" title="Fix Details">${fixDetailsIcon}</button>
                             </div>
                         </div>
@@ -1043,7 +1043,7 @@ function addChatMessageWithGenerated(prompt, response, generated, responseTime =
                         <div class="result-image-wrapper">
                             <img src="${generated}" class="result-image" onclick="openModalSingle(this.src)">
                             <div class="image-actions">
-                                <button class="edit-btn" onclick="openEditModal(this.closest('.result-image-wrapper').querySelector('img').src)" title="Editer">${editIcon}</button>
+                                <button class="edit-btn" onclick="openEditModal(this.closest('.result-image-wrapper').querySelector('img').src)" title="${chatT('common.edit', 'Éditer')}">${editIcon}</button>
                                 <button class="edit-btn refine-btn" onclick="fixDetailsImage(this.closest('.result-image-wrapper').querySelector('img').src)" title="Fix Details">${fixDetailsIcon}</button>
                             </div>
                         </div>
@@ -1051,19 +1051,19 @@ function addChatMessageWithGenerated(prompt, response, generated, responseTime =
                     </div>
                 </div>
                 <div class="chat-actions">
-                    <button class="chat-action-btn" onclick="regenerateChat('${prompt.replace(/'/g, "\\'")}')" title="Regenerer">
+                    <button class="chat-action-btn" onclick="regenerateChat('${prompt.replace(/'/g, "\\'")}')" title="${chatT('common.regenerate', 'Regénérer')}">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M1 4v6h6M23 20v-6h-6"/>
                             <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/>
                         </svg>
                     </button>
-                    <button class="chat-action-btn" onclick="speakText('chat-${msgId}')" title="Lire">
+                    <button class="chat-action-btn" onclick="speakText('chat-${msgId}')" title="${chatT('common.readAloud', 'Lire')}">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
                             <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
                         </svg>
                     </button>
-                    <button class="chat-action-btn" onclick="copyText('chat-${msgId}')" title="Copier">
+                    <button class="chat-action-btn" onclick="copyText('chat-${msgId}')" title="${chatT('common.copy', 'Copier')}">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
                             <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
@@ -1132,7 +1132,7 @@ function replacePendingImageWithReal(imageSrc, genTime) {
             <div class="result-image-wrapper">
                 <img src="${imageSrc}" class="result-image" onclick="openModalSingle('${imageSrc}')">
                 <div class="image-actions">
-                    <button class="edit-btn" onclick="openEditModal('${imageSrc}')" title="Editer">${editIcon}</button>
+                    <button class="edit-btn" onclick="openEditModal('${imageSrc}')" title="${chatT('common.edit', 'Éditer')}">${editIcon}</button>
                     <button class="edit-btn refine-btn" onclick="fixDetailsImage('${imageSrc}')" title="Fix Details">${fixDetailsIcon}</button>
                 </div>
             </div>

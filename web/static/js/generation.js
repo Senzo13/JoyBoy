@@ -321,7 +321,7 @@ async function handleChatStream(prompt, startTime, targetChatId = (typeof curren
                             await generateImageFromChat(data.image_prompt);
                         }
                     } else if (data.error) {
-                        appendToStreamingMessage(msgId, `\n\nErreur: ${data.error}`);
+                        appendToStreamingMessage(msgId, `\n\n${generationT('terminal.tool.error', 'Erreur')}: ${data.error}`);
                         finalizeStreamingMessage(msgId, Date.now() - startTime, null);
                         const finalHtml = getChatHtmlWithoutSkeleton();
                         saveCurrentChatHtml('', finalHtml, targetChatId);
@@ -338,99 +338,100 @@ function formatWorkspaceResult(action) {
     if (!action || !action.result) return '';
 
     const result = action.result;
+    const tt = (key, fallback, params = {}) => generationT(`terminal.tool.${key}`, fallback, params);
     let output = '\n\n---\n';
 
     if (!result.success) {
-        output += `**Erreur:** ${result.error || 'Erreur inconnue'}\n`;
+        output += `**${tt('error', 'Erreur')}:** ${result.error || tt('unknownError', 'Erreur inconnue')}\n`;
         return output;
     }
 
     switch (action.action) {
         case 'list_files':
-            output += `**Fichiers dans \`${result.path || '.'}\`:**\n\`\`\`\n`;
+            output += `**${tt('filesIn', 'Fichiers dans')} \`${result.path || '.'}\`:**\n\`\`\`\n`;
             if (result.items && result.items.length > 0) {
                 for (const item of result.items.slice(0, 30)) {
                     if (item.type === 'dir') {
-                        output += `[DIR] ${item.name}/ (${item.items_count} éléments)\n`;
+                        output += `[DIR] ${item.name}/ (${item.items_count} ${tt('items', 'éléments')})\n`;
                     } else if (item.type === 'file') {
                         output += `[FILE] ${item.name} (${item.size_display || ''})\n`;
                     } else if (item.type === 'truncated') {
-                        output += `... (liste tronquée)\n`;
+                        output += `... (${tt('listTruncated', 'liste tronquée')})\n`;
                     }
                 }
             } else {
-                output += '(dossier vide)\n';
+                output += `(${tt('emptyFolder', 'dossier vide')})\n`;
             }
             output += '```\n';
             break;
 
         case 'read_file':
-            output += `**Contenu de \`${result.path}\`** (${result.lines} lignes${result.truncated ? ', tronqué' : ''}):\n`;
+            output += `**${tt('contentOf', 'Contenu de')} \`${result.path}\`** (${result.lines} ${tt('lines', 'lignes')}${result.truncated ? `, ${tt('truncated', 'tronqué')}` : ''}):\n`;
             output += '```\n';
             output += result.content.slice(0, 3000);
-            if (result.content.length > 3000) output += '\n... (contenu tronqué)';
+            if (result.content.length > 3000) output += `\n... (${tt('contentTruncated', 'contenu tronqué')})`;
             output += '\n```\n';
             break;
 
         case 'search':
-            output += `**Résultats pour \`${result.pattern}\`** (${result.results?.length || 0} trouvés):\n`;
+            output += `**${tt('resultsFor', 'Résultats pour')} \`${result.pattern}\`** (${result.results?.length || 0} ${tt('found', 'trouvés')}):\n`;
             if (result.results && result.results.length > 0) {
                 output += '```\n';
                 for (const r of result.results.slice(0, 20)) {
                     output += `${r.file}:${r.line}: ${r.content.slice(0, 100)}\n`;
                 }
-                if (result.results.length > 20) output += '... (résultats tronqués)\n';
+                if (result.results.length > 20) output += `... (${tt('contentTruncated', 'contenu tronqué')})\n`;
                 output += '```\n';
             } else {
-                output += '_Aucun résultat_\n';
+                output += `_${tt('noResult', 'Aucun résultat')}_\n`;
             }
             break;
 
         case 'glob':
-            output += `**Fichiers correspondant à \`${result.pattern}\`** (${result.files?.length || 0}):\n`;
+            output += `**${tt('matchingFiles', 'Fichiers correspondant à')} \`${result.pattern}\`** (${result.files?.length || 0}):\n`;
             if (result.files && result.files.length > 0) {
                 output += '```\n';
                 for (const f of result.files.slice(0, 30)) {
                     output += `${f}\n`;
                 }
-                if (result.files.length > 30) output += '... (liste tronquée)\n';
+                if (result.files.length > 30) output += `... (${tt('listTruncated', 'liste tronquée')})\n`;
                 output += '```\n';
             } else {
-                output += '_Aucun fichier trouvé_\n';
+                output += `_${tt('noFileFound', 'Aucun fichier trouvé')}_\n`;
             }
             break;
 
         case 'write_file':
-            output += `**Fichier ${result.created ? 'créé' : 'modifié'}:** \`${result.path}\`\n`;
-            output += `_${result.bytes_written} octets écrits_\n`;
+            output += `**${tt('fileLabel', 'Fichier')} ${result.created ? tt('fileCreated', 'créé') : tt('fileModified', 'modifié')}:** \`${result.path}\`\n`;
+            output += `_${tt('bytesWritten', '{bytes} octets écrits', { bytes: result.bytes_written })}_\n`;
             break;
 
         case 'edit_file':
-            output += `**Fichier modifié:** \`${result.path}\`\n`;
-            output += `_${result.replacements} remplacement(s) effectué(s)_\n`;
+            output += `**${tt('fileLabel', 'Fichier')} ${tt('fileModified', 'modifié')}:** \`${result.path}\`\n`;
+            output += `_${tt('replacementsDone', '{count} remplacement(s) effectué(s)', { count: result.replacements })}_\n`;
             if (result.diff_preview) {
                 output += '```diff\n' + result.diff_preview + '\n```\n';
             }
             break;
 
         case 'delete_file':
-            output += `**Fichier supprimé:** \`${result.path}\`\n`;
+            output += `**${tt('fileDeleted', 'Fichier supprimé')}:** \`${result.path}\`\n`;
             break;
 
         case 'bash':
             const returnCode = result.return_code ?? -1;
-            const bashStatus = returnCode === 0 ? 'OK' : 'ERREUR';
-            output += `**Commande exécutée** [${bashStatus}] (code: ${returnCode})\n`;
+            const bashStatus = returnCode === 0 ? 'OK' : tt('errorStatus', 'ERREUR');
+            output += `**${tt('commandExecuted', 'Commande exécutée')}** [${bashStatus}] (code: ${returnCode})\n`;
             if (result.output) {
                 output += '```bash\n';
                 output += result.output.slice(0, 2000);
-                if (result.output.length > 2000) output += '\n... (sortie tronquée)';
+                if (result.output.length > 2000) output += `\n... (${tt('outputTruncated', 'sortie tronquée')})`;
                 output += '\n```\n';
             }
             break;
 
         case 'create_plan':
-            output += `**Plan créé:** ${result.tasks_count} tâches\n\n`;
+            output += `**${tt('planCreated', 'Plan créé')}:** ${result.tasks_count} ${tt('tasks', 'tâches')}\n\n`;
             if (result.markdown) {
                 output += result.markdown + '\n';
             } else if (result.tasks) {
@@ -441,23 +442,23 @@ function formatWorkspaceResult(action) {
             break;
 
         case 'explore':
-            output += `**Exploration:** ${result.summary}\n\n`;
+            output += `**${tt('exploration', 'Exploration')}:** ${result.summary}\n\n`;
             if (result.project_type && result.project_type !== 'unknown') {
-                output += `**Type:** ${result.project_type.toUpperCase()}\n`;
+                output += `**${tt('type', 'Type')}:** ${result.project_type.toUpperCase()}\n`;
             }
             if (result.technologies?.length > 0) {
-                output += `**Technologies:** ${result.technologies.join(', ')}\n`;
+                output += `**${tt('technologies', 'Technologies')}:** ${result.technologies.join(', ')}\n`;
             }
             if (result.key_files && Object.keys(result.key_files).length > 0) {
-                output += '\n**Fichiers analysés:**\n';
+                output += `\n**${tt('analyzedFiles', 'Fichiers analysés')}:**\n`;
                 for (const [path, info] of Object.entries(result.key_files)) {
-                    output += `- \`${path}\` (${info.lines} lignes)\n`;
+                    output += `- \`${path}\` (${info.lines} ${tt('lines', 'lignes')})\n`;
                 }
             }
             break;
 
         default:
-            output += `_Action inconnue: ${action.action}_\n`;
+            output += `_${tt('unknownAction', 'Action inconnue : {action}', { action: action.action })}_\n`;
     }
 
     return output;
@@ -551,22 +552,22 @@ async function stopAllGenerations() {
         if (aiResponse) {
             aiResponse.classList.remove('loading');
             aiResponse.innerHTML = `
-                <div class="chat-bubble cancelled" id="${msgId}">Pas de réponse.</div>
+                <div class="chat-bubble cancelled" id="${msgId}">${generationT('chat.noResponse', 'Pas de réponse.')}</div>
                 <div class="chat-actions">
-                    <button class="chat-action-btn" onclick="regenerateChat('${prompt}')" title="Regenerer">
+                    <button class="chat-action-btn" onclick="regenerateChat('${prompt}')" title="${generationT('common.regenerate', 'Regénérer')}">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M1 4v6h6M23 20v-6h-6"/>
                             <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/>
                         </svg>
                     </button>
-                    <button class="chat-action-btn" onclick="copyText('${msgId}')" title="Copier">
+                    <button class="chat-action-btn" onclick="copyText('${msgId}')" title="${generationT('common.copy', 'Copier')}">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
                             <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
                         </svg>
                     </button>
                     <div class="chat-actions-divider"></div>
-                    <div class="response-time"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.586 16.726A2 2 0 0 1 2 15.312V8.688a2 2 0 0 1 .586-1.414l4.688-4.688A2 2 0 0 1 8.688 2h6.624a2 2 0 0 1 1.414.586l4.688 4.688A2 2 0 0 1 22 8.688v6.624a2 2 0 0 1-.586 1.414l-4.688 4.688a2 2 0 0 1-1.414.586H8.688a2 2 0 0 1-1.414-.586z"></path><path d="M8 12h8"></path></svg><span class="speed">Interrompu</span></div>
+                    <div class="response-time"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.586 16.726A2 2 0 0 1 2 15.312V8.688a2 2 0 0 1 .586-1.414l4.688-4.688A2 2 0 0 1 8.688 2h6.624a2 2 0 0 1 1.414.586l4.688 4.688A2 2 0 0 1 22 8.688v6.624a2 2 0 0 1-.586 1.414l-4.688 4.688a2 2 0 0 1-1.414.586H8.688a2 2 0 0 1-1.414-.586z"></path><path d="M8 12h8"></path></svg><span class="speed">${generationT('chat.interrupted', 'Interrompu')}</span></div>
                 </div>
             `;
         }
@@ -582,7 +583,7 @@ async function stopAllGenerations() {
                 bubble.innerHTML = formatMarkdown(rawText);
             } else {
                 bubble.classList.add('cancelled');
-                bubble.textContent = 'Pas de réponse.';
+                bubble.textContent = generationT('chat.noResponse', 'Pas de réponse.');
             }
             streamingRawText = '';
         }
@@ -595,20 +596,20 @@ async function stopAllGenerations() {
             if (aiResponse && !aiResponse.querySelector('.chat-actions')) {
                 aiResponse.insertAdjacentHTML('beforeend', `
                     <div class="chat-actions">
-                        <button class="chat-action-btn" onclick="regenerateChat('${safePrompt}')" title="Regenerer">
+                        <button class="chat-action-btn" onclick="regenerateChat('${safePrompt}')" title="${generationT('common.regenerate', 'Regénérer')}">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <path d="M1 4v6h6M23 20v-6h-6"/>
                                 <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/>
                             </svg>
                         </button>
-                        <button class="chat-action-btn" onclick="copyText('${msgId}')" title="Copier">
+                        <button class="chat-action-btn" onclick="copyText('${msgId}')" title="${generationT('common.copy', 'Copier')}">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
                                 <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
                             </svg>
                         </button>
                         <div class="chat-actions-divider"></div>
-                        <div class="response-time"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.586 16.726A2 2 0 0 1 2 15.312V8.688a2 2 0 0 1 .586-1.414l4.688-4.688A2 2 0 0 1 8.688 2h6.624a2 2 0 0 1 1.414.586l4.688 4.688A2 2 0 0 1 22 8.688v6.624a2 2 0 0 1-.586 1.414l-4.688 4.688a2 2 0 0 1-1.414.586H8.688a2 2 0 0 1-1.414-.586z"></path><path d="M8 12h8"></path></svg><span class="speed">Interrompu</span></div>
+                        <div class="response-time"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.586 16.726A2 2 0 0 1 2 15.312V8.688a2 2 0 0 1 .586-1.414l4.688-4.688A2 2 0 0 1 8.688 2h6.624a2 2 0 0 1 1.414.586l4.688 4.688A2 2 0 0 1 22 8.688v6.624a2 2 0 0 1-.586 1.414l-4.688 4.688a2 2 0 0 1-1.414.586H8.688a2 2 0 0 1-1.414-.586z"></path><path d="M8 12h8"></path></svg><span class="speed">${generationT('chat.interrupted', 'Interrompu')}</span></div>
                     </div>
                 `);
             }
@@ -629,22 +630,22 @@ async function stopAllGenerations() {
         const prompt = userBubble ? userBubble.textContent.replace(/'/g, "\\'") : '';
         pendingMsg.insertAdjacentHTML('beforeend', `
             <div class="ai-response">
-                <div class="chat-bubble cancelled" id="${msgId}">Pas de réponse.</div>
+                <div class="chat-bubble cancelled" id="${msgId}">${generationT('chat.noResponse', 'Pas de réponse.')}</div>
                 <div class="chat-actions">
-                    <button class="chat-action-btn" onclick="regenerateChat('${prompt}')" title="Regenerer">
+                    <button class="chat-action-btn" onclick="regenerateChat('${prompt}')" title="${generationT('common.regenerate', 'Regénérer')}">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M1 4v6h6M23 20v-6h-6"/>
                             <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/>
                         </svg>
                     </button>
-                    <button class="chat-action-btn" onclick="copyText('${msgId}')" title="Copier">
+                    <button class="chat-action-btn" onclick="copyText('${msgId}')" title="${generationT('common.copy', 'Copier')}">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
                             <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
                         </svg>
                     </button>
                     <div class="chat-actions-divider"></div>
-                    <div class="response-time"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.586 16.726A2 2 0 0 1 2 15.312V8.688a2 2 0 0 1 .586-1.414l4.688-4.688A2 2 0 0 1 8.688 2h6.624a2 2 0 0 1 1.414.586l4.688 4.688A2 2 0 0 1 22 8.688v6.624a2 2 0 0 1-.586 1.414l-4.688 4.688a2 2 0 0 1-1.414.586H8.688a2 2 0 0 1-1.414-.586z"></path><path d="M8 12h8"></path></svg><span class="speed">Interrompu</span></div>
+                    <div class="response-time"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.586 16.726A2 2 0 0 1 2 15.312V8.688a2 2 0 0 1 .586-1.414l4.688-4.688A2 2 0 0 1 8.688 2h6.624a2 2 0 0 1 1.414.586l4.688 4.688A2 2 0 0 1 22 8.688v6.624a2 2 0 0 1-.586 1.414l-4.688 4.688a2 2 0 0 1-1.414.586H8.688a2 2 0 0 1-1.414-.586z"></path><path d="M8 12h8"></path></svg><span class="speed">${generationT('chat.interrupted', 'Interrompu')}</span></div>
                 </div>
             </div>
         `);
@@ -823,7 +824,7 @@ async function generate() {
                             bubble.innerHTML = formatMarkdown(rawText);
                         } else {
                             bubble.classList.add('cancelled');
-                            bubble.textContent = 'Pas de réponse.';
+                    bubble.textContent = generationT('chat.noResponse', 'Pas de réponse.');
                         }
                         streamingRawText = '';
                     }
@@ -837,20 +838,20 @@ async function generate() {
                         if (aiResponse && !aiResponse.querySelector('.chat-actions')) {
                             aiResponse.insertAdjacentHTML('beforeend', `
                                 <div class="chat-actions">
-                                    <button class="chat-action-btn" onclick="regenerateChat('${safePrompt}')" title="Regenerer">
+                                    <button class="chat-action-btn" onclick="regenerateChat('${safePrompt}')" title="${generationT('common.regenerate', 'Regénérer')}">
                                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                             <path d="M1 4v6h6M23 20v-6h-6"/>
                                             <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/>
                                         </svg>
                                     </button>
-                                    <button class="chat-action-btn" onclick="copyText('${msgId}')" title="Copier">
+                                    <button class="chat-action-btn" onclick="copyText('${msgId}')" title="${generationT('common.copy', 'Copier')}">
                                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                             <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
                                             <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
                                         </svg>
                                     </button>
                                     <div class="chat-actions-divider"></div>
-                                    <div class="response-time">${timeDisplay} <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.586 16.726A2 2 0 0 1 2 15.312V8.688a2 2 0 0 1 .586-1.414l4.688-4.688A2 2 0 0 1 8.688 2h6.624a2 2 0 0 1 1.414.586l4.688 4.688A2 2 0 0 1 22 8.688v6.624a2 2 0 0 1-.586 1.414l-4.688 4.688a2 2 0 0 1-1.414.586H8.688a2 2 0 0 1-1.414-.586z"></path><path d="M8 12h8"></path></svg><span class="speed">Interrompu</span></div>
+                                    <div class="response-time">${timeDisplay} <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.586 16.726A2 2 0 0 1 2 15.312V8.688a2 2 0 0 1 .586-1.414l4.688-4.688A2 2 0 0 1 8.688 2h6.624a2 2 0 0 1 1.414.586l4.688 4.688A2 2 0 0 1 22 8.688v6.624a2 2 0 0 1-.586 1.414l-4.688 4.688a2 2 0 0 1-1.414.586H8.688a2 2 0 0 1-1.414-.586z"></path><path d="M8 12h8"></path></svg><span class="speed">${generationT('chat.interrupted', 'Interrompu')}</span></div>
                                 </div>
                             `);
                         }
@@ -1525,7 +1526,7 @@ function replaceImageSkeletonWithReal(imageSrc, genTime, targetChatId = null) {
             <div class="result-image-wrapper">
                 <img src="${imageSrc}" class="result-image" onclick="openModalSingle('${imageSrc}')">
                 <div class="image-actions">
-                    <button class="edit-btn" onclick="openEditModalWithModelSwitch('${imageSrc}')" title="Editer">${editIcon}</button>
+                    <button class="edit-btn" onclick="openEditModalWithModelSwitch('${imageSrc}')" title="${generationT('common.edit', 'Éditer')}">${editIcon}</button>
                     <button class="edit-btn refine-btn" onclick="fixDetailsImage('${imageSrc}')" title="Fix Details">${fixDetailsIcon}</button>
                 </div>
             </div>

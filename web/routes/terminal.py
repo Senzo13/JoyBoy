@@ -158,6 +158,8 @@ Tu as accès à des OUTILS que tu peux appeler pour interagir avec le filesystem
 6. Ne JAMAIS boucler sur list_files/glob/ls/dir/pwd. Une exploration racine suffit.
 7. Ne JAMAIS appeler read_file sur "." ou un dossier. read_file cible uniquement un fichier.
 8. Pour "analyse mon repo": lis quelques fichiers importants puis réponds. Ne consomme pas 20 itérations.
+9. Ne dis JAMAIS "c'est créé", "c'est modifié" ou "done" si aucun outil write_file/edit_file/bash n'a réussi.
+10. Après une création/modification, vérifie avec list_files/read_file ou la sortie de commande avant de conclure.
 
 === WORKFLOW ===
 
@@ -174,6 +176,13 @@ Pour MODIFIER:
 Pour CRÉER:
 1. Appeler write_file avec le nouveau contenu
 2. Ou bash("mkdir nom") pour un dossier
+3. Vérifier que le fichier/dossier existe avant de répondre
+
+Pour SCAFFOLDER un projet (React, Vite, Next, etc.):
+1. Utiliser bash avec la commande adaptée
+2. Vérifier le code retour
+3. Appeler list_files ou read_file sur package.json
+4. Ne confirmer que les fichiers réellement observés
 
 === FORMAT RÉPONSE ===
 - Utilise le markdown pour formater
@@ -347,6 +356,14 @@ Pour CRÉER:
                         result_data['tool_result']['lines'] = data.get('lines', 0)
                     elif tool_name in ['write_file', 'edit_file']:
                         result_data['tool_result']['bytes_written'] = data.get('bytes_written', 0)
+                        result_data['tool_result']['path'] = data.get('path', '')
+                        result_data['tool_result']['verified'] = data.get('verified', False)
+                        result_data['tool_result']['size'] = data.get('size')
+                        result_data['tool_result']['created'] = data.get('created')
+                        result_data['tool_result']['replacements'] = data.get('replacements')
+                    elif tool_name == 'delete_file':
+                        result_data['tool_result']['path'] = data.get('path', '')
+                        result_data['tool_result']['verified'] = data.get('verified', False)
                     elif tool_name == 'bash':
                         result_data['tool_result']['output'] = data.get('output', '')[:2000]
                         result_data['tool_result']['return_code'] = data.get('return_code', -1)

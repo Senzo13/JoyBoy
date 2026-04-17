@@ -736,22 +736,22 @@ function cancelCurrentRequest() {
             if (aiResponse) {
                 aiResponse.classList.remove('loading');
                 aiResponse.innerHTML = `
-                    <div class="chat-bubble cancelled" id="${msgId}">Pas de réponse.</div>
+                    <div class="chat-bubble cancelled" id="${msgId}">${apiT('chat.noResponse', 'Pas de réponse.')}</div>
                     <div class="chat-actions">
-                        <button class="chat-action-btn" onclick="regenerateChat('${prompt}')" title="Regenerer">
+                        <button class="chat-action-btn" onclick="regenerateChat('${prompt}')" title="${apiT('common.regenerate', 'Regénérer')}">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <path d="M1 4v6h6M23 20v-6h-6"/>
                                 <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/>
                             </svg>
                         </button>
-                        <button class="chat-action-btn" onclick="copyText('${msgId}')" title="Copier">
+                        <button class="chat-action-btn" onclick="copyText('${msgId}')" title="${apiT('common.copy', 'Copier')}">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
                                 <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
                             </svg>
                         </button>
                         <div class="chat-actions-divider"></div>
-                        <div class="response-time"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.586 16.726A2 2 0 0 1 2 15.312V8.688a2 2 0 0 1 .586-1.414l4.688-4.688A2 2 0 0 1 8.688 2h6.624a2 2 0 0 1 1.414.586l4.688 4.688A2 2 0 0 1 22 8.688v6.624a2 2 0 0 1-.586 1.414l-4.688 4.688a2 2 0 0 1-1.414.586H8.688a2 2 0 0 1-1.414-.586z"></path><path d="M8 12h8"></path></svg><span class="speed">Interrompu</span></div>
+                        <div class="response-time"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.586 16.726A2 2 0 0 1 2 15.312V8.688a2 2 0 0 1 .586-1.414l4.688-4.688A2 2 0 0 1 8.688 2h6.624a2 2 0 0 1 1.414.586l4.688 4.688A2 2 0 0 1 22 8.688v6.624a2 2 0 0 1-.586 1.414l-4.688 4.688a2 2 0 0 1-1.414.586H8.688a2 2 0 0 1-1.414-.586z"></path><path d="M8 12h8"></path></svg><span class="speed">${apiT('chat.interrupted', 'Interrompu')}</span></div>
                     </div>
                 `;
             }
@@ -769,22 +769,22 @@ function cancelCurrentRequest() {
             const prompt = userBubble ? userBubble.textContent.replace(/'/g, "\\'") : '';
             pendingMsg.insertAdjacentHTML('beforeend', `
                 <div class="ai-response">
-                    <div class="chat-bubble cancelled" id="${msgId}">Pas de réponse.</div>
+                    <div class="chat-bubble cancelled" id="${msgId}">${apiT('chat.noResponse', 'Pas de réponse.')}</div>
                     <div class="chat-actions">
-                        <button class="chat-action-btn" onclick="regenerateChat('${prompt}')" title="Regenerer">
+                        <button class="chat-action-btn" onclick="regenerateChat('${prompt}')" title="${apiT('common.regenerate', 'Regénérer')}">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <path d="M1 4v6h6M23 20v-6h-6"/>
                                 <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/>
                             </svg>
                         </button>
-                        <button class="chat-action-btn" onclick="copyText('${msgId}')" title="Copier">
+                        <button class="chat-action-btn" onclick="copyText('${msgId}')" title="${apiT('common.copy', 'Copier')}">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
                                 <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
                             </svg>
                         </button>
                         <div class="chat-actions-divider"></div>
-                        <div class="response-time"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.586 16.726A2 2 0 0 1 2 15.312V8.688a2 2 0 0 1 .586-1.414l4.688-4.688A2 2 0 0 1 8.688 2h6.624a2 2 0 0 1 1.414.586l4.688 4.688A2 2 0 0 1 22 8.688v6.624a2 2 0 0 1-.586 1.414l-4.688 4.688a2 2 0 0 1-1.414.586H8.688a2 2 0 0 1-1.414-.586z"></path><path d="M8 12h8"></path></svg><span class="speed">Interrompu</span></div>
+                        <div class="response-time"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.586 16.726A2 2 0 0 1 2 15.312V8.688a2 2 0 0 1 .586-1.414l4.688-4.688A2 2 0 0 1 8.688 2h6.624a2 2 0 0 1 1.414.586l4.688 4.688A2 2 0 0 1 22 8.688v6.624a2 2 0 0 1-.586 1.414l-4.688 4.688a2 2 0 0 1-1.414.586H8.688a2 2 0 0 1-1.414-.586z"></path><path d="M8 12h8"></path></svg><span class="speed">${apiT('chat.interrupted', 'Interrompu')}</span></div>
                     </div>
                 </div>
             `);

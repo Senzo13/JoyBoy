@@ -319,6 +319,9 @@ function refreshLocaleSensitiveSurfaces() {
     if (typeof updateModelPickerDisplay === 'function') {
         updateModelPickerDisplay();
     }
+    if (typeof updateActiveWorkspaceUI === 'function') {
+        updateActiveWorkspaceUI();
+    }
     if (lastDoctorReport) {
         renderDoctorReport(lastDoctorReport);
     }
@@ -373,7 +376,7 @@ function loadPresets() {
         const saved = localStorage.getItem(`preset_${i}`);
         if (saved) {
             presets[i] = saved;
-            document.getElementById(`preset-text-${i}`).textContent = saved || 'Clic droit pour editer';
+            document.getElementById(`preset-text-${i}`).textContent = saved || t('settings.generation.presetEditHint', 'Clic droit pour éditer');
         }
     }
 }
@@ -508,7 +511,7 @@ function savePreset() {
     const value = document.getElementById('preset-edit-input').value.trim();
     presets[editingPresetNum] = value;
     localStorage.setItem(`preset_${editingPresetNum}`, value);
-    document.getElementById(`preset-text-${editingPresetNum}`).textContent = value || 'Clic droit pour editer';
+    document.getElementById(`preset-text-${editingPresetNum}`).textContent = value || t('settings.generation.presetEditHint', 'Clic droit pour éditer');
     closePresetModal();
 }
 

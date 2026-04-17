@@ -153,12 +153,12 @@ function updateRamDisplay(data) {
                 </div>`;
             }
             if (models_ram_mb) {
-                html += `<div class="ram-model-total">${models_ram_mb} MB total</div>`;
+                html += `<div class="ram-model-total">${uiT('ui.totalMb', '{mb} MB total', { mb: models_ram_mb })}</div>`;
             }
             modelsList.innerHTML = html;
             if (window.lucide) lucide.createIcons();
         } else {
-            modelsList.innerHTML = '<div class="ram-model-row dim">Aucun modèle</div>';
+            modelsList.innerHTML = `<div class="ram-model-row dim">${uiT('ui.noModel', 'Aucun modèle')}</div>`;
         }
     }
 }
@@ -268,7 +268,7 @@ function updateVramDisplay(data) {
                 const fullName = m.full_name || m.name;
 
                 html += `<div class="vram-model-row">
-                    <button class="vram-unload-btn" onclick="unloadSingleModel('${fullName}', '${m.category}')" title="Décharger ce modèle">×</button>
+                    <button class="vram-unload-btn" onclick="unloadSingleModel('${fullName}', '${m.category}')" title="${uiT('ui.unloadModelTooltip', 'Décharger ce modèle')}">×</button>
                     <i data-lucide="${m.icon}" class="vram-icon"></i>
                     <span class="vram-name" title="${fullName}">${m.name}</span>
                     ${paramsInfo ? `<span class="vram-params">${paramsInfo}</span>` : ''}
@@ -280,7 +280,7 @@ function updateVramDisplay(data) {
             // Refresh Lucide icons
             if (window.lucide) lucide.createIcons();
         } else {
-            modelsList.innerHTML = '<div class="vram-model-row dim">Aucun modèle</div>';
+            modelsList.innerHTML = `<div class="vram-model-row dim">${uiT('ui.noModel', 'Aucun modèle')}</div>`;
         }
     }
 

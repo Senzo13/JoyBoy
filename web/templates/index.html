@@ -1161,17 +1161,17 @@
                 <!-- ONGLET TERMINAL -->
                 <div class="settings-panel" id="settings-terminal">
                     <div class="settings-section">
-                        <div class="settings-section-title">Modèle Terminal</div>
-                        <div class="settings-info">
+                        <div class="settings-section-title" id="terminal-model-title">Modèle Terminal</div>
+                        <div class="settings-info" id="terminal-model-desc">
                             Le mode terminal (<code>joyboy run</code>) utilise un modèle capable d'exécuter des outils (lecture/écriture fichiers).
                         </div>
                         <div class="settings-row">
                             <div>
-                                <div class="settings-label">Modèle pour le terminal</div>
-                                <div class="settings-label-desc">Modèles rapides recommandés, pas les modèles "thinking"</div>
+                                <div class="settings-label" id="terminal-model-label">Modèle pour le terminal</div>
+                                <div class="settings-label-desc" id="terminal-model-hint">Modèles rapides recommandés, pas les modèles "thinking"</div>
                             </div>
                             <select class="settings-select" id="terminal-model-select" onchange="updateTerminalModel(this.value)">
-                                <option value="auto">Auto (premier compatible)</option>
+                                <option value="auto" id="terminal-model-auto-option">Auto (premier compatible)</option>
                             </select>
                         </div>
                         <div class="settings-info" id="terminal-model-info">
@@ -1180,10 +1180,10 @@
                         </div>
                     </div>
                     <div class="settings-section">
-                        <div class="settings-section-title">Taille du contexte</div>
+                        <div class="settings-section-title" id="terminal-context-title">Taille du contexte</div>
                         <div class="settings-slider-row">
                             <div class="settings-slider-header">
-                                <div class="settings-label">Tokens de contexte</div>
+                                <div class="settings-label" id="terminal-context-label">Tokens de contexte</div>
                                 <div class="settings-slider-value" id="settings-context-size-value">4096</div>
                             </div>
                             <input type="range" class="settings-slider" id="settings-context-size" min="2048" max="32768" value="4096" step="2048" oninput="updateContextSize(this.value)">
@@ -1193,20 +1193,20 @@
                         </div>
                     </div>
                     <div class="settings-section">
-                        <div class="settings-section-title">Workspaces (dossiers projet)</div>
-                        <div class="settings-info">
+                        <div class="settings-section-title" id="terminal-workspaces-title">Workspaces (dossiers projet)</div>
+                        <div class="settings-info" id="terminal-workspaces-desc">
                             Permet à l'IA d'explorer tes projets locaux (lecture seule)
                         </div>
                         <div class="workspace-add-container">
                             <input type="text" id="workspace-path-input" class="settings-input" placeholder="C:\Users\...\mon-projet">
-                            <button class="settings-action-btn" onclick="addWorkspace()">Ajouter</button>
+                            <button class="settings-action-btn" id="workspace-add-btn" onclick="addWorkspace()">Ajouter</button>
                         </div>
                         <div id="workspaces-list" class="workspaces-list">
                             <!-- Liste des workspaces -->
                         </div>
                     </div>
                     <div class="settings-section">
-                        <div class="settings-section-title">Workspace actif</div>
+                        <div class="settings-section-title" id="terminal-active-workspace-title">Workspace actif</div>
                         <div class="settings-row">
                             <div>
                                 <div class="settings-label" id="active-workspace-name">Aucun</div>
@@ -1216,7 +1216,7 @@
                         </div>
                         <div id="workspace-model-warning" class="settings-warning" style="display:none">
                             <i data-lucide="alert-triangle"></i>
-                            <span>Ton modèle ne supporte pas les outils workspace. L'IA utilisera un mode dégradé.</span>
+                            <span id="workspace-model-warning-text">Ton modèle ne supporte pas les outils workspace. L'IA utilisera un mode dégradé.</span>
                         </div>
                     </div>
                 </div>
