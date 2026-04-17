@@ -1,6 +1,6 @@
 import unittest
 
-from core.ai.prompt_ai import _preprocess_french_prompt
+from core.ai.prompt_ai import _preprocess_french_prompt, build_full_prompt
 from core.generation import text2img
 from core.generation.pose_skeletons import get_pose_prompts
 
@@ -28,12 +28,58 @@ class PromptHygieneTests(unittest.TestCase):
             )
         )
 
+    def test_text2img_detects_preformatted_photo_prompt(self):
+        self.assertTrue(
+            text2img._looks_preformatted_text2img_prompt(
+                "RAW photo, photorealistic, a train in motion"
+            )
+        )
+        self.assertFalse(
+            text2img._looks_preformatted_text2img_prompt(
+                "imagine a train in motion"
+            )
+        )
+
     def test_french_camera_look_translation_uses_viewer_wording(self):
         translated = _preprocess_french_prompt("regarde vers la camera, vue de face")
         self.assertIn("looking toward the viewer", translated)
         self.assertIn("front-facing view", translated)
         self.assertNotIn("looking at the camera", translated)
         self.assertNotIn("facing camera", translated)
+
+    def test_realistic_text2img_train_does_not_get_human_skin_tags(self):
+        prompt, negative = build_full_prompt(
+            "imagine a train in motion",
+            "realistic",
+            for_inpainting=False,
+        )
+
+        self.assertNotIn("natural skin", prompt.lower())
+        self.assertNotIn("visible pores", prompt.lower())
+        self.assertNotIn("matte skin", prompt.lower())
+        self.assertNotIn("plastic skin", negative.lower())
+        self.assertIn("photorealistic", prompt.lower())
+
+    def test_realistic_model_train_is_not_treated_as_human_model(self):
+        prompt, _ = build_full_prompt(
+            "a detailed model train on rails",
+            "realistic",
+            for_inpainting=False,
+        )
+
+        self.assertNotIn("natural skin", prompt.lower())
+        self.assertNotIn("visible pores", prompt.lower())
+
+    def test_realistic_human_prompt_keeps_skin_texture_tags(self):
+        prompt, negative = build_full_prompt(
+            "portrait of a woman in soft light",
+            "realistic",
+            for_inpainting=False,
+        )
+
+        self.assertIn("natural skin texture", prompt.lower())
+        self.assertIn("visible pores", prompt.lower())
+        self.assertIn("plastic skin", negative.lower())
 
 
 if __name__ == "__main__":

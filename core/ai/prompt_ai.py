@@ -13,6 +13,8 @@ Contains:
 
 from __future__ import annotations
 
+import re
+
 from core.utility_ai import _call_utility, _load_enhance_prompt
 from config import OLLAMA_BASE_URL
 
@@ -370,6 +372,23 @@ Write your response in ENGLISH. Do not write French."""
     return prompt, "realistic"
 
 
+_HUMAN_SUBJECT_RE = re.compile(
+    r"\b("
+    r"person|people|human|man|woman|girl|boy|lady|guy|adult|portrait|face|headshot|"
+    r"body|skin|nude|naked|boobs?|breasts?|chest|torso|hips?|butt|ass|vulva|penis|"
+    r"clothing|clothes|outfit|dress|shirt|pants|bikini|lingerie|underwear|"
+    r"personne|humain|homme|femme|fille|garcon|garçon|visage|corps|peau|nu|nue|"
+    r"seins?|poitrine|fesses?|vetement|vêtement|vetements|vêtements|habit|robe|chemise|pantalon"
+    r")\b",
+    re.IGNORECASE,
+)
+
+
+def _has_human_subject(prompt: str) -> bool:
+    """True when human-specific skin/body quality tags make sense."""
+    return bool(_HUMAN_SUBJECT_RE.search(prompt or ""))
+
+
 def build_full_prompt(enhanced_prompt: str, style: str, for_inpainting: bool = True, orientation: str = None, pose: str = None) -> tuple[str, str]:
     """
     Construit le prompt final et le negative prompt base sur le style.
@@ -457,15 +476,21 @@ def build_full_prompt(enhanced_prompt: str, style: str, for_inpainting: bool = T
     body_desc_prompt = ""
 
     if style == "realistic":
-        quality = "RAW photo, natural skin texture with visible pores, matte skin, soft natural lighting, shot on kodak, 35mm photo, film grain, grainy"
-        skin_negative = "plastic skin, airbrushed, porcelain skin, wax skin, doll-like, shiny skin, oily skin, glossy skin"
-        body_negative = "deformed, bad anatomy, extra limbs, mutated"
+        has_human_subject = _has_human_subject(clean_prompt)
+        if has_human_subject:
+            quality = "RAW photo, natural skin texture with visible pores, matte skin, soft natural lighting, shot on kodak, 35mm photo, film grain, grainy"
+            texture_negative = "plastic skin, airbrushed, porcelain skin, wax skin, doll-like, shiny skin, oily skin, glossy skin"
+            structure_negative = "deformed, bad anatomy, extra limbs, mutated"
+        else:
+            quality = "RAW photo, photorealistic, soft natural lighting, shot on kodak, 35mm photo, film grain, grainy"
+            texture_negative = "airbrushed, overly smooth, plastic-looking, waxy, toy-like, fake texture"
+            structure_negative = "distorted, deformed, warped geometry, broken structure, mutated"
         if for_inpainting:
             full_prompt = f"{clean_prompt}{body_desc_prompt}, {quality}, preserve original pose, seamless blend{framing_instructions}{orientation_positive}{pose_positive}{intimate_details}"
-            negative = f"cartoon, anime, CGI, 3D render, {skin_negative}, {body_negative}, blurry, {inpainting_negative}{framing_negative}{orientation_negative}{pose_negative}"
+            negative = f"cartoon, anime, CGI, 3D render, {texture_negative}, {structure_negative}, blurry, {inpainting_negative}{framing_negative}{orientation_negative}{pose_negative}"
         else:
             full_prompt = f"{clean_prompt}, {quality}, professional photography"
-            negative = f"cartoon, illustration, anime, painting, CGI, 3D render, {skin_negative}, {body_negative}, blurry, low quality"
+            negative = f"cartoon, illustration, anime, painting, CGI, 3D render, {texture_negative}, {structure_negative}, blurry, low quality"
     else:
         quality = "detailed, vibrant colors, digital art"
         if for_inpainting:

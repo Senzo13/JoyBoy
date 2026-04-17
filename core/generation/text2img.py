@@ -233,6 +233,23 @@ def _should_suppress_visible_capture_devices(prompt: str, style_prefix: str | No
     return not any(re.search(r'\b' + re.escape(word) + r'\b', text) for word in _CAPTURE_DEVICE_STYLE_WORDS)
 
 
+def _looks_preformatted_text2img_prompt(prompt: str) -> bool:
+    """Detect prompts already expanded by build_full_prompt/upstream routing."""
+    text = (prompt or "").strip().lower()
+    if not text:
+        return False
+    preformatted_markers = (
+        "raw photo",
+        "photorealistic",
+        "professional photography",
+        "cinematic film still",
+        "amateur phone photo",
+        "phone selfie",
+        "webcam capture",
+    )
+    return any(marker in text for marker in preformatted_markers)
+
+
 def generate_from_text(prompt: str, model_name: str = "Automatique", enhance: bool = True, steps: int = 30, cancel_check=None, pipe=None,
                        ip_adapter_image_embeds=None, ip_adapter_scale=0.35,
                        style_ref_scale=0.55, style_init_image=None,
@@ -403,8 +420,12 @@ def generate_from_text(prompt: str, model_name: str = "Automatique", enhance: bo
             print(f"[TEXT2IMG] Style détecté → {style_prefix}")
         else:
             # Pas de style détecté → prompt neutre photo réaliste
-            full_prompt = f"RAW photo, photorealistic, {prompt}, high quality, detailed, sharp focus"
-            print(f"[TEXT2IMG] Style par défaut → RAW photo neutre")
+            if _looks_preformatted_text2img_prompt(prompt):
+                full_prompt = prompt
+                print(f"[TEXT2IMG] Prompt déjà stylé → pas de wrapper RAW photo")
+            else:
+                full_prompt = f"RAW photo, photorealistic, {prompt}, high quality, detailed, sharp focus"
+                print(f"[TEXT2IMG] Style par défaut → RAW photo neutre")
 
     # Append pose-specific negative prompt (SDXL only)
     if pose_neg and neg:
