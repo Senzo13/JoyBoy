@@ -64,13 +64,13 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "list_files",
-            "description": "Liste les fichiers et dossiers dans un répertoire",
+            "description": "List files and folders in a directory.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "path": {
                         "type": "string",
-                        "description": "Chemin du répertoire (relatif au workspace). Défaut: '.'"
+                        "description": "Directory path relative to the workspace. Default: '.'."
                     }
                 },
                 "required": []
@@ -81,17 +81,17 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "read_file",
-            "description": "Lit le contenu d'un fichier. TOUJOURS lire un fichier avant de le modifier.",
+            "description": "Read a file. Always read an existing file before editing or replacing it.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "path": {
                         "type": "string",
-                        "description": "Chemin du fichier à lire (relatif au workspace)"
+                        "description": "File path relative to the workspace."
                     },
                     "max_lines": {
                         "type": "integer",
-                        "description": "Nombre max de lignes à lire. Défaut: 220. Lis par petits blocs pour préserver le contexte."
+                        "description": "Maximum lines to read. Default: 220. Prefer small chunks to preserve context."
                     }
                 },
                 "required": ["path"]
@@ -102,17 +102,17 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "write_file",
-            "description": "Crée ou remplace entièrement un fichier. Si le fichier existe déjà, read_file est obligatoire avant sinon l'outil échoue.",
+            "description": "Create or fully replace a file. If the file already exists, read_file must be called first or the tool fails.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "path": {
                         "type": "string",
-                        "description": "Chemin du fichier (relatif au workspace)"
+                        "description": "File path relative to the workspace."
                     },
                     "content": {
                         "type": "string",
-                        "description": "Contenu complet du fichier"
+                        "description": "Complete file content."
                     }
                 },
                 "required": ["path", "content"]
@@ -123,21 +123,21 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "edit_file",
-            "description": "Remplace une portion de texte dans un fichier existant. Échoue si le fichier n'a pas été lu avec read_file avant.",
+            "description": "Replace an exact text slice in an existing file. Fails unless read_file was called first.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "path": {
                         "type": "string",
-                        "description": "Chemin du fichier (relatif au workspace)"
+                        "description": "File path relative to the workspace."
                     },
                     "old_text": {
                         "type": "string",
-                        "description": "Texte exact à remplacer (doit être unique dans le fichier)"
+                        "description": "Exact text to replace. It must be unique in the file."
                     },
                     "new_text": {
                         "type": "string",
-                        "description": "Nouveau texte"
+                        "description": "Replacement text."
                     }
                 },
                 "required": ["path", "old_text", "new_text"]
@@ -148,13 +148,13 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "delete_file",
-            "description": "Supprime un fichier",
+            "description": "Delete a file. This is blocked until the UI supports explicit confirmation.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "path": {
                         "type": "string",
-                        "description": "Chemin du fichier à supprimer"
+                        "description": "File path to delete."
                     }
                 },
                 "required": ["path"]
@@ -165,21 +165,21 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "search",
-            "description": "Recherche un pattern (regex) dans les fichiers du workspace",
+            "description": "Search for a regex pattern in workspace files.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "pattern": {
                         "type": "string",
-                        "description": "Pattern regex à rechercher"
+                        "description": "Regex pattern to search for."
                     },
                     "path": {
                         "type": "string",
-                        "description": "Dossier où chercher. Défaut: tout le workspace"
+                        "description": "Directory to search in. Default: the whole workspace."
                     },
                     "file_pattern": {
                         "type": "string",
-                        "description": "Filtrer par extension, ex: '*.py', '*.js'"
+                        "description": "Optional file filter, for example '*.py' or '*.js'."
                     }
                 },
                 "required": ["pattern"]
@@ -190,13 +190,13 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "glob",
-            "description": "Trouve des fichiers par pattern glob (ex: '**/*.py')",
+            "description": "Find files by glob pattern, for example '**/*.py'.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "pattern": {
                         "type": "string",
-                        "description": "Pattern glob (ex: '**/*.py', 'src/**/*.js')"
+                        "description": "Glob pattern, for example '**/*.py' or 'src/**/*.js'."
                     }
                 },
                 "required": ["pattern"]
@@ -207,13 +207,13 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "bash",
-            "description": "Exécute une commande shell. Commandes autorisées: npm, node, python, pip, git, pytest, etc.",
+            "description": "Run an allowed shell command inside the workspace. Prefer tools for file edits; use shell for tests, builds, installs, scaffolds, and git status.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "command": {
                         "type": "string",
-                        "description": "Commande à exécuter"
+                        "description": "Command to execute."
                     }
                 },
                 "required": ["command"]
@@ -224,13 +224,13 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "web_search",
-            "description": "Recherche sur internet via SearXNG/DuckDuckGo",
+            "description": "Search the web through the configured local search provider.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "query": {
                         "type": "string",
-                        "description": "Requête de recherche"
+                        "description": "Search query."
                     }
                 },
                 "required": ["query"]
@@ -241,13 +241,13 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "think",
-            "description": "Réfléchir à voix haute avant d'agir. Utile pour planifier une tâche complexe.",
+            "description": "Think briefly before acting. Useful for planning complex tasks, but do not loop on it.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "thought": {
                         "type": "string",
-                        "description": "Réflexion sur ce qu'il faut faire"
+                        "description": "Short reasoning note about the next action."
                     }
                 },
                 "required": ["thought"]
@@ -258,7 +258,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "open_workspace",
-            "description": "Ouvre le dossier racine du workspace dans l'explorateur de fichiers local.",
+            "description": "Open the workspace root folder in the local file explorer.",
             "parameters": {
                 "type": "object",
                 "properties": {},
@@ -395,20 +395,20 @@ class TerminalBrain:
         read_marker = workspace_reads.get(file_key)
         if not read_marker:
             return (
-                "BLOQUÉ: fichier existant non lu. Appelle read_file sur ce fichier avant "
-                "de le modifier, puis relance l'édition."
+                "BLOCKED: existing file was not read first. Call read_file on this file "
+                "before editing or replacing it, then retry the edit."
             )
 
         try:
             stat = os.stat(full_path)
         except OSError as exc:
-            return f"BLOQUÉ: impossible de vérifier l'état du fichier avant écriture: {exc}"
+            return f"BLOCKED: cannot verify the file state before writing: {exc}"
 
         current_marker = (stat.st_mtime_ns, stat.st_size)
         if current_marker != read_marker:
             return (
-                "BLOQUÉ: le fichier a changé depuis le dernier read_file. Relis le fichier "
-                "avec read_file avant de le modifier."
+                "BLOCKED: the file changed since the last read_file call. Read it again "
+                "with read_file before editing or replacing it."
             )
         return None
 
@@ -452,7 +452,7 @@ class TerminalBrain:
             return ToolResult(
                 success=False,
                 tool_name=tool_name,
-                error=f"BLOQUÉ: L'utilisateur a demandé une analyse, pas une modification. "
+                error=f"BLOCKED: the user asked for analysis, not modification. "
                       f"Intent: '{self.current_intent}'"
             )
 
@@ -478,7 +478,7 @@ class TerminalBrain:
                 content = args.get('content', '')
                 full_path = self._resolve_for_snapshot(workspace_path, path)
                 if not full_path:
-                    return ToolResult(success=False, tool_name=tool_name, error="Chemin hors du workspace")
+                    return ToolResult(success=False, tool_name=tool_name, error="Path escapes the workspace")
 
                 # Snapshot si existe
                 if os.path.exists(full_path):
@@ -507,7 +507,7 @@ class TerminalBrain:
                 new_text = args.get('new_text', '')
                 full_path = self._resolve_for_snapshot(workspace_path, path)
                 if not full_path:
-                    return ToolResult(success=False, tool_name=tool_name, error="Chemin hors du workspace")
+                    return ToolResult(success=False, tool_name=tool_name, error="Path escapes the workspace")
 
                 if os.path.exists(full_path):
                     blocked = self._require_read_before_existing_write(workspace_path, path, full_path, tool_name)
@@ -529,7 +529,7 @@ class TerminalBrain:
                 path = args.get('path', '')
                 full_path = self._resolve_for_snapshot(workspace_path, path)
                 if not full_path:
-                    return ToolResult(success=False, tool_name=tool_name, error="Chemin hors du workspace")
+                    return ToolResult(success=False, tool_name=tool_name, error="Path escapes the workspace")
 
                 if os.path.exists(full_path):
                     self._create_snapshot(full_path, path)
@@ -579,11 +579,11 @@ class TerminalBrain:
                 return ToolResult(
                     success=True,
                     tool_name=tool_name,
-                    data={"thought": thought, "message": "Réflexion notée. Continue."}
+                    data={"thought": thought, "message": "Reasoning noted. Continue with a concrete tool call or final answer."}
                 )
 
             else:
-                return ToolResult(success=False, tool_name=tool_name, error=f"Tool inconnu: {tool_name}")
+                return ToolResult(success=False, tool_name=tool_name, error=f"Unknown tool: {tool_name}")
 
         except Exception as e:
             return ToolResult(success=False, tool_name=tool_name, error=str(e))
@@ -704,10 +704,10 @@ class TerminalBrain:
                 "role": "user",
                 "content": (
                     f"{initial_message}\n\n"
-                    "CONTEXTE REPO DEJA EXPLORE PAR JOYBOY:\n"
+                    "REPO CONTEXT ALREADY EXPLORED BY JOYBOY:\n"
                     f"{repo_brief}\n\n"
-                    "Reponds maintenant en francais avec une synthese concrete. "
-                    "Ne rappelle pas list_files/glob/ls/pwd: tu as deja le contexte utile."
+                    "Answer now in the user's language with a concrete synthesis. "
+                    "Do not call list_files/glob/ls/pwd again: the useful context is already available."
                 )
             })
         else:
@@ -801,14 +801,14 @@ class TerminalBrain:
                     yield {
                         'type': 'loop_warning',
                         'action': 'token_budget',
-                        'reason': 'Budget token du tour atteint, passage en synthese finale.'
+                        'reason': 'Turn token budget reached; switching to a final synthesis.'
                     }
                     messages.append({
                         'role': 'user',
                         'content': (
-                            "Stop les outils: budget atteint. Fais maintenant une reponse finale concrete "
-                            "avec ce que tu as observe. Si le contexte est insuffisant, dis exactement "
-                            "quels fichiers lire ensuite."
+                            "Stop using tools: the turn budget is reached. Produce a concrete final answer "
+                            "from the observed evidence. If context is insufficient, name the exact files "
+                            "that should be read next."
                         )
                     })
                     continue
@@ -849,9 +849,10 @@ class TerminalBrain:
                         messages.append({
                             'role': 'user',
                             'content': (
-                                "Tu viens d'affirmer une creation/modification, mais aucun outil d'ecriture "
-                                "n'a reussi dans cette session. Utilise write_file/edit_file/bash maintenant "
-                                "puis verifie avec list_files/read_file, ou dis clairement que rien n'a ete cree."
+                                "You just claimed a creation or modification, but no write_file, edit_file, "
+                                "or verified shell mutation succeeded in this session. Use write_file, "
+                                "edit_file, or bash now, then verify with list_files/read_file or command "
+                                "output. Otherwise clearly say that nothing was created."
                             )
                         })
                         continue
@@ -866,7 +867,7 @@ class TerminalBrain:
                         })
                         messages.append({
                             'role': 'user',
-                            'content': 'Continue. Utilise les outils disponibles pour exécuter la prochaine étape.'
+                            'content': 'Continue by using the available tools for the next concrete step.'
                         })
                         continue  # Relancer la boucle
 
@@ -913,8 +914,8 @@ class TerminalBrain:
                             'reason': guard_reason,
                         }
                         guard_text = (
-                            f"[GARDE-FOU TERMINAL] {guard_reason}. "
-                            "Arrete les outils repetitifs et produis une synthese finale maintenant."
+                            f"[TERMINAL GUARDRAIL] {guard_reason}. "
+                            "Stop repetitive tools and produce the final synthesis now."
                         )
                         messages.append({"role": "tool", "tool_name": tool_name, "content": guard_text})
                         if guard_hits >= 2:
@@ -926,7 +927,7 @@ class TerminalBrain:
                             return
                         messages.append({
                             'role': 'user',
-                            'content': 'Reponds maintenant sans outil. Resume ce que tu sais et propose la prochaine lecture utile.'
+                            'content': 'Answer now without tools. Summarize what is known and suggest the next useful file to read.'
                         })
                         continue
 
@@ -962,7 +963,7 @@ class TerminalBrain:
                 return
 
         _end_resource_lease()
-        yield {'type': 'error', 'message': f'Limite de {iteration_budget} itérations atteinte'}
+        yield {'type': 'error', 'message': f'Iteration limit reached ({iteration_budget})'}
 
     # ===== HELPERS =====
 
@@ -1074,13 +1075,13 @@ class TerminalBrain:
 
         summary = get_workspace_summary(workspace_path)
         if summary.get("success"):
-            lines.append(f"Projet: {summary.get('name')} ({summary.get('total_files', 0)} fichiers)")
-            root_dirs = ", ".join(summary.get("root_dirs", [])[:12]) or "aucun"
-            root_files = ", ".join(summary.get("root_files", [])[:12]) or "aucun"
+            lines.append(f"Project: {summary.get('name')} ({summary.get('total_files', 0)} files)")
+            root_dirs = ", ".join(summary.get("root_dirs", [])[:12]) or "none"
+            root_files = ", ".join(summary.get("root_files", [])[:12]) or "none"
             top_ext = ", ".join(f"{ext}:{count}" for ext, count in summary.get("top_extensions", [])[:8])
-            lines.append(f"Dossiers racine: {root_dirs}")
-            lines.append(f"Fichiers importants racine: {root_files}")
-            lines.append(f"Extensions principales: {top_ext or 'inconnues'}")
+            lines.append(f"Root directories: {root_dirs}")
+            lines.append(f"Important root files: {root_files}")
+            lines.append(f"Main extensions: {top_ext or 'unknown'}")
 
         if root_listing.get("success"):
             items = root_listing.get("items", [])
@@ -1091,9 +1092,9 @@ class TerminalBrain:
             ]
             root_dirs = [item.get("name") for item in items if item.get("type") == "dir"]
             if readable_root_files:
-                lines.append("Fichiers lisibles racine: " + ", ".join(readable_root_files[:18]))
+                lines.append("Readable root files: " + ", ".join(readable_root_files[:18]))
             if root_dirs:
-                lines.append("Dossiers visibles racine: " + ", ".join(root_dirs[:18]))
+                lines.append("Visible root directories: " + ", ".join(root_dirs[:18]))
 
         preferred = [
             "README.md", "readme.md", "pyproject.toml", "package.json",
@@ -1119,11 +1120,11 @@ class TerminalBrain:
             content = result.get("content", "")
             excerpt = content[:1800]
             if len(content) > len(excerpt):
-                excerpt += "\n... (extrait tronque)"
-            lines.append(f"\n--- {path} ({result.get('lines', 0)} lignes) ---\n{excerpt}")
+                excerpt += "\n... (excerpt truncated)"
+            lines.append(f"\n--- {path} ({result.get('lines', 0)} lines) ---\n{excerpt}")
 
         if not lines:
-            lines.append("Impossible de construire un contexte repo: workspace vide ou illisible.")
+            lines.append("Could not build repository context: workspace is empty or unreadable.")
 
         return "\n".join(lines), events
 
@@ -1198,29 +1199,29 @@ class TerminalBrain:
     ) -> Optional[str]:
         """Return a reason when a tool call is clearly no-progress noise."""
         if seen_count >= 3:
-            return f"appel repete {seen_count} fois: {tool_name}({args})"
+            return f"repeated call {seen_count} times: {tool_name}({args})"
 
         path = str((args or {}).get("path", "")).strip()
         pattern = str((args or {}).get("pattern", "")).strip()
         command = str((args or {}).get("command", "")).strip().lower()
 
         if tool_name == "read_file" and path in {"", ".", "./"}:
-            return "read_file doit cibler un fichier, pas la racine du workspace"
+            return "read_file must target a file, not the workspace root"
 
         noisy_roots = {"**/*", "*", ".", "./"}
         if tool_name == "glob" and pattern in noisy_roots and len(executed_tools) >= 2:
-            return "glob global deja suffisant; il faut lire des fichiers precis ou conclure"
+            return "broad glob already gave enough context; read specific files or conclude"
 
         if tool_name == "search" and pattern in {"", ".", ".*"}:
-            return "search avec un pattern trop large ne donne pas de signal utile"
+            return "search pattern is too broad to produce useful signal"
 
         repeated_shell = {"ls", "ls -la", "dir", "pwd", "find . -type f"}
         if tool_name == "bash" and command in repeated_shell and len(executed_tools) >= 2:
-            return f"commande shell exploratoire deja faite: {command}"
+            return f"exploratory shell command already used: {command}"
 
         recent_names = [item.get("tool") for item in executed_tools[-4:]]
         if len(recent_names) == 4 and len(set(recent_names)) <= 2 and tool_name in {"list_files", "glob", "bash"}:
-            return "exploration repetee sans lecture de fichier utile"
+            return "repeated exploration without reading useful files"
 
         return None
 
@@ -1232,17 +1233,17 @@ class TerminalBrain:
 
         data = result.data or {}
         if tool_name == "list_files":
-            summary["summary"] = f"{len(data.get('items', []))} entree(s)"
+            summary["summary"] = f"{len(data.get('items', []))} item(s)"
         elif tool_name == "read_file":
-            summary["summary"] = f"{data.get('path', args.get('path', ''))} ({data.get('lines', 0)} lignes)"
+            summary["summary"] = f"{data.get('path', args.get('path', ''))} ({data.get('lines', 0)} lines)"
         elif tool_name == "glob":
-            summary["summary"] = f"{len(data.get('files', []))} fichier(s)"
+            summary["summary"] = f"{len(data.get('files', []))} file(s)"
         elif tool_name == "search":
-            summary["summary"] = f"{len(data.get('results', []))} resultat(s)"
+            summary["summary"] = f"{len(data.get('results', []))} result(s)"
         elif tool_name == "bash":
             summary["summary"] = f"code {data.get('return_code', '?')}"
         elif tool_name == "open_workspace":
-            summary["summary"] = data.get("path", "workspace ouvert")
+            summary["summary"] = data.get("path", "workspace opened")
         else:
             summary["summary"] = "ok"
         return summary
@@ -1290,7 +1291,7 @@ class TerminalBrain:
 
             full_path = _resolve_workspace_path(workspace_path, relative_path)
             if not full_path or not os.path.isfile(full_path):
-                return {"verified": False, "error": f"Fichier introuvable après écriture: {relative_path}"}
+                return {"verified": False, "error": f"File not found after write: {relative_path}"}
             size = os.path.getsize(full_path)
             return {"verified": True, "path": relative_path, "size": size}
         except Exception as exc:
@@ -1302,7 +1303,7 @@ class TerminalBrain:
 
             full_path = _resolve_workspace_path(workspace_path, relative_path)
             if full_path and os.path.exists(full_path):
-                return {"verified": False, "error": f"Fichier encore présent après suppression: {relative_path}"}
+                return {"verified": False, "error": f"File still exists after deletion: {relative_path}"}
             return {"verified": True, "path": relative_path}
         except Exception as exc:
             return {"verified": False, "error": str(exc)}
@@ -1335,24 +1336,63 @@ class TerminalBrain:
             "JoyBoy utilisera le scan borné au lieu de refaire `ls/glob/pwd` en boucle."
         )
 
+    def build_system_prompt(
+        self,
+        workspace_path: str,
+        workspace_name: Optional[str] = None,
+        force_response_language: Optional[str] = None,
+    ) -> str:
+        """Build the terminal agent prompt in English.
+
+        Local coding models are usually more reliable when the operational
+        contract is written in English, even when the final answer is in the
+        user's language. Keep UI translations elsewhere; this prompt is for the
+        tool-using model.
+        """
+        project_name = workspace_name or os.path.basename(os.path.abspath(workspace_path or "")) or "workspace"
+        language_rule = (
+            f"Final answer language: {force_response_language}.\n"
+            if force_response_language
+            else "Final answer language: match the user's language.\n"
+        )
+        return f"""You are JoyBoy Terminal, an expert coding agent working inside a local project folder.
+
+Workspace name: {project_name}
+Workspace path: {workspace_path}
+{language_rule}
+Core contract:
+1. Use tools for real work. Do not pretend that files were created, edited, installed, or tested.
+2. Always call read_file before editing or replacing an existing file.
+3. Prefer edit_file for targeted changes. Use write_file only for new files or intentional full rewrites.
+4. Never call read_file on "." or on a directory. read_file is only for specific files.
+5. Do one meaningful step at a time, then verify the result before claiming success.
+6. Do not loop on list_files, glob, ls, dir, or pwd. One root exploration is enough; then read specific files.
+7. If a shell scaffold command succeeds, verify the expected folder and package.json before saying it exists.
+8. If a command or edit fails, inspect the error, adjust once or twice, then explain the blocker.
+9. Keep context lean: read focused file chunks, summarize large outputs, and avoid dumping entire files.
+10. For final code snippets, use fenced Markdown blocks with a language tag.
+
+Safe workflow for analysis:
+1. list_files once if needed.
+2. read 2 to 5 relevant files.
+3. answer with concrete findings from observed files.
+
+Safe workflow for modifications:
+1. read_file the target file.
+2. edit_file or write_file.
+3. verify with read_file, list_files, or command output.
+4. only then summarize what changed.
+
+Safe workflow for project scaffolding:
+1. run the scaffold command inside the workspace.
+2. verify the generated folder and package.json.
+3. read the key generated files before describing them.
+
+You have access to filesystem, search, shell, and workspace tools. Use them to complete the user's task."""
+
     def _get_default_system_prompt(self, workspace_path: str) -> str:
-        """System prompt par défaut style Claude Code"""
-        return f"""Tu es un assistant de développement expert. Tu travailles dans le workspace: {workspace_path}
-
-RÈGLES:
-1. TOUJOURS lire un fichier avec read_file AVANT de le modifier
-2. Utiliser edit_file pour les modifications partielles (plus sûr)
-3. Utiliser write_file seulement pour créer ou réécrire complètement
-4. Expliquer ce que tu fais avant d'agir
-5. Si une erreur survient, analyser et réessayer
-6. Ne boucle jamais sur list_files/glob/ls/dir/pwd: une exploration racine suffit
-7. Ne lis jamais "." avec read_file: read_file cible uniquement un fichier précis
-8. Quand tu donnes du code en réponse finale, utilise toujours un bloc Markdown fenced avec le langage
-9. Ne conclus jamais qu'un fichier/projet est créé ou modifié sans résultat d'outil réussi
-10. Après une écriture ou un scaffold, vérifie avec list_files/read_file ou la sortie de commande
-
-Tu as accès aux tools suivants pour interagir avec le filesystem et exécuter des commandes.
-Utilise-les pour accomplir les tâches demandées."""
+        """Default Claude-Code-style terminal system prompt."""
+        return self.build_system_prompt(workspace_path)
 
     def _format_result_for_llm(self, result: ToolResult) -> str:
         """Formate le résultat d'un tool pour le LLM"""
@@ -1364,13 +1404,13 @@ Utilise-les pour accomplir les tâches demandées."""
                 if verification:
                     output += (
                         f"\n[VERIFICATION]\n"
-                        f"{verification.get('kind', 'artifact')}: ECHEC - "
+                        f"{verification.get('kind', 'artifact')}: FAILED - "
                         f"{verification.get('path', '')}"
                     )
                     if verification.get('package_json') is not None:
-                        output += f" (package.json: {'oui' if verification.get('package_json') else 'non'})"
-                return f"[ERREUR bash] {result.error or 'Commande échouée'}\n```\n{output}\n```"
-            return f"[ERREUR {result.tool_name}] {result.error}"
+                        output += f" (package.json: {'yes' if verification.get('package_json') else 'no'})"
+                return f"[ERROR bash] {result.error or 'Command failed'}\n```\n{output}\n```"
+            return f"[ERROR {result.tool_name}] {result.error}"
 
         data = result.data
 
@@ -1380,7 +1420,7 @@ Utilise-les pour accomplir les tâches demandées."""
                 f"{'[DIR]' if i.get('type') == 'dir' else '[FILE]'} {i.get('name')}"
                 for i in items[:50]
             ])
-            return f"[RÉSULTAT list_files]\n{listing}"
+            return f"[RESULT list_files]\n{listing}"
 
         elif result.tool_name == 'read_file':
             content = data.get('content', '')
@@ -1388,22 +1428,22 @@ Utilise-les pour accomplir les tâches demandées."""
             # Tronquer si trop long
             max_chars = max(2500, min(6500, int(self._active_context_size * 1.2)))
             if len(content) > max_chars:
-                content = content[:max_chars] + "\n... (tronqué pour préserver le contexte)"
-            return f"[RÉSULTAT read_file] ({lines} lignes)\n```\n{content}\n```"
+                content = content[:max_chars] + "\n... (truncated to preserve context)"
+            return f"[RESULT read_file] ({lines} lines)\n```\n{content}\n```"
 
         elif result.tool_name == 'write_file':
-            verified = " vérifié" if data.get('verified') else ""
+            verified = " verified" if data.get('verified') else ""
             size = f", {data.get('size')} bytes" if data.get('size') is not None else ""
-            return f"[RÉSULTAT write_file] OK{verified} - Fichier {'créé' if data.get('created') else 'modifié'}: {data.get('path', '')}{size}"
+            return f"[RESULT write_file] OK{verified} - File {'created' if data.get('created') else 'modified'}: {data.get('path', '')}{size}"
 
         elif result.tool_name == 'edit_file':
-            verified = " vérifié" if data.get('verified') else ""
+            verified = " verified" if data.get('verified') else ""
             size = f", {data.get('size')} bytes" if data.get('size') is not None else ""
-            return f"[RÉSULTAT edit_file] OK{verified} - {data.get('replacements', 0)} remplacement(s): {data.get('path', '')}{size}"
+            return f"[RESULT edit_file] OK{verified} - {data.get('replacements', 0)} replacement(s): {data.get('path', '')}{size}"
 
         elif result.tool_name == 'delete_file':
-            verified = " vérifié" if data.get('verified') else ""
-            return f"[RÉSULTAT delete_file] OK{verified} - Supprimé: {data.get('path', '')}"
+            verified = " verified" if data.get('verified') else ""
+            return f"[RESULT delete_file] OK{verified} - Deleted: {data.get('path', '')}"
 
         elif result.tool_name == 'search':
             results = data.get('results', [])
@@ -1411,45 +1451,45 @@ Utilise-les pour accomplir les tâches demandées."""
                 f"{r.get('file')}:{r.get('line')}: {r.get('content', '')[:80]}"
                 for r in results[:20]
             ])
-            return f"[RÉSULTAT search]\n{matches or 'Aucun résultat'}"
+            return f"[RESULT search]\n{matches or 'No results'}"
 
         elif result.tool_name == 'glob':
             files = data.get('files', [])
-            return f"[RÉSULTAT glob]\n" + '\n'.join(files[:30])
+            return f"[RESULT glob]\n" + '\n'.join(files[:30])
 
         elif result.tool_name == 'bash':
             output = data.get('output', '')
             code = data.get('return_code', -1)
-            status = 'OK' if code == 0 else 'ERREUR'
+            status = 'OK' if code == 0 else 'ERROR'
             verification = data.get('verification')
             if verification:
-                verified_label = "OK" if verification.get('verified') else "ECHEC"
+                verified_label = "OK" if verification.get('verified') else "FAILED"
                 output += (
                     f"\n[VERIFICATION]\n"
                     f"{verification.get('kind', 'artifact')}: {verified_label} - "
                     f"{verification.get('path', '')}"
                 )
                 if verification.get('package_json') is not None:
-                    output += f" (package.json: {'oui' if verification.get('package_json') else 'non'})"
-            return f"[RÉSULTAT bash] {status} (code: {code})\n```\n{output}\n```"
+                    output += f" (package.json: {'yes' if verification.get('package_json') else 'no'})"
+            return f"[RESULT bash] {status} (code: {code})\n```\n{output}\n```"
 
         elif result.tool_name == 'web_search':
             items = data.get('results', [])
             if not items:
-                return "[RÉSULTAT web_search] Aucun résultat"
+                return "[RESULT web_search] No results"
             results_text = '\n'.join([
-                f"{i+1}. {item.get('title', 'Sans titre')}\n   {item.get('url', '')}\n   {item.get('snippet', '')[:150]}"
+                f"{i+1}. {item.get('title', 'Untitled')}\n   {item.get('url', '')}\n   {item.get('snippet', '')[:150]}"
                 for i, item in enumerate(items[:5])
             ])
-            return f"[RÉSULTAT web_search]\n{results_text}"
+            return f"[RESULT web_search]\n{results_text}"
 
         elif result.tool_name == 'think':
-            return f"[RÉFLEXION] {data.get('thought', '')} - Continue avec l'action appropriée."
+            return f"[THOUGHT] {data.get('thought', '')} - Continue with the appropriate concrete action."
 
         elif result.tool_name == 'open_workspace':
-            return f"[RÉSULTAT open_workspace] Dossier ouvert: {data.get('path', '')}"
+            return f"[RESULT open_workspace] Folder opened: {data.get('path', '')}"
 
-        return f"[RÉSULTAT {result.tool_name}] OK"
+        return f"[RESULT {result.tool_name}] OK"
 
     def _open_workspace_folder(self, workspace_path: str) -> Dict:
         """Open the current workspace in the OS file explorer."""
@@ -1458,7 +1498,7 @@ Utilise-les pour accomplir les tâches demandées."""
 
         path = os.path.abspath(workspace_path or "")
         if not os.path.isdir(path):
-            return {"success": False, "error": "Workspace invalide ou introuvable", "path": path}
+            return {"success": False, "error": "Invalid or missing workspace", "path": path}
 
         try:
             system = platform.system().lower()
@@ -1489,12 +1529,12 @@ Utilise-les pour accomplir les tâches demandées."""
                 original = f.read()
 
             if len(original) > 100 and len(new_content) < 10:
-                return False, "BLOQUÉ: Contenu quasi-vide. Utilisez edit_file."
+                return False, "BLOCKED: near-empty replacement content. Use edit_file for targeted edits."
 
             if len(original) > 500:
                 ratio = len(new_content) / len(original)
                 if ratio < 0.1:
-                    return False, f"BLOQUÉ: Perte de {int((1-ratio)*100)}% du contenu. Lisez d'abord avec read_file."
+                    return False, f"BLOCKED: this would drop {int((1-ratio)*100)}% of the file content. Read the file first and use edit_file."
         except Exception:
             pass
 
@@ -1579,24 +1619,47 @@ Utilise-les pour accomplir les tâches demandées."""
                     'items': checks,
                 }
 
-        target = self._detect_vite_target(tokens)
-        if target is not None:
-            return artifact_status('vite_scaffold', target, require_package_json=True)
+        scaffold = self._detect_scaffold_target(tokens)
+        if scaffold is not None:
+            kind, target = scaffold
+            return artifact_status(kind, target, require_package_json=True)
 
         return None
 
     def _detect_vite_target(self, tokens: List[str]) -> Optional[str]:
+        scaffold = self._detect_scaffold_target(tokens)
+        if not scaffold or scaffold[0] != 'vite_scaffold':
+            return None
+        return scaffold[1]
+
+    def _detect_scaffold_target(self, tokens: List[str]) -> Optional[tuple[str, str]]:
         if not tokens:
             return None
 
         lowered = [token.lower() for token in tokens]
         start = None
+        kind = None
         if len(tokens) >= 3 and lowered[0] == 'npm' and lowered[1] in {'create', 'init'} and 'vite' in lowered[2]:
             start = 3
+            kind = 'vite_scaffold'
         elif len(tokens) >= 2 and lowered[0] == 'npx' and 'create-vite' in lowered[1]:
             start = 2
+            kind = 'vite_scaffold'
         elif len(tokens) >= 3 and lowered[0] in {'pnpm', 'yarn'} and lowered[1] == 'create' and 'vite' in lowered[2]:
             start = 3
+            kind = 'vite_scaffold'
+        elif len(tokens) >= 2 and lowered[0] == 'npx' and lowered[1].startswith('create-react-app'):
+            start = 2
+            kind = 'react_app_scaffold'
+        elif len(tokens) >= 3 and lowered[0] == 'npm' and lowered[1] in {'create', 'init'} and lowered[2].startswith('react-app'):
+            start = 3
+            kind = 'react_app_scaffold'
+        elif len(tokens) >= 2 and lowered[0] == 'npx' and lowered[1].startswith('create-next-app'):
+            start = 2
+            kind = 'next_app_scaffold'
+        elif len(tokens) >= 3 and lowered[0] in {'npm', 'pnpm', 'yarn'} and lowered[1] in {'create', 'init'} and lowered[2].startswith('next-app'):
+            start = 3
+            kind = 'next_app_scaffold'
 
         if start is None:
             return None
@@ -1614,9 +1677,9 @@ Utilise-les pour accomplir les tâches demandées."""
                 continue
             if token == '--' or token.startswith('-'):
                 continue
-            return token
+            return (kind or 'scaffold', token)
 
-        return '.'
+        return (kind or 'scaffold', '.')
 
     def _execute_bash(self, command: str, workspace_path: str) -> Dict:
         """Exécute une commande bash de manière sécurisée"""
@@ -1627,7 +1690,7 @@ Utilise-les pour accomplir les tâches demandées."""
         DANGEROUS = ['rm -rf /', 'rm -rf ~', 'sudo ', 'format ', 'mkfs', ':(){:|:&};:']
         for pattern in DANGEROUS:
             if pattern in command.lower():
-                return {"success": False, "error": f"Commande dangereuse bloquée: {pattern}"}
+                return {"success": False, "error": f"Dangerous command blocked: {pattern}"}
 
         # Whitelist
         ALLOWED = [
@@ -1649,7 +1712,7 @@ Utilise-les pour accomplir les tâches demandées."""
             main_cmd = command.split()[0] if command.split() else ""
 
         if not any(main_cmd.startswith(cmd) or main_cmd == cmd for cmd in ALLOWED):
-            return {"success": False, "error": f"Commande non autorisée: {main_cmd}"}
+            return {"success": False, "error": f"Command is not allowed: {main_cmd}"}
 
         try:
             result = subprocess.run(
@@ -1676,7 +1739,7 @@ Utilise-les pour accomplir les tâches demandées."""
                 if result.returncode == 0 and not verification.get("verified"):
                     response["success"] = False
                     response["error"] = (
-                        f"Commande terminée mais artefact attendu introuvable: "
+                        f"Command completed but the expected artifact was not found: "
                         f"{verification.get('path', '')}"
                     )
             return response
@@ -1692,7 +1755,7 @@ Utilise-les pour accomplir les tâches demandées."""
             from core.web_search import web_search
             return web_search(query, num_results=8)
         except ImportError:
-            return {"success": False, "error": "Module web_search non disponible"}
+            return {"success": False, "error": "web_search module is unavailable"}
         except Exception as e:
             return {"success": False, "error": str(e)}
 

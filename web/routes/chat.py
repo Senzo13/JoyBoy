@@ -709,35 +709,36 @@ def chat_stream():
             # Ajouter le contexte workspace au system prompt
             workspace_info = f"""
 
-Tu as accès au workspace "{workspace_name}" ({workspace_path}).
-Structure: {summary.get('total_files', 0)} fichiers, dossiers: {', '.join(summary.get('root_dirs', [])[:10])}
-Fichiers importants à la racine: {', '.join(summary.get('root_files', []))}
+You have access to workspace "{workspace_name}" ({workspace_path}).
+Structure: {summary.get('total_files', 0)} files, folders: {', '.join(summary.get('root_dirs', [])[:10])}
+Important root files: {', '.join(summary.get('root_files', []))}
 
-=== COMMANDES LECTURE ===
-- [LIST_FILES: chemin] - Liste les fichiers (ex: [LIST_FILES: src])
-- [READ_FILE: chemin] - Lit un fichier (ex: [READ_FILE: src/main.py])
-- [SEARCH: pattern] - Recherche dans les fichiers (ex: [SEARCH: function login])
-- [GLOB: pattern] - Trouve des fichiers par pattern (ex: [GLOB: **/*.py])
+=== READ COMMANDS ===
+- [LIST_FILES: path] - List files, for example [LIST_FILES: src]
+- [READ_FILE: path] - Read a file, for example [READ_FILE: src/main.py]
+- [SEARCH: pattern] - Search in files, for example [SEARCH: function login]
+- [GLOB: pattern] - Find files by pattern, for example [GLOB: **/*.py]
 
-=== COMMANDES ÉCRITURE ===
-- [WRITE_FILE: chemin]
-contenu du fichier
+=== WRITE COMMANDS ===
+- [WRITE_FILE: path]
+complete file content
 [/WRITE_FILE]
 
-- [EDIT_FILE: chemin]
+- [EDIT_FILE: path]
 <<<OLD>>>
-texte à remplacer (copie exacte)
+exact text to replace
 <<<NEW>>>
-nouveau texte
+replacement text
 [/EDIT_FILE]
 
-- [DELETE_FILE: chemin] - Supprime un fichier
+- [DELETE_FILE: path] - Delete a file.
 
-=== RÈGLES IMPORTANTES ===
-- TOUJOURS lire un fichier avec READ_FILE avant de le modifier avec EDIT_FILE
-- Pour EDIT_FILE, le texte OLD doit être une copie EXACTE du fichier (même espaces/indentation)
-- Une seule commande par message. Attends le résultat avant la suivante.
-- Tu peux créer, modifier et supprimer des fichiers comme un vrai assistant de code.
+=== IMPORTANT RULES ===
+- Always read a file with READ_FILE before editing it with EDIT_FILE.
+- For EDIT_FILE, OLD must be an exact copy from the file, including whitespace and indentation.
+- One workspace command per message. Wait for the tool result before the next one.
+- Do not claim that a file/project was created or modified unless a workspace command actually succeeded.
+- Answer in the user's language, but follow these workspace guardrails exactly.
 """
             system_content += workspace_info
             print(f"[WORKSPACE] Contexte ajouté pour: {workspace_name}")

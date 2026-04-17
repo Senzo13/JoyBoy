@@ -93,11 +93,11 @@ def terminal_chat():
     if has_image:
         print(f"[TERMINAL] Image reçue ({len(image_b64) // 1024}KB) - modèle: {chat_model}")
 
-    from core.workspace_tools import get_workspace_summary
+    from core.terminal_brain import get_brain, is_tool_capable
 
     workspace_path = workspace['path']
     workspace_name = workspace.get('name', os.path.basename(workspace_path))
-    summary = get_workspace_summary(workspace_path)
+    brain = get_brain()
 
     job_manager = None
     terminal_job_id = None
@@ -127,68 +127,13 @@ def terminal_chat():
     except Exception as exc:
         print(f"[TERMINAL] Runtime job disabled: {exc}")
 
-    # System prompt pour Native Tool Calling (comme Cursor/Claude Code)
-    lang_instruction = "IMPORTANT: Tu DOIS répondre UNIQUEMENT en FRANÇAIS. Never respond in English.\n\n" if has_image else ""
-
-    system_content = f"""{lang_instruction}Tu es JoyBoy, un assistant de développement expert.
-
-=== WORKSPACE ===
-Projet: {workspace_name}
-Chemin: {workspace_path}
-
-=== TES CAPACITÉS ===
-Tu as accès à des OUTILS que tu peux appeler pour interagir avec le filesystem:
-- list_files: Lister un dossier
-- read_file: Lire un fichier (TOUJOURS faire ça AVANT de modifier)
-- write_file: Créer/remplacer un fichier entier
-- edit_file: Modifier une partie d'un fichier (plus sûr)
-- delete_file: Supprimer un fichier
-- search: Chercher du texte dans les fichiers
-- glob: Trouver des fichiers par pattern
-- bash: Exécuter des commandes (npm, git, mkdir, etc.)
-- web_search: Chercher sur internet
-
-=== RÈGLES IMPORTANTES ===
-
-1. TOUJOURS lire un fichier avec read_file AVANT de le modifier
-2. Utiliser edit_file pour les modifications partielles (plus sûr que write_file)
-3. Expliquer ce que tu fais APRÈS avoir utilisé les outils
-4. Si "analyse", "explique", "c'est quoi" → LIRE SEULEMENT, pas modifier
-5. Si "modifie", "ajoute", "crée", "supprime" → Modification OK
-6. Ne JAMAIS boucler sur list_files/glob/ls/dir/pwd. Une exploration racine suffit.
-7. Ne JAMAIS appeler read_file sur "." ou un dossier. read_file cible uniquement un fichier.
-8. Pour "analyse mon repo": lis quelques fichiers importants puis réponds. Ne consomme pas 20 itérations.
-9. Ne dis JAMAIS "c'est créé", "c'est modifié" ou "done" si aucun outil write_file/edit_file/bash n'a réussi.
-10. Après une création/modification, vérifie avec list_files/read_file ou la sortie de commande avant de conclure.
-
-=== WORKFLOW ===
-
-Pour ANALYSER:
-1. Appeler list_files une seule fois si nécessaire
-2. Lire 2 à 5 fichiers pertinents
-3. Expliquer ce que tu as trouvé
-
-Pour MODIFIER:
-1. Appeler read_file pour voir le contenu actuel
-2. Appeler edit_file ou write_file pour modifier
-3. Confirmer ce qui a été fait
-
-Pour CRÉER:
-1. Appeler write_file avec le nouveau contenu
-2. Ou bash("mkdir nom") pour un dossier
-3. Vérifier que le fichier/dossier existe avant de répondre
-
-Pour SCAFFOLDER un projet (React, Vite, Next, etc.):
-1. Utiliser bash avec la commande adaptée
-2. Vérifier le code retour
-3. Appeler list_files ou read_file sur package.json
-4. Ne confirmer que les fichiers réellement observés
-
-=== FORMAT RÉPONSE ===
-- Utilise le markdown pour formater
-- Sois CONCIS et CONCRET
-- Donne les VRAIES infos, pas du générique
-"""
+    # Keep operational guardrails in English for stronger tool-following.
+    # The prompt still asks the agent to answer in the user's language.
+    system_content = brain.build_system_prompt(
+        workspace_path=workspace_path,
+        workspace_name=workspace_name,
+        force_response_language="French" if has_image else None,
+    )
 
     chat_messages = [{"role": "system", "content": system_content}]
     recent_history = history[-15:] if len(history) > 15 else history
@@ -204,10 +149,6 @@ Pour SCAFFOLDER un projet (React, Vite, Next, etc.):
     print(f"[TERMINAL] Message: {message[:100]}..." + (" [+IMAGE]" if has_image else ""))
     print(f"{'='*60}\n")
 
-    # Importer le Brain pour la boucle agentique
-    from core.terminal_brain import get_brain, is_tool_capable
-
-    brain = get_brain()
     is_capable = is_tool_capable(chat_model)
 
     if not is_capable:
@@ -231,7 +172,7 @@ Pour SCAFFOLDER un projet (React, Vite, Next, etc.):
         # Message avec image si présente
         user_message = message
         if has_image:
-            user_message = f"(Réponds en français) {message}"
+            user_message = f"(Reply in French for this turn.) {message}"
             # Note: les images sont gérées différemment avec native tools
             # Pour l'instant on les ignore, à améliorer plus tard
 

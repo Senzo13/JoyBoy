@@ -175,17 +175,17 @@ class PermissionEngine:
     def check(self, tool_name: str, args: Dict[str, Any], workspace_path: str) -> PermissionDecision:
         tool = self.registry.get(tool_name)
         if not tool:
-            return PermissionDecision(False, f"Tool inconnu: {tool_name}", risk="unknown")
+            return PermissionDecision(False, f"Unknown tool: {tool_name}", risk="unknown")
         if not tool.enabled:
-            return PermissionDecision(False, f"Tool desactive: {tool_name}", risk=tool.risk)
+            return PermissionDecision(False, f"Tool disabled: {tool_name}", risk=tool.risk)
 
         if not self._valid_workspace(workspace_path):
-            return PermissionDecision(False, "Workspace invalide ou inaccessible", risk=tool.risk)
+            return PermissionDecision(False, "Invalid or inaccessible workspace", risk=tool.risk)
 
         if tool.risk == ToolRisk.DESTRUCTIVE:
             return PermissionDecision(
                 False,
-                "Action destructive bloquee: confirmation UI non disponible.",
+                "Destructive action blocked: confirmation UI is not available yet.",
                 risk=tool.risk,
                 requires_confirmation=True,
             )
@@ -210,14 +210,14 @@ class PermissionEngine:
     def _check_shell_command(self, command: str) -> PermissionDecision:
         normalized = " ".join(command.strip().split())
         if not normalized:
-            return PermissionDecision(False, "Commande vide", risk=ToolRisk.SHELL)
+            return PermissionDecision(False, "Empty command", risk=ToolRisk.SHELL)
 
         lowered = normalized.lower()
         for pattern in self._DESTRUCTIVE_SHELL_PATTERNS:
             if pattern.search(lowered):
                 return PermissionDecision(
                     False,
-                    "Commande bloquee: action destructive ou elevation non confirmee.",
+                    "Command blocked: destructive action or unconfirmed privilege elevation.",
                     risk=ToolRisk.SHELL,
                     requires_confirmation=True,
                 )
