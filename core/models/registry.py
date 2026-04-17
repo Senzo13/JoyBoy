@@ -17,6 +17,7 @@ import subprocess
 import torch
 import gc
 import torch._dynamo
+from core.models.runtime_env import configure_huggingface_env
 
 # Supprimer les FutureWarning de diffusers et autres
 warnings.filterwarnings("ignore", category=FutureWarning)
@@ -33,17 +34,13 @@ except ImportError:
     AI_NAME = "JoyBoy"
 custom_cache = os.path.join(PROJECT_DIR, "models", "huggingface")
 os.makedirs(custom_cache, exist_ok=True)
-os.environ["HF_HOME"] = custom_cache
-os.environ["HF_HUB_DOWNLOAD_TIMEOUT"] = "600"
-os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
-os.environ["HF_HUB_DISABLE_SYMLINKS"] = "1"  # Windows sans droits admin (Shadow, etc.)
 from config import HF_TOKEN
-os.environ.setdefault("HF_TOKEN", HF_TOKEN)
-os.environ["HF_ENABLE_PARALLEL_LOADING"] = "YES"  # Charge les shards en parallele (plus rapide)
 
 # Detection OS
-IS_MAC = platform.system() == "Darwin"
-IS_WINDOWS = platform.system() == "Windows"
+_SYSTEM_NAME = platform.system()
+IS_MAC = _SYSTEM_NAME == "Darwin"
+IS_WINDOWS = _SYSTEM_NAME == "Windows"
+configure_huggingface_env(custom_cache, HF_TOKEN, system_name=_SYSTEM_NAME)
 
 # torch.compile: desactive sur Windows (pas de Triton) et Mac (MPS incompatible)
 USE_TORCH_COMPILE = not IS_WINDOWS and not IS_MAC

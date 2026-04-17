@@ -1,0 +1,41 @@
+"""Runtime environment policy for model loading.
+
+Keep platform-specific Hugging Face switches in one place so registry/model
+loaders do not grow scattered OS conditionals.
+"""
+from __future__ import annotations
+
+import os
+import platform
+from typing import MutableMapping
+
+
+def should_enable_hf_parallel_loading(system_name: str | None = None) -> bool:
+    """Return whether Hugging Face/Diffusers parallel loading is safe.
+
+    Diffusers rejects parallel loading when components are loaded with
+    low_cpu_mem_usage=False. JoyBoy deliberately uses low_cpu_mem_usage=False
+    on macOS/MPS to avoid meta-tensor issues, so parallel loading must be off
+    there while remaining enabled on Windows/Linux.
+    """
+    current_system = system_name or platform.system()
+    return current_system != "Darwin"
+
+
+def configure_huggingface_env(
+    cache_dir: str,
+    hf_token: str | None = None,
+    *,
+    system_name: str | None = None,
+    environ: MutableMapping[str, str] | None = None,
+) -> None:
+    """Configure Hugging Face runtime env vars for the current platform."""
+    env = environ if environ is not None else os.environ
+    env["HF_HOME"] = cache_dir
+    env["HF_HUB_DOWNLOAD_TIMEOUT"] = "600"
+    env["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
+    env["HF_HUB_DISABLE_SYMLINKS"] = "1"
+    env.setdefault("HF_TOKEN", hf_token or "")
+    env["HF_ENABLE_PARALLEL_LOADING"] = (
+        "YES" if should_enable_hf_parallel_loading(system_name) else "NO"
+    )
