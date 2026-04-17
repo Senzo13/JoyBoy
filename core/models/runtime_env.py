@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import os
 import platform
+import types
 from typing import MutableMapping
 
 
@@ -55,6 +56,8 @@ def apply_mps_pipeline_optimizations(
     attention slicing for JoyBoy's SDXL text2img/inpaint sizes.
     """
     enabled_any = _enable_mps_vae_force_upcast(pipe, label, log_skip=log_skip)
+    enabled_any = _enable_mps_full_vae_fp32_decode(pipe, label, log_skip=log_skip) or enabled_any
+    enabled_any = _enable_mps_postprocess_nan_guard(pipe, label, log_skip=log_skip) or enabled_any
 
     enable_attention_slicing = getattr(pipe, "enable_attention_slicing", None)
     if not callable(enable_attention_slicing):
@@ -91,6 +94,7 @@ def _enable_mps_vae_force_upcast(
 
     config = getattr(vae, "config", None)
     if getattr(config, "force_upcast", False) is True:
+        _log_once(pipe, "_joyboy_mps_force_upcast_logged", f"[MM] {label}: VAE force_upcast active (MPS)")
         return True
 
     try:
@@ -110,3 +114,106 @@ def _enable_mps_vae_force_upcast(
 
     print(f"[MM] {label}: VAE force_upcast active (MPS)")
     return True
+
+
+def _enable_mps_full_vae_fp32_decode(
+    pipe: object,
+    label: str,
+    *,
+    log_skip: bool = True,
+) -> bool:
+    """Patch Diffusers' SDXL VAE upcast to keep the whole VAE in fp32 on MPS.
+
+    Diffusers' default ``upcast_vae`` may move attention-adjacent VAE modules
+    back to fp16 when Torch 2 attention processors are available. That saves
+    memory, but on Apple MPS those fp16 decode blocks can still emit NaN/inf
+    pixels at final image postprocess. JoyBoy's Mac policy favors a slower but
+    stable final decode.
+    """
+    vae = getattr(pipe, "vae", None)
+    upcast_vae = getattr(pipe, "upcast_vae", None)
+    if vae is None or not callable(upcast_vae):
+        return False
+
+    if getattr(pipe, "_joyboy_mps_full_vae_fp32_decode", False):
+        _log_once(
+            pipe,
+            "_joyboy_mps_full_vae_fp32_decode_logged",
+            f"[MM] {label}: full VAE fp32 decode active (MPS)",
+        )
+        return True
+
+    try:
+        import torch
+
+        def _joyboy_full_upcast_vae(self) -> None:
+            self.vae.to(dtype=torch.float32)
+
+        pipe.upcast_vae = types.MethodType(_joyboy_full_upcast_vae, pipe)
+        setattr(pipe, "_joyboy_mps_full_vae_fp32_decode", True)
+    except Exception as exc:
+        if log_skip:
+            print(f"[MM] {label}: full VAE fp32 decode skip ({exc})")
+        return False
+
+    print(f"[MM] {label}: full VAE fp32 decode active (MPS)")
+    return True
+
+
+def _enable_mps_postprocess_nan_guard(
+    pipe: object,
+    label: str,
+    *,
+    log_skip: bool = True,
+) -> bool:
+    """Clamp non-finite decoded pixels before Diffusers converts to uint8."""
+    image_processor = getattr(pipe, "image_processor", None)
+    postprocess = getattr(image_processor, "postprocess", None)
+    if image_processor is None or not callable(postprocess):
+        return False
+
+    if getattr(image_processor, "_joyboy_mps_nan_guard", False):
+        _log_once(
+            image_processor,
+            "_joyboy_mps_nan_guard_logged",
+            f"[MM] {label}: decoded image NaN guard active (MPS)",
+        )
+        return True
+
+    try:
+        import torch
+
+        original_postprocess = postprocess
+
+        def _joyboy_guarded_postprocess(self, image, *args, **kwargs):
+            try:
+                if torch.is_tensor(image) and not bool(torch.isfinite(image).all().item()):
+                    _log_once(
+                        self,
+                        "_joyboy_mps_nan_guard_triggered",
+                        f"[MM] {label}: sanitized non-finite decoded pixels (MPS)",
+                    )
+                    image = torch.nan_to_num(image, nan=0.0, posinf=1.0, neginf=-1.0)
+            except Exception:
+                pass
+            return original_postprocess(image, *args, **kwargs)
+
+        image_processor.postprocess = types.MethodType(_joyboy_guarded_postprocess, image_processor)
+        setattr(image_processor, "_joyboy_mps_nan_guard", True)
+    except Exception as exc:
+        if log_skip:
+            print(f"[MM] {label}: decoded image NaN guard skip ({exc})")
+        return False
+
+    print(f"[MM] {label}: decoded image NaN guard active (MPS)")
+    return True
+
+
+def _log_once(target: object, flag_name: str, message: str) -> None:
+    if getattr(target, flag_name, False):
+        return
+    print(message)
+    try:
+        setattr(target, flag_name, True)
+    except Exception:
+        pass

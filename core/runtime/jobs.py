@@ -13,6 +13,11 @@ from .storage import get_runtime_root, utc_now_iso
 
 
 TERMINAL_STATES = {"done", "error", "cancelled"}
+RESTART_CANCEL_MESSAGE = "JoyBoy a redémarré: job interrompu"
+
+
+def _is_terminal_status(status: Any) -> bool:
+    return str(status or "").lower() in TERMINAL_STATES
 
 
 class JobManager:
@@ -41,9 +46,41 @@ class JobManager:
                     for job_id, job in data.get("jobs", {}).items()
                     if isinstance(job, dict)
                 }
+                if self._cancel_loaded_active_jobs():
+                    self._save_locked()
         except Exception as exc:
             print(f"[RUNTIME] Job store ignored ({exc})")
             self._jobs = {}
+
+    def _cancel_loaded_active_jobs(self) -> int:
+        """Cancel jobs restored from a previous Python process.
+
+        Runtime jobs are durable so the browser can reconnect after a refresh,
+        but generation threads, terminal streams and downloads do not survive a
+        backend restart. Any non-terminal job found while loading jobs.json is
+        therefore stale and must not be shown as active in the sidebar.
+        """
+        now = utc_now_iso()
+        cancelled = 0
+        for job_id, job in self._jobs.items():
+            if _is_terminal_status(job.get("status")):
+                continue
+            job["status"] = "cancelled"
+            job["phase"] = "cancelled"
+            job["cancel_requested"] = True
+            job["message"] = RESTART_CANCEL_MESSAGE
+            job["updated_at"] = now
+            job["finished_at"] = job.get("finished_at") or now
+            self._append_event_locked(
+                str(job_id),
+                "cancelled",
+                message=RESTART_CANCEL_MESSAGE,
+                progress=job.get("progress"),
+            )
+            cancelled += 1
+        if cancelled:
+            print(f"[RUNTIME] Cancelled {cancelled} stale job(s) from previous process")
+        return cancelled
 
     def _save_locked(self) -> None:
         tmp = self.path.with_suffix(".tmp")
@@ -128,7 +165,7 @@ class JobManager:
             # not resurrect it as "running". This is especially important for
             # terminal SSE streams: the user can cancel/delete the conversation
             # while Ollama is still unwinding in another thread.
-            if job.get("status") in TERMINAL_STATES and status not in TERMINAL_STATES:
+            if _is_terminal_status(job.get("status")) and not _is_terminal_status(status):
                 return deepcopy(job)
 
             now = utc_now_iso()
@@ -136,7 +173,7 @@ class JobManager:
                 job["status"] = status
                 if status == "running" and not job.get("started_at"):
                     job["started_at"] = now
-                if status in TERMINAL_STATES:
+                if _is_terminal_status(status):
                     job["finished_at"] = now
             if phase:
                 job["phase"] = phase
@@ -192,7 +229,7 @@ class JobManager:
                 return None
             job["cancel_requested"] = True
             job["updated_at"] = utc_now_iso()
-            if job.get("status") not in TERMINAL_STATES:
+            if not _is_terminal_status(job.get("status")):
                 job["status"] = "cancelling"
                 job["phase"] = "cancelling"
             self._append_event_locked(str(job_id), "cancelling", message="Cancel requested")
@@ -224,7 +261,7 @@ class JobManager:
                 job_id
                 for job_id, job in self._jobs.items()
                 if job.get("conversation_id") == conversation_id
-                and job.get("status") not in TERMINAL_STATES
+                and not _is_terminal_status(job.get("status"))
             ]
         cancelled = []
         for job_id in job_ids:

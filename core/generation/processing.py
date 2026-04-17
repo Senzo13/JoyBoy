@@ -110,6 +110,31 @@ from core.generation.video import (
     generate_video,
 )
 
+
+def _is_mps_runtime() -> bool:
+    return (
+        not torch.cuda.is_available()
+        and hasattr(torch.backends, "mps")
+        and torch.backends.mps.is_available()
+    )
+
+
+def _apply_mps_sdxl_runtime_policy(pipe, label: str) -> None:
+    if not _is_mps_runtime():
+        return
+
+    class_name = pipe.__class__.__name__
+    if "StableDiffusionXL" not in class_name:
+        return
+
+    try:
+        from core.models.runtime_env import apply_mps_pipeline_optimizations
+
+        apply_mps_pipeline_optimizations(pipe, label)
+    except Exception as exc:
+        print(f"[INPAINT] MPS runtime policy skipped ({exc})")
+
+
 # text2img.py — Text-to-image styles, format detection, generation
 from core.generation.text2img import (
     _TXT2IMG_STYLES,
@@ -816,6 +841,7 @@ def process_image(image: Image.Image, prompt: str, strength: float, model_name: 
 
     # VAE tiling toujours activé — quasi invisible, évite OOM au décodage
     pipe.enable_vae_tiling()
+    _apply_mps_sdxl_runtime_policy(pipe, f"{model_name} inpaint runtime")
 
     # Dtype guard: certains adapters/LoRAs PEFT restent en float32 alors que
     # les text encoders SDXL sont en bf16/fp16, ce qui casse CLIP au layer_norm.

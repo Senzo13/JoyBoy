@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import unittest
 
+import torch
+
 from core.models.runtime_env import (
     apply_mps_pipeline_optimizations,
     configure_huggingface_env,
@@ -66,6 +68,66 @@ class ModelRuntimeEnvTest(unittest.TestCase):
 
         self.assertTrue(enabled)
         self.assertTrue(pipe.vae.config.force_upcast)
+
+    def test_mps_pipeline_optimizations_patch_full_vae_fp32_upcast(self) -> None:
+        class FakeVae:
+            def __init__(self) -> None:
+                self.dtype = torch.float16
+                self.config = type("Config", (), {"force_upcast": False})()
+
+            def register_to_config(self, **kwargs) -> None:
+                for key, value in kwargs.items():
+                    setattr(self.config, key, value)
+
+            def to(self, dtype=None):
+                self.dtype = dtype
+                return self
+
+        class FakePipe:
+            def __init__(self) -> None:
+                self.vae = FakeVae()
+                self.partial_upcast_called = False
+
+            def upcast_vae(self) -> None:
+                self.partial_upcast_called = True
+
+        pipe = FakePipe()
+
+        enabled = apply_mps_pipeline_optimizations(pipe, "fake", log_skip=False)
+        pipe.upcast_vae()
+
+        self.assertTrue(enabled)
+        self.assertFalse(pipe.partial_upcast_called)
+        self.assertIs(pipe.vae.dtype, torch.float32)
+        self.assertTrue(pipe.vae.config.force_upcast)
+        self.assertTrue(pipe._joyboy_mps_full_vae_fp32_decode)
+
+    def test_mps_pipeline_optimizations_sanitize_non_finite_postprocess_pixels(self) -> None:
+        class FakeProcessor:
+            def postprocess(self, image, *args, **kwargs):
+                return image
+
+        class FakeVae:
+            def __init__(self) -> None:
+                self.config = type("Config", (), {"force_upcast": False})()
+
+            def register_to_config(self, **kwargs) -> None:
+                for key, value in kwargs.items():
+                    setattr(self.config, key, value)
+
+        class FakePipe:
+            def __init__(self) -> None:
+                self.vae = FakeVae()
+                self.image_processor = FakeProcessor()
+
+        pipe = FakePipe()
+
+        enabled = apply_mps_pipeline_optimizations(pipe, "fake", log_skip=False)
+        result = pipe.image_processor.postprocess(torch.tensor([float("nan"), float("inf"), -float("inf"), 0.5]))
+
+        self.assertTrue(enabled)
+        self.assertTrue(torch.isfinite(result).all().item())
+        self.assertEqual(result.tolist(), [0.0, 1.0, -1.0, 0.5])
 
 
 if __name__ == "__main__":

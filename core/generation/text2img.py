@@ -191,6 +191,23 @@ def _is_mps_runtime() -> bool:
     )
 
 
+def _apply_mps_sdxl_runtime_policy(pipe, label: str, is_mps_runtime: bool) -> None:
+    """Ensure ad-hoc SDXL wrappers get the same MPS decode policy as loaded pipes."""
+    if not is_mps_runtime:
+        return
+
+    class_name = pipe.__class__.__name__
+    if "StableDiffusionXL" not in class_name:
+        return
+
+    try:
+        from core.models.runtime_env import apply_mps_pipeline_optimizations
+
+        apply_mps_pipeline_optimizations(pipe, label)
+    except Exception as exc:
+        print(f"[TEXT2IMG] MPS runtime policy skipped ({exc})")
+
+
 def _should_suppress_visible_capture_devices(prompt: str, style_prefix: str | None, style_suffix: str | None) -> bool:
     """Avoid literal cameras unless the user/style explicitly asks for capture-device aesthetics."""
     text = " ".join(part for part in (prompt or "", style_prefix or "", style_suffix or "")).lower()
@@ -437,6 +454,7 @@ def generate_from_text(prompt: str, model_name: str = "Automatique", enhance: bo
     # vitesse de génération.
     # Passer height/width pour unpack des latents Flux (3D packed → 4D)
     is_mps_runtime = _is_mps_runtime()
+    _apply_mps_sdxl_runtime_policy(pipe, f"{model_name} text2img runtime", is_mps_runtime)
     preview_every = 1 if is_turbo else (8 if is_mps_runtime else 2)
     callback = make_preview_callback(cancel_check, preview_every=preview_every,
                                      image_height=height, image_width=width,
@@ -488,6 +506,7 @@ def generate_from_text(prompt: str, model_name: str = "Automatique", enhance: bo
         txt2img_components = {k: v for k, v in pipe.components.items()
                               if k not in ('controlnet', 'image_encoder', 'mask_processor')}
         pipe = StableDiffusionXLPipeline(**txt2img_components)
+        _apply_mps_sdxl_runtime_policy(pipe, f"{model_name} converted text2img runtime", is_mps_runtime)
 
         extra_kwargs = {}
         if ip_adapter_image_embeds is not None:
@@ -498,6 +517,7 @@ def generate_from_text(prompt: str, model_name: str = "Automatique", enhance: bo
         if style_init_image is not None:
             from diffusers import StableDiffusionXLImg2ImgPipeline
             img2img_pipe = StableDiffusionXLImg2ImgPipeline(**pipe.components)
+            _apply_mps_sdxl_runtime_policy(img2img_pipe, f"{model_name} img2img runtime", is_mps_runtime)
             init_img = style_init_image.convert('RGB').resize((width, height), Image.LANCZOS)
             img_strength = max(0.05, min(0.9, 1.0 - style_ref_scale))
             print(f"[TEXT2IMG] Img2img depuis style ref (strength={img_strength})")
@@ -598,6 +618,7 @@ def generate_from_text(prompt: str, model_name: str = "Automatique", enhance: bo
                 # ControlNet + img2img: enforce pose/depth + appearance from style ref
                 from diffusers import StableDiffusionXLControlNetImg2ImgPipeline
                 cn_pipe = StableDiffusionXLControlNetImg2ImgPipeline(**cn_components, controlnet=controlnet_model)
+                _apply_mps_sdxl_runtime_policy(cn_pipe, f"{model_name} ControlNet img2img runtime", is_mps_runtime)
                 init_img = style_init_image.convert('RGB').resize((width, height), Image.LANCZOS)
                 img_strength = max(0.05, min(0.9, 1.0 - style_ref_scale))
                 _cn_type = "Depth" if controlnet_depth_image is not None else "OpenPose"
@@ -620,6 +641,7 @@ def generate_from_text(prompt: str, model_name: str = "Automatique", enhance: bo
                 # ControlNet text2img: pose from skeleton, no reference image
                 from diffusers import StableDiffusionXLControlNetPipeline
                 cn_pipe = StableDiffusionXLControlNetPipeline(**cn_components, controlnet=controlnet_model)
+                _apply_mps_sdxl_runtime_policy(cn_pipe, f"{model_name} ControlNet text2img runtime", is_mps_runtime)
                 print(f"[TEXT2IMG] ControlNet OpenPose text2img (cn_scale={controlnet_scale})")
                 set_progress_phase("diffusion", 0, steps)
                 result = cn_pipe(
@@ -644,6 +666,7 @@ def generate_from_text(prompt: str, model_name: str = "Automatique", enhance: bo
             # Si style ref → convertir en img2img pipeline (zero-copy, mêmes composants)
             from diffusers import StableDiffusionXLImg2ImgPipeline
             img2img_pipe = StableDiffusionXLImg2ImgPipeline(**pipe.components)
+            _apply_mps_sdxl_runtime_policy(img2img_pipe, f"{model_name} img2img runtime", is_mps_runtime)
             init_img = style_init_image.convert('RGB').resize((width, height), Image.LANCZOS)
             img_strength = max(0.05, min(0.9, 1.0 - style_ref_scale))
             print(f"[TEXT2IMG] Img2img depuis style ref (strength={img_strength}, scale={style_ref_scale})")
