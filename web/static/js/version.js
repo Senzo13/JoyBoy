@@ -24,7 +24,7 @@ function versionStatusClass(status = appVersionStatus) {
     if (!status) return 'is-muted';
     const kind = versionStatusKind(status);
     if (kind === 'release') return 'is-warning';
-    if (kind === 'commit') return 'is-info';
+    if (kind === 'commit') return 'is-warning';
     if (status.update?.status === 'unknown') return 'is-error';
     return 'is-ok';
 }
@@ -36,8 +36,9 @@ function versionStatusLabel(status = appVersionStatus) {
     if (!status) return versionText('settings.version.statusOffline', 'Indisponible');
 
     const kind = versionStatusKind(status);
-    if (kind === 'release') return versionText('settings.version.statusAvailable', 'Mise à jour');
-    if (kind === 'commit') return versionText('settings.version.statusCommit', 'Main plus récent');
+    if (kind === 'release' || kind === 'commit') {
+        return versionText('settings.version.statusAvailable', 'Mise à jour disponible');
+    }
     if (status.update?.status === 'no_releases') return versionText('settings.version.statusNoRelease', 'Version locale');
     if (status.update?.status === 'unknown') return versionText('settings.version.statusOffline', 'Indisponible');
     return versionText('settings.version.statusCurrent', 'À jour');
@@ -49,7 +50,7 @@ function versionDetail(status = appVersionStatus) {
     const branch = status?.git?.target_branch || 'main';
 
     if (appVersionStatusLoading) {
-        return versionText('settings.version.detailChecking', 'Recherche de release GitHub et comparaison du checkout local...');
+        return versionText('settings.version.detailChecking', 'Recherche d’une nouvelle version GitHub...');
     }
     if (!status) {
         return versionText('settings.version.detailOffline', 'Impossible de vérifier les mises à jour pour le moment.');
@@ -57,7 +58,7 @@ function versionDetail(status = appVersionStatus) {
     if (status.update?.kind === 'release') {
         return versionText(
             'settings.version.detailAvailable',
-            'JoyBoy {latest} est disponible. Version installée : {current}.',
+            'JoyBoy {latest} est disponible. Version installée : {current}. Ouvre GitHub pour voir la mise à jour.',
             { current, latest }
         );
     }
@@ -66,20 +67,20 @@ function versionDetail(status = appVersionStatus) {
         const latestCommit = status.git?.latest_short_commit || branch;
         return versionText(
             'settings.version.detailCommit',
-            'Ton checkout est sur {current}; origin/{branch} pointe sur {latest}.',
+            'Une mise à jour du code est disponible sur GitHub. Installation actuelle : {current}; dernier code : {latest}. Lance git pull dans le dossier JoyBoy, puis redémarre JoyBoy.',
             { current: shortCommit, latest: latestCommit, branch }
         );
     }
     if (status.update?.status === 'no_releases') {
         return versionText(
             'settings.version.detailNoRelease',
-            'Aucune release GitHub publiée pour ce repo. Le checker surveillera les releases dès qu’une v0.x existe.',
+            'Aucune release GitHub publiée pour ce repo. JoyBoy vérifiera les releases dès qu’une version publique existe.',
         );
     }
     if (status.update?.status === 'unknown') {
         return versionText('settings.version.detailOffline', 'Impossible de vérifier les mises à jour pour le moment.');
     }
-    return versionText('settings.version.detailCurrent', 'Version installée : {current}. Aucune mise à jour publiée détectée.', { current });
+    return versionText('settings.version.detailCurrent', 'JoyBoy est à jour. Version installée : {current}.', { current });
 }
 
 function setVersionElementText(id, text) {
@@ -90,9 +91,7 @@ function setVersionElementText(id, text) {
 function renderVersionPills(status = appVersionStatus) {
     const shouldShow = Boolean(status?.update?.available);
     const kind = versionStatusKind(status);
-    const label = kind === 'commit'
-        ? versionText('settings.version.pillCommit', 'Main')
-        : versionText('settings.version.pillRelease', 'Update');
+    const label = versionText('settings.version.pillUpdate', 'Update');
     const title = versionDetail(status);
 
     document.querySelectorAll('.app-update-pill').forEach(pill => {

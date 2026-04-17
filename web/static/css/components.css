@@ -1204,15 +1204,15 @@
 }
 
 .app-update-pill.is-commit {
-  border-color: rgba(96, 165, 250, 0.36);
-  background: rgba(96, 165, 250, 0.1);
-  color: #a9ccff;
+  border-color: rgba(250, 204, 21, 0.34);
+  background: rgba(250, 204, 21, 0.08);
+  color: #f8d36c;
 }
 
 .app-update-pill.is-commit:hover {
-  border-color: rgba(96, 165, 250, 0.56);
-  background: rgba(96, 165, 250, 0.16);
-  color: #d7e8ff;
+  background: rgba(250, 204, 21, 0.14);
+  border-color: rgba(250, 204, 21, 0.5);
+  color: #ffe69a;
 }
 
 .app-update-pill svg {

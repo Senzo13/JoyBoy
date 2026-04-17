@@ -217,7 +217,15 @@ def build_version_status(
 ) -> Dict[str, Any]:
     git_state = git_state or {}
     release_url = f"https://github.com/{repository}/releases"
-    commit_url = f"https://github.com/{repository}/commits/{git_state.get('target_branch') or DEFAULT_BRANCH}"
+    target_branch = git_state.get("target_branch") or DEFAULT_BRANCH
+    commit_url = f"https://github.com/{repository}/commits/{target_branch}"
+    current_commit = str(git_state.get("commit") or "").strip()
+    latest_commit = str(git_state.get("latest_commit") or "").strip()
+    compare_url = (
+        f"https://github.com/{repository}/compare/{current_commit}...{latest_commit}"
+        if current_commit and latest_commit and current_commit != latest_commit
+        else commit_url
+    )
     latest_version = (latest_release or {}).get("version", "")
 
     update = {
@@ -240,7 +248,7 @@ def build_version_status(
             "available": True,
             "kind": "commit",
             "status": "commit_available",
-            "url": commit_url,
+            "url": compare_url,
         })
     elif latest_release is None and error == "no_releases":
         update.update({
@@ -267,6 +275,7 @@ def build_version_status(
             "repository": f"https://github.com/{repository}",
             "releases": release_url,
             "commits": commit_url,
+            "compare": compare_url,
         },
         "update": update,
     }

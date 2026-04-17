@@ -31,10 +31,17 @@ class VersioningTest(unittest.TestCase):
             current_version="0.1.0",
             repository="owner/repo",
             latest_release={"version": "0.1.0", "tag": "v0.1.0", "url": "https://example.test/release"},
-            git_state={"behind_remote": True, "branch": "main", "target_branch": "main"},
+            git_state={
+                "behind_remote": True,
+                "branch": "main",
+                "target_branch": "main",
+                "commit": "abc123",
+                "latest_commit": "def456",
+            },
         )
         self.assertTrue(status["update"]["available"])
         self.assertEqual(status["update"]["kind"], "commit")
+        self.assertEqual(status["update"]["url"], "https://github.com/owner/repo/compare/abc123...def456")
 
     def test_non_main_checkout_does_not_show_commit_update(self) -> None:
         status = build_version_status(
