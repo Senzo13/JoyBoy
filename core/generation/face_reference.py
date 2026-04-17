@@ -64,6 +64,7 @@ def resolve_text2img_face_reference_policy(
     *,
     has_style_ref: bool = False,
     has_pose_control: bool = False,
+    reference_count: int = 1,
 ) -> FaceReferencePolicy:
     """Return the safe FaceID scale for a text2img generation.
 
@@ -101,6 +102,19 @@ def resolve_text2img_face_reference_policy(
         # the face embedding bleeding into body geometry.
         cap = min(cap, 0.14)
         reasons.append("pose/controlnet active")
+
+    try:
+        ref_count = max(0, int(reference_count or 0))
+    except (TypeError, ValueError):
+        ref_count = 1
+    if face_focused and ref_count >= 3:
+        # Averaging several clear references is more stable than a single ref.
+        # Give close-up/portrait prompts enough identity signal even when a style
+        # ref or pose setting is also active.
+        multi_ref_floor = 0.20 if has_pose_control else 0.22 if has_style_ref else 0.35
+        if cap < multi_ref_floor:
+            cap = multi_ref_floor
+            reasons.append(f"{min(ref_count, 5)} face refs")
 
     scale = min(requested, cap)
     if not reasons:

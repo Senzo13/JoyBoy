@@ -1199,6 +1199,7 @@ def unified_generate():
                     face_ref_scale,
                     has_style_ref=has_style,
                     has_pose_control=needs_cn_pose,
+                    reference_count=len(face_ref_b64s),
                 )
                 face_ref_scale = _face_policy.scale
                 needs_face = bool(face_ref_b64s) and face_ref_scale > 0

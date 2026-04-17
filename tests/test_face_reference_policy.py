@@ -43,6 +43,19 @@ class FaceReferencePolicyTests(unittest.TestCase):
         self.assertEqual(policy.scale, 0.14)
         self.assertTrue(policy.was_adjusted)
 
+    def test_multiple_refs_boost_face_focused_prompt_despite_pose_control(self):
+        policy = resolve_text2img_face_reference_policy(
+            "close up portrait photo near a swimming pool",
+            requested_scale=0.35,
+            has_style_ref=True,
+            has_pose_control=True,
+            reference_count=5,
+        )
+
+        self.assertEqual(policy.scale, 0.20)
+        self.assertTrue(policy.was_adjusted)
+        self.assertIn("5 face refs", policy.reason)
+
     def test_style_reference_caps_faceid_even_without_pose(self):
         policy = resolve_text2img_face_reference_policy(
             "fashion model wearing a jacket",
