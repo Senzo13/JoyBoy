@@ -2,8 +2,11 @@
 chcp 65001 >nul
 cd /d "%~dp0"
 
-REM Auto restart mode used by backend
-if /i "%1"=="--restart" goto start
+REM Auto restart mode used by backend. Do not stop on interactive repair prompts.
+if /i "%1"=="--restart" (
+    set "JOYBOY_SKIP_CUDA_REPAIR_PROMPT=1"
+    goto start
+)
 
 REM Relaunch in Windows Terminal when available
 if not defined WT_SESSION (
@@ -81,10 +84,14 @@ echo.
 echo.
 set /p choice="       Choix: "
 
-if /i "%choice%"=="1" goto setup
+if /i "%choice%"=="1" goto menu_setup
 if /i "%choice%"=="2" goto start
 if /i "%choice%"=="q" goto quit
 goto menu
+
+:menu_setup
+set "SETUP_RETRIES=0"
+goto setup
 
 :setup
 cls
@@ -94,11 +101,11 @@ set /a SETUP_RETRIES+=1
 if %SETUP_RETRIES% GTR 3 (
     echo.
     echo    [!] Setup a boucle 3 fois sans succes.
-    echo    [!] Certains packages n'ont pas pu etre installes.
-    echo    [!] Demarrage quand meme...
+    echo    [!] Certains packages n'ont pas pu etre installes ou repares.
+    echo    [!] Retour au menu pour eviter une boucle automatique.
     echo.
-    timeout /t 3 >nul
-    goto start
+    pause
+    goto menu
 )
 echo.
 echo    ================================================================
@@ -134,6 +141,12 @@ if "%PYTHON_NEEDS_INSTALL%"=="1" (
     REM Download Python with visible curl progress
     echo           Telechargement de Python 3.12 portable...
     curl.exe -L --progress-bar -o "%PYTHON_ZIP%" "%PYTHON_URL%"
+    if errorlevel 1 (
+        echo    [ERREUR] Echec du telechargement de Python
+        echo    Verifiez votre connexion internet
+        pause
+        goto menu
+    )
 
     if not exist "%PYTHON_ZIP%" (
         echo    [ERREUR] Echec du telechargement de Python
@@ -145,13 +158,40 @@ if "%PYTHON_NEEDS_INSTALL%"=="1" (
     REM Extract python-build-standalone archive
     echo           Extraction...
     tar.exe -xzf "%PYTHON_ZIP%" -C "%PYTHON_TMP%"
-    if exist "%PYTHON_TMP%\python" (
-        move "%PYTHON_TMP%\python" "%PYTHON_DIR%" >nul
+    if errorlevel 1 (
+        echo    [ERREUR] Echec extraction Python
+        echo    Archive invalide ou extraction Windows indisponible.
+        del "%PYTHON_ZIP%" 2>nul
+        if exist "%PYTHON_TMP%" rmdir /s /q "%PYTHON_TMP%" 2>nul
+        pause
+        goto menu
     )
+    if not exist "%PYTHON_TMP%\python" (
+        echo    [ERREUR] Archive Python inattendue: dossier python introuvable
+        del "%PYTHON_ZIP%" 2>nul
+        if exist "%PYTHON_TMP%" rmdir /s /q "%PYTHON_TMP%" 2>nul
+        pause
+        goto menu
+    )
+    move "%PYTHON_TMP%\python" "%PYTHON_DIR%" >nul
 
     REM Cleanup
     del "%PYTHON_ZIP%" 2>nul
     if exist "%PYTHON_TMP%" rmdir /s /q "%PYTHON_TMP%" 2>nul
+
+    if not exist "%PYTHON_EXE%" (
+        echo    [ERREUR] Python extrait mais python.exe introuvable
+        echo    Chemin attendu: %PYTHON_EXE%
+        pause
+        goto menu
+    )
+    "%PYTHON_EXE%" -c "import venv; import ensurepip" >nul 2>nul
+    if errorlevel 1 (
+        echo    [ERREUR] Python portable incomplet: venv/pip indisponible
+        echo    Supprime le dossier python312 puis relance le setup.
+        pause
+        goto menu
+    )
 
     echo    [OK] Python 3.12 installe localement
     echo.
@@ -170,21 +210,26 @@ if exist "venv\Scripts\python.exe" (
 
 if "%VENV_OK%"=="1" (
     echo    [1/4] Environnement virtuel existant detecte
-    call venv\Scripts\activate.bat
-    set "PYTHON=python"
+    set "PYTHON=venv\Scripts\python.exe"
 ) else (
     if exist "venv" (
         echo    [1/4] Venv incompatible detecte, recreation...
         rmdir /s /q "venv" 2>nul
+        if exist "venv" (
+            echo    [ERREUR] Impossible de supprimer l'ancien venv.
+            echo    Ferme les terminaux JoyBoy/Python qui l'utilisent puis relance.
+            pause
+            goto menu
+        )
     ) else (
         echo    [1/4] Creation de l'environnement virtuel...
     )
     "%PYTHON_EXE%" -m venv venv
     if exist "venv\Scripts\python.exe" (
-        call venv\Scripts\activate.bat
-        set "PYTHON=python"
+        set "PYTHON=venv\Scripts\python.exe"
     ) else (
         echo    [ERREUR] Impossible de creer le venv Python 3.12
+        echo    Python utilise: %PYTHON_EXE%
         pause
         goto menu
     )
@@ -206,7 +251,7 @@ if %CHECK_RESULT%==99 (
 REM Code >= 1 means setup needs another verification pass
 if %CHECK_RESULT% GEQ 1 (
     echo.
-    echo    [!] Installation en cours - Verification...
+    echo    [!] Setup incomplet ou en erreur (code %CHECK_RESULT%) - Verification...
     timeout /t 3 >nul
     goto setup
 )
@@ -216,6 +261,7 @@ echo    ================================================================
 echo                    Setup termine !
 echo    ================================================================
 echo.
+set "SETUP_RETRIES=0"
 timeout /t 2 >nul
 goto start
 
@@ -223,24 +269,32 @@ goto start
 cls
 REM Use venv if available, otherwise portable Python
 if exist "venv\Scripts\python.exe" (
-    call venv\Scripts\activate.bat
-    set "PY=python"
+    set "PY=venv\Scripts\python.exe"
 ) else (
     set "PY=python312\python.exe"
 )
+if not exist "%PY%" (
+    echo.
+    echo    [!] Python local introuvable.
+    echo    [!] Lance "Setup complet" une premiere fois pour creer le venv.
+    echo.
+    pause
+    goto menu
+)
 
-REM If NVIDIA exists but PyTorch is CPU-only, quick start would fail.
-REM Automatically switch to setup/repair.
+REM If NVIDIA exists but PyTorch is CPU-only, image/video acceleration is limited.
+REM Warn without auto-switching to setup, otherwise a failed repair loops forever.
+if "%JOYBOY_SKIP_CUDA_REPAIR_PROMPT%"=="1" goto skip_cuda_repair_check
 where nvidia-smi >nul 2>&1
 if errorlevel 1 goto skip_cuda_repair_check
 "%PY%" -c "import sys; import torch; sys.exit(0 if torch.cuda.is_available() else 1)" >nul 2>nul
 if not errorlevel 1 goto skip_cuda_repair_check
 echo.
 echo    [!] GPU NVIDIA detecte mais PyTorch CUDA indisponible dans ce venv.
-echo    [!] Lancement du setup pour reparer PyTorch CUDA...
+echo    [!] Lance "Setup complet" depuis le menu pour reparer PyTorch CUDA.
+echo    [!] JoyBoy demarre quand meme pour eviter une boucle automatique.
 echo.
-timeout /t 2 >nul
-goto setup
+timeout /t 5 >nul
 :skip_cuda_repair_check
 
 REM Quick check: install Ollama if missing

@@ -627,12 +627,21 @@ CLEANUP_PACKAGES = ["diffsynth", "gradio", "gradio-client"]
 # ==========================================
 # FONCTIONS UTILITAIRES
 # ==========================================
+def reset_dependency_caches():
+    """Invalidates package/import caches after pip changes."""
+    global _installed_packages_cache, _import_results_cache
+    _installed_packages_cache = None
+    _import_results_cache = None
+
 def run_pip(args, quiet=True):
     """Execute pip avec les arguments donnés"""
     cmd = [sys.executable, "-m", "pip"] + args
     if quiet:
         cmd.append("--quiet")
-    return subprocess.run(cmd, capture_output=True, text=True)
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if args and args[0] in {"install", "uninstall"}:
+        reset_dependency_caches()
+    return result
 
 
 # Cache global des imports (un seul subprocess pour tout vérifier)
@@ -760,6 +769,51 @@ def check_pytorch_cuda():
     except:
         return False
 
+def get_pytorch_cuda_index(cuda_version=None):
+    """Retourne l'index officiel PyTorch adapté au driver NVIDIA détecté."""
+    version = CUDA_VERSION if cuda_version is None else cuda_version
+    if not HAS_CUDA:
+        return None
+    if not version:
+        return "https://download.pytorch.org/whl/cu124"
+    if version.startswith(("12.4", "12.5", "12.6", "12.7", "12.8", "13")):
+        return "https://download.pytorch.org/whl/cu124"
+    if version.startswith(("12.1", "12.2", "12.3")):
+        return "https://download.pytorch.org/whl/cu121"
+    if version.startswith("11.8"):
+        return "https://download.pytorch.org/whl/cu118"
+    return "https://download.pytorch.org/whl/cu124"
+
+def install_pytorch_cuda(force_reinstall=False):
+    """Installe PyTorch depuis l'index CUDA dans le venv courant."""
+    pip_index = get_pytorch_cuda_index()
+    if not pip_index:
+        print("  [!] Aucun GPU NVIDIA détecté, installation CUDA ignorée")
+        return False
+
+    print(f"  Index CUDA: {pip_index}")
+    cmd = [
+        sys.executable, "-m", "pip", "install", "--upgrade",
+        "torch", "torchvision", "torchaudio",
+        "--index-url", pip_index,
+    ]
+    if force_reinstall:
+        cmd[4:4] = ["--force-reinstall", "--no-cache-dir"]
+
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=False,  # Afficher la progression des gros wheels CUDA
+            text=True,
+            timeout=1800,
+        )
+    except subprocess.TimeoutExpired:
+        print("  [!] Installation PyTorch CUDA trop longue (timeout 30 min)")
+        return False
+
+    reset_dependency_caches()
+    return result.returncode == 0
+
 def fix_pytorch_cuda():
     """
     Réinstalle PyTorch avec support CUDA si nécessaire.
@@ -778,37 +832,13 @@ def fix_pytorch_cuda():
     print("\n  PyTorch actuel n'a pas le support CUDA")
     print("  Réinstallation avec CUDA...")
 
-    # Déterminer l'index pip selon la version CUDA
-    if CUDA_VERSION:
-        if CUDA_VERSION.startswith("12.4") or CUDA_VERSION.startswith("12.5") or CUDA_VERSION.startswith("12.6") or CUDA_VERSION.startswith("13"):
-            pip_index = "https://download.pytorch.org/whl/cu124"
-        elif CUDA_VERSION.startswith("12.1") or CUDA_VERSION.startswith("12.2") or CUDA_VERSION.startswith("12.3"):
-            pip_index = "https://download.pytorch.org/whl/cu121"
-        elif CUDA_VERSION.startswith("11.8"):
-            pip_index = "https://download.pytorch.org/whl/cu118"
-        else:
-            pip_index = "https://download.pytorch.org/whl/cu124"
-    else:
-        pip_index = "https://download.pytorch.org/whl/cu124"
-
-    print(f"  Index CUDA: {pip_index}")
-
     # Désinstaller PyTorch actuel
     print("  Désinstallation de PyTorch CPU...")
     run_pip(["uninstall", "-y", "torch", "torchvision", "torchaudio"], quiet=True)
 
     # Réinstaller avec CUDA
     print("  Installation de PyTorch avec CUDA (peut prendre quelques minutes)...")
-    result = subprocess.run(
-        [sys.executable, "-m", "pip", "install",
-         "torch", "torchvision", "torchaudio",
-         "--index-url", pip_index],
-        capture_output=False,  # Afficher la progression
-        text=True,
-        timeout=600
-    )
-
-    if result.returncode != 0:
+    if not install_pytorch_cuda(force_reinstall=True):
         print("  [!] Erreur installation PyTorch CUDA")
         return False
 
@@ -874,17 +904,8 @@ def fix_xformers():
     print(f"    CUDA: {CUDA_VERSION}")
     print(f"    Python: {sys.version.split()[0]}")
 
-    # Déterminer l'index pip selon la version CUDA
-    if CUDA_VERSION:
-        if CUDA_VERSION.startswith("12.4") or CUDA_VERSION.startswith("12.5") or CUDA_VERSION.startswith("12.6") or CUDA_VERSION.startswith("13"):
-            pip_index = "https://download.pytorch.org/whl/cu124"
-        elif CUDA_VERSION.startswith("12.1") or CUDA_VERSION.startswith("12.2") or CUDA_VERSION.startswith("12.3"):
-            pip_index = "https://download.pytorch.org/whl/cu121"
-        elif CUDA_VERSION.startswith("11.8"):
-            pip_index = "https://download.pytorch.org/whl/cu118"
-        else:
-            pip_index = "https://download.pytorch.org/whl/cu124"  # Default
-    else:
+    pip_index = get_pytorch_cuda_index()
+    if not pip_index:
         print("    [!] CUDA non détecté")
         return False
 
@@ -1471,6 +1492,7 @@ def main():
     # REPARATIONS
     # ==========================================
     needs_restart = False
+    cuda_repair_failed = False
 
     # Réparer les erreurs DLL
     if dll_errors:
@@ -1515,10 +1537,10 @@ def main():
 
         for module, package in missing:
             if package == "torch":
-                print("  Installation PyTorch avec CUDA...")
+                print("  Installation PyTorch avec CUDA..." if HAS_CUDA else "  Installation PyTorch CPU...")
                 if HAS_CUDA:
-                    run_pip(["install", "torch", "torchvision", "torchaudio",
-                            "--index-url", "https://download.pytorch.org/whl/cu124"], quiet=False)
+                    if not install_pytorch_cuda(force_reinstall=False):
+                        cuda_repair_failed = True
                 else:
                     run_pip(["install", "torch", "torchvision", "torchaudio"], quiet=False)
             elif package == "rembg":
@@ -1542,20 +1564,25 @@ def main():
 
         # D'abord vérifier/réparer PyTorch CUDA (nécessaire pour xformers)
         if not fix_pytorch_cuda():
+            cuda_repair_failed = True
             print("  [!] PyTorch CUDA non disponible, xformers ne fonctionnera pas")
+            print("  [!] JoyBoy peut démarrer, mais l'image/vidéo NVIDIA sera limitée tant que CUDA n'est pas réparé")
 
         # xformers
-        success, error_type, _ = check_import("xformers")
-        if success:
-            print("  [OK] xformers")
-        elif check_pip_installed("xformers"):
-            # Installé mais cassé
-            print("  [BROKEN] xformers - réparation...")
-            fix_xformers()
+        if cuda_repair_failed:
+            print("  [SKIP] xformers (PyTorch CUDA indisponible)")
         else:
-            # Pas installé, essayer
-            print("  [MISSING] xformers - installation...")
-            fix_xformers()
+            success, error_type, _ = check_import("xformers")
+            if success:
+                print("  [OK] xformers")
+            elif check_pip_installed("xformers"):
+                # Installé mais cassé
+                print("  [BROKEN] xformers - réparation...")
+                fix_xformers()
+            else:
+                # Pas installé, essayer
+                print("  [MISSING] xformers - installation...")
+                fix_xformers()
 
         # TensorRT (optionnel)
         success, _, _ = check_import("tensorrt")
@@ -1792,6 +1819,14 @@ def main():
     if optional_broken:
         print(f"  [WARN] Fonctionnalités optionnelles indisponibles: {', '.join(optional_broken)}")
         print("  (Le setup reste valide; JoyBoy utilisera les chemins alternatifs disponibles)")
+
+    if cuda_repair_failed:
+        print("  SETUP TERMINÉ AVEC AVERTISSEMENT")
+        print("  - PyTorch CUDA reste indisponible dans ce venv")
+        print("  - JoyBoy peut démarrer, mais les workflows image/vidéo NVIDIA seront limités")
+        print("  - Relance Setup complet après avoir vérifié le driver NVIDIA et la connexion")
+        print("=" * 50 + "\n")
+        return 0
 
     if not all_ok:
         # all_ok est basé sur xformers (optionnel) — ne pas bloquer
