@@ -1,0 +1,97 @@
+name: Prepare Alpha Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Open a release PR even if the change threshold is not met"
+        required: false
+        default: false
+        type: boolean
+      min_score:
+        description: "Minimum release score"
+        required: false
+        default: "8"
+      min_commits:
+        description: "Minimum meaningful commits"
+        required: false
+        default: "4"
+  schedule:
+    - cron: "17 8 * * 5"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: prepare-alpha-release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Prepare release PR
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch tags
+        run: git fetch --tags --force
+
+      - name: Build release plan
+        id: plan
+        shell: bash
+        run: |
+          set -euo pipefail
+          MIN_SCORE="${{ github.event.inputs.min_score }}"
+          MIN_COMMITS="${{ github.event.inputs.min_commits }}"
+          FORCE_INPUT="${{ github.event.inputs.force }}"
+          MIN_SCORE="${MIN_SCORE:-8}"
+          MIN_COMMITS="${MIN_COMMITS:-4}"
+          FORCE_ARG=""
+          if [ "${FORCE_INPUT:-false}" = "true" ]; then
+            FORCE_ARG="--force"
+          fi
+          python scripts/release_alpha.py prepare \
+            --write \
+            --min-score "$MIN_SCORE" \
+            --min-commits "$MIN_COMMITS" \
+            $FORCE_ARG
+
+      - name: No release needed
+        if: steps.plan.outputs.should_release != 'true'
+        run: |
+          echo "No alpha release PR needed: ${{ steps.plan.outputs.reason }}" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Commit release candidate
+        if: steps.plan.outputs.should_release == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "${{ steps.plan.outputs.branch }}"
+          git add VERSION "${{ steps.plan.outputs.notes_path }}"
+          git commit -m "Prepare ${{ steps.plan.outputs.tag }}"
+          git push --force origin HEAD:"${{ steps.plan.outputs.branch }}"
+
+      - name: Open or update release PR
+        if: steps.plan.outputs.should_release == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          BRANCH="${{ steps.plan.outputs.branch }}"
+          TAG="${{ steps.plan.outputs.tag }}"
+          NOTES="${{ steps.plan.outputs.notes_path }}"
+          TITLE="Release ${TAG}"
+          PR_URL="$(gh pr list --head "$BRANCH" --json url --jq '.[0].url')"
+          if [ -n "$PR_URL" ]; then
+            gh pr edit "$PR_URL" --title "$TITLE" --body-file "$NOTES"
+            echo "Updated $PR_URL" >> "$GITHUB_STEP_SUMMARY"
+          else
+            gh pr create --base main --head "$BRANCH" --title "$TITLE" --body-file "$NOTES"
+          fi

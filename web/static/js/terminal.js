@@ -1968,6 +1968,10 @@ async function checkTerminalTrigger(message) {
 }
 
 function isCreativeGenerationPrompt(msgLower) {
+    if (typeof promptLooksCreativeImageRequest === 'function') {
+        return promptLooksCreativeImageRequest(msgLower);
+    }
+
     const creativeTerms = [
         'logo', 'image', 'photo', 'illustration', 'dessin', 'visuel',
         'poster', 'affiche', 'banner', 'bannière', 'icone', 'icône',
@@ -1975,20 +1979,29 @@ function isCreativeGenerationPrompt(msgLower) {
         'video', 'vidéo',
         'picture', 'pic', 'visual', 'drawing', 'sketch', 'painting',
         'flyer', 'ad', 'advertisement', 'icon', 'mockup', 'brand',
+        'portrait', 'scène', 'scene', 'concept art',
         'imagen', 'foto', 'ilustración', 'ilustracion', 'dibujo',
         'cartel', 'anuncio', 'icono', 'marca',
         'immagine', 'illustrazione', 'disegno', 'manifesto', 'icona', 'marchio'
     ];
     const generationTerms = [
-        'crée', 'créer', 'creer', 'génère', 'genere', 'générer',
-        'fais', 'faire', 'imagine', 'imaginer', 'make', 'create', 'generate',
-        'crear', 'crea', 'generar', 'genera', 'hacer', 'haz', 'imagina', 'imaginar',
-        'creare', 'crea', 'generare', 'genera', 'fare', 'fai', 'immagina', 'immaginare'
+        'crée', 'créer', 'cree', 'creer', 'génère', 'genere', 'générer',
+        'generer', 'fais', 'faire', 'imagine', 'imaginer', 'dessine',
+        'dessiner', 'make', 'create', 'generate', 'draw',
+        'crear', 'crea', 'generar', 'genera', 'hacer', 'haz', 'imagina',
+        'imaginar', 'dibujar', 'dibuja',
+        'creare', 'crea', 'generare', 'genera', 'fare', 'fai', 'immagina',
+        'immaginare', 'disegnare', 'disegna'
     ];
     const visualSubjectTerms = [
         'voiture', 'auto', 'véhicule', 'vehicule', 'car', 'vehicle',
         'coche', 'automóvil', 'automovil', 'vehículo', 'vehiculo',
-        'macchina', 'automobile', 'veicolo'
+        'macchina', 'automobile', 'veicolo',
+        'train', 'locomotive', 'rail', 'rails', 'chemin de fer',
+        'montagnes russes', 'roller coaster', 'chat', 'cat', 'chien',
+        'dog', 'animal', 'créature', 'creature', 'dragon', 'robot',
+        'personnage', 'character', 'paysage', 'landscape', 'montagne',
+        'mountain', 'ciel', 'sky', 'maison', 'house', 'ville', 'city'
     ];
     const devTerms = [
         'repo', 'repository', 'codebase', 'fichier', 'file', 'dossier',
@@ -1998,9 +2011,16 @@ function isCreativeGenerationPrompt(msgLower) {
         'codice', 'cartella', 'directory'
     ];
 
-    return (creativeTerms.some(term => msgLower.includes(term)) || visualSubjectTerms.some(term => msgLower.includes(term)))
-        && generationTerms.some(term => msgLower.includes(term))
-        && !devTerms.some(term => msgLower.includes(term));
+    const includesTerm = (terms) => terms.some(term => {
+        const normalized = String(term || '').trim().toLowerCase();
+        if (!normalized) return false;
+        const escaped = normalized.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        return new RegExp(`(^|[^\\p{L}\\p{N}_-])${escaped}(?=$|[^\\p{L}\\p{N}_-])`, 'iu').test(msgLower);
+    });
+
+    return (includesTerm(creativeTerms) || includesTerm(visualSubjectTerms))
+        && includesTerm(generationTerms)
+        && !includesTerm(devTerms);
 }
 
 // ===== TERMINAL MODEL PICKER =====

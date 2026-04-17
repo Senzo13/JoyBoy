@@ -1,0 +1,61 @@
+name: Publish Release
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - VERSION
+      - docs/releases/**
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish GitHub release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch tags
+        run: git fetch --tags --force
+
+      - name: Build publish plan
+        id: plan
+        run: python scripts/release_alpha.py publish-plan
+
+      - name: Skip existing tag
+        if: steps.plan.outputs.should_publish != 'true'
+        run: |
+          echo "Release ${{ steps.plan.outputs.tag }} already exists." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Create tag
+        if: steps.plan.outputs.should_publish == 'true'
+        run: |
+          git tag "${{ steps.plan.outputs.tag }}"
+          git push origin "${{ steps.plan.outputs.tag }}"
+
+      - name: Publish GitHub release
+        if: steps.plan.outputs.should_publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          FLAGS=()
+          if [ "${{ steps.plan.outputs.prerelease }}" = "true" ]; then
+            FLAGS+=(--prerelease)
+          fi
+          gh release create "${{ steps.plan.outputs.tag }}" \
+            --title "${{ steps.plan.outputs.title }}" \
+            --notes-file "${{ steps.plan.outputs.notes_path }}" \
+            "${FLAGS[@]}"

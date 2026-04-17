@@ -24,6 +24,22 @@ class TerminalDetectionTests(unittest.TestCase):
             detect_workspace_intent("modifier cette photo avec un fond naturel")
         )
 
+    def test_visual_subject_prompt_does_not_open_project_mode(self):
+        prompt = (
+            "Génère moi un train en forme de chat, avec des oreilles et une queue, "
+            "circulant sur des rails de montagnes russes au sommet d'une chaîne de "
+            "montagnes, ciel bleu dramatique, éclairage doux."
+        )
+        self.assertFalse(detect_workspace_intent(prompt))
+
+    def test_workspace_terms_need_token_boundaries(self):
+        self.assertFalse(
+            detect_workspace_intent("génère une image avec un ciel bleu dramatique")
+        )
+        self.assertTrue(
+            detect_workspace_intent("abre la rama principal del repositorio")
+        )
+
     def test_repo_analysis_opens_project_mode(self):
         self.assertTrue(
             detect_workspace_intent("analyse mon repo et dis moi ce que tu vois")

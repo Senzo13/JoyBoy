@@ -160,42 +160,74 @@ function getInitialGenerationProgressText() {
 let executingFromQueue = false;
 let executingFromQueueChat = false;
 
-function isDirectTextToImagePrompt(prompt) {
+const CREATIVE_GENERATION_TERMS = [
+    'logo', 'image', 'photo', 'illustration', 'dessin', 'visuel',
+    'poster', 'affiche', 'banner', 'bannière', 'icone', 'icône',
+    'avatar', 'wallpaper', 'fond d\'écran', 'design', 'maquette',
+    'video', 'vidéo', 'picture', 'pic', 'visual', 'drawing',
+    'sketch', 'painting', 'flyer', 'ad', 'advertisement', 'icon',
+    'mockup', 'brand', 'portrait', 'scène', 'scene', 'concept art',
+    'imagen', 'foto', 'ilustración', 'ilustracion', 'dibujo',
+    'cartel', 'anuncio', 'icono', 'marca',
+    'immagine', 'illustrazione', 'disegno', 'manifesto', 'icona',
+    'marchio'
+];
+
+const VISUAL_SUBJECT_TERMS = [
+    'voiture', 'auto', 'véhicule', 'vehicule', 'car', 'vehicle',
+    'coche', 'automóvil', 'automovil', 'vehículo', 'vehiculo',
+    'macchina', 'automobile', 'veicolo',
+    'train', 'locomotive', 'rail', 'rails', 'chemin de fer',
+    'montagnes russes', 'roller coaster', 'chat', 'cat', 'chien',
+    'dog', 'animal', 'créature', 'creature', 'dragon', 'robot',
+    'personnage', 'character', 'paysage', 'landscape', 'montagne',
+    'mountain', 'ciel', 'sky', 'maison', 'house', 'ville', 'city'
+];
+
+const GENERATION_ACTION_TERMS = [
+    'crée', 'créer', 'cree', 'creer', 'génère', 'genere', 'générer',
+    'generer', 'fais', 'faire', 'imagine', 'imaginer', 'dessine',
+    'dessiner', 'make', 'create', 'generate', 'draw',
+    'crear', 'crea', 'generar', 'genera', 'hacer', 'haz', 'imagina',
+    'imaginar', 'dibujar', 'dibuja',
+    'creare', 'generare', 'fare', 'fai', 'immagina', 'immaginare',
+    'disegnare', 'disegna'
+];
+
+const DEV_CONTEXT_TERMS = [
+    'repo', 'repository', 'codebase', 'fichier', 'file', 'dossier',
+    'folder', 'git', 'commit', 'npm', 'pip', 'bug', 'stacktrace',
+    'terminal', 'powershell', 'repositorio', 'archivo', 'carpeta',
+    'directorio', 'codice', 'cartella', 'directory'
+];
+
+function escapePromptTerm(term) {
+    return String(term).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function promptIncludesAnyTerm(text, terms) {
+    const haystack = String(text || '').toLowerCase();
+    return terms.some(term => {
+        const normalized = String(term || '').trim().toLowerCase();
+        if (!normalized) return false;
+        const pattern = new RegExp(`(^|[^\\p{L}\\p{N}_-])${escapePromptTerm(normalized)}(?=$|[^\\p{L}\\p{N}_-])`, 'iu');
+        return pattern.test(haystack);
+    });
+}
+
+function promptLooksCreativeImageRequest(prompt) {
     const text = (prompt || '').toLowerCase();
     if (!text.trim()) return false;
 
-    const creativeTerms = [
-        'logo', 'image', 'photo', 'illustration', 'dessin', 'visuel',
-        'poster', 'affiche', 'banner', 'bannière', 'icone', 'icône',
-        'avatar', 'wallpaper', 'fond d\'écran', 'design', 'maquette',
-        'video', 'vidéo', 'picture', 'pic', 'visual', 'drawing',
-        'sketch', 'painting', 'flyer', 'ad', 'advertisement', 'icon',
-        'mockup', 'brand', 'imagen', 'foto', 'ilustración',
-        'ilustracion', 'dibujo', 'cartel', 'anuncio', 'icono', 'marca',
-        'immagine', 'illustrazione', 'disegno', 'manifesto', 'icona',
-        'marchio'
-    ];
-    const generationTerms = [
-        'crée', 'créer', 'cree', 'creer', 'génère', 'genere', 'générer',
-        'fais', 'faire', 'imagine', 'imaginer', 'make', 'create', 'generate',
-        'crear', 'crea', 'generar', 'genera', 'hacer', 'haz', 'imagina', 'imaginar',
-        'creare', 'generare', 'fare', 'fai', 'immagina', 'immaginare'
-    ];
-    const visualSubjectTerms = [
-        'voiture', 'auto', 'véhicule', 'vehicule', 'car', 'vehicle',
-        'coche', 'automóvil', 'automovil', 'vehículo', 'vehiculo',
-        'macchina', 'automobile', 'veicolo'
-    ];
-    const devTerms = [
-        'repo', 'repository', 'codebase', 'fichier', 'file', 'dossier',
-        'folder', 'git', 'commit', 'npm', 'pip', 'bug', 'stacktrace',
-        'terminal', 'powershell', 'repositorio', 'archivo', 'carpeta',
-        'directorio', 'codice', 'cartella', 'directory'
-    ];
+    const hasCreativeTarget = promptIncludesAnyTerm(text, CREATIVE_GENERATION_TERMS)
+        || promptIncludesAnyTerm(text, VISUAL_SUBJECT_TERMS);
+    return hasCreativeTarget
+        && promptIncludesAnyTerm(text, GENERATION_ACTION_TERMS)
+        && !promptIncludesAnyTerm(text, DEV_CONTEXT_TERMS);
+}
 
-    return (creativeTerms.some(term => text.includes(term)) || visualSubjectTerms.some(term => text.includes(term)))
-        && generationTerms.some(term => text.includes(term))
-        && !devTerms.some(term => text.includes(term));
+function isDirectTextToImagePrompt(prompt) {
+    return promptLooksCreativeImageRequest(prompt);
 }
 
 function getExportGuidanceTypeForGeneration() {

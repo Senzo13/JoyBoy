@@ -10,6 +10,7 @@ Ce module gère:
 from __future__ import annotations  # Python 3.9 compatibility for type hints
 
 import requests
+import re
 import threading
 from config import UTILITY_MODEL, OLLAMA_BASE_URL
 from core.ai.text_model_router import call_text_model, select_text_model
@@ -203,6 +204,22 @@ def detect_terminal_intent(user_message: str) -> bool:
     return any(t in msg_lower for t in terminal_triggers)
 
 
+def _contains_intent_term(text: str, terms: list[str]) -> bool:
+    """
+    Match intent terms on real token boundaries.
+
+    Short international keywords such as "rama" (Spanish branch) must not match
+    inside unrelated words like "dramatique".
+    """
+    for term in terms:
+        normalized = term.strip().lower()
+        if not normalized:
+            continue
+        if re.search(rf"(?<![\w-]){re.escape(normalized)}(?![\w-])", text):
+            return True
+    return False
+
+
 def select_workspace_ai(user_message: str, workspaces: list) -> dict | None:
     """
     Utilise l'IA pour comprendre quel workspace l'utilisateur veut utiliser.
@@ -268,7 +285,7 @@ def detect_workspace_intent(user_message: str) -> bool:
     if not user_message or len(user_message) < 5:
         return False
 
-    msg_lower = user_message.lower()
+    msg_lower = user_message.lower().strip()
 
     # Les prompts créatifs ("créer un logo", "modifier une image") ne doivent
     # jamais ouvrir le sélecteur projet. Le mode workspace est réservé aux
@@ -277,6 +294,12 @@ def detect_workspace_intent(user_message: str) -> bool:
         'logo', 'image', 'photo', 'illustration', 'dessin', 'visuel',
         'poster', 'affiche', 'banner', 'bannière', 'icone', 'icône',
         'avatar', 'wallpaper', 'fond d\'écran', 'video', 'vidéo',
+        'train', 'locomotive', 'rail', 'rails', 'chemin de fer',
+        'montagnes russes', 'roller coaster', 'chat', 'cat', 'chien',
+        'dog', 'animal', 'créature', 'creature', 'dragon', 'robot',
+        'personnage', 'character', 'paysage', 'landscape', 'montagne',
+        'mountain', 'ciel', 'sky', 'maison', 'house', 'ville', 'city',
+        'portrait', 'scène', 'scene', 'concept art',
         # EN/ES/IT creative terms. Keep these here so international users can
         # ask for visual assets without accidentally opening project mode.
         'picture', 'pic', 'visual', 'drawing', 'sketch', 'painting',
@@ -285,6 +308,15 @@ def detect_workspace_intent(user_message: str) -> bool:
         'cartel', 'anuncio', 'icono', 'marca',
         'immagine', 'foto', 'illustrazione', 'disegno', 'manifesto',
         'icona', 'marchio',
+    ]
+    generation_keywords = [
+        'crée', 'créer', 'cree', 'creer', 'génère', 'genere', 'générer',
+        'generer', 'fais', 'faire', 'imagine', 'imaginer', 'dessine',
+        'dessiner', 'make', 'create', 'generate', 'draw', 'imagine',
+        'crear', 'crea', 'generar', 'genera', 'hacer', 'haz', 'imagina',
+        'imaginar', 'dibujar', 'dibuja',
+        'creare', 'crea', 'generare', 'genera', 'fare', 'fai', 'immagina',
+        'immaginare', 'disegnare', 'disegna',
     ]
 
     strong_workspace_keywords = [
@@ -299,10 +331,16 @@ def detect_workspace_intent(user_message: str) -> bool:
         'repository', 'cartella', 'file', 'directory', 'ramo',
     ]
 
-    if any(kw in msg_lower for kw in strong_workspace_keywords):
+    creative_match = _contains_intent_term(msg_lower, creative_keywords)
+    generation_match = _contains_intent_term(msg_lower, generation_keywords)
+
+    if creative_match and generation_match:
+        return False
+
+    if _contains_intent_term(msg_lower, strong_workspace_keywords):
         return True
 
-    if any(kw in msg_lower for kw in creative_keywords):
+    if creative_match:
         return False
 
     return False
