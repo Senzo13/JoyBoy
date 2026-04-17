@@ -3039,6 +3039,14 @@
                 applyOriginal: 'Appliquer sur l’original',
                 applyModified: 'Appliquer sur le modifié',
             },
+            timing: {
+                fast: 'Rapide',
+                normal: 'Normal',
+                slow: 'Lent',
+                imageBoth: 'Gén. {generationTime} · Total {totalTime}',
+                imageGenerationOnly: 'Gén. {generationTime}',
+                imageTotalOnly: 'Total {totalTime}',
+            },
             progress: {
                 fine_tuning: 'Fine tuning',
                 refine: 'Affinage',
@@ -3249,6 +3257,14 @@
                 generationInProgress: 'Generation in progress...',
                 applyOriginal: 'Apply to original',
                 applyModified: 'Apply to modified',
+            },
+            timing: {
+                fast: 'Fast',
+                normal: 'Normal',
+                slow: 'Slow',
+                imageBoth: 'Gen {generationTime} · Total {totalTime}',
+                imageGenerationOnly: 'Gen {generationTime}',
+                imageTotalOnly: 'Total {totalTime}',
             },
             progress: {
                 fine_tuning: 'Fine tuning',
@@ -3461,6 +3477,14 @@
                 applyOriginal: 'Aplicar al original',
                 applyModified: 'Aplicar a la modificada',
             },
+            timing: {
+                fast: 'Rápido',
+                normal: 'Normal',
+                slow: 'Lento',
+                imageBoth: 'Gen {generationTime} · Total {totalTime}',
+                imageGenerationOnly: 'Gen {generationTime}',
+                imageTotalOnly: 'Total {totalTime}',
+            },
             progress: {
                 fine_tuning: 'Ajuste fino',
                 refine: 'Refinando',
@@ -3671,6 +3695,14 @@
                 generationInProgress: 'Generazione in corso...',
                 applyOriginal: 'Applica all’originale',
                 applyModified: 'Applica alla modificata',
+            },
+            timing: {
+                fast: 'Veloce',
+                normal: 'Normale',
+                slow: 'Lento',
+                imageBoth: 'Gen {generationTime} · Totale {totalTime}',
+                imageGenerationOnly: 'Gen {generationTime}',
+                imageTotalOnly: 'Totale {totalTime}',
             },
             progress: {
                 fine_tuning: 'Fine tuning',

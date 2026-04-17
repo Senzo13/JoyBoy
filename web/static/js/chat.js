@@ -26,9 +26,11 @@ function getChatMessages() {
 }
 
 // Helper: barre d'action pour les images (même style que les réponses texte)
-function buildImageActionsBar(prompt, generationTime, seed = null) {
+function buildImageActionsBar(prompt, generationTime, seed = null, totalTime = null) {
     const safePrompt = (prompt || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
-    const timeHtml = generationTime ? formatGenTimeDisplay(generationTime) : '';
+    const timeHtml = totalTime
+        ? formatImageTimingDisplay(generationTime, totalTime)
+        : (generationTime ? formatGenTimeDisplay(generationTime) : '');
     const seedBtn = seed != null ? `
             <div class="chat-actions-divider"></div>
             <button class="chat-action-btn seed-btn" onclick="copyToClipboard('seed:${seed}')" title="Copier seed:${seed} pour reproduire cette image">
@@ -704,7 +706,7 @@ function finalizeStreamingMessage(msgId, responseTime, tokenStatsData = null) {
     scrollToBottom();
 }
 
-function addMessage(prompt, userImage, original, modified, generationTime = null, chatId = (typeof currentChatId !== 'undefined' ? currentChatId : null)) {
+function addMessage(prompt, userImage, original, modified, generationTime = null, chatId = (typeof currentChatId !== 'undefined' ? currentChatId : null), totalTime = null) {
     removeSkeletonMessage(chatId);
 
     const messagesDiv = getChatMessages();
@@ -737,7 +739,7 @@ function addMessage(prompt, userImage, original, modified, generationTime = null
                         <div class="image-label" ${imageLabelAttr('modified')}>${imageLabelT('modified', 'Modifié')}</div>
                     </div>
                 </div>
-                ${buildImageActionsBar(prompt, generationTime)}
+                ${buildImageActionsBar(prompt, generationTime, null, totalTime)}
             </div>
         </div>
     `;
@@ -762,7 +764,7 @@ function addMessage(prompt, userImage, original, modified, generationTime = null
  * @param {string} mask - Le masque utilisé (optionnel)
  * @param {number} generationTime - Temps de génération (optionnel)
  */
-function addMessageEdit(prompt, original, modified, mask = null, generationTime = null, chatId = (typeof currentChatId !== 'undefined' ? currentChatId : null)) {
+function addMessageEdit(prompt, original, modified, mask = null, generationTime = null, chatId = (typeof currentChatId !== 'undefined' ? currentChatId : null), totalTime = null) {
     removeSkeletonMessage(chatId);
 
     const messagesDiv = getChatMessages();
@@ -831,7 +833,7 @@ function addMessageEdit(prompt, original, modified, mask = null, generationTime 
             </div>
             <div class="ai-response">
                 ${imagesHtml}
-                ${buildImageActionsBar(prompt, generationTime)}
+                ${buildImageActionsBar(prompt, generationTime, null, totalTime)}
             </div>
         </div>
     `;
@@ -849,7 +851,7 @@ function addMessageEdit(prompt, original, modified, mask = null, generationTime 
     }, 100);
 }
 
-function addMessageTxt2Img(prompt, generated, generationTime = null, seed = null, chatId = (typeof currentChatId !== 'undefined' ? currentChatId : null)) {
+function addMessageTxt2Img(prompt, generated, generationTime = null, seed = null, chatId = (typeof currentChatId !== 'undefined' ? currentChatId : null), totalTime = null) {
     removeSkeletonMessage(chatId);
 
     const messagesDiv = getChatMessages();
@@ -874,7 +876,7 @@ function addMessageTxt2Img(prompt, generated, generationTime = null, seed = null
                         <div class="image-label" ${imageLabelAttr('generated')}>${imageLabelT('generated', 'Généré')}</div>
                     </div>
                 </div>
-                ${buildImageActionsBar(prompt, generationTime, seed)}
+                ${buildImageActionsBar(prompt, generationTime, seed, totalTime)}
             </div>
         </div>
     `;

@@ -894,6 +894,7 @@ async function generate() {
     refocusChatInput();
 
     // Backend loads the model on-demand, no need to wait for preloading
+    const imageRequestStartTime = Date.now();
 
     try {
         const enhanceVal = userSettings.enhancePrompt;
@@ -939,6 +940,7 @@ async function generate() {
             console.log('[GEN] Génération annulée');
         } else if (result.ok && result.data?.success) {
             const data = result.data;
+            const totalGenerationTime = (Date.now() - imageRequestStartTime) / 1000;
             modifiedImage = 'data:image/png;base64,' + data.modified;
 
             // IMPORTANT: Si l'user a changé de chat pendant la génération, revenir au bon chat
@@ -949,10 +951,10 @@ async function generate() {
 
             if (data.mode === 'txt2img') {
                 originalImage = null;
-                addMessageTxt2Img(prompt, modifiedImage, data.generationTime, data.seed || null, currentGenerationChatId);
+                addMessageTxt2Img(prompt, modifiedImage, data.generationTime, data.seed || null, currentGenerationChatId, totalGenerationTime);
             } else {
                 originalImage = 'data:image/png;base64,' + data.original;
-                addMessage(prompt, pendingImage, originalImage, modifiedImage, data.generationTime, currentGenerationChatId);
+                addMessage(prompt, pendingImage, originalImage, modifiedImage, data.generationTime, currentGenerationChatId, totalGenerationTime);
             }
 
             // Garder l'image dans l'input pour enchaîner les édits
@@ -1076,6 +1078,7 @@ async function continueChat() {
 
         // Backend loads the model on-demand, no need to wait for preloading
         const inpaintModel = getCurrentImageModel();
+        const imageRequestStartTime = Date.now();
 
         try {
             const adultPayload = window.getAdultGenerationPayload ? window.getAdultGenerationPayload() : {};
@@ -1122,14 +1125,15 @@ async function continueChat() {
                 }
                 removeSkeletonMessage(currentGenerationChatId);
                 const data = result.data;
+                const totalGenerationTime = (Date.now() - imageRequestStartTime) / 1000;
                 modifiedImage = 'data:image/png;base64,' + data.modified;
 
                 if (data.mode === 'txt2img') {
                     originalImage = null;
-                    addMessageTxt2Img(prompt, modifiedImage, data.generationTime, data.seed || null, currentGenerationChatId);
+                    addMessageTxt2Img(prompt, modifiedImage, data.generationTime, data.seed || null, currentGenerationChatId, totalGenerationTime);
                 } else {
                     originalImage = 'data:image/png;base64,' + data.original;
-                    addMessage(prompt, pendingImage, originalImage, modifiedImage, data.generationTime, currentGenerationChatId);
+                    addMessage(prompt, pendingImage, originalImage, modifiedImage, data.generationTime, currentGenerationChatId, totalGenerationTime);
                 }
 
             } else if (!result.aborted && !chatAbortSignal.aborted) {
@@ -1455,7 +1459,7 @@ async function generateImageFromChat(imagePrompt, targetChatId = (typeof current
         // Arrêter le polling
         stopPreviewPolling();
 
-        const genTime = Date.now() - genStartTime;
+        const totalTimeMs = Date.now() - genStartTime;
 
         // Vérifier si annulé
         if (result.data?.cancelled) {
@@ -1463,7 +1467,7 @@ async function generateImageFromChat(imagePrompt, targetChatId = (typeof current
             currentGenerationId = null;
         } else if (result.ok && result.data?.success && result.data?.modified) {
             modifiedImage = 'data:image/png;base64,' + result.data.modified;
-            replaceImageSkeletonWithReal(modifiedImage, genTime, targetChatId);
+            replaceImageSkeletonWithReal(modifiedImage, totalTimeMs, targetChatId, result.data.generationTime);
             currentGenerationId = null;
         } else {
             replaceImageSkeletonWithError(result.data?.error || result.error || generationT('generation.errorCard.title', 'Erreur de génération'), targetChatId);
@@ -1544,9 +1548,14 @@ function addImageSkeletonToChat(chatId = (typeof currentChatId !== 'undefined' ?
 
 // Remplace le skeleton par l'image réelle
 // targetChatId = chat où mettre le résultat (optionnel, défaut = currentChatId)
-function replaceImageSkeletonWithReal(imageSrc, genTime, targetChatId = null) {
+function replaceImageSkeletonWithReal(imageSrc, totalTimeMs, targetChatId = null, generationTime = null) {
     const chatId = targetChatId || currentChatId;
-    const timeText = genTime > 1000 ? `${(genTime / 1000).toFixed(1)}s` : `${genTime}ms`;
+    const totalTime = totalTimeMs ? totalTimeMs / 1000 : null;
+    const fallbackTimeText = totalTimeMs
+        ? (totalTimeMs > 1000 ? `${(totalTimeMs / 1000).toFixed(1)}s` : `${totalTimeMs}ms`)
+        : '';
+    const timeText = formatImageTimingDisplay(generationTime, totalTime)
+        || fallbackTimeText;
     const editIcon = ICON_EDIT;
     const fixDetailsIcon = ICON_FIX_DETAILS;
 
@@ -1559,7 +1568,7 @@ function replaceImageSkeletonWithReal(imageSrc, genTime, targetChatId = null) {
                     <button class="edit-btn refine-btn" onclick="fixDetailsImage('${imageSrc}')" title="Fix Details">${fixDetailsIcon}</button>
                 </div>
             </div>
-            <div class="image-gen-time">${timeText}</div>
+            <div class="image-gen-time image-gen-time-dual">${timeText}</div>
         </div>
     `;
     const resultMessageHtml = `

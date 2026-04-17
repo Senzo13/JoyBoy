@@ -525,11 +525,9 @@ document.addEventListener('DOMContentLoaded', () => {
  */
 function formatTimeDisplay(ms, fastThreshold = 2000, slowThreshold = 8000) {
     if (!ms) return '';
-    const seconds = (ms / 1000).toFixed(1);
-    let speed = 'Normal';
-    if (ms < fastThreshold) speed = 'Rapide';
-    else if (ms > slowThreshold) speed = 'Lent';
-    return `<span class="time">${seconds}s</span> - <span class="speed">${speed}</span>`;
+    const seconds = formatCompactDurationSeconds(ms / 1000);
+    const speed = getTimingSpeedLabel(ms / 1000, fastThreshold / 1000, slowThreshold / 1000);
+    return `<span class="time">${seconds}</span> - <span class="speed">${speed}</span>`;
 }
 
 /**
@@ -539,12 +537,55 @@ function formatTimeDisplay(ms, fastThreshold = 2000, slowThreshold = 8000) {
  */
 function formatGenTimeDisplay(seconds) {
     if (!seconds) return '';
-    // Arrondir à 1 décimale max
-    const rounded = Math.round(seconds * 10) / 10;
-    let speed = 'Normal';
-    if (seconds < 15) speed = 'Rapide';
-    else if (seconds > 60) speed = 'Lent';
-    return `<span class="time">${rounded}s</span> - <span class="speed">${speed}</span>`;
+    const speed = getTimingSpeedLabel(seconds, 15, 60);
+    return `<span class="time">${formatCompactDurationSeconds(seconds)}</span> - <span class="speed">${speed}</span>`;
+}
+
+function normalizePositiveNumber(value) {
+    const number = Number(value);
+    return Number.isFinite(number) && number > 0 ? number : null;
+}
+
+function formatCompactDurationSeconds(seconds) {
+    const value = normalizePositiveNumber(seconds);
+    if (value === null) return '';
+    if (value < 0.1) return `${Math.round(value * 1000)}ms`;
+    return `${(Math.round(value * 10) / 10).toFixed(1)}s`;
+}
+
+function getTimingSpeedLabel(seconds, fastThreshold, slowThreshold) {
+    const value = normalizePositiveNumber(seconds);
+    let key = 'normal';
+    if (value !== null && value < fastThreshold) key = 'fast';
+    else if (value !== null && value > slowThreshold) key = 'slow';
+
+    const fallbacks = { fast: 'Rapide', normal: 'Normal', slow: 'Lent' };
+    return uiT(`generation.timing.${key}`, fallbacks[key]);
+}
+
+function formatImageTimingDisplay(generationSeconds = null, totalSeconds = null) {
+    const generationValue = normalizePositiveNumber(generationSeconds);
+    const totalValue = normalizePositiveNumber(totalSeconds);
+    const generationTime = formatCompactDurationSeconds(generationValue);
+    const totalTime = formatCompactDurationSeconds(totalValue);
+
+    if (generationTime && totalTime && Math.abs(generationValue - totalValue) > 0.1) {
+        return uiT('generation.timing.imageBoth', 'Gén. {generationTime} · Total {totalTime}', {
+            generationTime,
+            totalTime,
+        });
+    }
+    if (generationTime) {
+        return uiT('generation.timing.imageGenerationOnly', 'Gén. {generationTime}', {
+            generationTime,
+        });
+    }
+    if (totalTime) {
+        return uiT('generation.timing.imageTotalOnly', 'Total {totalTime}', {
+            totalTime,
+        });
+    }
+    return '';
 }
 
 /**
