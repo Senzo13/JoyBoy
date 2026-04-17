@@ -17,8 +17,11 @@ start_windows.bat
 From Terminal:
 
 ```bash
+chmod +x start_mac.command
 ./start_mac.command
 ```
+
+If macOS says the launcher is not executable, run `chmod +x start_mac.command` once, then launch it again.
 
 ### Linux
 
