@@ -1,13 +1,19 @@
-/* ===== CSS VARIABLES - Centralized design tokens ===== */
+/* =========================================================
+   CSS VARIABLES - Centralized Design Tokens
+   Defines reusable variables for colors, spacing, typography,
+   and UI states to ensure consistency across the app.
+   ========================================================= */
 
 :root {
   /* ===== PRIMARY COLORS ===== */
+  /* Core brand colors used across buttons and highlights */
   --color-primary: #3b82f6;
   --color-primary-hover: #2563eb;
   --color-primary-dark: #1d4ed8;
   --color-primary-light: rgba(59, 130, 246, 0.15);
 
   /* ===== BACKGROUND COLORS ===== */
+  /* Layered dark theme backgrounds (base → surface → hover → active) */
   --bg-body: #0a0a0a;
   --bg-darkest: #030303;
   --bg-darker: #0a0a0a;
@@ -19,6 +25,7 @@
   --bg-active: #2a2a2a;
 
   /* ===== OVERLAY / ALPHA ===== */
+  /* Transparent overlays for hover effects, scrollbars, etc. */
   --overlay-subtle: rgba(255, 255, 255, 0.08);
   --overlay-hover: rgba(255, 255, 255, 0.12);
   --overlay-scroll: rgba(255, 255, 255, 0.15);
@@ -26,6 +33,7 @@
   --overlay-scroll-hover: rgba(255, 255, 255, 0.3);
 
   /* ===== BORDER COLORS ===== */
+  /* Used for outlines, dividers, and component boundaries */
   --border-faint: #111111;
   --border-subtle: #151515;
   --border-sidebar: #1a1a1a;
@@ -34,6 +42,7 @@
   --border-hover: #444444;
 
   /* ===== TEXT / ICON COLORS ===== */
+  /* Text hierarchy: muted < secondary < primary < bright < white */
   --text-muted: #555555;
   --text-secondary: #666666;
   --text-tertiary: #888888;
@@ -46,6 +55,7 @@
   --icon-hover: #ffffff;
 
   /* ===== STATE COLORS ===== */
+  /* Feedback colors for success, error, warning, and info states */
   --color-success: #22c55e;
   --color-success-hover: #16a34a;
   --color-success-light: rgba(34, 197, 94, 0.15);
@@ -62,6 +72,7 @@
   --color-info-light: rgba(59, 130, 246, 0.15);
 
   /* ===== SPECIAL COLORS ===== */
+  /* Accent colors for highlights and special UI elements */
   --color-purple: #a855f7;
   --color-purple-light: rgba(168, 85, 247, 0.15);
   --color-purple-glow: rgba(168, 85, 247, 0.4);
@@ -70,6 +81,7 @@
   --color-cyan-light: rgba(0, 212, 170, 0.15);
 
   /* ===== SPACING ===== */
+  /* Standard spacing scale for margins and padding */
   --spacing-xs: 4px;
   --spacing-sm: 8px;
   --spacing-md: 12px;
@@ -79,6 +91,7 @@
   --spacing-3xl: 32px;
 
   /* ===== BORDER RADIUS ===== */
+  /* Corner rounding values used across components */
   --radius-xs: 4px;
   --radius-sm: 6px;
   --radius-md: 8px;
@@ -89,12 +102,14 @@
   --radius-full: 9999px;
 
   /* ===== TRANSITIONS ===== */
+  /* Animation timing for UI interactions */
   --transition-fast: 0.15s ease;
   --transition-normal: 0.2s ease;
   --transition-slow: 0.3s ease;
   --transition-cubic: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 
   /* ===== SHADOWS ===== */
+  /* Elevation and glow effects */
   --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.3);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
   --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.5);
@@ -103,6 +118,7 @@
   --shadow-glow-purple: 0 0 15px rgba(168, 85, 247, 0.4);
 
   /* ===== Z-INDEX ===== */
+  /* Controls stacking order of UI layers */
   --z-dropdown: 100;
   --z-modal-backdrop: 200;
   --z-modal: 400;
@@ -110,6 +126,7 @@
   --z-fullscreen: 1000;
 
   /* ===== FONT SIZES ===== */
+  /* Typography scale */
   --font-xs: 10px;
   --font-sm: 11px;
   --font-md: 12px;
@@ -120,6 +137,7 @@
   --font-3xl: 20px;
 
   /* ===== COMPONENT SIZES ===== */
+  /* Standard sizes for inputs, buttons, toggles */
   --input-height: 46px;
   --button-height-sm: 32px;
   --button-height-md: 40px;
