@@ -7,6 +7,7 @@ from __future__ import annotations
 import os
 import platform
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -33,13 +34,50 @@ def _check_runtime() -> dict:
     }
 
 
+def _has_nvidia_smi() -> bool:
+    try:
+        return subprocess.run(
+            ["nvidia-smi"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        ).returncode == 0
+    except Exception:
+        return False
+
+
+def _get_nvidia_name() -> str:
+    try:
+        result = subprocess.run(
+            ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip().splitlines()[0].strip()
+    except Exception:
+        pass
+    return "GPU NVIDIA"
+
+
+def _torch_mps_available(torch_module) -> bool:
+    try:
+        backends = getattr(torch_module, "backends", None)
+        mps = getattr(backends, "mps", None)
+        return bool(mps and mps.is_available())
+    except Exception:
+        return False
+
+
 def _check_gpu() -> dict:
     try:
         import torch
-        from core.models.gpu_profile import get_active_profile
 
-        profile = get_active_profile()
         if torch.cuda.is_available():
+            from core.models.gpu_profile import get_active_profile
+
+            profile = get_active_profile()
             gpu_name = torch.cuda.get_device_name(0)
             vram_gb = round(torch.cuda.get_device_properties(0).total_memory / (1024 ** 3), 1)
             return {
@@ -49,12 +87,28 @@ def _check_gpu() -> dict:
                 "detail": f"{gpu_name} · {vram_gb} GB VRAM · profil {profile.get('profile_name', 'auto')}",
                 "action": None,
             }
+        if _torch_mps_available(torch):
+            return {
+                "key": "gpu",
+                "label": "GPU acceleration",
+                "status": "ok",
+                "detail": "Apple Metal (MPS) disponible — workflows image pris en charge avec profil macOS.",
+                "action": None,
+            }
+        if _has_nvidia_smi():
+            return {
+                "key": "gpu",
+                "label": "GPU acceleration",
+                "status": "warning",
+                "detail": f"{_get_nvidia_name()} détectée, mais PyTorch CUDA est indisponible dans ce venv.",
+                "action": "Relancer Setup complet pour réparer PyTorch CUDA. RTX non requis: une GTX CUDA compatible peut fonctionner.",
+            }
         return {
             "key": "gpu",
             "label": "GPU acceleration",
             "status": "warning",
-            "detail": "CUDA indisponible — JoyBoy peut démarrer, mais les workflows image/vidéo seront limités.",
-            "action": "Installer les drivers CUDA/NVIDIA ou utiliser une machine GPU pour les workflows lourds.",
+            "detail": "Aucune accélération CUDA/MPS détectée — JoyBoy peut démarrer en profil CPU/non-CUDA.",
+            "action": "Chat, imports, packs et outils légers restent utilisables. Pour image/vidéo locale rapide, utilise une NVIDIA CUDA compatible ou Apple Silicon.",
         }
     except Exception as exc:
         return {

@@ -172,6 +172,32 @@ def has_nvidia_gpu():
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return False
 
+def get_nvidia_gpu_name():
+    """Retourne le nom de la première carte NVIDIA détectée, si disponible."""
+    try:
+        result = subprocess.run(
+            ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip().splitlines()[0].strip()
+    except Exception:
+        pass
+    return None
+
+def get_nvidia_gpu_family(name=None):
+    """Classe lisible: RTX, GTX ou NVIDIA. RTX n'est pas requis."""
+    value = (name or get_nvidia_gpu_name() or "").lower()
+    if "rtx" in value:
+        return "RTX"
+    if "gtx" in value:
+        return "GTX"
+    if value:
+        return "NVIDIA"
+    return "non-CUDA"
+
 def get_vram_gb():
     """Retourne la VRAM en GB (ou None si pas de GPU NVIDIA)"""
     try:
@@ -252,6 +278,8 @@ def get_torch_version():
 
 HAS_CUDA = has_nvidia_gpu()
 CUDA_VERSION = get_cuda_version() if HAS_CUDA else None
+NVIDIA_GPU_NAME = get_nvidia_gpu_name() if HAS_CUDA else None
+NVIDIA_GPU_FAMILY = get_nvidia_gpu_family(NVIDIA_GPU_NAME) if HAS_CUDA else "non-CUDA"
 
 # ==========================================
 # GESTION PYTHON LOCAL
@@ -788,10 +816,11 @@ def install_pytorch_cuda(force_reinstall=False):
     """Installe PyTorch depuis l'index CUDA dans le venv courant."""
     pip_index = get_pytorch_cuda_index()
     if not pip_index:
-        print("  [!] Aucun GPU NVIDIA détecté, installation CUDA ignorée")
+        print("  [!] Aucun GPU NVIDIA CUDA détecté, installation PyTorch CUDA ignorée")
         return False
 
     print(f"  Index CUDA: {pip_index}")
+    print("  Note: RTX non requis — JoyBoy tente CUDA sur toute carte NVIDIA compatible.")
     cmd = [
         sys.executable, "-m", "pip", "install", "--upgrade",
         "torch", "torchvision", "torchaudio",
@@ -1358,11 +1387,16 @@ def main():
     print(f"\n  Système: {platform.system()} {platform.machine()}")
     print(f"  Python: {sys.version.split()[0]}")
     if HAS_CUDA:
-        print(f"  GPU: NVIDIA (CUDA {CUDA_VERSION})")
+        vram = get_vram_gb()
+        vram_label = f", {vram:.1f}GB VRAM" if vram else ""
+        name_label = f"{NVIDIA_GPU_NAME} " if NVIDIA_GPU_NAME else ""
+        print(f"  GPU: {name_label}({NVIDIA_GPU_FAMILY}, CUDA {CUDA_VERSION or 'driver inconnu'}{vram_label})")
+        if NVIDIA_GPU_FAMILY != "RTX":
+            print("  Note: RTX non requis; les cartes GTX/NVIDIA CUDA restent supportées avec des profils prudents.")
     elif IS_MAC:
         print("  GPU: Apple Metal (MPS)")
     else:
-        print("  GPU: Aucun (CPU only)")
+        print("  GPU: aucune accélération CUDA/MPS détectée (profil CPU/non-CUDA)")
 
     torch_ver = get_torch_version()
     if torch_ver:
@@ -1600,6 +1634,14 @@ def main():
         print("-" * 50 + "\n")
         print("  [OK] MPS (Metal) - automatique avec PyTorch")
         print("  [SKIP] xformers/tensorrt (NVIDIA only)")
+    else:
+        print(f"\n" + "-" * 50)
+        print("  Profil CPU / non-CUDA")
+        print("-" * 50 + "\n")
+        print("  [OK] JoyBoy peut démarrer sans RTX/NVIDIA")
+        print("  [INFO] Chat, providers, packs, imports et outils légers restent disponibles")
+        print("  [INFO] Image/vidéo locale lourde sera limitée ou très lente sans CUDA/MPS")
+        print("  [SKIP] PyTorch CUDA, xformers et TensorRT")
 
     # ==========================================
     # OLLAMA
@@ -1824,6 +1866,7 @@ def main():
         print("  SETUP TERMINÉ AVEC AVERTISSEMENT")
         print("  - PyTorch CUDA reste indisponible dans ce venv")
         print("  - JoyBoy peut démarrer, mais les workflows image/vidéo NVIDIA seront limités")
+        print("  - RTX non requis: une GTX CUDA compatible doit aussi fonctionner si le driver/PyTorch sont OK")
         print("  - Relance Setup complet après avoir vérifié le driver NVIDIA et la connexion")
         print("=" * 50 + "\n")
         return 0
@@ -1836,6 +1879,8 @@ def main():
     if HAS_CUDA:
         print("  - xformers: " + ("ACTIF" if check_import("xformers")[0] else "INACTIF (SDPA utilisé)"))
         print("  - SDPA: ACTIF (fallback)")
+    elif not IS_MAC:
+        print("  - Accélération image locale: CPU/non-CUDA (support limité, pas bloquant)")
     print("=" * 50 + "\n")
     return 0
 

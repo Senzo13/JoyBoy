@@ -506,6 +506,8 @@ def check_preload_needed():
     return jsonify({
         'needs_preload': not report['ready'],
         'ready': report['ready'],
+        'skipped': report.get('skipped', False),
+        'skip_reason': report.get('skip_reason'),
         'required': report['required'],
         'optional': report['optional'],
         'cached': {

@@ -19,6 +19,11 @@ CURRENT_INPAINT_CACHE_KEY = "john6666_epicrealism-xl-vxvii-crystal-clear-realism
 FOOOCUS_REPO = "lllyasviel/fooocus_inpaint"
 FOOOCUS_HEAD_FILENAME = "fooocus_inpaint_head.pth"
 FOOOCUS_PATCH_FILENAME = "inpaint_v26.fooocus.patch"
+CONTROLNET_DEPTH_REPO = "diffusers/controlnet-depth-sdxl-1.0-small"
+CONTROLNET_DEPTH_WEIGHT_FILES = (
+    "diffusion_pytorch_model.safetensors",
+    "diffusion_pytorch_model.bin",
+)
 
 REQUIRED_PRELOAD_CACHE_TARGETS = [
     ("inpaint_pipe", "epiCRealism XL + Fooocus", CURRENT_INPAINT_CACHE_KEY, "int8"),
@@ -109,7 +114,18 @@ def get_quantized_cache_path(model_name: str, quant_type: str) -> Path:
     return QUANTIZED_CACHE_DIR / f"{model_name}_{quant_type}.pt"
 
 
-def _is_hf_file_cached(repo_id: str, filename: str) -> bool:
+def _should_preload_image_assets() -> bool:
+    """Only preload heavy image assets when a local image accelerator exists."""
+    try:
+        if torch.cuda.is_available():
+            return True
+        mps = getattr(getattr(torch, "backends", None), "mps", None)
+        return bool(mps and mps.is_available())
+    except Exception:
+        return False
+
+
+def _is_hf_file_cached(repo_id: str, filename: str, *, cache_dir: str | Path | None = None) -> bool:
     """Retourne True si un fichier HF ciblé est déjà présent dans le cache local."""
     try:
         from huggingface_hub import try_to_load_from_cache
@@ -117,34 +133,62 @@ def _is_hf_file_cached(repo_id: str, filename: str) -> bool:
         return False
 
     try:
-        cached = try_to_load_from_cache(repo_id, filename)
+        kwargs = {"cache_dir": str(cache_dir)} if cache_dir else {}
+        cached = try_to_load_from_cache(repo_id, filename, **kwargs)
     except Exception:
         return False
 
     return isinstance(cached, str) and bool(cached)
 
 
+def _is_controlnet_base_cached() -> bool:
+    """ControlNet quant cache alone is not enough; Diffusers still needs config + base weights."""
+    try:
+        from core.models import custom_cache
+    except Exception:
+        custom_cache = None
+
+    has_config = _is_hf_file_cached(CONTROLNET_DEPTH_REPO, "config.json", cache_dir=custom_cache)
+    has_weights = any(
+        _is_hf_file_cached(CONTROLNET_DEPTH_REPO, filename, cache_dir=custom_cache)
+        for filename in CONTROLNET_DEPTH_WEIGHT_FILES
+    )
+    return has_config and has_weights
+
+
+def is_controlnet_depth_ready() -> bool:
+    """Returns True only when both the quantized cache and base HF weights are usable."""
+    return is_quantized_cached("controlnet_depth", "int8") and _is_controlnet_base_cached()
+
+
 def get_preload_cache_report() -> dict:
     """Construit un état de cache lisible pour le preload UI."""
     required = []
     optional = []
+    preload_image_assets = _should_preload_image_assets()
 
-    for target_id, label, model_name, quant_type in REQUIRED_PRELOAD_CACHE_TARGETS:
-        cached = is_quantized_cached(model_name, quant_type)
-        required.append({
-            "id": target_id,
-            "label": label,
-            "cached": cached,
-            "kind": "quantized",
-        })
+    if preload_image_assets:
+        for target_id, label, model_name, quant_type in REQUIRED_PRELOAD_CACHE_TARGETS:
+            if target_id == "controlnet_depth":
+                cached = is_controlnet_depth_ready()
+                kind = "quantized+download"
+            else:
+                cached = is_quantized_cached(model_name, quant_type)
+                kind = "quantized"
+            required.append({
+                "id": target_id,
+                "label": label,
+                "cached": cached,
+                "kind": kind,
+            })
 
-    for target_id, label, repo_id, filename in OPTIONAL_PRELOAD_DOWNLOADS:
-        optional.append({
-            "id": target_id,
-            "label": label,
-            "cached": _is_hf_file_cached(repo_id, filename),
-            "kind": "download",
-        })
+        for target_id, label, repo_id, filename in OPTIONAL_PRELOAD_DOWNLOADS:
+            optional.append({
+                "id": target_id,
+                "label": label,
+                "cached": _is_hf_file_cached(repo_id, filename),
+                "kind": "download",
+            })
 
     cached_required = sum(1 for item in required if item["cached"])
     missing_required = len(required) - cached_required
@@ -152,6 +196,8 @@ def get_preload_cache_report() -> dict:
 
     return {
         "ready": missing_required == 0,
+        "skipped": not preload_image_assets,
+        "skip_reason": None if preload_image_assets else "no_cuda_or_mps",
         "required": required,
         "optional": optional,
         "counts": {
@@ -174,6 +220,11 @@ def preload_all(force: bool = False) -> Generator[dict, None, None]:
     Yields:
         dict avec current_step, progress, total_steps, done
     """
+    if not _should_preload_image_assets():
+        _update_status("Profil CPU/non-CUDA: préchargement image lourd ignoré", 1, 1, done=True)
+        yield get_status()
+        return
+
     steps = [
         ("Nettoyage caches obsolètes...", _cleanup_deprecated_hf_repos),
         ("Analyse du cache local...", _check_cache),
@@ -307,33 +358,39 @@ def _preload_fooocus_patch():
 def _preload_controlnet(force: bool = False):
     """Pré-charge le ControlNet Depth."""
     cache_path = get_quantized_cache_path("controlnet_depth", "int8")
+    base_cached = _is_controlnet_base_cached()
 
-    if cache_path.exists() and not force:
+    if cache_path.exists() and base_cached and not force:
         print(f"[PRELOAD] ControlNet Depth déjà en cache (skip)")
         return
 
-    print(f"[PRELOAD] Téléchargement ControlNet Depth SDXL (~400MB)...")
+    if cache_path.exists() and not base_cached:
+        print(f"[PRELOAD] ControlNet quantifié présent, mais poids HF manquants")
+    print(f"[PRELOAD] Téléchargement/validation ControlNet Depth SDXL (~640MB max)...")
+    _update_status("Téléchargement/validation ControlNet Depth...")
 
     try:
         from diffusers import ControlNetModel
 
         # local_files_only d'abord (skip réseau si déjà en cache), fallback download
-        _cn_repo = "diffusers/controlnet-depth-sdxl-1.0-small"
         try:
             controlnet = ControlNetModel.from_pretrained(
-                _cn_repo, torch_dtype=torch.float16, variant="fp16", local_files_only=True,
+                CONTROLNET_DEPTH_REPO, torch_dtype=torch.float16, local_files_only=True,
             )
         except OSError:
+            _update_status("Téléchargement ControlNet Depth...")
             controlnet = ControlNetModel.from_pretrained(
-                _cn_repo, torch_dtype=torch.float16, variant="fp16",
+                CONTROLNET_DEPTH_REPO, torch_dtype=torch.float16,
             )
 
         # Quantifier
+        _update_status("Quantification ControlNet Depth...")
         from optimum.quanto import quantize, freeze, qint8
         quantize(controlnet, weights=qint8)
         freeze(controlnet)
 
         # Sauvegarder
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
         torch.save(controlnet.state_dict(), cache_path)
         print(f"[PRELOAD] Sauvegardé: {cache_path}")
 

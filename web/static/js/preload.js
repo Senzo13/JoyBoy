@@ -63,10 +63,15 @@ async function initPreload() {
         if (!checkData.needs_preload) {
             // Tout est déjà en cache, afficher le site directement
             console.log('[PRELOAD] Cache complet, skip preload');
+            const skippedNonCuda = checkData.skipped && checkData.skip_reason === 'no_cuda_or_mps';
             updateLoadingStatus(
-                preloadT('loading.cached', 'Modèles en cache !'),
+                skippedNonCuda
+                    ? preloadT('loading.nonCudaReady', 'Profil CPU/non-CUDA prêt')
+                    : preloadT('loading.cached', 'Modèles en cache !'),
                 100,
-                cacheSummary,
+                skippedNonCuda
+                    ? preloadT('loading.nonCudaSummary', 'Préchargement image lourd ignoré sur cette machine.')
+                    : cacheSummary,
                 preloadT('loading.progress.ready', 'Prêt au lancement')
             );
             setTimeout(() => hideLoadingScreen(), 500);

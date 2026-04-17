@@ -1138,7 +1138,7 @@ let selectedChatModel = null;  // Sera défini depuis userSettings.chatModel
 // backend: 'gguf' = GGUF uniquement, 'diffusers' = Diffusers, 'both' = les deux
 const INPAINT_MODELS = [
 // === FLUX KONTEXT GGUF (pour GPUs plus petits) ===
-    { id: 'Flux Kontext Q2', name: 'Flux Kontext Q2', desc: '4GB • RTX 3070 Ti', badge: 'fast', icon: 'brain', backend: 'gguf', noMask: true },
+    { id: 'Flux Kontext Q2', name: 'Flux Kontext Q2', desc: '4GB • petite VRAM', badge: 'fast', icon: 'brain', backend: 'gguf', noMask: true },
     { id: 'Flux Kontext Q4', name: 'Flux Kontext Q4', desc: '6.8GB • Recommandé', badge: 'supreme', icon: 'brain', backend: 'gguf', noMask: true },
     { id: 'Flux Kontext Q6', name: 'Flux Kontext Q6', desc: '9.8GB • Haute qualité', badge: 'supreme', icon: 'brain', backend: 'gguf', noMask: true },
     { id: 'Flux Kontext Q8', name: 'Flux Kontext Q8', desc: '12.7GB • Max qualité', badge: 'supreme', icon: 'brain', backend: 'gguf', noMask: true },

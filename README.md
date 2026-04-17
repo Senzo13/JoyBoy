@@ -97,7 +97,7 @@ On first launch, JoyBoy runs onboarding, detects your machine profile, and shows
 
 The first inpaint, text-to-image, or video run can take longer than the next ones. JoyBoy may need to download or prepare missing runtime assets such as segmentation checkpoints, SCHP human parsing files, ControlNet helpers, preview VAEs, or video components. The generation card shows setup/download progress while this happens; once cached locally, later generations reuse those assets.
 
-If you have an NVIDIA GPU but JoyBoy logs `0.0GB VRAM` or `torch ... +cpu`, run the Windows launcher and choose **Setup complet**. That repairs the local virtual environment and reinstalls PyTorch with CUDA support.
+If you have an NVIDIA GPU (RTX, GTX, or compatible pro card) but JoyBoy logs `0.0GB VRAM` or `torch ... +cpu`, run the Windows launcher and choose **Setup complet**. That repairs the local virtual environment and reinstalls PyTorch with CUDA support. Machines without CUDA/MPS can still start JoyBoy for chat, providers, local packs, imports, and lighter tools, but heavy local image/video generation will be limited.
 
 ## Local Secrets
 

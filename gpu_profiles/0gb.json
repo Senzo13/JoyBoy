@@ -1,0 +1,92 @@
+{
+    "_comment": "Runtime Profile: no CUDA GPU detected (CPU, AMD/Intel without CUDA, remote-only, or unsupported NVIDIA)",
+    "_vram_range": [0, 0.5],
+
+    "general": {
+        "use_cpu_offload": true,
+        "skip_quantization": false,
+        "torch_compile": false,
+        "warmup_enabled": false
+    },
+
+    "image": {
+        "visible_models": [
+            "SDXL Turbo",
+            "Flux Kontext Q2"
+        ],
+        "default_inpaint_model": "Flux Kontext Q2",
+        "default_model": "SDXL Turbo",
+        "default_steps": 4,
+        "default_strength": 0.65,
+        "default_dilation": 20,
+        "text2img_steps": 4,
+        "recommended_models": {
+            "inpainting": "Flux Kontext Q2",
+            "generation": "SDXL Turbo"
+        }
+    },
+
+    "sdxl": {
+        "quantization": "int8",
+        "offload_strategy": "sequential_cpu_offload",
+        "vae_dtype": "float32",
+        "vae_slicing": true,
+        "vae_tiling": true
+    },
+
+    "flux_fill": {
+        "quantization": "int4",
+        "offload_strategy": "sequential_cpu_offload",
+        "guidance_scale": 25.0,
+        "steps": 24,
+        "max_resolution": [512, 512],
+        "_note": "Non-CUDA fallback. Prefer GGUF/local packs or remote-capable providers for heavy image work."
+    },
+
+    "flux_kontext": {
+        "quantization": "int4",
+        "offload_strategy": "sequential_cpu_offload",
+        "guidance_scale": 3.0,
+        "steps": 16
+    },
+
+    "pose_controlnet": {
+        "enabled": false,
+        "quantization": "int8",
+        "scale": 0.3,
+        "strength": 0.7,
+        "_note": "Disabled by default without CUDA."
+    },
+
+    "video": {
+        "default_model": "svd",
+        "wan": {
+            "quantization": "int4",
+            "offload_strategy": "sequential_cpu_offload",
+            "resolution": "360p",
+            "max_frames": 9,
+            "guidance_scale": 4.0,
+            "steps": 12,
+            "fps": 12,
+            "vae_dtype": "float32",
+            "vae_slicing": true,
+            "vae_tiling": true,
+            "sage_attention": false
+        },
+        "ltx": {
+            "quantization": "int8",
+            "offload_strategy": "sequential_cpu_offload",
+            "resolution": "360p",
+            "max_frames": 17,
+            "guidance_scale": 1.0,
+            "steps": 8,
+            "fps": 12
+        }
+    },
+
+    "ollama": {
+        "max_vram_gb": 0,
+        "default_chat_model": "qwen3.5:0.8b",
+        "utility_model": "qwen3.5:0.8b"
+    }
+}

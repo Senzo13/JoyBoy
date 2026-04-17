@@ -1,6 +1,6 @@
 {
-    "_comment": "GPU Profile: 8GB VRAM (RTX 3060, 3070, 4060, etc.)",
-    "_vram_range": [0, 9],
+    "_comment": "GPU Profile: 6-9GB CUDA GPUs (RTX/GTX/pro cards with enough VRAM for SDXL low-VRAM paths)",
+    "_vram_range": [6, 9],
 
     "general": {
         "use_cpu_offload": true,

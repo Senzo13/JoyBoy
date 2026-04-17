@@ -120,7 +120,7 @@ function formatGenerationProgressText(phase, step, total, message = '') {
     const safeTotal = Number(total) || 0;
 
     if (label && GENERATION_SETUP_PHASES.has(phase)) {
-        return label;
+        return message || label;
     }
     if (message && !GENERATION_PROGRESS_FALLBACKS[phase]) {
         return message;

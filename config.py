@@ -130,12 +130,12 @@ MODEL_RECOMMENDATIONS = {
 
 # Seuils VRAM (en GB) - ordre décroissant pour la détection
 VRAM_THRESHOLDS = {
-    "extreme": 24,    # RTX 4090, 5090
-    "ultra": 16,      # RTX 4080, 5080
-    "very_high": 12,  # RTX 4070
-    "high": 8,        # RTX 3070, 4060
-    "medium": 4,      # GTX 1650, etc.
-    "low": 0,         # Intégré / pas de GPU
+    "extreme": 24,    # 24GB+ CUDA/pro GPUs
+    "ultra": 16,      # 16GB GPUs
+    "very_high": 12,  # 12GB GPUs
+    "high": 8,        # 8GB RTX/GTX/pro GPUs
+    "medium": 4,      # GTX 1650 / laptop GPUs / petite VRAM
+    "low": 0,         # Intégré / CPU / non-CUDA
 }
 
 # ===== PARAMÈTRES DE GÉNÉRATION PAR NIVEAU VRAM =====

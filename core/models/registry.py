@@ -151,8 +151,8 @@ elif SUPPORTS_BF16:
 elif VRAM_GB > 0:
     print(f"[STARTUP] GPU ({VRAM_GB:.0f}GB): using fp16")
 elif not IS_MAC:
-    print("[STARTUP] PyTorch CPU-only détecté: CUDA indisponible pour l'image/vidéo")
-    print("[STARTUP] -> Lance Setup complet pour installer PyTorch CUDA si tu as une NVIDIA")
+    print("[STARTUP] Profil CPU/non-CUDA: JoyBoy démarre, image/vidéo locale limitée")
+    print("[STARTUP] -> Si tu as une NVIDIA RTX/GTX compatible, lance Setup complet pour réparer PyTorch CUDA")
 
 # ========================== GPU MODEL CONFIG ==========================
 GPU_MODEL_CONFIG = {
