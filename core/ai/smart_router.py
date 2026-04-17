@@ -23,6 +23,7 @@ from core.router_rules import (
     keyword_fallback,
     controlnet_scale_for_intent,
     apply_nudity_postprocess,
+    apply_clothing_postprocess,
     is_dress_body_request,
     is_pose_preservation_prompt,
     normalize_accents,
@@ -627,6 +628,8 @@ def analyze_request(prompt: str, image_b64: str = None, has_brush_mask: bool = F
             llm_result['segformer_classes'] = None
             llm_result['needs_ip_adapter'] = False
             llm_result['reason'] += ' (habiller personne → masque body)'
+
+        llm_result = apply_clothing_postprocess(llm_result, prompt)
 
         if image_b64 and not has_brush_mask and llm_result['intent'] in ('pose_change', 'repose'):
             llm_result = _make_repose_result(

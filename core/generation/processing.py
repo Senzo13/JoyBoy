@@ -296,11 +296,18 @@ def process_image(image: Image.Image, prompt: str, strength: float, model_name: 
     _ANIME_QUALITY = "{prompt}, original anime style, detailed manga art, clean line art, soft shading, vibrant colors, high quality"
     _ANIME_NEG = "blurry, low quality, deformed, bad anatomy, text, watermark, extra limbs, missing limbs, changed pose, different proportions"
     _is_flux_model = model_name and ('flux' in model_name.lower() or 'kontext' in model_name.lower())
-    _style_probe = f"{full_prompt} {model_name or ''}".lower()
-    _is_anime_style = any(word in _style_probe for word in (
+    _prompt_probe = f"{full_prompt}".lower()
+    _model_probe = f"{model_name or ''}".lower()
+    _prompt_requests_photo = any(word in _prompt_probe for word in (
+        "photo", "photorealistic", "realistic", "raw", "35mm", "kodak", "cinematic",
+    ))
+    _prompt_requests_anime = any(word in _prompt_probe for word in (
         "anime", "manga", "2d animation", "2d style", "toon", "cel shading", "line art",
+    ))
+    _model_is_anime_family = any(word in _model_probe for word in (
         "illustrious", "pony", "animagine",
     ))
+    _is_anime_style = _prompt_requests_anime or (_model_is_anime_family and not _prompt_requests_photo)
     _is_pose_change = intent == 'pose_change'
     _is_fix_details = intent == 'fix_details'
     _is_repose = intent in ('repose', 'background_fill')

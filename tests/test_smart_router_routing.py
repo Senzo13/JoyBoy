@@ -87,6 +87,65 @@ class SmartRouterRoutingTests(unittest.TestCase):
         self.assertTrue(result["needs_controlnet"])
         self.assertIn("bikini outfit", result["prompt_rewrite"])
 
+    def test_dress_body_request_forces_opaque_clothing_pass(self):
+        llm_response = "\n".join(
+            [
+                "INTENT: general_edit",
+                "MASK: full",
+                "STRENGTH: 0.78",
+                "CONTROLNET: no",
+                "IPADAPTER: no",
+                "PROMPT: tasteful casual outfit covering torso and hips",
+                "NEGATIVE: blurry, low quality",
+            ]
+        )
+
+        with patch("core.ai.edit_directives._llm_extract_prompt", return_value={}):
+            with patch("core.ai.smart_router._find_text_model", return_value="fake-router"):
+                with patch("core.ai.smart_router._call_llm", return_value=llm_response):
+                    result = analyze_request(
+                        "dress the person in a tasteful casual outfit covering torso and hips",
+                        image_b64="data:image/png;base64,abc",
+                        has_brush_mask=False,
+                    )
+
+        self.assertEqual(result["intent"], "clothing_change")
+        self.assertEqual(result["mask_strategy"], "body")
+        self.assertGreaterEqual(result["strength"], 0.86)
+        self.assertLessEqual(result["controlnet_scale"], 0.45)
+        self.assertFalse(result["needs_ip_adapter"])
+        self.assertIn("opaque real fabric", result["prompt_rewrite"])
+        self.assertIn("covered torso", result["prompt_rewrite"])
+        self.assertIn("nude", result["negative_prompt"])
+        self.assertIn("painted-on clothing", result["negative_prompt"])
+
+    def test_regular_clothing_change_does_not_use_nudity_negative(self):
+        llm_response = "\n".join(
+            [
+                "INTENT: clothing_change",
+                "MASK: clothes",
+                "STRENGTH: 0.78",
+                "CONTROLNET: yes",
+                "IPADAPTER: yes",
+                "PROMPT: woman wearing a red dress, realistic fabric",
+                "NEGATIVE: blurry, low quality",
+            ]
+        )
+
+        with patch("core.ai.edit_directives._llm_extract_prompt", return_value={}):
+            with patch("core.ai.smart_router._find_text_model", return_value="fake-router"):
+                with patch("core.ai.smart_router._call_llm", return_value=llm_response):
+                    result = analyze_request(
+                        "change outfit to a red dress",
+                        image_b64="data:image/png;base64,abc",
+                        has_brush_mask=False,
+                    )
+
+        self.assertEqual(result["intent"], "clothing_change")
+        self.assertEqual(result["mask_strategy"], "clothes")
+        self.assertNotIn("clothing, clothes, fabric", result["negative_prompt"])
+        self.assertIn("red dress", result["prompt_rewrite"])
+
     def test_nudity_shortcut_beats_repose_heuristic(self):
         with patch(
             "core.ai.edit_directives._llm_extract_prompt",

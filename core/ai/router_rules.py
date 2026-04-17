@@ -277,12 +277,21 @@ DEFAULT_NEGATIVE = _constants.get('default_negative', "blurry, low quality, defo
 POSE_NEGATIVE = _constants.get('pose_negative', f"{DEFAULT_NEGATIVE}, extra limbs, missing limbs, missing hands, missing fingers")
 NUDITY_NEGATIVE = _constants.get('nudity_negative', "clothing, clothes, fabric, dressed, seams, stitching, cloth texture, clothing traces, tan lines from clothes, wrinkles from fabric, blurry, deformed")
 NUDITY_REALISM_SUFFIX = _constants.get('nudity_realism_suffix', ", natural breasts with slight sag, realistic body")
+DRESS_BODY_SUFFIX = _constants.get(
+    'dress_body_suffix',
+    ", fully clothed body, opaque real fabric, visible fabric folds, visible clothing seams, covered chest, covered torso, covered hips, natural garment fit"
+)
+DRESS_BODY_NEGATIVE = _constants.get(
+    'dress_body_negative',
+    "nude, naked, bare chest, bare torso, bare hips, exposed breasts, nipples, areola, genitals, underwear, lingerie, bikini, transparent fabric, see-through fabric, body paint, painted-on clothing, skin-only body, blurry, low quality, deformed, bad anatomy"
+)
 
 # Map de noms de negative → valeur réelle (pour résolution des refs JSON)
 _NEGATIVE_MAP = {
     'default_negative': DEFAULT_NEGATIVE,
     'pose_negative': POSE_NEGATIVE,
     'nudity_negative': NUDITY_NEGATIVE,
+    'dress_body_negative': DRESS_BODY_NEGATIVE,
     'style_negative': _constants.get('style_negative', DEFAULT_NEGATIVE),
 }
 
@@ -378,6 +387,77 @@ def is_dress_body_request(prompt: str) -> bool:
         keyword in prompt_lower or normalize_accents(keyword) in prompt_norm
         for keyword in _DRESS_BODY_KEYWORDS
     )
+
+
+def _append_prompt_once(prompt: str, suffix: str) -> str:
+    """Append a suffix only once, using accent-insensitive comparison."""
+    prompt = str(prompt or "").strip()
+    suffix = str(suffix or "").strip()
+    if not suffix:
+        return prompt
+    suffix_probe = normalize_accents(suffix.lower()).strip(" ,.")
+    prompt_probe = normalize_accents(prompt.lower())
+    if suffix_probe and suffix_probe in prompt_probe:
+        return prompt
+    return f"{prompt}{suffix}"
+
+
+def _merge_negative_prompt(base_negative: str | None, extra_negative: str) -> str:
+    """Merge comma-separated negatives while preserving order."""
+    parts = []
+    seen = set()
+    for chunk in f"{base_negative or ''}, {extra_negative or ''}".split(','):
+        value = chunk.strip()
+        if not value:
+            continue
+        key = normalize_accents(value.lower())
+        if key in seen:
+            continue
+        seen.add(key)
+        parts.append(value)
+    return ', '.join(parts)
+
+
+def _dress_body_negative_for_prompt(prompt: str) -> str:
+    """Avoid banning revealing garments when the user explicitly requested them."""
+    prompt_norm = normalize_accents(str(prompt or "").lower())
+    negative = DRESS_BODY_NEGATIVE
+    for term in ("bikini", "lingerie", "underwear", "swimsuit", "maillot", "bra", "string"):
+        if normalize_accents(term) in prompt_norm:
+            negative = re.sub(rf"(?:^|,\s*){re.escape(term)}(?:,|$)", ", ", negative, flags=re.IGNORECASE)
+    return re.sub(r"\s*,\s*,+", ",", negative).strip(" ,")
+
+
+def apply_clothing_postprocess(result: dict, original_prompt: str) -> dict:
+    """Strengthen requests that add clothes onto a bare or unclothed body."""
+    if result.get('intent') != 'clothing_change':
+        return result
+    if not is_dress_body_request(original_prompt):
+        return result
+    already_applied = bool(result.get('dress_body_guard_applied'))
+
+    is_brush = result.get('mask_strategy') == 'brush_only'
+    if not is_brush:
+        result['mask_strategy'] = 'body'
+        result['segformer_classes'] = None
+        result['needs_controlnet'] = True
+        # Nude-to-clothed needs freedom to create fabric thickness and folds.
+        # Too much Depth keeps the bare-body surface and the model repaints skin.
+        result['controlnet_scale'] = min(float(result.get('controlnet_scale', 0.45) or 0.45), 0.45)
+        result['needs_ip_adapter'] = False
+
+    result['strength'] = max(float(result.get('strength', 0.78) or 0.78), 0.86)
+    result['prompt_rewrite'] = _append_prompt_once(result.get('prompt_rewrite', original_prompt), DRESS_BODY_SUFFIX)
+    result['negative_prompt'] = _merge_negative_prompt(
+        result.get('negative_prompt'),
+        _dress_body_negative_for_prompt(original_prompt),
+    )
+    if "dress body guard" not in str(result.get('reason', '')):
+        result['reason'] = f"{result.get('reason', 'router')} + dress body guard"
+    result['dress_body_guard_applied'] = True
+    if not already_applied:
+        print("[ROUTER] Dress-body guard: body mask, opaque clothing prompt, anti-nudity negative, lower Depth")
+    return result
 
 
 def is_pose_preservation_prompt(prompt: str) -> bool:
@@ -565,7 +645,7 @@ def apply_nudity_postprocess(result: dict, original_prompt: str) -> dict:
     - Force ControlNet pour CONTROLNET_INTENTS
     - IP-Adapter: respecte le flag JSON/LLM (pas d'override)
     - Ajoute réalisme nudity (suffix + attributs physiques préservés)
-    - Set le negative prompt nudity
+    - Set le negative prompt nudity uniquement pour nudity
     - Set le controlnet_scale
     """
     intent = result['intent']
@@ -599,7 +679,9 @@ def apply_nudity_postprocess(result: dict, original_prompt: str) -> dict:
         result['negative_prompt'] = NUDITY_NEGATIVE
         print(f"[ROUTER] Réalisme nudity ajouté (natural sag)")
 
-    # Clothing change: réalisme peau visible + préservation attributs
+    # Clothing change: preserve explicit physical attributes only.
+    # Do NOT reuse the nudity negative here: it contains "clothing, clothes,
+    # fabric", which blocks the exact thing we are trying to generate.
     if intent == 'clothing_change':
         original_lower = original_prompt.lower()
         rewrite_lower = result['prompt_rewrite'].lower()
@@ -608,9 +690,6 @@ def apply_nudity_postprocess(result: dict, original_prompt: str) -> dict:
         if preserved:
             result['prompt_rewrite'] = f"{result['prompt_rewrite']}, {', '.join(preserved)}"
             print(f"[ROUTER] Attributs préservés: {', '.join(preserved)}")
-        result['prompt_rewrite'] += NUDITY_REALISM_SUFFIX
-        result['negative_prompt'] = NUDITY_NEGATIVE
-        print(f"[ROUTER] Réalisme clothing_change ajouté")
 
     result['controlnet_scale'] = controlnet_scale_for_intent(intent)
     return result
@@ -707,7 +786,7 @@ def keyword_fallback(prompt: str, has_brush_mask: bool = False) -> dict:
             adjacent = method.get('adjacent_classes')
             ipa_scale = method.get('ip_adapter_scale', 0.6)
 
-            return {
+            result = {
                 'intent': intent,
                 'mask_strategy': mask_strategy,
                 'segformer_classes': classes,
@@ -721,6 +800,9 @@ def keyword_fallback(prompt: str, has_brush_mask: bool = False) -> dict:
                 'adjacent_classes': adjacent,
                 'reason': f'Keyword fallback: {intent}'
             }
+            if intent == 'clothing_change':
+                result = apply_clothing_postprocess(result, prompt)
+            return result
 
     # Défaut si rien ne matche
     mask = 'brush_only' if has_brush_mask else 'full'
