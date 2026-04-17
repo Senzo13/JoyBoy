@@ -88,7 +88,7 @@ def _preprocess_french_prompt(text: str) -> str:
         (r"(?:le\s+)?visage\s+tourn(?:e|e)", "face turned to the side"),
         (r"(?:la\s+)?t(?:e|e)te\s+tourn(?:ee?|e)", "head turned to the side"),
         # ---- Direction du regard ----
-        (r"regard(?:e|ant)?\s+(?:vers\s+)?(?:la\s+)?cam(?:e|e)ra", "looking at the camera"),
+        (r"regard(?:e|ant)?\s+(?:vers\s+)?(?:la\s+)?cam(?:e|e)ra", "looking toward the viewer"),
         (r"regard(?:e|ant)?\s+(?:vers\s+)?le\s+haut", "looking up"),
         (r"regard(?:e|ant)?\s+(?:vers\s+)?le\s+bas", "looking down"),
         (r"yeux\s+ferm(?:e|e)s", "eyes closed"),
@@ -108,7 +108,7 @@ def _preprocess_french_prompt(text: str) -> str:
         (r"(?:les?\s+)?jambes\s+(?:pli(?:e|e)(?:e?s)?|repli(?:e|e)(?:e?s)?)", "legs bent"),
         (r"(?:les?\s+)?genoux\s+(?:pli(?:e|e)(?:e?s)?|repli(?:e|e)(?:e?s)?)", "knees bent"),
         # ---- Angles de vue ----
-        (r"vue\s+de\s+face", "frontal view, facing camera"),
+        (r"vue\s+de\s+face", "front-facing view"),
         (r"vue\s+de\s+profil", "side view"),
         (r"vue\s+de\s+dos", "rear view, from behind"),
         (r"vue\s+(?:du\s+)?dessus", "top-down view"),
@@ -386,11 +386,11 @@ def build_full_prompt(enhanced_prompt: str, style: str, for_inpainting: bool = T
     orientation_negative = ""
     if orientation and is_nudity_prompt:
         if orientation == "front":
-            orientation_positive = ", frontal view, facing camera"
+            orientation_positive = ", front-facing view"
             orientation_negative = ", from behind, back view, rear"
         elif orientation == "back":
             orientation_positive = ", from behind, back view, showing back"
-            orientation_negative = ", frontal view, facing camera, front view"
+            orientation_negative = ", frontal view, front-facing view"
         elif orientation == "side":
             orientation_positive = ", side view, profile"
             orientation_negative = ", frontal view, back view"

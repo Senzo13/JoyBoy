@@ -136,7 +136,7 @@ _VIEW_PROMPTS = {
     'portrait_close': 'close-up shot, tight framing on the main subject',
     'low_angle': 'low angle view, looking up, shot from below',
     'high_angle': 'high angle view, looking down, shot from above',
-    'from_behind': 'rear view, back-facing camera angle',
+    'from_behind': 'rear view, back-facing viewpoint',
 }
 
 _POSE_PROMPTS = {
@@ -145,11 +145,11 @@ _POSE_PROMPTS = {
         'sitting, lying down, kneeling, crouching, legs together, legs crossed',
     ),
     'legs_up': (
-        'reclined seated pose leaning back with both legs raised, knees bent outward, low angle foreshortened perspective, feet closer to camera, looking at camera, full body visible',
+        'reclined seated pose leaning back with both legs raised, knees bent outward, low angle foreshortened perspective, feet closer to viewer, looking toward the viewer, full body visible',
         'standing, kneeling, lying flat, overhead view, top-down view, bird eye view, upside down, head at bottom, legs together, legs closed, legs down, side view',
     ),
     'on_all_fours': (
-        'hands and knees on the ground, quadruped support pose, neutral tabletop posture, looking at camera, front view',
+        'hands and knees on the ground, quadruped support pose, neutral tabletop posture, looking toward the viewer, front view',
         'standing, sitting, lying flat, raised legs, kneeling upright',
     ),
     'lying_face_up': (
@@ -173,6 +173,18 @@ _POSE_PROMPTS = {
         'standing, sitting, lying down, quadruped support pose, walking',
     ),
 }
+
+_CAPTURE_DEVICE_NEGATIVE = "camera, photo camera, camera lens, DSLR, camcorder, smartphone, phone, selfie stick, tripod, photographer"
+_CAPTURE_DEVICE_STYLE_WORDS = (
+    "selfie", "phone", "smartphone", "telephone", "téléphone", "webcam", "omegle",
+    "snapchat", "snap", "tiktok", "camera", "camcorder", "dslr", "photographer",
+)
+
+
+def _should_suppress_visible_capture_devices(prompt: str, style_prefix: str | None, style_suffix: str | None) -> bool:
+    """Avoid literal cameras unless the user/style explicitly asks for capture-device aesthetics."""
+    text = " ".join(part for part in (prompt or "", style_prefix or "", style_suffix or "")).lower()
+    return not any(re.search(r'\b' + re.escape(word) + r'\b', text) for word in _CAPTURE_DEVICE_STYLE_WORDS)
 
 
 def generate_from_text(prompt: str, model_name: str = "Automatique", enhance: bool = True, steps: int = 30, cancel_check=None, pipe=None,
@@ -252,6 +264,7 @@ def generate_from_text(prompt: str, model_name: str = "Automatique", enhance: bo
             # Merge preset config into export_settings (preset overrides defaults)
             export_settings = {**export_settings, **config}
             break
+    prompt_before_export_injections = prompt
 
     # ===== DÉTECTION FORMAT / RÉSOLUTION + STYLE =====
     # Alignement résolution: Flux = multiples de 16, SDXL = multiples de 64
@@ -352,6 +365,11 @@ def generate_from_text(prompt: str, model_name: str = "Automatique", enhance: bo
         neg = f"{neg}, {pose_neg}"
     elif pose_neg and not neg and not is_flux:
         neg = pose_neg
+
+    # The word "camera" in pose/view helpers can make diffusion models draw a
+    # literal device. Default text2img should describe viewpoint, not props.
+    if neg and _should_suppress_visible_capture_devices(prompt_before_export_injections, style_prefix, style_suffix):
+        neg = f"{neg}, {_CAPTURE_DEVICE_NEGATIVE}"
 
     try:
         from core.infra.model_imports import apply_imported_model_prompt_hooks

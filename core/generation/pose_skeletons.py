@@ -33,11 +33,11 @@ _POSE_PROMPTS = {
         "sitting, lying down, kneeling, crouching, legs together, legs crossed",
     ),
     'legs_up': (
-        "reclined seated pose leaning back with both legs raised, knees bent outward, low angle foreshortened perspective, feet closer to camera, looking at camera, full body visible",
+        "reclined seated pose leaning back with both legs raised, knees bent outward, low angle foreshortened perspective, feet closer to viewer, looking toward the viewer, full body visible",
         "standing, kneeling, lying flat, overhead view, top-down view, bird eye view, upside down, head at bottom, legs together, legs closed, legs down, side view",
     ),
     'on_all_fours': (
-        "hands and knees on the ground, quadruped support pose, neutral tabletop posture, looking at camera, front view",
+        "hands and knees on the ground, quadruped support pose, neutral tabletop posture, looking toward the viewer, front view",
         "standing, sitting, lying flat, raised legs, kneeling upright",
     ),
     'lying_face_up': (

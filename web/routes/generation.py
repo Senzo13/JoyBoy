@@ -381,7 +381,7 @@ def _build_repose_prompt(user_prompt, florence_desc, directives=None):
         user_hint = ""
     if 'back_view' not in directives.get('debug_flags', []):
         prompt_terms.append('same face angle as original')
-        prompt_terms.append('same camera viewpoint')
+        prompt_terms.append('same viewpoint as original')
 
     priority_markers = (
         'positioned', 'repositioned', 'farther', 'closer',
