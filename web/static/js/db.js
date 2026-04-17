@@ -359,6 +359,20 @@ function isRuntimeJobOrphan(job) {
     return Boolean(chatRecordsReady && job?.conversation_id && !hasChatRecord(job.conversation_id));
 }
 
+function isCurrentRuntimeJob(job) {
+    const jobId = job?.id ? String(job.id) : '';
+    const activeJobId = typeof currentGenerationId !== 'undefined' && currentGenerationId
+        ? String(currentGenerationId)
+        : '';
+    if (jobId && activeJobId && jobId === activeJobId) return true;
+
+    const jobChatId = job?.conversation_id ? String(job.conversation_id) : '';
+    const activeChatId = typeof currentGenerationChatId !== 'undefined' && currentGenerationChatId
+        ? String(currentGenerationChatId)
+        : (typeof currentChatId !== 'undefined' && currentChatId ? String(currentChatId) : '');
+    return Boolean(isGenerating && jobChatId && activeChatId && jobChatId === activeChatId);
+}
+
 function locallyCancelRuntimeJobs(predicate, message) {
     let changed = false;
     runtimeJobsCache = runtimeJobsCache.map(job => {
@@ -438,7 +452,9 @@ async function refreshRuntimeJobs() {
     try {
         const result = await apiRuntime.listJobs();
         const jobs = Array.isArray(result.data?.jobs) ? result.data.jobs : [];
-        const orphanJobs = jobs.filter(job => isRuntimeJobActive(job) && isRuntimeJobOrphan(job));
+        const orphanJobs = jobs.filter(job =>
+            isRuntimeJobActive(job) && isRuntimeJobOrphan(job) && !isCurrentRuntimeJob(job)
+        );
         orphanJobs.forEach(job => {
             if (!job.id || runtimeJobsCancelRequests.has(job.id) || !apiRuntime.cancelJob) return;
             runtimeJobsCancelRequests.add(job.id);
@@ -449,7 +465,9 @@ async function refreshRuntimeJobs() {
                     refreshRuntimeJobs();
                 });
         });
-        runtimeJobsCache = jobs.filter(job => !(isRuntimeJobActive(job) && isRuntimeJobOrphan(job)));
+        runtimeJobsCache = jobs.filter(job =>
+            !(isRuntimeJobActive(job) && isRuntimeJobOrphan(job) && !isCurrentRuntimeJob(job))
+        );
         renderRuntimeJobs();
         renderChatList();
     } catch (e) {

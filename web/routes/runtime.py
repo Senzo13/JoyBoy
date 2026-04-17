@@ -7,6 +7,20 @@ from flask import Blueprint, jsonify, request
 runtime_bp = Blueprint("runtime", __name__)
 
 
+def _bridge_runtime_cancel_to_generation_flags(app_module, job_id: str) -> bool:
+    """Mark only the matching legacy generation as cancelled.
+
+    Runtime jobs are job-scoped. The legacy ``generation_cancelled`` flag is
+    global and is still used by /cancel-all, so setting it from a single job
+    cancel can accidentally stop an unrelated active image generation.
+    """
+    with app_module.generations_lock:
+        if job_id in app_module.active_generations:
+            app_module.active_generations[job_id]["cancelled"] = True
+            return True
+    return False
+
+
 def _query_int(name: str, default: int, *, minimum: int = 1, maximum: int = 500) -> int:
     try:
         value = int(request.args.get(name, default))
@@ -96,14 +110,12 @@ def runtime_cancel_job(job_id):
     if not job:
         return jsonify({"success": False, "error": "Job introuvable"}), 404
 
-    # Bridge with the legacy cancellation flags while routes migrate to the
-    # runtime job manager.
+    # Bridge with legacy per-generation flags while routes migrate to the
+    # runtime job manager. Do not set the global generation_cancelled flag here:
+    # cancelling one runtime card must not stop unrelated active generations.
     try:
         import web.app as app_module
-        app_module.generation_cancelled = True
-        with app_module.generations_lock:
-            if job_id in app_module.active_generations:
-                app_module.active_generations[job_id]["cancelled"] = True
+        _bridge_runtime_cancel_to_generation_flags(app_module, job_id)
     except Exception:
         pass
 
