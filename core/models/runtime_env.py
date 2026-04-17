@@ -148,7 +148,16 @@ def _enable_mps_full_vae_fp32_decode(
         import torch
 
         def _joyboy_full_upcast_vae(self) -> None:
-            self.vae.to(dtype=torch.float32)
+            target_device = _infer_mps_execution_device(self)
+            kwargs = {"dtype": torch.float32}
+            if target_device is not None:
+                kwargs["device"] = target_device
+            try:
+                self.vae.to(**kwargs)
+            except TypeError:
+                if target_device is not None:
+                    self.vae.to(target_device)
+                self.vae.to(dtype=torch.float32)
 
         pipe.upcast_vae = types.MethodType(_joyboy_full_upcast_vae, pipe)
         setattr(pipe, "_joyboy_mps_full_vae_fp32_decode", True)
@@ -271,6 +280,47 @@ def _enable_mps_attention_upcast(
     return False
 
 
+def ensure_mps_sdxl_vae_ready_for_call(pipe: object, label: str = "pipeline") -> bool:
+    """Keep SDXL VAE encode/decode on MPS fp32 before a Diffusers call.
+
+    JoyBoy calls SDXL pipelines with ``output_type="latent"`` on macOS and
+    decodes afterwards to avoid gray/NaN images. Inpaint pipelines still use the
+    VAE inside ``prepare_latents`` to encode the source image. If a previous
+    fallback left the VAE on CPU, Diffusers feeds it an MPS tensor and PyTorch
+    raises "Input type (MPSFloatType) and weight type (torch.FloatTensor)".
+    """
+    import torch
+
+    vae = getattr(pipe, "vae", None)
+    if vae is None:
+        return False
+
+    target_device = _infer_mps_execution_device(pipe)
+    if target_device is None:
+        return False
+
+    current_device = _module_device(vae)
+    current_dtype = getattr(vae, "dtype", None)
+    if (
+        getattr(current_device, "type", None) == "mps"
+        and current_dtype is torch.float32
+    ):
+        return False
+
+    try:
+        try:
+            vae.to(device=target_device, dtype=torch.float32)
+        except TypeError:
+            vae.to(target_device)
+            vae.to(dtype=torch.float32)
+    except Exception as exc:
+        print(f"[MM] {label}: VAE MPS fp32 align skip ({exc})")
+        return False
+
+    _log_once(vae, "_joyboy_mps_vae_call_align_logged", f"[MM] {label}: VAE aligned to MPS fp32 for inpaint encode")
+    return True
+
+
 def decode_sdxl_latents_with_mps_fallback(
     pipe: object,
     latents: object,
@@ -365,6 +415,25 @@ def _module_device(module: object):
         return first_param.device
     except Exception:
         return None
+
+
+def _infer_mps_execution_device(pipe: object):
+    import torch
+
+    for attr in ("_execution_device", "device"):
+        device = getattr(pipe, attr, None)
+        if getattr(device, "type", None) == "mps":
+            return device
+        if isinstance(device, str) and device == "mps":
+            return torch.device("mps")
+
+    for component_name in ("unet", "controlnet", "transformer", "text_encoder", "text_encoder_2"):
+        component = getattr(pipe, component_name, None)
+        device = _module_device(component) if component is not None else None
+        if getattr(device, "type", None) == "mps":
+            return device
+
+    return None
 
 
 def _restore_module_device_dtype(module: object, device, dtype) -> None:

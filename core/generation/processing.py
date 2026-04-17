@@ -143,8 +143,23 @@ def _run_pipeline_with_mps_sdxl_decode(pipe, label: str, pipe_kwargs: dict):
     call_kwargs = dict(pipe_kwargs)
     if use_mps_latent_decode:
         call_kwargs["output_type"] = "latent"
+        from core.models.runtime_env import ensure_mps_sdxl_vae_ready_for_call
 
-    output = pipe(**call_kwargs)
+        ensure_mps_sdxl_vae_ready_for_call(pipe, label)
+
+    try:
+        output = pipe(**call_kwargs)
+    except RuntimeError as exc:
+        if not (
+            use_mps_latent_decode
+            and "Input type (MPSFloatType) and weight type (torch.FloatTensor)" in str(exc)
+        ):
+            raise
+        from core.models.runtime_env import ensure_mps_sdxl_vae_ready_for_call
+
+        print(f"[MM] {label}: retry after VAE CPU/MPS mismatch")
+        ensure_mps_sdxl_vae_ready_for_call(pipe, label)
+        output = pipe(**call_kwargs)
 
     if not use_mps_latent_decode:
         return output.images[0]

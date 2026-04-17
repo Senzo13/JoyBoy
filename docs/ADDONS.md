@@ -6,7 +6,7 @@ JoyBoy addons are local packs that extend the public core without editing core f
 
 - The public core stays generic: chat, web, image, video, routing, model manager, onboarding, doctor, and UI.
 - Addons live locally in `~/.joyboy/packs/<pack_id>/`.
-- A pack is imported from a local folder or a `.zip` archive in `Settings > Models > Local packs`.
+- A pack is imported from a local folder or a `.zip` archive from the `Addons` sidebar page.
 - JoyBoy validates `pack.json` before activating a pack.
 - Private or sensitive packs should stay outside git and outside public release archives.
 
@@ -80,8 +80,8 @@ The current validator checks that the manifest and referenced files exist. Schem
 
 From the UI:
 
-1. Open `Settings > Models`.
-2. Go to `Local packs`.
+1. Open `Addons` from the sidebar.
+2. Go to local packs.
 3. Import a `.zip` archive or paste a local folder path.
 4. Activate the pack.
 
@@ -121,7 +121,7 @@ Les addons JoyBoy sont des packs locaux qui étendent le core public sans modifi
 
 - Le core public reste générique: chat, web, image, vidéo, routing, model manager, onboarding, doctor et UI.
 - Les addons vivent localement dans `~/.joyboy/packs/<pack_id>/`.
-- Un pack s’importe depuis un dossier local ou une archive `.zip` dans `Paramètres > Modèles > Packs locaux`.
+- Un pack s’importe depuis un dossier local ou une archive `.zip` dans la page `Addons` de la sidebar.
 - JoyBoy valide `pack.json` avant activation.
 - Les packs privés ou sensibles restent hors git et hors archives de release publiques.
 
@@ -179,8 +179,8 @@ Utilise `adult` uniquement pour des packs locaux qui ne doivent pas être market
 
 Depuis l’UI:
 
-1. Ouvre `Paramètres > Modèles`.
-2. Va dans `Packs locaux`.
+1. Ouvre `Addons` dans la sidebar.
+2. Va dans les packs locaux.
 3. Importe une archive `.zip` ou colle le chemin d’un dossier local.
 4. Active le pack.
 

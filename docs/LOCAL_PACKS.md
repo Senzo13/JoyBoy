@@ -40,7 +40,7 @@ Supported `kind` values currently include:
 
 ## Installing a pack
 
-Use `Settings > Models` and choose one of these options:
+Open `Addons` from the sidebar and choose one of these options:
 
 1. import a local zip archive
 2. import from a local folder path
@@ -68,8 +68,8 @@ Once imported, a pack can be activated or disabled locally from the same screen.
 
 Typical activation flow for an end user:
 
-1. open `Settings > Models`
-2. go to `Packs`
+1. open `Addons` from the sidebar
+2. go to local packs
 3. import a zip or local folder
 4. click `Activer`
 

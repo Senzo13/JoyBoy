@@ -8,6 +8,7 @@ from core.models.runtime_env import (
     apply_mps_pipeline_optimizations,
     configure_huggingface_env,
     decode_sdxl_latents_with_mps_fallback,
+    ensure_mps_sdxl_vae_ready_for_call,
     should_enable_hf_parallel_loading,
 )
 
@@ -74,19 +75,24 @@ class ModelRuntimeEnvTest(unittest.TestCase):
         class FakeVae:
             def __init__(self) -> None:
                 self.dtype = torch.float16
+                self.device = torch.device("cpu")
                 self.config = type("Config", (), {"force_upcast": False})()
 
             def register_to_config(self, **kwargs) -> None:
                 for key, value in kwargs.items():
                     setattr(self.config, key, value)
 
-            def to(self, dtype=None):
-                self.dtype = dtype
+            def to(self, device=None, dtype=None):
+                if device is not None:
+                    self.device = torch.device(device)
+                if dtype is not None:
+                    self.dtype = dtype
                 return self
 
         class FakePipe:
             def __init__(self) -> None:
                 self.vae = FakeVae()
+                self._execution_device = torch.device("mps")
                 self.partial_upcast_called = False
 
             def upcast_vae(self) -> None:
@@ -99,9 +105,43 @@ class ModelRuntimeEnvTest(unittest.TestCase):
 
         self.assertTrue(enabled)
         self.assertFalse(pipe.partial_upcast_called)
+        self.assertEqual(pipe.vae.device.type, "mps")
         self.assertIs(pipe.vae.dtype, torch.float32)
         self.assertTrue(pipe.vae.config.force_upcast)
         self.assertTrue(pipe._joyboy_mps_full_vae_fp32_decode)
+
+    def test_ensure_mps_sdxl_vae_ready_for_call_aligns_cpu_vae(self) -> None:
+        class FakeParam:
+            def __init__(self, device: str) -> None:
+                self.device = torch.device(device)
+
+        class FakeModule:
+            def __init__(self, device: str, dtype=torch.float16) -> None:
+                self.param = FakeParam(device)
+                self.dtype = dtype
+
+            def parameters(self):
+                yield self.param
+
+            def to(self, device=None, dtype=None):
+                if device is not None:
+                    self.param.device = torch.device(device)
+                if dtype is not None:
+                    self.dtype = dtype
+                return self
+
+        class FakePipe:
+            def __init__(self) -> None:
+                self.vae = FakeModule("cpu")
+                self.unet = FakeModule("mps")
+
+        pipe = FakePipe()
+
+        changed = ensure_mps_sdxl_vae_ready_for_call(pipe, "fake")
+
+        self.assertTrue(changed)
+        self.assertEqual(pipe.vae.param.device.type, "mps")
+        self.assertIs(pipe.vae.dtype, torch.float32)
 
     def test_mps_pipeline_optimizations_sanitize_non_finite_postprocess_pixels(self) -> None:
         class FakeProcessor:

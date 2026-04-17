@@ -8,8 +8,8 @@ Third-party packs are not part of JoyBoy's public core. Review any pack before i
 
 1. Download the pack zip or folder.
 2. Open JoyBoy.
-3. Go to `Settings > Models`.
-4. Open the local packs/addons section.
+3. Open `Addons` from the sidebar.
+4. Open the local packs section.
 5. Import the zip or local folder.
 6. Activate the pack.
 

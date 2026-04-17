@@ -52,7 +52,6 @@ Open `Settings > Models` to:
 - save `HF_TOKEN`
 - save `CIVITAI_API_KEY`
 - inspect the Doctor report
-- import local packs
 - resolve and import model sources
 
 Provider keys are optional at startup. Add them only when you need downloads that require auth:
@@ -69,8 +68,8 @@ UI-managed secrets are stored outside git in `~/.joyboy/config.json`.
 
 JoyBoy can import local packs from a `.zip` archive or local folder.
 
-1. Open `Settings > Models`.
-2. Go to local packs/addons.
+1. Open `Addons` from the sidebar.
+2. Go to local packs.
 3. Import the pack zip or folder.
 4. Activate the pack.
 
