@@ -12,7 +12,7 @@ from pathlib import Path
 
 from core.generation.state import (
     _state, GenerationCancelledException,
-    clear_preview, set_phase, MAX_HISTORY,
+    clear_preview, set_phase, set_progress_phase, MAX_HISTORY,
     _prompt_embed_cache, _PROMPT_CACHE_MAX,
 )
 from core.generation.preview import make_preview_callback, _get_taesd, _get_taef1
@@ -211,6 +211,9 @@ def generate_from_text(prompt: str, model_name: str = "Automatique", enhance: bo
     if pipe is None:
         raise ValueError("pipe must be provided (injected by ModelManager)")
 
+    clear_preview()
+    set_progress_phase("prepare_text2img", 0, 100)
+
     # Vérifier annulation
     if cancel_check and cancel_check():
         print(f"[TEXT2IMG] Annulation détectée")
@@ -253,6 +256,7 @@ def generate_from_text(prompt: str, model_name: str = "Automatique", enhance: bo
     # ===== DÉTECTION FORMAT / RÉSOLUTION + STYLE =====
     # Alignement résolution: Flux = multiples de 16, SDXL = multiples de 64
     align = 16 if is_flux else 64
+    set_progress_phase("prepare_text2img", 10, 100)
 
     # 2. Export format — PRIORITAIRE sur la détection prompt (sauf "auto")
     export_fmt = export_settings.get('format', 'auto')
@@ -321,6 +325,7 @@ def generate_from_text(prompt: str, model_name: str = "Automatique", enhance: bo
         style_ref_scale = adjusted_scale
 
     # ===== CONSTRUCTION DU PROMPT =====
+    set_progress_phase("prepare_prompt", 25, 100)
     neg = None
     if is_flux:
         # Flux: prompt direct, pas de negative prompt, pas de prefix SDXL
@@ -364,6 +369,7 @@ def generate_from_text(prompt: str, model_name: str = "Automatique", enhance: bo
     log_vram_status(f"Avant génération | {model_name}")
 
     # Pré-charger le tiny decoder AVANT la génération (évite le chargement pendant le denoising)
+    set_progress_phase("prepare_preview_decoder", 45, 100)
     if is_flux:
         _get_taef1()  # TAEF1 ~2MB, 16 channels (Flux)
     else:
@@ -394,8 +400,7 @@ def generate_from_text(prompt: str, model_name: str = "Automatique", enhance: bo
 
     generation_start_time = time.time()
 
-    # Initialiser les variables de preview (clear AVANT de set total_steps!)
-    clear_preview()
+    # Initialiser les variables de preview sans effacer la phase runtime courante.
     _state.total_steps = steps
 
     # Créer le callback avec preview (tous les 1 step pour Turbo car peu de steps)
@@ -417,6 +422,7 @@ def generate_from_text(prompt: str, model_name: str = "Automatique", enhance: bo
             init_img = style_init_image.convert('RGB').resize((width, height), Image.LANCZOS)
             img_strength = max(0.05, min(0.9, 1.0 - style_ref_scale))
             print(f"[TEXT2IMG] Flux img2img depuis style ref (strength={img_strength})")
+            set_progress_phase("diffusion", 0, steps)
             result = img2img_pipe(
                 prompt=full_prompt,
                 image=init_img,
@@ -429,6 +435,7 @@ def generate_from_text(prompt: str, model_name: str = "Automatique", enhance: bo
             ).images[0]
         else:
             print(f"[TEXT2IMG] Flux Dev text2img ({width}x{height}, steps={steps})")
+            set_progress_phase("diffusion", 0, steps)
             result = pipe(
                 prompt=full_prompt,
                 guidance_scale=guidance,
@@ -461,6 +468,7 @@ def generate_from_text(prompt: str, model_name: str = "Automatique", enhance: bo
             init_img = style_init_image.convert('RGB').resize((width, height), Image.LANCZOS)
             img_strength = max(0.05, min(0.9, 1.0 - style_ref_scale))
             print(f"[TEXT2IMG] Img2img depuis style ref (strength={img_strength})")
+            set_progress_phase("diffusion", 0, steps)
             result = img2img_pipe(
                 prompt=full_prompt,
                 negative_prompt=neg,
@@ -474,6 +482,7 @@ def generate_from_text(prompt: str, model_name: str = "Automatique", enhance: bo
             ).images[0]
         else:
             print(f"[TEXT2IMG] Pipeline text2img converti ({pipe.__class__.__name__})")
+            set_progress_phase("diffusion", 0, steps)
             result = pipe(
                 prompt=full_prompt,
                 negative_prompt=neg,
@@ -498,6 +507,7 @@ def generate_from_text(prompt: str, model_name: str = "Automatique", enhance: bo
         # ===== ControlNet: determine control image (depth map or skeleton) =====
         cn_control_image = None
         if controlnet_model is not None:
+            set_progress_phase("prepare_pose_control", 0, 100)
             if controlnet_depth_image is not None:
                 # Pre-extracted depth map from style ref (ControlNet Depth)
                 cn_control_image = controlnet_depth_image.resize((width, height), Image.BILINEAR)
@@ -541,6 +551,7 @@ def generate_from_text(prompt: str, model_name: str = "Automatique", enhance: bo
 
         # ===== ControlNet pipeline (zero-copy wrapper) =====
         if cn_control_image is not None and controlnet_model is not None:
+            set_progress_phase("prepare_pose_control", 70, 100)
             # Move ControlNet to CUDA for generation
             from core.models import IS_MAC
             _cn_device = "mps" if IS_MAC else "cuda"
@@ -558,6 +569,7 @@ def generate_from_text(prompt: str, model_name: str = "Automatique", enhance: bo
                 img_strength = max(0.05, min(0.9, 1.0 - style_ref_scale))
                 _cn_type = "Depth" if controlnet_depth_image is not None else "OpenPose"
                 print(f"[TEXT2IMG] ControlNet {_cn_type} + img2img (cn_scale={controlnet_scale}, img_strength={img_strength})")
+                set_progress_phase("diffusion", 0, steps)
                 result = cn_pipe(
                     prompt=full_prompt,
                     negative_prompt=neg if not is_turbo else None,
@@ -576,6 +588,7 @@ def generate_from_text(prompt: str, model_name: str = "Automatique", enhance: bo
                 from diffusers import StableDiffusionXLControlNetPipeline
                 cn_pipe = StableDiffusionXLControlNetPipeline(**cn_components, controlnet=controlnet_model)
                 print(f"[TEXT2IMG] ControlNet OpenPose text2img (cn_scale={controlnet_scale})")
+                set_progress_phase("diffusion", 0, steps)
                 result = cn_pipe(
                     prompt=full_prompt,
                     negative_prompt=neg if not is_turbo else None,
@@ -601,6 +614,7 @@ def generate_from_text(prompt: str, model_name: str = "Automatique", enhance: bo
             init_img = style_init_image.convert('RGB').resize((width, height), Image.LANCZOS)
             img_strength = max(0.05, min(0.9, 1.0 - style_ref_scale))
             print(f"[TEXT2IMG] Img2img depuis style ref (strength={img_strength}, scale={style_ref_scale})")
+            set_progress_phase("diffusion", 0, steps)
             result = img2img_pipe(
                 prompt=full_prompt,
                 negative_prompt=neg if not is_turbo else None,
@@ -614,6 +628,7 @@ def generate_from_text(prompt: str, model_name: str = "Automatique", enhance: bo
             ).images[0]
         else:
             print(f"[TEXT2IMG] Pipeline text2img ({pipe.__class__.__name__})")
+            set_progress_phase("diffusion", 0, steps)
             result = pipe(
                 prompt=full_prompt,
                 negative_prompt=neg if not is_turbo else None,

@@ -1495,9 +1495,21 @@ class ModelManager:
 
         # Si même modèle text2img déjà chargé, réutiliser
         if self._inpaint_pipe is not None and self._current_inpaint_model == model_key:
+            _publish_runtime_progress(
+                "load_text2img_model",
+                100,
+                100,
+                f"Modèle Text2Img déjà chargé: {model_name}",
+            )
             return
 
         print(f"[MM] Loading text2img: {model_name} (sans Fooocus patch)...")
+        _publish_runtime_progress(
+            "load_text2img_model",
+            8,
+            100,
+            f"Chargement Text2Img: {model_name}...",
+        )
 
         # Reset SageAttention global
         try:
@@ -1513,6 +1525,12 @@ class ModelManager:
         if is_single_file:
             from core.models.registry import resolve_single_file_model
             model_path = resolve_single_file_model(model_name)
+            _publish_runtime_progress(
+                "load_text2img_model",
+                18,
+                100,
+                f"Lecture du checkpoint local: {model_name}...",
+            )
             self._inpaint_pipe = StableDiffusionXLPipeline.from_single_file(
                 model_path, torch_dtype=TORCH_DTYPE,
                 low_cpu_memory_usage=False,
@@ -1520,12 +1538,30 @@ class ModelManager:
         else:
             load_kwargs = get_model_loading_kwargs()
             try:
+                _publish_runtime_progress(
+                    "load_text2img_model",
+                    18,
+                    100,
+                    f"Chargement depuis Hugging Face: {model_name}...",
+                )
                 self._inpaint_pipe = StableDiffusionXLPipeline.from_pretrained(model_id, **load_kwargs)
             except (ValueError, OSError):
                 load_kwargs.pop("local_files_only", None)
                 load_kwargs.pop("variant", None)
                 print(f"[MM] Fallback: téléchargement {model_id} sans variant fp16...")
+                _publish_runtime_progress(
+                    "download_text2img_model",
+                    20,
+                    100,
+                    f"Téléchargement modèle Text2Img: {model_name}...",
+                )
                 self._inpaint_pipe = StableDiffusionXLPipeline.from_pretrained(model_id, **load_kwargs)
+        _publish_runtime_progress(
+            "load_text2img_model",
+            45,
+            100,
+            "Pipeline Text2Img chargé",
+        )
 
         if not is_turbo:
             # Scheduler créé from scratch (PAS from_config) car le modèle vient avec
@@ -1548,12 +1584,19 @@ class ModelManager:
 
         # VAE fp16-fix (même que inpaint)
         from diffusers import AutoencoderKL
+        _publish_runtime_progress(
+            "download_vae",
+            50,
+            100,
+            "Préparation VAE fp16-fix...",
+        )
         fixed_vae = AutoencoderKL.from_pretrained(
             "madebyollin/sdxl-vae-fp16-fix", torch_dtype=TORCH_DTYPE
         )
         self._inpaint_pipe.vae = fixed_vae
         self._inpaint_pipe.enable_vae_slicing()
         print(f"[MM] VAE remplacé par sdxl-vae-fp16-fix ({DTYPE_NAME})")
+        _publish_runtime_progress("download_vae", 100, 100, "VAE prêt")
         self._apply_imported_model_assets(model_name)
 
         self._inpaint_pipe = optimize_pipeline(self._inpaint_pipe, f"text2img ({model_name})")
@@ -1568,6 +1611,12 @@ class ModelManager:
         quantized_ok = False
 
         if do_quant and not IS_MAC:
+            _publish_runtime_progress(
+                "quantize_model",
+                68,
+                100,
+                "Préparation quantification Text2Img...",
+            )
             try:
                 from optimum.quanto import quantize, freeze, qint8, qint4
             except ImportError:
@@ -1590,6 +1639,12 @@ class ModelManager:
                     if cache_path.exists():
                         try:
                             print(f"[MM] Chargement UNet text2img {quant_name} depuis cache...")
+                            _publish_runtime_progress(
+                                "quantize_model",
+                                75,
+                                100,
+                                f"Chargement cache UNet Text2Img {quant_name}...",
+                            )
                             _safe_quantize(self._inpaint_pipe.unet, weights=quant_weight)
                             self._inpaint_pipe.unet.load_state_dict(
                                 torch.load(cache_path, map_location="cpu", mmap=True), strict=False
@@ -1610,6 +1665,12 @@ class ModelManager:
 
                     if not _loaded_from_cache:
                         print(f"[MM] Quantification UNet text2img ({quant_name})...")
+                        _publish_runtime_progress(
+                            "quantize_model",
+                            78,
+                            100,
+                            f"Quantification UNet Text2Img {quant_name}...",
+                        )
                         _safe_quantize(self._inpaint_pipe.unet, weights=quant_weight)
                         _safe_freeze(self._inpaint_pipe.unet)
                         try:
@@ -1632,6 +1693,12 @@ class ModelManager:
                 print(f"[MM] Text2img: quantification impossible, FP16")
 
         _place_sdxl_pipe(self._inpaint_pipe, model_name, quantized=quantized_ok)
+        _publish_runtime_progress(
+            "load_text2img_model",
+            96,
+            100,
+            "Placement GPU/CPU prêt",
+        )
 
         # SageAttention pour le UNet SDXL
         try:
@@ -1647,6 +1714,12 @@ class ModelManager:
         self._load_pending_custom_loras()
 
         print(f"[MM] Ready: {model_name} text2img (sans Fooocus)")
+        _publish_runtime_progress(
+            "load_text2img_model",
+            100,
+            100,
+            "Modèle Text2Img prêt",
+        )
 
     def _load_flux_dev_text2img(self, model_name="Flux Dev INT4"):
         """Charge Flux.1 Dev 12B pour text2img (NF4, INT8, ou bf16)."""
@@ -2976,6 +3049,12 @@ class ModelManager:
         from core.models import custom_cache, IS_MAC, VRAM_GB
 
         print("[MM] Loading ControlNet OpenPose SDXL...")
+        _publish_runtime_progress(
+            "load_openpose",
+            8,
+            100,
+            "Préparation ControlNet OpenPose...",
+        )
         _cn_repo = "thibaud/controlnet-openpose-sdxl-1.0"
         try:
             cn = ControlNetModel.from_pretrained(
@@ -2983,9 +3062,21 @@ class ModelManager:
                 local_files_only=True,
             )
         except OSError:
+            _publish_runtime_progress(
+                "download_openpose",
+                12,
+                100,
+                "Téléchargement ControlNet OpenPose (~5GB)...",
+            )
             cn = ControlNetModel.from_pretrained(
                 _cn_repo, torch_dtype=TORCH_DTYPE, cache_dir=custom_cache,
             )
+        _publish_runtime_progress(
+            "load_openpose",
+            55,
+            100,
+            "ControlNet OpenPose chargé",
+        )
 
         # INT8 quantification (same pattern as depth)
         from core.models.gpu_profile import should_quantize as _sq_cn
@@ -2999,6 +3090,12 @@ class ModelManager:
 
                 if is_quantized_cached("controlnet_openpose", "int8"):
                     print(f"[MM] Chargement ControlNet OpenPose depuis cache (int8)...")
+                    _publish_runtime_progress(
+                        "quantize_openpose",
+                        70,
+                        100,
+                        "Chargement cache OpenPose INT8...",
+                    )
                     cached_state = torch.load(cache_path, map_location="cpu", weights_only=False)
                     _safe_quantize(cn, weights=qint8)
                     try:
@@ -3009,6 +3106,12 @@ class ModelManager:
                     print(f"[MM] ControlNet OpenPose chargé depuis cache (int8)")
                 else:
                     print(f"[MM] Quantification ControlNet OpenPose INT8...")
+                    _publish_runtime_progress(
+                        "quantize_openpose",
+                        72,
+                        100,
+                        "Quantification ControlNet OpenPose INT8...",
+                    )
                     _safe_quantize(cn, weights=qint8)
                     _safe_freeze(cn)
                     torch.save(cn.state_dict(), cache_path)
@@ -3021,6 +3124,12 @@ class ModelManager:
         # Garder sur CPU — sera mis sur CUDA seulement lors du swap
         self._controlnet_openpose = cn
         print(f"[MM] Ready: ControlNet OpenPose SDXL{q_str} (CPU, prêt pour swap)")
+        _publish_runtime_progress(
+            "load_openpose",
+            100,
+            100,
+            "ControlNet OpenPose prêt",
+        )
 
     def swap_controlnet(self, cn_type='depth'):
         """Swap le ControlNet actif dans le pipeline (depth ↔ openpose).

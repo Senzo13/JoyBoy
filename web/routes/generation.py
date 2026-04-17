@@ -461,6 +461,7 @@ def unified_generate():
 
     from core.api_helpers import success_response, error_response, cancelled_response, validation_error, image_response
     from core.processing import process_image, generate_from_text, GenerationCancelledException
+    from core.processing import clear_preview, set_progress_phase
     from core.processing import reframe_person
 
     try:
@@ -1102,6 +1103,9 @@ def unified_generate():
 
         # ========== 3. TEXT-TO-IMAGE (pas d'image) ==========
         if not image_b64:
+            clear_preview()
+            set_progress_phase("prepare_text2img", 0, 100)
+
             # Décharger TOUS les LLM Ollama pour libérer la VRAM avant la diffusion (8GB OOM sinon)
             # Le chat utilise qwen3.5:2b, le router utilise UTILITY_MODEL — les deux prennent de la VRAM
             # SYNCHRONE: sur 8GB, SDXL charge juste après → faut que le unload finisse AVANT
@@ -1160,6 +1164,7 @@ def unified_generate():
                 # Style ref sans pose explicite → ControlNet Depth (meilleur pour poses complexes)
                 _use_depth_cn = needs_cn_pose and not _has_explicit_pose and has_style
 
+                set_progress_phase("load_text2img_model", 0, 100)
                 with generation_pipeline('text2img', generation_id, model_name=model,
                                          needs_ip_adapter=needs_face,
                                          needs_controlnet=needs_cn_pose,
@@ -1173,6 +1178,7 @@ def unified_generate():
                         else:
                             print(f"[TEXT2IMG] Aucun visage détecté dans la référence, ignoré")
                     if has_style:
+                        set_progress_phase("prepare_text2img", 20, 100)
                         style_init_img = base64_to_pil(style_ref_b64)
                         if style_init_img is not None:
                             print(f"[TEXT2IMG] Style ref → init image (img2img, scale={style_ref_scale})")
@@ -1196,23 +1202,27 @@ def unified_generate():
                     _cn_pose = _export_pose if _has_explicit_pose else None
 
                     if _cn_model is not None and not _use_depth_cn:
+                        set_progress_phase("prepare_pose_control", 0, 100)
                         _cn_src = f"pose '{_export_pose}'" if _has_explicit_pose else "style ref extraction"
                         print(f"[TEXT2IMG] ControlNet OpenPose activé ({_cn_src}, scale={_cn_scale})")
 
                     # LoRAs: charger/décharger selon les settings utilisateur
                     if lora_nsfw_enabled:
+                        set_progress_phase("load_loras", 0, 100)
                         if mgr.ensure_lora_loaded("nsfw"):
                             mgr.set_lora_scale("nsfw", lora_nsfw_strength)
                             print(f"[TEXT2IMG] LoRA NSFW active (scale={lora_nsfw_strength})")
                     elif mgr._loras_loaded.get("nsfw"):
                         mgr.unload_lora("nsfw")
                     if lora_skin_enabled:
+                        set_progress_phase("load_loras", 35, 100)
                         if mgr.ensure_lora_loaded("skin"):
                             mgr.set_lora_scale("skin", lora_skin_strength)
                             print(f"[TEXT2IMG] LoRA Skin active (scale={lora_skin_strength})")
                     elif mgr._loras_loaded.get("skin"):
                         mgr.unload_lora("skin")
                     if lora_breasts_enabled:
+                        set_progress_phase("load_loras", 70, 100)
                         if mgr.ensure_lora_loaded("breasts"):
                             mgr.set_lora_scale("breasts", lora_breasts_strength)
                             print(f"[TEXT2IMG] LoRA Breasts active (scale={lora_breasts_strength})")

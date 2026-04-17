@@ -24,6 +24,15 @@ _dwpose_model = None
 _dwpose_processor = None
 
 
+def _publish_pose_progress(phase: str, step: int = 0, total: int = 100, message: str = ""):
+    try:
+        from core.generation.state import set_progress_phase
+
+        set_progress_phase(phase, step=step, total=total, message=message)
+    except Exception:
+        pass
+
+
 def _ensure_controlnet_aux():
     """Vérifie que controlnet_aux est installé.
 
@@ -40,6 +49,7 @@ def _ensure_controlnet_aux():
         pass
 
     print("[BODY] Installation de controlnet_aux...")
+    _publish_pose_progress("install_pose_tools", 5, 100, "Installation controlnet_aux...")
     try:
         subprocess.run(
             [sys.executable, "-m", "pip", "install", "controlnet_aux"],
@@ -112,9 +122,11 @@ def load_dwpose():
         from controlnet_aux.open_pose import OpenposeDetector
         import torch
         print("[BODY] Chargement OpenposeDetector (~180MB)...")
+        _publish_pose_progress("load_pose_detector", 25, 100, "Chargement OpenPose detector...")
         _dwpose_model = OpenposeDetector.from_pretrained("lllyasviel/Annotators")
         _dwpose_model.to(torch.float32)
         print("[BODY] OpenposeDetector prêt (CMU OpenPose, float32)")
+        _publish_pose_progress("load_pose_detector", 100, 100, "OpenPose detector prêt")
         return _dwpose_model
     except Exception as e:
         print(f"[BODY] OpenposeDetector indisponible ({e})")
@@ -124,10 +136,12 @@ def load_dwpose():
         _block_broken_mediapipe()
         from controlnet_aux.dwpose import DWposeDetector
         print("[BODY] Chargement DWPose (fallback)...")
+        _publish_pose_progress("load_pose_detector", 55, 100, "Chargement DWPose fallback...")
         _dwpose_model = DWposeDetector.from_pretrained(
             "yolox_l.onnx", "dw-ll_ucoco_384.onnx"
         )
         print("[BODY] DWPose prêt")
+        _publish_pose_progress("load_pose_detector", 100, 100, "DWPose prêt")
         return _dwpose_model
     except Exception as e:
         print(f"[BODY] DWPose indisponible ({e})")

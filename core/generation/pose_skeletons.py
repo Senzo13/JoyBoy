@@ -17,6 +17,15 @@ _SKELETONS_DIR = Path("output/skeletons")
 # Cache: pose_name → PIL.Image
 _skeleton_cache = {}
 
+
+def _publish_pose_progress(phase: str, step: int = 0, message: str = ""):
+    try:
+        from core.generation.state import set_progress_phase
+
+        set_progress_phase(phase, step=step, total=100, message=message)
+    except Exception:
+        pass
+
 # ── Prompt fallback per pose (positive, negative) ──
 _POSE_PROMPTS = {
     'standing_spread': (
@@ -67,14 +76,17 @@ def generate_pose_skeleton(pose_name, width, height):
 
     # 1. Memory cache
     if _name in _skeleton_cache:
+        _publish_pose_progress("pose_skeleton_ready", 100, "Squelette pose prêt")
         return _skeleton_cache[_name].resize((width, height), Image.BILINEAR)
 
     # 2. Cached skeleton on disk
     cached_path = _SKELETONS_DIR / f"{_name}_skeleton.png"
     if cached_path.exists():
+        _publish_pose_progress("extract_pose_skeleton", 65, "Chargement squelette pose...")
         skeleton = Image.open(cached_path).convert('RGB')
         _skeleton_cache[_name] = skeleton
         print(f"[SKELETON] Loaded cached skeleton: {cached_path.name}")
+        _publish_pose_progress("pose_skeleton_ready", 100, "Squelette pose prêt")
         return skeleton.resize((width, height), Image.BILINEAR)
 
     # 3. Reference photo → extract with OpenPose
@@ -82,6 +94,7 @@ def generate_pose_skeleton(pose_name, width, height):
     if not ref_path.exists():
         ref_path = _SKELETONS_DIR / f"{_name}.jpg"
     if ref_path.exists():
+        _publish_pose_progress("extract_pose_skeleton", 35, "Extraction squelette OpenPose...")
         skeleton = _extract_skeleton_from_photo(ref_path)
         if skeleton is not None:
             _skeleton_cache[_name] = skeleton
@@ -91,9 +104,11 @@ def generate_pose_skeleton(pose_name, width, height):
                 print(f"[SKELETON] Cached extracted skeleton: {cached_path.name}")
             except Exception:
                 pass
+            _publish_pose_progress("pose_skeleton_ready", 100, "Squelette pose prêt")
             return skeleton.resize((width, height), Image.BILINEAR)
 
     # No skeleton available → caller should use prompt fallback
+    _publish_pose_progress("pose_fallback", 100, "Squelette absent, fallback prompt")
     return None
 
 
