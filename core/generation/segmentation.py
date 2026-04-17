@@ -56,6 +56,7 @@ _fusion_b4_cache = None   # {'model': ..., 'processor': ...}
 
 # Verrou pour éviter les race conditions pendant le chargement
 _grounding_dino_lock = threading.Lock()
+_segmentation_cuda_cpu_policy_logged = False
 
 
 def _materialize_meta_tensors(module):
@@ -590,18 +591,30 @@ def detect_body_orientation(image: Image.Image) -> dict:
 def get_device():
     """Retourne le device optimal pour les modèles de segmentation.
 
-    SCHP (~200MB) et SegFormer (~200MB) tournent AVANT la diffusion,
-    pas de conflit VRAM avec le UNet. CUDA dès 6GB.
+    Sur petites VRAM CUDA, les modèles de segmentation restent CPU par défaut:
+    le preload SDXL/ControlNet peut sinon se battre avec B2/B4/SCHP et bloquer
+    la requête. Override local: JOYBOY_SEGMENTATION_CUDA_LOW_VRAM=1.
     """
+    global _segmentation_cuda_cpu_policy_logged
     import torch
     if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
         return "mps"
     elif torch.cuda.is_available():
         vram_gb = torch.cuda.get_device_properties(0).total_memory / 1024**3
-        if vram_gb >= 6:
+        try:
+            from core.models.runtime_env import should_run_segmentation_on_cuda
+            use_cuda = should_run_segmentation_on_cuda(vram_gb)
+        except Exception:
+            use_cuda = vram_gb > 10
+        if use_cuda:
             return "cuda"
-        else:
-            return "cpu"
+        if vram_gb >= 6 and not _segmentation_cuda_cpu_policy_logged:
+            print(
+                f"[SEG] CUDA {vram_gb:.1f}GB détectée: segmentation sur CPU "
+                "(évite les blocages low VRAM avec SDXL/ControlNet)"
+            )
+            _segmentation_cuda_cpu_policy_logged = True
+        return "cpu"
     return "cpu"
 
 
@@ -2469,11 +2482,17 @@ def segment_fusion(image: Image.Image, strategy: str = 'clothes', include_classe
     if cv2 is None:
         print("[SEG] cv2 unavailable, returning full mask (fusion)")
         return Image.new("L", image.size, 255)
-    from concurrent.futures import ThreadPoolExecutor, as_completed
+    from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError, as_completed
     from pathlib import Path
     from core.log_utils import header, row, footer
 
     header("FUSION SEGMENTATION (parallèle)")
+    _publish_asset_download_progress(
+        "segment_fusion",
+        1,
+        4,
+        "Fusion segmentation B2/B4/SCHP en cours...",
+    )
 
     if image.mode != "RGB":
         image = image.convert("RGB")
@@ -2486,6 +2505,11 @@ def segment_fusion(image: Image.Image, strategy: str = 'clothes', include_classe
     body_masks = {}
     glasses_masks = {}
     hands_mask = None
+    try:
+        from core.models.runtime_env import get_segmentation_fusion_timeout_seconds
+        fusion_timeout = get_segmentation_fusion_timeout_seconds()
+    except Exception:
+        fusion_timeout = 180.0
 
     # Lancer B2 + B4 + SCHP en parallèle
     # Chaque modèle résout ses propres classes pour la stratégie donnée
@@ -2495,21 +2519,56 @@ def segment_fusion(image: Image.Image, strategy: str = 'clothes', include_classe
         _restore_register_parameter()
     except ImportError:
         pass
-    with ThreadPoolExecutor(max_workers=3) as executor:
+
+    completed_count = 0
+    executor = ThreadPoolExecutor(max_workers=3)
+    try:
         futures = {
             executor.submit(_run_b2, image, strategy, include_classes_override, device, output_dir, save_debug): 'b2',
             executor.submit(_run_b4, image, strategy, include_classes_override, device, output_dir, save_debug): 'b4',
             executor.submit(_run_schp, image, strategy, include_classes_override, output_dir, save_debug): 'schp',
         }
 
-        for future in as_completed(futures):
-            variant, mask_array, pct, body_array, glasses_array, hands_array = future.result()
-            masks[variant] = mask_array
-            body_masks[variant] = body_array
-            glasses_masks[variant] = glasses_array
-            if hands_array is not None:
-                hands_mask = hands_array
-            row(variant.upper(), f"{pct:.1f}% détecté")
+        try:
+            for future in as_completed(futures, timeout=fusion_timeout):
+                expected_variant = futures.get(future, "?")
+                try:
+                    variant, mask_array, pct, body_array, glasses_array, hands_array = future.result()
+                except Exception as exc:
+                    row(expected_variant.upper(), f"ERREUR ({exc})")
+                    continue
+
+                masks[variant] = mask_array
+                body_masks[variant] = body_array
+                glasses_masks[variant] = glasses_array
+                if hands_array is not None:
+                    hands_mask = hands_array
+                completed_count += 1
+                row(variant.upper(), f"{pct:.1f}% détecté")
+                _publish_asset_download_progress(
+                    "segment_fusion",
+                    min(3, completed_count + 1),
+                    4,
+                    f"{variant.upper()} prêt ({completed_count}/3)",
+                )
+        except FuturesTimeoutError:
+            pending = [name.upper() for future, name in futures.items() if not future.done()]
+            for future in futures:
+                if not future.done():
+                    future.cancel()
+            pending_text = ", ".join(pending) if pending else "inconnu"
+            used_text = ", ".join(name.upper() for name in masks.keys()) or "aucun"
+            row("Timeout", f"{fusion_timeout:.0f}s: fallback partiel ({used_text}), pending {pending_text}")
+            _publish_asset_download_progress(
+                "segment_fusion",
+                4,
+                4,
+                f"Segmentation partielle utilisée ({used_text})",
+            )
+    finally:
+        # Do not wait forever for a stuck HF/CUDA worker. Running threads cannot
+        # be killed safely, but the request can continue with partial masks.
+        executor.shutdown(wait=False, cancel_futures=True)
 
     # Restore clean register_parameter after parallel loading
     try:
@@ -2517,6 +2576,17 @@ def segment_fusion(image: Image.Image, strategy: str = 'clothes', include_classe
         _restore_register_parameter()
     except ImportError:
         pass
+
+    if not masks:
+        row("Fallback", "aucun modèle disponible à temps → masque complet")
+        _publish_asset_download_progress(
+            "segment_fusion",
+            4,
+            4,
+            "Segmentation indisponible, fallback masque complet",
+        )
+        footer()
+        return Image.new("L", image.size, 255)
 
     # === OUTLIER FILTER ===
     masks, pcts = _filter_fusion_outliers(masks, row=row)

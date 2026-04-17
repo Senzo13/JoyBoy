@@ -136,7 +136,9 @@ def generation_pipeline(task_type, generation_id, preload_future=None, **load_kw
 
     Si preload_future est fourni, attend que le preload (lancé en background) se termine
     au lieu de refaire load_for_task.
-    Timeout 120s + fallback sur load_for_task direct si le preload échoue.
+    Timeout configurable + fallback direct uniquement si le preload n'a pas
+    démarré. Si le thread est déjà en train de charger le même manager, on
+    remonte une erreur claire au lieu de lancer un second load concurrent.
     Si le preload est stale (retourné sans charger, car une nouvelle gen l'a remplacé),
     on fait un load_for_task direct.
     """
@@ -168,10 +170,21 @@ def generation_pipeline(task_type, generation_id, preload_future=None, **load_kw
 
         if preload_future is not None:
             try:
-                preload_future.result(timeout=120)
+                from core.models.runtime_env import get_image_preload_wait_timeout_seconds
+                preload_timeout = get_image_preload_wait_timeout_seconds()
+            except Exception:
+                preload_timeout = 120.0
+            try:
+                preload_future.result(timeout=preload_timeout)
             except concurrent.futures.TimeoutError:
-                print("[PIPELINE] Preload timeout (120s), fallback direct load")
-                mgr.load_for_task(task_type, **load_kwargs)
+                if preload_future.cancel():
+                    print(f"[PIPELINE] Preload timeout ({preload_timeout:.0f}s), cancelled before start; direct load")
+                    mgr.load_for_task(task_type, **load_kwargs)
+                else:
+                    raise RuntimeError(
+                        f"Préchargement image bloqué après {preload_timeout:.0f}s. "
+                        "Relance la génération; JoyBoy a évité un second chargement concurrent."
+                    )
             except Exception as e:
                 if "PyTorch est installé sans CUDA" in str(e):
                     print(f"[PIPELINE] Preload error: {e}")

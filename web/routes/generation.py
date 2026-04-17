@@ -645,6 +645,14 @@ def unified_generate():
             _lora_skin = lora_skin_enabled and _preload_loras
             _lora_breasts = lora_breasts_enabled and _preload_loras
             _cn = _preload_controlnet
+            _preload_skip_reason = None
+            try:
+                from core.models import VRAM_GB
+                from core.models.runtime_env import get_parallel_image_preload_skip_reason
+
+                _preload_skip_reason = get_parallel_image_preload_skip_reason(VRAM_GB)
+            except Exception as _preload_policy_error:
+                print(f"[PRELOAD] Policy check skipped: {_preload_policy_error}")
 
             # Register this generation as the active preload target.
             # Any older preload still running will detect it's stale and bail out.
@@ -717,6 +725,11 @@ def unified_generate():
                     if _preload_gen_id == _my_gen_id:
                         _preload_gen_id = None
                 print(f"[PRELOAD] Skipped for imported single-file model ({model}); direct load after segmentation")
+            elif _preload_skip_reason:
+                with _preload_lock:
+                    if _preload_gen_id == _my_gen_id:
+                        _preload_gen_id = None
+                print(f"[PRELOAD] Skipped parallel preload ({_preload_skip_reason}); direct load after segmentation")
             else:
                 _preload_executor = ThreadPoolExecutor(max_workers=1)
                 _preload_future = _preload_executor.submit(_preload_pipeline_and_loras)

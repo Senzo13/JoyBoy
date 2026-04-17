@@ -42,6 +42,120 @@ def configure_huggingface_env(
     )
 
 
+def _env_flag(
+    name: str,
+    default: bool = False,
+    *,
+    environ: MutableMapping[str, str] | None = None,
+) -> bool:
+    env = environ if environ is not None else os.environ
+    raw = env.get(name)
+    if raw is None:
+        return default
+    return str(raw).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _env_float(
+    name: str,
+    default: float,
+    *,
+    environ: MutableMapping[str, str] | None = None,
+) -> float:
+    env = environ if environ is not None else os.environ
+    try:
+        return float(env.get(name, default))
+    except (TypeError, ValueError):
+        return float(default)
+
+
+def get_segmentation_fusion_timeout_seconds(
+    *,
+    environ: MutableMapping[str, str] | None = None,
+) -> float:
+    """Maximum wait for B2/B4/SCHP fusion before using partial results."""
+    timeout = _env_float(
+        "JOYBOY_SEGMENTATION_FUSION_TIMEOUT",
+        180.0,
+        environ=environ,
+    )
+    return max(30.0, timeout)
+
+
+def should_run_segmentation_on_cuda(
+    vram_gb: float,
+    *,
+    environ: MutableMapping[str, str] | None = None,
+) -> bool:
+    """Return whether small segmentation models should use CUDA.
+
+    On 8-10GB cards, running segmentation on CUDA while SDXL/ControlNet is being
+    prepared can stall the whole request. CPU segmentation is slower, but it
+    keeps low-VRAM installs moving predictably.
+    """
+    if vram_gb <= 0:
+        return False
+    if _env_flag("JOYBOY_SEGMENTATION_FORCE_CPU", False, environ=environ):
+        return False
+    if _env_flag("JOYBOY_SEGMENTATION_CUDA_LOW_VRAM", False, environ=environ):
+        return True
+
+    min_vram = _env_float(
+        "JOYBOY_SEGMENTATION_CUDA_MIN_VRAM_GB",
+        10.0,
+        environ=environ,
+    )
+    return float(vram_gb) > min_vram
+
+
+def get_parallel_image_preload_skip_reason(
+    vram_gb: float,
+    *,
+    system_name: str | None = None,
+    environ: MutableMapping[str, str] | None = None,
+) -> str | None:
+    """Explain why image preload should not run beside routing/segmentation."""
+    env = environ if environ is not None else os.environ
+    if _env_flag("JOYBOY_DISABLE_PARALLEL_IMAGE_PRELOAD", False, environ=env):
+        return "disabled by JOYBOY_DISABLE_PARALLEL_IMAGE_PRELOAD"
+
+    current_system = system_name or platform.system()
+    if current_system == "Darwin" and not _env_flag(
+        "JOYBOY_ALLOW_PARALLEL_IMAGE_PRELOAD_MPS",
+        False,
+        environ=env,
+    ):
+        return "macOS/MPS uses shared memory"
+
+    if float(vram_gb or 0) <= 0:
+        return "no CUDA VRAM detected"
+
+    if _env_flag("JOYBOY_ALLOW_PARALLEL_IMAGE_PRELOAD_LOW_VRAM", False, environ=env):
+        return None
+
+    threshold = _env_float(
+        "JOYBOY_PARALLEL_IMAGE_PRELOAD_MIN_VRAM_GB",
+        10.0,
+        environ=env,
+    )
+    if 0 < float(vram_gb or 0) <= threshold:
+        return f"low VRAM ({float(vram_gb):.1f}GB <= {threshold:.1f}GB)"
+
+    return None
+
+
+def get_image_preload_wait_timeout_seconds(
+    *,
+    environ: MutableMapping[str, str] | None = None,
+) -> float:
+    """Maximum wait for a background image preload before surfacing an error."""
+    timeout = _env_float(
+        "JOYBOY_IMAGE_PRELOAD_WAIT_TIMEOUT",
+        120.0,
+        environ=environ,
+    )
+    return max(30.0, timeout)
+
+
 def apply_mps_pipeline_optimizations(
     pipe: object,
     label: str = "pipeline",

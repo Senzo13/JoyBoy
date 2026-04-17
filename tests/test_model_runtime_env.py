@@ -9,7 +9,11 @@ from core.models.runtime_env import (
     configure_huggingface_env,
     decode_sdxl_latents_with_mps_fallback,
     ensure_mps_sdxl_vae_ready_for_call,
+    get_image_preload_wait_timeout_seconds,
+    get_parallel_image_preload_skip_reason,
+    get_segmentation_fusion_timeout_seconds,
     should_enable_hf_parallel_loading,
+    should_run_segmentation_on_cuda,
 )
 
 
@@ -29,6 +33,47 @@ class ModelRuntimeEnvTest(unittest.TestCase):
         self.assertEqual(env["HF_HOME"], "cache-dir")
         self.assertEqual(env["HF_TOKEN"], "token")
         self.assertEqual(env["HF_ENABLE_PARALLEL_LOADING"], "NO")
+
+    def test_low_vram_segmentation_uses_cpu_by_default(self) -> None:
+        self.assertFalse(should_run_segmentation_on_cuda(8.0, environ={}))
+        self.assertTrue(should_run_segmentation_on_cuda(12.0, environ={}))
+        self.assertTrue(
+            should_run_segmentation_on_cuda(
+                8.0,
+                environ={"JOYBOY_SEGMENTATION_CUDA_LOW_VRAM": "1"},
+            )
+        )
+
+    def test_parallel_image_preload_skip_reasons(self) -> None:
+        self.assertIn(
+            "low VRAM",
+            get_parallel_image_preload_skip_reason(8.0, system_name="Windows", environ={}),
+        )
+        self.assertIsNone(
+            get_parallel_image_preload_skip_reason(16.0, system_name="Windows", environ={})
+        )
+        self.assertIn(
+            "macOS",
+            get_parallel_image_preload_skip_reason(0.0, system_name="Darwin", environ={}),
+        )
+        self.assertIn(
+            "no CUDA",
+            get_parallel_image_preload_skip_reason(0.0, system_name="Windows", environ={}),
+        )
+
+    def test_runtime_timeouts_are_clamped(self) -> None:
+        self.assertEqual(
+            get_segmentation_fusion_timeout_seconds(
+                environ={"JOYBOY_SEGMENTATION_FUSION_TIMEOUT": "5"}
+            ),
+            30.0,
+        )
+        self.assertEqual(
+            get_image_preload_wait_timeout_seconds(
+                environ={"JOYBOY_IMAGE_PRELOAD_WAIT_TIMEOUT": "240"}
+            ),
+            240.0,
+        )
 
     def test_mps_pipeline_optimizations_enable_attention_slicing(self) -> None:
         class FakePipe:
