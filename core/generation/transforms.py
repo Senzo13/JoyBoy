@@ -2,7 +2,7 @@
 Image transforms: upscale, reframe (zoom out), expand (outpaint).
 Depends on: state.py, preview.py, compositing.py
 """
-from PIL import Image, ImageFilter, ImageDraw
+from PIL import Image, ImageFilter, ImageDraw, ImageEnhance
 import numpy as np
 import time
 import random
@@ -185,11 +185,39 @@ def _resolve_expand_canvas(
     return target_w, target_h, image_w, image_h, effective_ratio, small_source
 
 
-def upscale_image(image: Image.Image, scale: int = 2, model_name: str = "epiCRealism XL (Moyen)", refine: bool = True, pipe=None, upscaler=None):
+def _looks_like_realesrgan(obj) -> bool:
+    """Return True for Real-ESRGAN style upsamplers."""
+    return obj is not None and callable(getattr(obj, "enhance", None))
+
+
+def _looks_like_diffusion_pipe(obj) -> bool:
+    """Return True for Diffusers-style pipelines."""
+    return obj is not None and callable(obj) and not _looks_like_realesrgan(obj)
+
+
+def _postprocess_upscaled_image(image: Image.Image) -> Image.Image:
+    """Apply a conservative final polish after neural upscaling."""
+    image = image.filter(ImageFilter.UnsharpMask(radius=1.2, percent=55, threshold=3))
+    image = ImageEnhance.Contrast(image).enhance(1.03)
+    image = ImageEnhance.Sharpness(image).enhance(1.04)
+    return image
+
+
+def upscale_image(
+    image: Image.Image,
+    scale: int = 2,
+    model_name: str = "epiCRealism XL (Moyen)",
+    refine: bool = True,
+    pipe=None,
+    upscaler=None,
+    release_refine_pipe=None,
+):
     """
     Améliore la qualité d'une image :
-    1. Refine avec img2img (rend plus cohérent et réaliste)
-    2. Upscale avec Real-ESRGAN (augmente la résolution)
+    1. Refine optionnel à faible denoise avec un vrai pipeline Diffusers
+    2. Décharge le refine pour libérer la VRAM
+    3. Upscale avec Real-ESRGAN (super-resolution non-latente)
+    4. Polish léger local (netteté/contraste, sans réinventer l'image)
 
     Retourne: (image_upscaled, status)
     """
@@ -205,98 +233,122 @@ def upscale_image(image: Image.Image, scale: int = 2, model_name: str = "epiCRea
     print(f"Taille originale: {orig_w}x{orig_h}")
 
     try:
+        # Backward compatibility guard: older route code passed RealESRGANer as
+        # `pipe`, which made the refine path call the upsampler like a Diffusers
+        # pipeline. Treat enhance()-style objects as the upscaler instead.
+        if upscaler is None and _looks_like_realesrgan(pipe):
+            upscaler = pipe
+            pipe = None
+            print("[UPSCALE] Real-ESRGAN détecté dans pipe → refine SD ignoré")
+
+        if pipe is not None and not _looks_like_diffusion_pipe(pipe):
+            print(f"[UPSCALE] Refine ignoré: pipeline non compatible ({type(pipe).__name__})")
+            pipe = None
+
         # Convertir en RGB
         if image.mode != "RGB":
             image = image.convert("RGB")
 
         # ===== ÉTAPE 1: REFINE AVEC IMG2IMG =====
         if refine and pipe is not None:
-            print("[UPSCALE] Étape 1: Refinement (img2img)...")
-
-            # Redimensionner si trop grand (max 1024 pour SDXL)
-            max_dim = 1024
-            w, h = image.size
-            if max(w, h) > max_dim:
-                ratio = max_dim / max(w, h)
-                new_w = (int(w * ratio) // 8) * 8
-                new_h = (int(h * ratio) // 8) * 8
-                image = image.resize((new_w, new_h), Image.LANCZOS)
-                print(f"[UPSCALE] Redimensionné pour refine: {new_w}x{new_h}")
-
-            w, h = image.size
-            # Ajuster aux multiples de 8
-            w = (w // 8) * 8
-            h = (h // 8) * 8
-            image = image.resize((w, h), Image.LANCZOS)
-
-            # Créer un masque avec protection du visage
-            # Blanc (255) = plein refinement, Gris (128) = léger refinement, Noir (0) = pas de changement
-            mask = Image.new("L", (w, h), 255)  # Par défaut: tout blanc
-
-            # Détecter le visage et appliquer un masque plus léger
             try:
-                from core.generation import preview as preview_module
-                if preview_module.face_cascade is None:
-                    preview_module.face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+                print("[UPSCALE] Étape 1: refinement SD léger (img2img/inpaint)...")
 
-                img_cv = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2GRAY)
-                faces = preview_module.face_cascade.detectMultiScale(img_cv, 1.1, 4)
+                # Redimensionner si trop grand (max 1024 pour SDXL)
+                max_dim = 1024
+                w, h = image.size
+                refine_source = image
+                if max(w, h) > max_dim:
+                    ratio = max_dim / max(w, h)
+                    new_w = max(64, (int(w * ratio) // 8) * 8)
+                    new_h = max(64, (int(h * ratio) // 8) * 8)
+                    refine_source = image.resize((new_w, new_h), Image.LANCZOS)
+                    print(f"[UPSCALE] Redimensionné pour refine: {new_w}x{new_h}")
 
-                if len(faces) > 0:
-                    draw = ImageDraw.Draw(mask)
-                    for (x, y, fw, fh) in faces:
-                        # Agrandir un peu la zone du visage
-                        margin = int(max(fw, fh) * 0.2)
-                        x1 = max(0, x - margin)
-                        y1 = max(0, y - margin)
-                        x2 = min(w, x + fw + margin)
-                        y2 = min(h, y + fh + margin)
+                w, h = refine_source.size
+                # Ajuster aux multiples de 8
+                w = max(64, (w // 8) * 8)
+                h = max(64, (h // 8) * 8)
+                refine_source = refine_source.resize((w, h), Image.LANCZOS)
 
-                        # Gris clair (180) = léger refinement sur le visage
-                        # Cela préserve mieux les traits du visage
-                        draw.ellipse([x1, y1, x2, y2], fill=180)
-                        print(f"[UPSCALE] Visage détecté - masque léger appliqué")
+                # Masque gris = refinement doux sur toute l'image. Les visages
+                # sont encore moins touchés pour éviter l'effet identité fondue.
+                mask = Image.new("L", (w, h), 192)
+
+                try:
+                    from core.generation import preview as preview_module
+                    if preview_module.face_cascade is None:
+                        preview_module.face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+
+                    img_cv = cv2.cvtColor(np.array(refine_source), cv2.COLOR_RGB2GRAY)
+                    faces = preview_module.face_cascade.detectMultiScale(img_cv, 1.1, 4)
+
+                    if len(faces) > 0:
+                        draw = ImageDraw.Draw(mask)
+                        for (x, y, fw, fh) in faces:
+                            margin = int(max(fw, fh) * 0.25)
+                            x1 = max(0, x - margin)
+                            y1 = max(0, y - margin)
+                            x2 = min(w, x + fw + margin)
+                            y2 = min(h, y + fh + margin)
+                            draw.ellipse([x1, y1, x2, y2], fill=112)
+                        print(f"[UPSCALE] {len(faces)} visage(s) protégé(s) pendant le refine")
+                except Exception as e:
+                    print(f"[UPSCALE] Détection visage ignorée: {e}")
+
+                prompt = (
+                    "subtle photo restoration, crisp natural details, realistic texture, "
+                    "preserve exact composition, preserve identity, natural skin pores, "
+                    "clean edges, high quality"
+                )
+                neg = (
+                    "blurry, low quality, artifacts, noise, pixelated, oversaturated, "
+                    "smooth skin, plastic skin, airbrushed, wax skin, changed face, "
+                    "changed identity, changed pose, deformed"
+                )
+
+                steps = 16
+                clear_preview()
+                _state.total_steps = steps
+                from core.generation.preview import make_preview_callback
+                callback = make_preview_callback(None, preview_every=4)
+
+                refined = pipe(
+                    prompt=prompt,
+                    negative_prompt=neg,
+                    image=refine_source,
+                    mask_image=mask,
+                    height=h,
+                    width=w,
+                    strength=0.14,
+                    guidance_scale=5.5,
+                    num_inference_steps=steps,
+                    callback_on_step_end=callback,
+                ).images[0]
+
+                clear_preview()
+
+                # Remettre à la taille originale si redimensionné
+                if refined.size != (orig_w, orig_h):
+                    refined = refined.resize((orig_w, orig_h), Image.LANCZOS)
+
+                image = refined
+                print("[UPSCALE] Refinement SD terminé")
             except Exception as e:
-                print(f"[UPSCALE] Détection visage ignorée: {e}")
-
-            # Prompt générique pour améliorer la qualité tout en préservant la texture
-            prompt = "high quality photo, photorealistic, sharp focus, professional photography, preserve skin texture, detailed skin pores"
-            neg = "blurry, low quality, artifacts, noise, pixelated, oversaturated, smooth skin, plastic skin, airbrushed, wax skin"
-
-            # Initialiser preview
-            steps = 20  # Peu de steps car faible strength
-            clear_preview()
-            _state.total_steps = steps
-            from core.generation.preview import make_preview_callback
-            callback = make_preview_callback(None, preview_every=5)
-
-            # Refine avec très faible strength (garde la composition + texture)
-            refined = pipe(
-                prompt=prompt,
-                negative_prompt=neg,
-                image=image,
-                mask_image=mask,
-                height=h,
-                width=w,
-                strength=0.18,  # Très faible = préserve texture peau, améliore juste netteté
-                guidance_scale=7.0,
-                num_inference_steps=steps,
-                callback_on_step_end=callback,
-            ).images[0]
-
-            clear_preview()
-
-            # Remettre à la taille originale si redimensionné
-            if refined.size != (orig_w, orig_h):
-                refined = refined.resize((orig_w, orig_h), Image.LANCZOS)
-
-            image = refined
-            print("[UPSCALE] Refinement terminé!")
+                clear_preview()
+                print(f"[UPSCALE] Refinement SD échoué, fallback Real-ESRGAN seul: {e}")
+            finally:
+                if release_refine_pipe is not None:
+                    try:
+                        print("[UPSCALE] Déchargement refine SD avant Real-ESRGAN...")
+                        release_refine_pipe()
+                    except Exception as e:
+                        print(f"[UPSCALE] Déchargement refine ignoré: {e}")
 
         # ===== ÉTAPE 2: UPSCALE AVEC REAL-ESRGAN =====
         print(f"[UPSCALE] Étape 2: Real-ESRGAN x{scale}...")
 
-        if upscaler is None:
+        if not _looks_like_realesrgan(upscaler):
             return None, "Real-ESRGAN non disponible. Installe: pip install realesrgan basicsr"
 
         # Convertir PIL -> numpy BGR (format OpenCV)
@@ -309,8 +361,10 @@ def upscale_image(image: Image.Image, scale: int = 2, model_name: str = "epiCRea
         # Convertir BGR -> RGB -> PIL
         output_rgb = cv2.cvtColor(output, cv2.COLOR_BGR2RGB)
         result = Image.fromarray(output_rgb)
+        result = _postprocess_upscaled_image(result)
 
         new_w, new_h = result.size
+        print(f"[UPSCALE] Polish final léger appliqué")
         print(f"✅ [UPSCALE] Terminé! {new_w}x{new_h}")
 
         # Sauvegarder (historique + last pour le frontend)

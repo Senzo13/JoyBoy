@@ -2406,7 +2406,23 @@ def upscale():
         with generation_pipeline('upscale', generation_id) as mgr:
             img = base64_to_pil(image_b64)
             upscaler = mgr.get_pipeline('upscale')
-            result, status = upscale_image(img, scale=2, model_name=model, pipe=upscaler)
+            refine_pipe = None
+            try:
+                # Upscale quality path: light SD refine first, then unload SD
+                # before Real-ESRGAN so 8GB GPUs do not keep both heavy stacks.
+                mgr.load_for_task('edit', model_name=model)
+                refine_pipe = mgr.get_pipeline('edit')
+            except Exception as refine_load_error:
+                print(f"[UPSCALE] Refine model unavailable, Real-ESRGAN only: {refine_load_error}")
+
+            result, status = upscale_image(
+                img,
+                scale=2,
+                model_name=model,
+                pipe=refine_pipe,
+                upscaler=upscaler,
+                release_refine_pipe=mgr._unload_diffusers if refine_pipe is not None else None,
+            )
 
             generation_time = time.time() - start_time
 
