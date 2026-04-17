@@ -450,6 +450,7 @@ def process_image(image: Image.Image, prompt: str, strength: float, model_name: 
     # On veut: effective = steps → num_inference_steps = ceil(steps / strength)
     import math
     clear_preview()
+    set_progress_phase("prepare_generation", 0, steps)
     if strength < 1.0 and not is_kontext and not is_flux:
         adjusted_steps = math.ceil(steps / strength)
     else:
@@ -565,6 +566,7 @@ def process_image(image: Image.Image, prompt: str, strength: float, model_name: 
         _pre_crop_mask = None
         _pre_crop_w, _pre_crop_h = w, h
         if is_4ch and mask is not None and not _skip_fooocus:
+            set_progress_phase("prepare_region", 0, steps)
             _mask_for_crop = np.array(mask.convert('L').resize((w, h), Image.BILINEAR))
             _inpaint_crop = _compute_inpaint_crop(_mask_for_crop)
             if _inpaint_crop is not None:
@@ -647,6 +649,7 @@ def process_image(image: Image.Image, prompt: str, strength: float, model_name: 
         # Fait AVANT l'encodage latent pour que le callback blend vers les couleurs fill
         # SKIP pour background_fill (on ne veut PAS conditionner sur le contenu original)
         if is_4ch and mask is not None and strength > 0.5 and not _skip_fooocus:
+            set_progress_phase("prefill_inpaint", 0, steps)
             print(f"[INPAINT] Fooocus pre-fill en cours ({w}x{h})...")
             _t_fill = time.time()
             _mask_for_fill = np.array(mask.convert('L').resize((w, h), Image.BILINEAR))
@@ -811,6 +814,7 @@ def process_image(image: Image.Image, prompt: str, strength: float, model_name: 
     _align_text_encoder_dtypes(pipe, preferred_dtype=_preferred_text_dtype)
 
     _t_pipe = time.time()
+    set_progress_phase("diffusion", 0, steps)
     try:
         result = pipe(**pipe_kwargs).images[0]
     except RuntimeError as e:

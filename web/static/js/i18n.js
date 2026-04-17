@@ -3005,6 +3005,10 @@
             progress: {
                 fine_tuning: 'Fine tuning',
                 refine: 'Affinage',
+                prepare_generation: 'Préparation de la génération...',
+                prepare_region: 'Préparation de la zone...',
+                prefill_inpaint: 'Pré-remplissage inpaint...',
+                diffusion: 'Diffusion en cours...',
                 prepare_assets: 'Préparation des assets...',
                 download_assets: 'Téléchargement des assets...',
                 download_schp: 'Préparation SCHP...',
@@ -3093,6 +3097,10 @@
             progress: {
                 fine_tuning: 'Fine tuning',
                 refine: 'Refining',
+                prepare_generation: 'Preparing generation...',
+                prepare_region: 'Preparing the edit region...',
+                prefill_inpaint: 'Preparing inpaint fill...',
+                diffusion: 'Diffusion running...',
                 prepare_assets: 'Preparing assets...',
                 download_assets: 'Downloading assets...',
                 download_schp: 'Preparing SCHP...',
@@ -3181,6 +3189,10 @@
             progress: {
                 fine_tuning: 'Ajuste fino',
                 refine: 'Refinando',
+                prepare_generation: 'Preparando la generación...',
+                prepare_region: 'Preparando la zona de edición...',
+                prefill_inpaint: 'Preparando el relleno inpaint...',
+                diffusion: 'Difusión en curso...',
                 prepare_assets: 'Preparando assets...',
                 download_assets: 'Descargando assets...',
                 download_schp: 'Preparando SCHP...',
@@ -3269,6 +3281,10 @@
             progress: {
                 fine_tuning: 'Fine tuning',
                 refine: 'Rifinitura',
+                prepare_generation: 'Preparazione generazione...',
+                prepare_region: 'Preparazione area di modifica...',
+                prefill_inpaint: 'Preparazione riempimento inpaint...',
+                diffusion: 'Diffusione in corso...',
                 prepare_assets: 'Preparazione asset...',
                 download_assets: 'Download asset...',
                 download_schp: 'Preparazione SCHP...',

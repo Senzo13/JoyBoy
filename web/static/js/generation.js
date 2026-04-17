@@ -43,6 +43,10 @@ function showGenerationError(result, fallback = '') {
 const GENERATION_PROGRESS_FALLBACKS = {
     fine_tuning: 'Fine tuning',
     refine: 'Affinage',
+    prepare_generation: 'Préparation de la génération...',
+    prepare_region: 'Préparation de la zone...',
+    prefill_inpaint: 'Pré-remplissage inpaint...',
+    diffusion: 'Diffusion en cours...',
     prepare_assets: 'Préparation assets',
     download_assets: 'Téléchargement assets',
     download_schp: 'Téléchargement SCHP',
@@ -57,6 +61,9 @@ const GENERATION_PROGRESS_FALLBACKS = {
 };
 
 const GENERATION_SETUP_PHASES = new Set([
+    'prepare_generation',
+    'prepare_region',
+    'prefill_inpaint',
     'prepare_assets',
     'download_assets',
     'download_schp',
@@ -114,6 +121,10 @@ function refreshGenerationProgressTexts() {
 }
 
 window.addEventListener('joyboy:locale-changed', refreshGenerationProgressTexts);
+
+function getInitialGenerationProgressText() {
+    return formatGenerationProgressText('prepare_generation', 0, 0, '');
+}
 
 // Queue execution flags
 let executingFromQueue = false;
@@ -1434,17 +1445,18 @@ function addImageSkeletonToChat() {
     // Ajouter un data-attribute avec le chatId pour pouvoir détecter si c'est orphelin
     skeleton.setAttribute('data-chat-id', currentChatId);
     skeleton.setAttribute('data-started-at', Date.now());
+    const initialProgressText = getInitialGenerationProgressText();
     skeleton.innerHTML = `
         <div class="ai-response loading">
             <div class="result-images">
                 <div class="result-image-container modified-skeleton-container">
-                    <div class="skeleton-preview-container">
+                    <div class="skeleton-preview-container" data-progress-phase="prepare_generation" data-progress-step="0" data-progress-total="0" data-progress-message="">
                         <div class="skeleton skeleton-image"></div>
                         <img class="skeleton-preview-image">
                         <div class="generation-progress">
                             <div class="generation-progress-bar" style="width: 0%"></div>
                         </div>
-                        <div class="generation-step-text">0/0</div>
+                        <div class="generation-step-text">${initialProgressText}</div>
                     </div>
                     <div class="image-generating-text">Génération en cours...</div>
                 </div>

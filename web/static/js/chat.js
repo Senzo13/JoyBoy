@@ -129,6 +129,7 @@ function addSkeletonMessage(prompt, userImage, hasImage, maskImage = null, chatI
     console.log(`%c[SKELETON] Ajout skeleton pour chat ${chatId?.substring(0, 10)}`, 'color: #22c55e; font-weight: bold');
 
     // Utiliser image-skeleton-message pour les générations d'image (pas skeleton-message qui est pour le texte)
+    const initialProgressText = chatT('generation.progress.prepare_generation', 'Préparation de la génération...');
     const skeletonHtml = `
         <div class="message image-skeleton-message" data-chat-id="${chatId}" data-started-at="${startedAt}">
             <div class="user-message">
@@ -146,13 +147,13 @@ function addSkeletonMessage(prompt, userImage, hasImage, maskImage = null, chatI
                     </div>
                     ` : ''}
                     <div class="result-image-container modified-skeleton-container">
-                        <div class="skeleton-preview-container">
+                        <div class="skeleton-preview-container" data-progress-phase="prepare_generation" data-progress-step="0" data-progress-total="0" data-progress-message="">
                             <div class="skeleton skeleton-image"></div>
                             <img class="skeleton-preview-image">
                             <div class="generation-progress">
                                 <div class="generation-progress-bar" style="width: 0%"></div>
                             </div>
-                            <div class="generation-step-text">0/0</div>
+                            <div class="generation-step-text">${initialProgressText}</div>
                         </div>
                         <div class="image-label">${hasImage ? 'Modifié' : 'Généré'}</div>
                     </div>
