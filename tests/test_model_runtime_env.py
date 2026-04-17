@@ -7,6 +7,7 @@ import torch
 from core.models.runtime_env import (
     apply_mps_pipeline_optimizations,
     configure_huggingface_env,
+    decode_sdxl_latents_with_mps_fallback,
     should_enable_hf_parallel_loading,
 )
 
@@ -128,6 +129,108 @@ class ModelRuntimeEnvTest(unittest.TestCase):
         self.assertTrue(enabled)
         self.assertTrue(torch.isfinite(result).all().item())
         self.assertEqual(result.tolist(), [0.0, 1.0, -1.0, 0.5])
+
+    def test_mps_pipeline_optimizations_upcast_attention_modules(self) -> None:
+        class FakeAttention:
+            def __init__(self) -> None:
+                self.upcast_attention = False
+                self.upcast_softmax = False
+
+        class FakeUnet:
+            def __init__(self) -> None:
+                self.attn = FakeAttention()
+
+            def modules(self):
+                return [self.attn]
+
+        class FakePipe:
+            def __init__(self) -> None:
+                self.vae = None
+                self.unet = FakeUnet()
+
+        pipe = FakePipe()
+
+        enabled = apply_mps_pipeline_optimizations(pipe, "fake", log_skip=False)
+
+        self.assertTrue(enabled)
+        self.assertTrue(pipe.unet.attn.upcast_attention)
+        self.assertTrue(pipe.unet.attn.upcast_softmax)
+        self.assertTrue(pipe.unet._joyboy_mps_attention_upcast)
+
+    def test_mps_sdxl_latent_decode_uses_fp32_scaling(self) -> None:
+        class FakeProcessor:
+            def postprocess(self, image, *args, **kwargs):
+                return [image]
+
+        class FakeVae:
+            def __init__(self) -> None:
+                self.param = torch.zeros(1, dtype=torch.float16)
+                self.config = type("Config", (), {"scaling_factor": 0.5})()
+                self.dtype = torch.float16
+
+            def parameters(self):
+                yield self.param
+
+            def to(self, device=None, dtype=None):
+                if dtype is not None:
+                    self.dtype = dtype
+                    self.param = self.param.to(dtype=dtype)
+                return self
+
+            def decode(self, latents, return_dict=False):
+                return (latents.clone(),)
+
+        class FakePipe:
+            def __init__(self) -> None:
+                self.vae = FakeVae()
+                self.image_processor = FakeProcessor()
+
+        pipe = FakePipe()
+        result = decode_sdxl_latents_with_mps_fallback(pipe, torch.ones(1, 4, 2, 2), "fake")
+
+        self.assertTrue(torch.isfinite(result).all().item())
+        self.assertEqual(result.dtype, torch.float32)
+        self.assertEqual(result[0, 0, 0, 0].item(), 2.0)
+        self.assertEqual(pipe.vae.dtype, torch.float16)
+
+    def test_mps_sdxl_latent_decode_retries_cpu_when_first_decode_is_non_finite(self) -> None:
+        class FakeProcessor:
+            def postprocess(self, image, *args, **kwargs):
+                return [image]
+
+        class FakeVae:
+            def __init__(self) -> None:
+                self.param = torch.zeros(1, dtype=torch.float16)
+                self.config = type("Config", (), {"scaling_factor": 1.0})()
+                self.dtype = torch.float16
+                self.decode_calls = 0
+
+            def parameters(self):
+                yield self.param
+
+            def to(self, device=None, dtype=None):
+                if dtype is not None:
+                    self.dtype = dtype
+                    self.param = self.param.to(dtype=dtype)
+                return self
+
+            def decode(self, latents, return_dict=False):
+                self.decode_calls += 1
+                if self.decode_calls == 1:
+                    return (torch.full_like(latents, float("nan")),)
+                return (latents.clone(),)
+
+        class FakePipe:
+            def __init__(self) -> None:
+                self.vae = FakeVae()
+                self.image_processor = FakeProcessor()
+
+        pipe = FakePipe()
+        result = decode_sdxl_latents_with_mps_fallback(pipe, torch.ones(1, 4, 2, 2), "fake")
+
+        self.assertEqual(pipe.vae.decode_calls, 2)
+        self.assertTrue(torch.isfinite(result).all().item())
+        self.assertEqual(pipe.vae.dtype, torch.float16)
 
 
 if __name__ == "__main__":

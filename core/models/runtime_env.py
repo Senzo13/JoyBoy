@@ -58,6 +58,7 @@ def apply_mps_pipeline_optimizations(
     enabled_any = _enable_mps_vae_force_upcast(pipe, label, log_skip=log_skip)
     enabled_any = _enable_mps_full_vae_fp32_decode(pipe, label, log_skip=log_skip) or enabled_any
     enabled_any = _enable_mps_postprocess_nan_guard(pipe, label, log_skip=log_skip) or enabled_any
+    enabled_any = _enable_mps_attention_upcast(pipe, label, log_skip=log_skip) or enabled_any
 
     enable_attention_slicing = getattr(pipe, "enable_attention_slicing", None)
     if not callable(enable_attention_slicing):
@@ -207,6 +208,177 @@ def _enable_mps_postprocess_nan_guard(
 
     print(f"[MM] {label}: decoded image NaN guard active (MPS)")
     return True
+
+
+def _enable_mps_attention_upcast(
+    pipe: object,
+    label: str,
+    *,
+    log_skip: bool = True,
+) -> bool:
+    """Run SDXL attention score/softmax math in fp32 on MPS.
+
+    The UNet can still denoise in fp16, but fp16 attention on Apple MPS can
+    occasionally create non-finite latents. Diffusers attention modules expose
+    the same stability switch used by SDXL UIs as "upcast cross attention".
+    """
+    changed = 0
+    seen_any = False
+
+    for component_name in ("unet", "controlnet"):
+        component = getattr(pipe, component_name, None)
+        if component is None:
+            continue
+        if getattr(component, "_joyboy_mps_attention_upcast", False):
+            _log_once(
+                component,
+                "_joyboy_mps_attention_upcast_logged",
+                f"[MM] {label}: attention upcast active (MPS)",
+            )
+            seen_any = True
+            continue
+        modules = getattr(component, "modules", None)
+        if not callable(modules):
+            continue
+        component_changed = 0
+        for module in modules():
+            module_touched = False
+            if hasattr(module, "upcast_attention"):
+                seen_any = True
+                if getattr(module, "upcast_attention", None) is not True:
+                    setattr(module, "upcast_attention", True)
+                    module_touched = True
+            if hasattr(module, "upcast_softmax"):
+                seen_any = True
+                if getattr(module, "upcast_softmax", None) is not True:
+                    setattr(module, "upcast_softmax", True)
+                    module_touched = True
+            if module_touched:
+                component_changed += 1
+        if component_changed:
+            setattr(component, "_joyboy_mps_attention_upcast", True)
+            changed += component_changed
+
+    if changed:
+        print(f"[MM] {label}: attention upcast active (MPS, {changed} modules)")
+        return True
+
+    if seen_any:
+        return True
+
+    if log_skip:
+        print(f"[MM] {label}: attention upcast unavailable (MPS)")
+    return False
+
+
+def decode_sdxl_latents_with_mps_fallback(
+    pipe: object,
+    latents: object,
+    label: str = "pipeline",
+    *,
+    output_type: str = "pil",
+) -> object:
+    """Decode SDXL latents in fp32 and fall back to CPU if MPS emits NaNs.
+
+    This is intentionally used after calling Diffusers with ``output_type="latent"``.
+    The previous postprocess NaN guard prevents crashes but cannot recover an
+    image when the whole decoded tensor is NaN (it becomes a flat gray image).
+    Decoding from verified finite latents lets JoyBoy retry just the fragile VAE
+    step on CPU instead of rerunning the full diffusion process.
+    """
+    import torch
+
+    if not torch.is_tensor(latents):
+        return latents
+
+    if not _tensor_is_finite(latents):
+        raise RuntimeError(f"{label}: MPS diffusion produced non-finite latents")
+
+    vae = getattr(pipe, "vae", None)
+    image_processor = getattr(pipe, "image_processor", None)
+    postprocess = getattr(image_processor, "postprocess", None)
+    if vae is None or not callable(postprocess):
+        raise RuntimeError(f"{label}: cannot decode SDXL latents without VAE image processor")
+
+    original_dtype = getattr(vae, "dtype", None)
+    original_device = _module_device(vae)
+    decode_latents = _scale_sdxl_latents_for_vae(pipe, latents.detach().to(dtype=torch.float32))
+
+    try:
+        image = _decode_vae_on_device(vae, decode_latents, original_device)
+        if not _tensor_is_finite(image):
+            print(f"[MM] {label}: MPS VAE decode non-finite, retrying on CPU fp32")
+            image = _decode_vae_on_device(vae, decode_latents, torch.device("cpu"))
+            if not _tensor_is_finite(image):
+                raise RuntimeError(f"{label}: CPU VAE decode also produced non-finite pixels")
+
+        processed = image_processor.postprocess(image, output_type=output_type)
+        if isinstance(processed, (list, tuple)):
+            return processed[0]
+        return processed
+    finally:
+        _restore_module_device_dtype(vae, original_device, original_dtype)
+
+
+def _scale_sdxl_latents_for_vae(pipe: object, latents):
+    import torch
+
+    vae = getattr(pipe, "vae", None)
+    config = getattr(vae, "config", None)
+    scaling_factor = float(getattr(config, "scaling_factor", 1.0) or 1.0)
+    has_latents_mean = hasattr(config, "latents_mean") and config.latents_mean is not None
+    has_latents_std = hasattr(config, "latents_std") and config.latents_std is not None
+
+    if has_latents_mean and has_latents_std:
+        latents_mean = torch.tensor(config.latents_mean).view(1, 4, 1, 1).to(latents.device, latents.dtype)
+        latents_std = torch.tensor(config.latents_std).view(1, 4, 1, 1).to(latents.device, latents.dtype)
+        return latents * latents_std / scaling_factor + latents_mean
+
+    return latents / scaling_factor
+
+
+def _decode_vae_on_device(vae: object, latents, device):
+    import torch
+
+    target_device = device or latents.device
+    with torch.no_grad():
+        try:
+            vae.to(device=target_device, dtype=torch.float32)
+        except TypeError:
+            vae.to(target_device)
+            vae.to(dtype=torch.float32)
+        return vae.decode(latents.to(device=target_device, dtype=torch.float32), return_dict=False)[0]
+
+
+def _tensor_is_finite(value: object) -> bool:
+    import torch
+
+    try:
+        return bool(torch.is_tensor(value) and torch.isfinite(value).all().item())
+    except Exception:
+        return False
+
+
+def _module_device(module: object):
+    try:
+        first_param = next(module.parameters())
+        return first_param.device
+    except Exception:
+        return None
+
+
+def _restore_module_device_dtype(module: object, device, dtype) -> None:
+    kwargs = {}
+    if device is not None:
+        kwargs["device"] = device
+    if dtype is not None:
+        kwargs["dtype"] = dtype
+    if not kwargs:
+        return
+    try:
+        module.to(**kwargs)
+    except Exception:
+        pass
 
 
 def _log_once(target: object, flag_name: str, message: str) -> None:

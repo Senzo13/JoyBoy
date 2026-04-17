@@ -8,6 +8,29 @@ import threading
 chat_bp = Blueprint('chat', __name__)
 
 
+_CHAT_LOCALES = {"fr", "en", "es", "it"}
+_CHAT_COPY = {
+    "image_generate_pending": {
+        "fr": "Je génère cette image pour toi...",
+        "en": "I'm generating this image for you...",
+        "es": "Estoy generando esta imagen para ti...",
+        "it": "Sto generando questa immagine per te...",
+    },
+}
+
+
+def _normalize_chat_locale(locale):
+    raw = str(locale or "").split(",", 1)[0].strip().replace("_", "-").lower()
+    lang = raw.split("-", 1)[0]
+    return lang if lang in _CHAT_LOCALES else "fr"
+
+
+def _chat_copy(key, locale):
+    messages = _CHAT_COPY.get(key, {})
+    lang = _normalize_chat_locale(locale)
+    return messages.get(lang) or messages.get("fr") or key
+
+
 # ─── Suggestions lock (thread safety for BLIP analysis) ───
 
 suggestions_lock = threading.Lock()
@@ -339,6 +362,7 @@ def chat():
         chat_model = data.get('chatModel', 'qwen3.5:2b')
         profile = data.get('profile', {})
         all_conversations = data.get('allConversations', [])
+        locale = data.get('locale') or request.headers.get('Accept-Language', 'fr')
 
         if not message:
             return jsonify({'error': 'Message requis'}), 400
@@ -358,7 +382,7 @@ def chat():
             if not image_prompt:
                 image_prompt = message
                 print(f"[CHAT] Fallback: utilisation du message original comme prompt")
-            response_text = "Je génère cette image pour toi..."
+            response_text = _chat_copy("image_generate_pending", locale)
             log_chat(AI_NAME, response_text, model=chat_model)
 
             return jsonify({
@@ -533,6 +557,7 @@ def chat_stream():
     all_conversations = data.get('allConversations', [])
     workspace = data.get('workspace')  # {name, path} ou null
     context_size = data.get('contextSize', 4096)
+    locale = data.get('locale') or request.headers.get('Accept-Language', 'fr')
 
     if not message:
         return jsonify({'error': 'Message requis'}), 400
@@ -581,7 +606,7 @@ def chat_stream():
 
         def generate_image_response():
             # Réponse courte
-            response_text = "Je génère cette image pour toi..."
+            response_text = _chat_copy("image_generate_pending", locale)
             log_chat(AI_NAME, response_text, model=chat_model)
 
             yield f"data: {json.dumps({'content': response_text})}\n\n"

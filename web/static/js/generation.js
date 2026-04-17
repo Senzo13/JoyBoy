@@ -234,7 +234,8 @@ function buildChatStreamParams(prompt) {
         allConversations: [],
         workspace: getActiveWorkspace(),
         allWorkspaces: userSettings.workspaces || [],
-        contextSize: userSettings.contextSize || 4096
+        contextSize: userSettings.contextSize || 4096,
+        locale: window.JoyBoyI18n?.getLocale?.() || document.documentElement.lang || 'fr'
     };
 }
 

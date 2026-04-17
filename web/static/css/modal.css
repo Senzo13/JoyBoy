@@ -858,6 +858,30 @@ body.gallery-viewer-open {
     min-height: 0;
     overflow-y: auto;
     padding: 24px;
+    scrollbar-gutter: stable;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(148, 163, 184, 0.38) rgba(255, 255, 255, 0.035);
+}
+
+.settings-body::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+    background: rgba(255, 255, 255, 0.035);
+}
+
+.settings-body::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.035);
+    border-radius: 8px;
+}
+
+.settings-body::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, 0.38);
+    border: 2px solid #111113;
+    border-radius: 8px;
+}
+
+.settings-body::-webkit-scrollbar-thumb:hover {
+    background: rgba(203, 213, 225, 0.58);
 }
 
 .settings-panel {
@@ -3900,6 +3924,28 @@ body.gallery-viewer-open {
         border-right: none;
         border-bottom: 1px solid #1a1a1a;
         -webkit-overflow-scrolling: touch;
+        scrollbar-width: thin;
+        scrollbar-color: rgba(148, 163, 184, 0.38) rgba(255, 255, 255, 0.035);
+    }
+
+    .settings-tabs::-webkit-scrollbar {
+        height: 8px;
+        background: rgba(255, 255, 255, 0.035);
+    }
+
+    .settings-tabs::-webkit-scrollbar-track {
+        background: rgba(255, 255, 255, 0.035);
+        border-radius: 8px;
+    }
+
+    .settings-tabs::-webkit-scrollbar-thumb {
+        background: rgba(148, 163, 184, 0.38);
+        border: 2px solid #0d0d0d;
+        border-radius: 8px;
+    }
+
+    .settings-tabs::-webkit-scrollbar-thumb:hover {
+        background: rgba(203, 213, 225, 0.58);
     }
 
     .settings-tab {

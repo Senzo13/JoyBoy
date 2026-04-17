@@ -208,6 +208,25 @@ def _apply_mps_sdxl_runtime_policy(pipe, label: str, is_mps_runtime: bool) -> No
         print(f"[TEXT2IMG] MPS runtime policy skipped ({exc})")
 
 
+def _run_sdxl_pipeline(pipe, label: str, is_mps_runtime: bool, **kwargs):
+    """Run SDXL and decode latents safely on macOS/MPS."""
+    use_mps_latent_decode = (
+        is_mps_runtime
+        and "StableDiffusionXL" in pipe.__class__.__name__
+    )
+    if use_mps_latent_decode:
+        kwargs["output_type"] = "latent"
+
+    output = pipe(**kwargs)
+
+    if not use_mps_latent_decode:
+        return output.images[0]
+
+    from core.models.runtime_env import decode_sdxl_latents_with_mps_fallback
+
+    return decode_sdxl_latents_with_mps_fallback(pipe, output.images, label)
+
+
 def _should_suppress_visible_capture_devices(prompt: str, style_prefix: str | None, style_suffix: str | None) -> bool:
     """Avoid literal cameras unless the user/style explicitly asks for capture-device aesthetics."""
     text = " ".join(part for part in (prompt or "", style_prefix or "", style_suffix or "")).lower()
@@ -522,7 +541,10 @@ def generate_from_text(prompt: str, model_name: str = "Automatique", enhance: bo
             img_strength = max(0.05, min(0.9, 1.0 - style_ref_scale))
             print(f"[TEXT2IMG] Img2img depuis style ref (strength={img_strength})")
             set_progress_phase("diffusion", 0, steps)
-            result = img2img_pipe(
+            result = _run_sdxl_pipeline(
+                img2img_pipe,
+                f"{model_name} converted img2img decode",
+                is_mps_runtime,
                 prompt=full_prompt,
                 negative_prompt=neg,
                 image=init_img,
@@ -532,11 +554,14 @@ def generate_from_text(prompt: str, model_name: str = "Automatique", enhance: bo
                 generator=generator,
                 callback_on_step_end=callback,
                 **extra_kwargs,
-            ).images[0]
+            )
         else:
             print(f"[TEXT2IMG] Pipeline text2img converti ({pipe.__class__.__name__})")
             set_progress_phase("diffusion", 0, steps)
-            result = pipe(
+            result = _run_sdxl_pipeline(
+                pipe,
+                f"{model_name} converted text2img decode",
+                is_mps_runtime,
                 prompt=full_prompt,
                 negative_prompt=neg,
                 guidance_scale=guidance,
@@ -546,7 +571,7 @@ def generate_from_text(prompt: str, model_name: str = "Automatique", enhance: bo
                 generator=generator,
                 callback_on_step_end=callback,
                 **extra_kwargs,
-            ).images[0]
+            )
 
     else:
         # Pipeline text2img dédié (StableDiffusionXLPipeline ou Turbo, sans Fooocus patch)
@@ -624,7 +649,10 @@ def generate_from_text(prompt: str, model_name: str = "Automatique", enhance: bo
                 _cn_type = "Depth" if controlnet_depth_image is not None else "OpenPose"
                 print(f"[TEXT2IMG] ControlNet {_cn_type} + img2img (cn_scale={controlnet_scale}, img_strength={img_strength})")
                 set_progress_phase("diffusion", 0, steps)
-                result = cn_pipe(
+                result = _run_sdxl_pipeline(
+                    cn_pipe,
+                    f"{model_name} ControlNet img2img decode",
+                    is_mps_runtime,
                     prompt=full_prompt,
                     negative_prompt=neg if not is_turbo else None,
                     image=init_img,
@@ -636,7 +664,7 @@ def generate_from_text(prompt: str, model_name: str = "Automatique", enhance: bo
                     generator=generator,
                     callback_on_step_end=callback,
                     **extra_kwargs,
-                ).images[0]
+                )
             else:
                 # ControlNet text2img: pose from skeleton, no reference image
                 from diffusers import StableDiffusionXLControlNetPipeline
@@ -644,7 +672,10 @@ def generate_from_text(prompt: str, model_name: str = "Automatique", enhance: bo
                 _apply_mps_sdxl_runtime_policy(cn_pipe, f"{model_name} ControlNet text2img runtime", is_mps_runtime)
                 print(f"[TEXT2IMG] ControlNet OpenPose text2img (cn_scale={controlnet_scale})")
                 set_progress_phase("diffusion", 0, steps)
-                result = cn_pipe(
+                result = _run_sdxl_pipeline(
+                    cn_pipe,
+                    f"{model_name} ControlNet text2img decode",
+                    is_mps_runtime,
                     prompt=full_prompt,
                     negative_prompt=neg if not is_turbo else None,
                     image=cn_control_image,
@@ -656,7 +687,7 @@ def generate_from_text(prompt: str, model_name: str = "Automatique", enhance: bo
                     generator=generator,
                     callback_on_step_end=callback,
                     **extra_kwargs,
-                ).images[0]
+                )
 
             # Move ControlNet back to CPU to free VRAM
             controlnet_model.to("cpu")
@@ -671,7 +702,10 @@ def generate_from_text(prompt: str, model_name: str = "Automatique", enhance: bo
             img_strength = max(0.05, min(0.9, 1.0 - style_ref_scale))
             print(f"[TEXT2IMG] Img2img depuis style ref (strength={img_strength}, scale={style_ref_scale})")
             set_progress_phase("diffusion", 0, steps)
-            result = img2img_pipe(
+            result = _run_sdxl_pipeline(
+                img2img_pipe,
+                f"{model_name} img2img decode",
+                is_mps_runtime,
                 prompt=full_prompt,
                 negative_prompt=neg if not is_turbo else None,
                 image=init_img,
@@ -681,11 +715,14 @@ def generate_from_text(prompt: str, model_name: str = "Automatique", enhance: bo
                 generator=generator,
                 callback_on_step_end=callback,
                 **extra_kwargs,
-            ).images[0]
+            )
         else:
             print(f"[TEXT2IMG] Pipeline text2img ({pipe.__class__.__name__})")
             set_progress_phase("diffusion", 0, steps)
-            result = pipe(
+            result = _run_sdxl_pipeline(
+                pipe,
+                f"{model_name} text2img decode",
+                is_mps_runtime,
                 prompt=full_prompt,
                 negative_prompt=neg if not is_turbo else None,
                 guidance_scale=guidance,
@@ -695,7 +732,7 @@ def generate_from_text(prompt: str, model_name: str = "Automatique", enhance: bo
                 generator=generator,
                 callback_on_step_end=callback,
                 **extra_kwargs,
-            ).images[0]
+            )
 
     # Calculer le temps de génération
     generation_time = time.time() - generation_start_time

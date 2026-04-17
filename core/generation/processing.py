@@ -135,6 +135,25 @@ def _apply_mps_sdxl_runtime_policy(pipe, label: str) -> None:
         print(f"[INPAINT] MPS runtime policy skipped ({exc})")
 
 
+def _run_pipeline_with_mps_sdxl_decode(pipe, label: str, pipe_kwargs: dict):
+    use_mps_latent_decode = (
+        _is_mps_runtime()
+        and "StableDiffusionXL" in pipe.__class__.__name__
+    )
+    call_kwargs = dict(pipe_kwargs)
+    if use_mps_latent_decode:
+        call_kwargs["output_type"] = "latent"
+
+    output = pipe(**call_kwargs)
+
+    if not use_mps_latent_decode:
+        return output.images[0]
+
+    from core.models.runtime_env import decode_sdxl_latents_with_mps_fallback
+
+    return decode_sdxl_latents_with_mps_fallback(pipe, output.images, label)
+
+
 # text2img.py — Text-to-image styles, format detection, generation
 from core.generation.text2img import (
     _TXT2IMG_STYLES,
@@ -851,7 +870,7 @@ def process_image(image: Image.Image, prompt: str, strength: float, model_name: 
     _t_pipe = time.time()
     set_progress_phase("diffusion", 0, steps)
     try:
-        result = pipe(**pipe_kwargs).images[0]
+        result = _run_pipeline_with_mps_sdxl_decode(pipe, f"{model_name} inpaint decode", pipe_kwargs)
     except RuntimeError as e:
         _err = str(e)
         _is_dtype_mismatch = (
@@ -863,7 +882,7 @@ def process_image(image: Image.Image, prompt: str, strength: float, model_name: 
 
         print(f"[DTYPE] Prompt encoding mismatch detected, retrying after forced text encoder cast...")
         _align_text_encoder_dtypes(pipe, preferred_dtype=_preferred_text_dtype, force=True)
-        result = pipe(**pipe_kwargs).images[0]
+        result = _run_pipeline_with_mps_sdxl_decode(pipe, f"{model_name} inpaint decode", pipe_kwargs)
     _t_pipe_done = time.time()
 
     # Libérer la VRAM fragmentée après chaque génération (WDDM)
@@ -1101,7 +1120,7 @@ def process_image(image: Image.Image, prompt: str, strength: float, model_name: 
             refine_kwargs['ip_adapter_image_embeds'] = [ip_adapter_image_embeds]
 
         # Lancer le refine
-        refined = pipe(**refine_kwargs).images[0]
+        refined = _run_pipeline_with_mps_sdxl_decode(pipe, f"{model_name} auto-refine decode", refine_kwargs)
 
         # Pas de composite — le pipeline inpainting gère le masque en interne
         result = refined
