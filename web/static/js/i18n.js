@@ -3002,6 +3002,18 @@
         generation: {
             promptRequired: 'Écris ce que tu veux',
             cancelled: 'Génération annulée',
+            labels: {
+                original: 'Original',
+                modified: 'Modifié',
+                generated: 'Généré',
+                generatedWithTime: 'Généré ({seconds}s)',
+                mask: 'Masque',
+                source: 'Source',
+                video: 'Vidéo',
+                generationInProgress: 'Génération en cours...',
+                applyOriginal: 'Appliquer sur l’original',
+                applyModified: 'Appliquer sur le modifié',
+            },
             progress: {
                 fine_tuning: 'Fine tuning',
                 refine: 'Affinage',
@@ -3109,6 +3121,18 @@
         generation: {
             promptRequired: 'Write what you want',
             cancelled: 'Generation cancelled',
+            labels: {
+                original: 'Original',
+                modified: 'Modified',
+                generated: 'Generated',
+                generatedWithTime: 'Generated ({seconds}s)',
+                mask: 'Mask',
+                source: 'Source',
+                video: 'Video',
+                generationInProgress: 'Generation in progress...',
+                applyOriginal: 'Apply to original',
+                applyModified: 'Apply to modified',
+            },
             progress: {
                 fine_tuning: 'Fine tuning',
                 refine: 'Refining',
@@ -3216,6 +3240,18 @@
         generation: {
             promptRequired: 'Escribe lo que quieres',
             cancelled: 'Generación cancelada',
+            labels: {
+                original: 'Original',
+                modified: 'Modificada',
+                generated: 'Generada',
+                generatedWithTime: 'Generada ({seconds}s)',
+                mask: 'Máscara',
+                source: 'Fuente',
+                video: 'Vídeo',
+                generationInProgress: 'Generación en curso...',
+                applyOriginal: 'Aplicar al original',
+                applyModified: 'Aplicar a la modificada',
+            },
             progress: {
                 fine_tuning: 'Ajuste fino',
                 refine: 'Refinando',
@@ -3323,6 +3359,18 @@
         generation: {
             promptRequired: 'Scrivi cosa vuoi',
             cancelled: 'Generazione annullata',
+            labels: {
+                original: 'Originale',
+                modified: 'Modificata',
+                generated: 'Generata',
+                generatedWithTime: 'Generata ({seconds}s)',
+                mask: 'Maschera',
+                source: 'Sorgente',
+                video: 'Video',
+                generationInProgress: 'Generazione in corso...',
+                applyOriginal: 'Applica all’originale',
+                applyModified: 'Applica alla modificata',
+            },
             progress: {
                 fine_tuning: 'Fine tuning',
                 refine: 'Rifinitura',
@@ -4756,6 +4804,13 @@
             root.querySelectorAll(selector).forEach(element => {
                 setElementValue(element, t(key), attr);
             });
+        });
+
+        root.querySelectorAll('[data-i18n]').forEach(element => {
+            const key = element.getAttribute('data-i18n');
+            if (!key) return;
+            const attr = element.getAttribute('data-i18n-attr') || 'text';
+            setElementValue(element, t(key), attr);
         });
 
         root.querySelectorAll('[data-i18n-tooltip]').forEach(element => {

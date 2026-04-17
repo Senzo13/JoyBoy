@@ -1329,8 +1329,10 @@ function updateSkeletonPreview(previewBase64, step, total, phase = 'generation',
             skeletonBg.style.opacity = '0';
         }
         img.src = 'data:image/jpeg;base64,' + previewBase64;
-        // Auto-dimensionner le container au premier preview pour respecter l'aspect ratio
-        if (!container.dataset.sized) {
+        // Auto-dimensionner le container au premier preview pour respecter l'aspect ratio.
+        // In edit/inpaint mode chat.js locks this box to the rendered Original image size;
+        // do not override it with the intermediate latent preview aspect ratio.
+        if (!container.dataset.sized && container.dataset.sizeLocked !== '1') {
             img.onload = function() {
                 if (this.naturalWidth && this.naturalHeight) {
                     const ratio = this.naturalWidth / this.naturalHeight;
@@ -1476,6 +1478,7 @@ function addImageSkeletonToChat() {
     skeleton.setAttribute('data-chat-id', currentChatId);
     skeleton.setAttribute('data-started-at', Date.now());
     const initialProgressText = getInitialGenerationProgressText();
+    const generatingText = generationT('generation.labels.generationInProgress', 'Génération en cours...');
     skeleton.innerHTML = `
         <div class="ai-response loading">
             <div class="result-images">
@@ -1488,7 +1491,7 @@ function addImageSkeletonToChat() {
                         </div>
                         <div class="generation-step-text">${initialProgressText}</div>
                     </div>
-                    <div class="image-generating-text">Génération en cours...</div>
+                    <div class="image-generating-text" data-i18n="generation.labels.generationInProgress">${generatingText}</div>
                 </div>
             </div>
         </div>

@@ -5,6 +5,14 @@ function chatT(key, fallback = '', params = {}) {
     return fallback || key;
 }
 
+function imageLabelT(key, fallback = '', params = {}) {
+    return chatT(`generation.labels.${key}`, fallback, params);
+}
+
+function imageLabelAttr(key) {
+    return `data-i18n="generation.labels.${key}"`;
+}
+
 // ===== SVG ICON CONSTANTS (shared across message builders) =====
 const ICON_EDIT = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`;
 const ICON_FIX_DETAILS = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5L12 3z"/><path d="M5 19l1 3 1-3 3-1-3-1-1-3-1 3-3 1 3 1z"/><path d="M19 12l1 2 1-2 2-1-2-1-1-2-1 2-2 1 2 1z"/></svg>`;
@@ -130,6 +138,8 @@ function addSkeletonMessage(prompt, userImage, hasImage, maskImage = null, chatI
 
     // Utiliser image-skeleton-message pour les générations d'image (pas skeleton-message qui est pour le texte)
     const initialProgressText = chatT('generation.progress.prepare_generation', 'Préparation de la génération...');
+    const resultLabelKey = hasImage ? 'modified' : 'generated';
+    const resultLabelFallback = hasImage ? 'Modifié' : 'Généré';
     const skeletonHtml = `
         <div class="message image-skeleton-message" data-chat-id="${chatId}" data-started-at="${startedAt}">
             <div class="user-message">
@@ -143,7 +153,7 @@ function addSkeletonMessage(prompt, userImage, hasImage, maskImage = null, chatI
                         <div class="result-image-wrapper">
                             <img src="${userImage}" class="result-image original-preview-image">
                         </div>
-                        <div class="image-label">Original</div>
+                        <div class="image-label" ${imageLabelAttr('original')}>${imageLabelT('original', 'Original')}</div>
                     </div>
                     ` : ''}
                     <div class="result-image-container modified-skeleton-container">
@@ -155,7 +165,7 @@ function addSkeletonMessage(prompt, userImage, hasImage, maskImage = null, chatI
                             </div>
                             <div class="generation-step-text">${initialProgressText}</div>
                         </div>
-                        <div class="image-label">${hasImage ? 'Modifié' : 'Généré'}</div>
+                        <div class="image-label" ${imageLabelAttr(resultLabelKey)}>${imageLabelT(resultLabelKey, resultLabelFallback)}</div>
                     </div>
                 </div>
             </div>
@@ -212,10 +222,17 @@ function addSkeletonMessage(prompt, userImage, hasImage, maskImage = null, chatI
                     if (size && size.width > 0 && size.height > 0) {
                         // Appliquer les dimensions en préservant les autres styles
                         modifiedContainer?.style.setProperty('width', size.width + 'px', 'important');
+                        modifiedContainer?.style.setProperty('max-width', size.width + 'px', 'important');
                         skeletonContainer.style.setProperty('width', size.width + 'px', 'important');
                         skeletonContainer.style.setProperty('height', size.height + 'px', 'important');
                         skeletonContainer.style.setProperty('max-width', 'none', 'important');
                         skeletonContainer.style.setProperty('min-width', 'unset', 'important');
+                        skeletonContainer.style.setProperty('aspect-ratio', `${size.width} / ${size.height}`, 'important');
+                        // The diffusion preview has its own aspect ratio while in-flight.
+                        // Keep the edit preview locked to the rendered Original card so it
+                        // does not look larger and then snap back when the final image lands.
+                        skeletonContainer.dataset.sized = '1';
+                        skeletonContainer.dataset.sizeLocked = '1';
                         console.log(`[SKELETON] Taille ajustée: ${size.width}x${size.height} (image: ${originalImg.naturalWidth}x${originalImg.naturalHeight})`);
                     } else {
                         // Retry si dimensions pas encore disponibles
@@ -702,7 +719,7 @@ function addMessage(prompt, userImage, original, modified, generationTime = null
                             <img src="${original}" class="result-image" onclick="openModalFromPair(this, true)">
                             <button class="edit-btn" onclick="openEditModal(this.closest('.result-image-wrapper').querySelector('img').src)" title="Editer">${editIcon}</button>
                         </div>
-                        <div class="image-label">Original</div>
+                        <div class="image-label" ${imageLabelAttr('original')}>${imageLabelT('original', 'Original')}</div>
                     </div>
                     <div class="result-image-container">
                         <div class="result-image-wrapper">
@@ -712,7 +729,7 @@ function addMessage(prompt, userImage, original, modified, generationTime = null
                                 <button class="edit-btn refine-btn" onclick="fixDetailsImage(this.closest('.result-image-wrapper').querySelector('img').src)" title="Fix Details">${fixDetailsIcon}</button>
                             </div>
                         </div>
-                        <div class="image-label">Modifie</div>
+                        <div class="image-label" ${imageLabelAttr('modified')}>${imageLabelT('modified', 'Modifié')}</div>
                     </div>
                 </div>
                 ${buildImageActionsBar(prompt, generationTime)}
@@ -757,13 +774,13 @@ function addMessageEdit(prompt, original, modified, mask = null, generationTime 
                         <img src="${original}" class="result-image" onclick="openModalFromPair(this, true)">
                         <button class="edit-btn" onclick="openEditModal(this.closest('.result-image-wrapper').querySelector('img').src)" title="Editer">${editIcon}</button>
                     </div>
-                    <div class="image-label">Original</div>
+                    <div class="image-label" ${imageLabelAttr('original')}>${imageLabelT('original', 'Original')}</div>
                 </div>
                 <div class="result-image-container mask-preview">
                     <div class="result-image-wrapper">
                         <img src="${mask}" class="result-image" onclick="openModalSingle(this.src)">
                     </div>
-                    <div class="image-label">Masque</div>
+                    <div class="image-label" ${imageLabelAttr('mask')}>${imageLabelT('mask', 'Masque')}</div>
                 </div>
                 <div class="result-image-container">
                     <div class="result-image-wrapper">
@@ -773,7 +790,7 @@ function addMessageEdit(prompt, original, modified, mask = null, generationTime 
                             <button class="edit-btn refine-btn" onclick="fixDetailsImage(this.closest('.result-image-wrapper').querySelector('img').src)" title="Fix Details">${fixDetailsIcon}</button>
                         </div>
                     </div>
-                    <div class="image-label">Modifie</div>
+                    <div class="image-label" ${imageLabelAttr('modified')}>${imageLabelT('modified', 'Modifié')}</div>
                 </div>
             </div>
         `;
@@ -785,7 +802,7 @@ function addMessageEdit(prompt, original, modified, mask = null, generationTime 
                         <img src="${original}" class="result-image" onclick="openModalFromPair(this, true)">
                         <button class="edit-btn" onclick="openEditModal(this.closest('.result-image-wrapper').querySelector('img').src)" title="Editer">${editIcon}</button>
                     </div>
-                    <div class="image-label">Original</div>
+                    <div class="image-label" ${imageLabelAttr('original')}>${imageLabelT('original', 'Original')}</div>
                 </div>
                 <div class="result-image-container">
                     <div class="result-image-wrapper">
@@ -795,7 +812,7 @@ function addMessageEdit(prompt, original, modified, mask = null, generationTime 
                             <button class="edit-btn refine-btn" onclick="fixDetailsImage(this.closest('.result-image-wrapper').querySelector('img').src)" title="Fix Details">${fixDetailsIcon}</button>
                         </div>
                     </div>
-                    <div class="image-label">Modifie</div>
+                    <div class="image-label" ${imageLabelAttr('modified')}>${imageLabelT('modified', 'Modifié')}</div>
                 </div>
             </div>
         `;
@@ -849,7 +866,7 @@ function addMessageTxt2Img(prompt, generated, generationTime = null, seed = null
                                 <button class="edit-btn refine-btn" onclick="fixDetailsImage(this.closest('.result-image-wrapper').querySelector('img').src)" title="Fix Details">${fixDetailsIcon}</button>
                             </div>
                         </div>
-                        <div class="image-label">Genere</div>
+                        <div class="image-label" ${imageLabelAttr('generated')}>${imageLabelT('generated', 'Généré')}</div>
                     </div>
                 </div>
                 ${buildImageActionsBar(prompt, generationTime, seed)}
@@ -883,14 +900,14 @@ function addMessageVideo(videoBase64, generationTime = null, sourceImage = null,
     const playIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>`;
 
     const timeDisplay = generationTime ? `<div class="generation-time">${formatGenTimeDisplay(generationTime)}</div>` : '';
-    const label = modelName || 'Vidéo';
+    const label = modelName || imageLabelT('video', 'Vidéo');
 
     const sourceHtml = sourceImage ? `
         <div class="result-image-container">
             <div class="result-image-wrapper">
                 <img src="${sourceImage}" class="result-image" onclick="openModalSingle('${sourceImage}')">
             </div>
-            <div class="image-label">Source</div>
+            <div class="image-label" ${imageLabelAttr('source')}>${imageLabelT('source', 'Source')}</div>
         </div>
     ` : '';
 
@@ -1025,7 +1042,7 @@ function addChatMessageWithGenerated(prompt, response, generated, responseTime =
                                 <button class="edit-btn refine-btn" onclick="fixDetailsImage(this.closest('.result-image-wrapper').querySelector('img').src)" title="Fix Details">${fixDetailsIcon}</button>
                             </div>
                         </div>
-                        <div class="image-label">Genere</div>
+                        <div class="image-label" ${imageLabelAttr('generated')}>${imageLabelT('generated', 'Généré')}</div>
                     </div>
                 </div>
                 <div class="chat-actions">
@@ -1081,7 +1098,7 @@ function addChatMessageWithPendingImage(prompt, response, genPrompt) {
                 <div class="result-images pending-generation" id="pending-images-${msgId}">
                     <div class="result-image-container">
                         <div class="skeleton skeleton-image" id="pending-skeleton-${msgId}"></div>
-                        <div class="image-label">Generation en cours...</div>
+                        <div class="image-label" ${imageLabelAttr('generationInProgress')}>${imageLabelT('generationInProgress', 'Génération en cours...')}</div>
                     </div>
                 </div>
             </div>
@@ -1114,7 +1131,7 @@ function replacePendingImageWithReal(imageSrc, genTime) {
                     <button class="edit-btn refine-btn" onclick="fixDetailsImage('${imageSrc}')" title="Fix Details">${fixDetailsIcon}</button>
                 </div>
             </div>
-            <div class="image-label">Genere (${seconds}s)</div>
+            <div class="image-label">${imageLabelT('generatedWithTime', 'Généré ({seconds}s)', { seconds })}</div>
         </div>
     `;
 
@@ -1235,12 +1252,16 @@ function showSuggestions(suggestions, container, imageSrc, originalSrc = null) {
     container.innerHTML = suggestions.map((s, index) => {
         const dataIndex = baseIndex + index;
         const escapedLabel = s.label.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const originalLabel = imageLabelT('original', 'Original');
+        const modifiedLabel = imageLabelT('modified', 'Modifié');
+        const originalTitle = imageLabelT('applyOriginal', 'Appliquer sur l’original');
+        const modifiedTitle = imageLabelT('applyModified', 'Appliquer sur le modifié');
 
         // Boutons Original/Modifié si on a les deux images
         const targetButtons = hasOriginal ? `
             <div class="suggestion-targets">
-                <button class="suggestion-target-btn" onclick="event.stopPropagation(); applySuggestionByIndex(${dataIndex}, true)" title="Appliquer sur l'original">Original</button>
-                <button class="suggestion-target-btn" onclick="event.stopPropagation(); applySuggestionByIndex(${dataIndex}, false)" title="Appliquer sur le modifié">Modifié</button>
+                <button class="suggestion-target-btn" onclick="event.stopPropagation(); applySuggestionByIndex(${dataIndex}, true)" title="${originalTitle}">${originalLabel}</button>
+                <button class="suggestion-target-btn" onclick="event.stopPropagation(); applySuggestionByIndex(${dataIndex}, false)" title="${modifiedTitle}">${modifiedLabel}</button>
             </div>
         ` : '';
 
