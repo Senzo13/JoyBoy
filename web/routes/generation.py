@@ -1146,9 +1146,10 @@ def unified_generate():
 
             try:
                 # Style ref = init image pure (img2img). Face ref = IP-Adapter FaceID.
+                from core.generation.face_reference import resolve_text2img_face_reference_policy
+
                 face_embeds = None
                 style_init_img = None
-                needs_face = face_ref_b64 is not None
                 has_style = style_ref_b64 is not None
 
                 # ControlNet pose: OpenPose for explicit poses, Depth for style ref extraction
@@ -1163,6 +1164,20 @@ def unified_generate():
                 _cn_scale = max(0.3, _pose_strength) if needs_cn_pose else 0.0
                 # Style ref sans pose explicite → ControlNet Depth (meilleur pour poses complexes)
                 _use_depth_cn = needs_cn_pose and not _has_explicit_pose and has_style
+                _face_policy = resolve_text2img_face_reference_policy(
+                    final_prompt,
+                    face_ref_scale,
+                    has_style_ref=has_style,
+                    has_pose_control=needs_cn_pose,
+                )
+                face_ref_scale = _face_policy.scale
+                needs_face = face_ref_b64 is not None and face_ref_scale > 0
+                if face_ref_b64 is not None and _face_policy.was_adjusted:
+                    print(
+                        "[TEXT2IMG] Face reference scale auto-cap "
+                        f"{_face_policy.requested_scale:.2f} → {face_ref_scale:.2f} "
+                        f"({_face_policy.reason})"
+                    )
 
                 set_progress_phase("load_text2img_model", 0, 100)
                 with generation_pipeline('text2img', generation_id, model_name=model,
@@ -1174,7 +1189,10 @@ def unified_generate():
                         face_ref_img = base64_to_pil(face_ref_b64)
                         face_embeds = mgr.extract_face_embedding(face_ref_img)
                         if face_embeds is not None:
-                            print(f"[TEXT2IMG] Face reference → IP-Adapter FaceID activé")
+                            print(
+                                f"[TEXT2IMG] Face reference → IP-Adapter FaceID "
+                                f"activé (scale={face_ref_scale:.2f}, policy={_face_policy.reason})"
+                            )
                         else:
                             print(f"[TEXT2IMG] Aucun visage détecté dans la référence, ignoré")
                     if has_style:

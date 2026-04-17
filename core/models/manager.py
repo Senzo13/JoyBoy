@@ -4040,8 +4040,26 @@ class ModelManager:
                 print("[MM] IP-Adapter: aucun visage détecté")
                 return None
 
+            def _face_rank(face):
+                bbox = getattr(face, "bbox", None)
+                if bbox is None:
+                    area = 0.0
+                else:
+                    x1, y1, x2, y2 = bbox
+                    area = max(0.0, float(x2 - x1)) * max(0.0, float(y2 - y1))
+                score = float(getattr(face, "det_score", 0.0) or 0.0)
+                return area * max(score, 0.01)
+
+            selected_face = max(faces, key=_face_rank)
+            if len(faces) > 1:
+                print(f"[MM] IP-Adapter: {len(faces)} visages détectés, meilleur visage utilisé")
+            selected_score = float(getattr(selected_face, "det_score", 0.0) or 0.0)
+            if selected_score < 0.45:
+                print(f"[MM] IP-Adapter: visage trop incertain (score={selected_score:.2f}), ignoré")
+                return None
+
             # Embedding normalisé [1, 1, 512]
-            faceid_embed = torch.from_numpy(faces[0].normed_embedding).unsqueeze(0)
+            faceid_embed = torch.from_numpy(selected_face.normed_embedding).unsqueeze(0)
             ref_embeds = faceid_embed.unsqueeze(0)  # [1, 1, 512]
             neg_embeds = torch.zeros_like(ref_embeds)
             # Utiliser le dtype du pipeline (bf16 sur high-end, fp16 sinon)
@@ -4049,7 +4067,20 @@ class ModelManager:
             if self._inpaint_pipe is not None and hasattr(self._inpaint_pipe, 'unet'):
                 pipe_dtype = self._inpaint_pipe.unet.dtype
             id_embeds = torch.cat([neg_embeds, ref_embeds]).to(dtype=pipe_dtype, device="cuda")
-            print(f"[MM] IP-Adapter: face embedding extrait (score={faces[0].det_score:.2f})")
+            bbox = getattr(selected_face, "bbox", None)
+            if bbox is not None:
+                x1, y1, x2, y2 = bbox
+                area_pct = (
+                    max(0.0, float(x2 - x1))
+                    * max(0.0, float(y2 - y1))
+                    / max(1.0, float(image_cv2.shape[0] * image_cv2.shape[1]))
+                )
+                print(
+                    f"[MM] IP-Adapter: face embedding extrait "
+                    f"(score={selected_score:.2f}, face={area_pct:.1%})"
+                )
+            else:
+                print(f"[MM] IP-Adapter: face embedding extrait (score={selected_score:.2f})")
             return id_embeds
 
         except Exception as e:
