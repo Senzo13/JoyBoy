@@ -1310,7 +1310,7 @@ class ModelManager:
 
             # FIX: Remplacer le VAE SDXL par la version fp16-fix
             # Poids VAE optimisés pour fp16 (moins de perte de précision au décodage)
-            # Note: force_upcast incompatible avec group offload (hooks remettent en fp16)
+            # Sur macOS/MPS, _place_sdxl_pipe force aussi le decode VAE en fp32.
             from diffusers import AutoencoderKL
             fixed_vae = AutoencoderKL.from_pretrained(
                 "madebyollin/sdxl-vae-fp16-fix", torch_dtype=TORCH_DTYPE

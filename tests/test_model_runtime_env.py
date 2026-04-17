@@ -30,6 +30,7 @@ class ModelRuntimeEnvTest(unittest.TestCase):
         class FakePipe:
             def __init__(self) -> None:
                 self.attention_slicing_enabled = False
+                self.vae = None
 
             def enable_attention_slicing(self) -> None:
                 self.attention_slicing_enabled = True
@@ -45,6 +46,26 @@ class ModelRuntimeEnvTest(unittest.TestCase):
         enabled = apply_mps_pipeline_optimizations(object(), "fake", log_skip=False)
 
         self.assertFalse(enabled)
+
+    def test_mps_pipeline_optimizations_enable_vae_force_upcast(self) -> None:
+        class FakeVae:
+            def __init__(self) -> None:
+                self.config = type("Config", (), {"force_upcast": False})()
+
+            def register_to_config(self, **kwargs) -> None:
+                for key, value in kwargs.items():
+                    setattr(self.config, key, value)
+
+        class FakePipe:
+            def __init__(self) -> None:
+                self.vae = FakeVae()
+
+        pipe = FakePipe()
+
+        enabled = apply_mps_pipeline_optimizations(pipe, "fake", log_skip=False)
+
+        self.assertTrue(enabled)
+        self.assertTrue(pipe.vae.config.force_upcast)
 
 
 if __name__ == "__main__":

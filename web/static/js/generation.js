@@ -293,7 +293,9 @@ async function handleChatStream(prompt, startTime, targetChatId = (typeof curren
 
                         if (data.generate_image && data.image_prompt) {
                             console.log('[CHAT] IA demande une image:', data.image_prompt);
-                            addImageSkeletonToChat();
+                            if (!targetChatId || targetChatId === currentChatId) {
+                                addImageSkeletonToChat(targetChatId);
+                            }
                         }
 
                         if (data.switch_workspace) {
@@ -318,7 +320,7 @@ async function handleChatStream(prompt, startTime, targetChatId = (typeof curren
                         }
 
                         if (data.generate_image && data.image_prompt) {
-                            await generateImageFromChat(data.image_prompt);
+                            await generateImageFromChat(data.image_prompt, targetChatId);
                         }
                     } else if (data.error) {
                         appendToStreamingMessage(msgId, `\n\n${generationT('terminal.tool.error', 'Erreur')}: ${data.error}`);
@@ -1398,11 +1400,8 @@ function updateSkeletonPreview(previewBase64, step, total, phase = 'generation',
 }
 
 // Génère une image après que l'IA a répondu (skeleton déjà affiché)
-async function generateImageFromChat(imagePrompt) {
+async function generateImageFromChat(imagePrompt, targetChatId = (typeof currentChatId !== 'undefined' ? currentChatId : null)) {
     console.log('[GEN] Génération d\'image après chat:', imagePrompt);
-
-    // IMPORTANT: Capturer le chatId au début pour pas le perdre si l'user switch
-    const targetChatId = currentChatId;
 
     // Générer un ID pour cette génération
     currentGenerationId = generateUUID();
@@ -1417,6 +1416,8 @@ async function generateImageFromChat(imagePrompt) {
     const imageModel = getCurrentImageModel();
 
     // Backend loads the model on-demand, no need to wait for preloading
+
+    ensureImageSkeletonForChat(targetChatId);
 
     // Démarrer le polling de preview maintenant que la génération commence
     startPreviewPolling();
@@ -1489,8 +1490,18 @@ async function generateImageFromChat(imagePrompt) {
     saveCurrentChatHtml('', finalHtml, targetChatId);
 }
 
+function ensureImageSkeletonForChat(chatId = (typeof currentChatId !== 'undefined' ? currentChatId : null)) {
+    if (chatId && document.querySelector(`.image-skeleton-message[data-chat-id="${chatId}"]`)) {
+        return;
+    }
+    if (chatId && chatId !== currentChatId) {
+        return;
+    }
+    addImageSkeletonToChat(chatId);
+}
+
 // Ajoute un skeleton d'image dans le chat (avec support preview)
-function addImageSkeletonToChat() {
+function addImageSkeletonToChat(chatId = (typeof currentChatId !== 'undefined' ? currentChatId : null)) {
     const messagesDiv = document.getElementById('chat-messages');
     if (!messagesDiv) return;
 
@@ -1503,7 +1514,7 @@ function addImageSkeletonToChat() {
     const skeleton = document.createElement('div');
     skeleton.className = 'message image-skeleton-message';
     // Ajouter un data-attribute avec le chatId pour pouvoir détecter si c'est orphelin
-    skeleton.setAttribute('data-chat-id', currentChatId);
+    if (chatId) skeleton.setAttribute('data-chat-id', chatId);
     skeleton.setAttribute('data-started-at', Date.now());
     const initialProgressText = getInitialGenerationProgressText();
     const generatingText = generationT('generation.labels.generationInProgress', 'Génération en cours...');
@@ -1526,6 +1537,9 @@ function addImageSkeletonToChat() {
     `;
     messagesDiv.appendChild(skeleton);
     scrollToBottom();
+    if (chatId && typeof saveCurrentChatHtml === 'function' && chatId === currentChatId) {
+        saveCurrentChatHtml('', getCurrentChatHtml(), chatId);
+    }
 }
 
 // Remplace le skeleton par l'image réelle
@@ -1548,6 +1562,13 @@ function replaceImageSkeletonWithReal(imageSrc, genTime, targetChatId = null) {
             <div class="image-gen-time">${timeText}</div>
         </div>
     `;
+    const resultMessageHtml = `
+        <div class="message generated-image-message">
+            <div class="ai-response">
+                ${resultHtml}
+            </div>
+        </div>
+    `;
 
     // Si c'est le chat actuel, mettre à jour le DOM
     if (chatId === currentChatId) {
@@ -1565,6 +1586,17 @@ function replaceImageSkeletonWithReal(imageSrc, genTime, targetChatId = null) {
 
             return;
         }
+
+        const messagesDiv = document.getElementById('chat-messages');
+        if (messagesDiv) {
+            console.warn('[GEN] Image skeleton missing, appending generated result card');
+            messagesDiv.insertAdjacentHTML('beforeend', resultMessageHtml);
+            scrollToBottom(true);
+            if (typeof saveCurrentChatHtml === 'function') {
+                saveCurrentChatHtml('', getCurrentChatHtml(), chatId);
+            }
+            return;
+        }
     }
 
     // If the user switched conversations during the generation, update the
@@ -1576,12 +1608,16 @@ function replaceImageSkeletonWithReal(imageSrc, genTime, targetChatId = null) {
             temp.innerHTML = record.html || '';
             const skeleton = Array.from(temp.querySelectorAll('.image-skeleton-message'))
                 .find(node => node.dataset?.chatId === chatId);
-            if (!skeleton) return;
-            skeleton.classList.remove('image-skeleton-message');
-            skeleton.classList.add('message', 'ai-response');
-            skeleton.removeAttribute('data-chat-id');
-            skeleton.removeAttribute('data-started-at');
-            skeleton.innerHTML = resultHtml;
+            if (skeleton) {
+                skeleton.classList.remove('image-skeleton-message');
+                skeleton.classList.add('message', 'ai-response');
+                skeleton.removeAttribute('data-chat-id');
+                skeleton.removeAttribute('data-started-at');
+                skeleton.innerHTML = resultHtml;
+            } else {
+                console.warn('[GEN] Stored image skeleton missing, appending generated result card');
+                temp.insertAdjacentHTML('beforeend', resultMessageHtml);
+            }
             saveCurrentChatHtml('', temp.innerHTML, chatId);
         }).catch(e => console.warn('[GEN] Inactive image skeleton update failed:', e));
     }
