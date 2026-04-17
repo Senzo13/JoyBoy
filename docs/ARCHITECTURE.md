@@ -2,21 +2,21 @@
 
 JoyBoy is being structured as a public-ready local AI harness with a clear split between:
 
-- `public core`
-- `local configuration`
-- `optional local packs`
+* `public core`
+* `local configuration`
+* `optional local packs`
 
 ## Public core
 
 The public core should stay focused on reusable infrastructure:
 
-- chat and multimodal orchestration
-- image/video routing
-- model management
-- onboarding
-- doctor checks
-- provider configuration
-- UI shell
+* chat and multimodal orchestration
+* image/video routing
+* model management
+* onboarding
+* doctor checks
+* provider configuration
+* UI shell
 
 The goal is to keep this surface contributor-friendly and easy to reason about.
 
@@ -30,10 +30,10 @@ Machine-specific state lives outside git in:
 
 This local config stores:
 
-- provider credentials
-- feature flags
-- active local packs
-- onboarding state
+* provider credentials
+* feature flags
+* active local packs
+* onboarding state
 
 Priority order:
 
@@ -53,10 +53,10 @@ Each pack is validated through `pack.json` before activation.
 
 Packs can expose:
 
-- router rules
-- prompt assets
-- model sources
-- UI overrides
+* router rules
+* prompt assets
+* model sources
+* UI overrides
 
 This keeps the public core lean while still allowing machine-specific extensions.
 
@@ -66,9 +66,9 @@ The frontend should not guess what is available.
 
 Instead:
 
-- backend returns feature flags
-- backend returns feature exposure
-- UI renders visible, locked, or active surfaces accordingly
+* backend returns feature flags
+* backend returns feature exposure
+* UI renders visible, locked, or active surfaces accordingly
 
 This is how JoyBoy can show an optional surface without pretending it is active everywhere.
 
@@ -87,8 +87,27 @@ Doctor explains what is missing when the machine is not fully ready.
 
 ## Guiding principles
 
-- keep public APIs explicit
-- prefer additive extensions over hidden side effects
-- avoid duplicating routing logic
-- store secrets locally, never in git
-- let the UI reflect backend truth
+* keep public APIs explicit
+* prefer additive extensions over hidden side effects
+* avoid duplicating routing logic
+* store secrets locally, never in git
+* let the UI reflect backend truth
+
+## CSS Variables
+
+JoyBoy uses centralized CSS variables defined in:
+
+```text
+web/static/css/variables.css
+```
+
+These variables act as design tokens for consistent styling across the UI.
+
+### Categories
+
+* colors (primary, background, state)
+* spacing (layout scale)
+* typography (font sizes)
+* effects (shadows, transitions, overlays)
+
+This approach keeps styling predictable and easy to extend without modifying component-level styles.
