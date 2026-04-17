@@ -3113,6 +3113,7 @@
     Object.assign(MESSAGES.fr.editor, {
         noImageToEdit: 'Pas d’image à modifier',
         facesFixed: '{count} visage(s)',
+        handsFixed: '{count} main(s)',
         detailsFixed: 'Détails corrigés en {seconds}s{faces}',
         fixDetailsFailed: 'Échec fix details',
         fixDetailsError: 'Erreur Fix Details : {error}',
@@ -3232,6 +3233,7 @@
     Object.assign(MESSAGES.en.editor, {
         noImageToEdit: 'No image to edit',
         facesFixed: '{count} face(s)',
+        handsFixed: '{count} hand(s)',
         detailsFixed: 'Details fixed in {seconds}s{faces}',
         fixDetailsFailed: 'Fix details failed',
         fixDetailsError: 'Fix Details error: {error}',
@@ -3351,6 +3353,7 @@
     Object.assign(MESSAGES.es.editor, {
         noImageToEdit: 'No hay imagen que editar',
         facesFixed: '{count} rostro(s)',
+        handsFixed: '{count} mano(s)',
         detailsFixed: 'Detalles corregidos en {seconds}s{faces}',
         fixDetailsFailed: 'Falló Fix Details',
         fixDetailsError: 'Error Fix Details: {error}',
@@ -3470,6 +3473,7 @@
     Object.assign(MESSAGES.it.editor, {
         noImageToEdit: 'Nessuna immagine da modificare',
         facesFixed: '{count} volto/i',
+        handsFixed: '{count} mano/i',
         detailsFixed: 'Dettagli corretti in {seconds}s{faces}',
         fixDetailsFailed: 'Fix Details fallito',
         fixDetailsError: 'Errore Fix Details: {error}',

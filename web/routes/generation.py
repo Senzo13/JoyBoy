@@ -1877,14 +1877,48 @@ def unified_generate():
         return error_response(str(e))
 
 
-# ─── ADetailer constants (no hardcoding) ───
+# ─── ADetailer-style detail refinement ───
 ADETAILER_FACE_CLASSES = [11]
-ADETAILER_FACE_STRENGTH = 0.30  # Low strength = preserve identity, just enhance details
-ADETAILER_FACE_STEPS = 25
-ADETAILER_FACE_DILATION = 15  # px
+ADETAILER_FACE_STRENGTH = 0.28  # Low strength = preserve identity/style, just clean details
+ADETAILER_FACE_STEPS = 22
+ADETAILER_FACE_DILATION = 14  # px
+ADETAILER_HAND_STRENGTH = 0.38  # Hands usually need a bit more denoise than faces
+ADETAILER_HAND_STEPS = 24
+ADETAILER_HAND_DILATION = 10  # px
 ADETAILER_MIN_REGION_AREA = 400  # ~20x20px minimum
-ADETAILER_FACE_SUFFIX = ", detailed face, sharp eyes, natural skin pores, photorealistic"
-ADETAILER_FACE_NEG = "blurry, smooth, airbrushed, plastic skin, deformed eyes, crossed eyes, bad anatomy"
+ADETAILER_MAX_FACE_REGIONS = 4
+ADETAILER_MAX_HAND_REGIONS = 4
+ADETAILER_FACE_SUFFIX = ", same identity, matching original style, clean facial details, sharp symmetrical eyes, detailed pupils, natural facial proportions"
+ADETAILER_FACE_NEG = "changed identity, different face, blurry face, melted face, deformed eyes, crossed eyes, asymmetrical eyes, extra eyes, bad anatomy"
+ADETAILER_HAND_SUFFIX = ", matching original style, detailed natural hands, five fingers on each hand, clean finger anatomy, natural fingernails, matching lighting"
+ADETAILER_HAND_NEG = "extra fingers, missing fingers, fused fingers, malformed hands, broken wrists, deformed hands, blurry hands, bad anatomy"
+
+
+def _split_detail_regions(mask, dilation_px=0, min_area=ADETAILER_MIN_REGION_AREA, max_regions=4):
+    """Split a binary mask into dilated connected-component masks, largest first."""
+    import numpy as np
+    import cv2
+
+    mask_np = np.array(mask.convert('L'))
+    binary = (mask_np > 127).astype(np.uint8)
+    num_labels, labels = cv2.connectedComponents(binary)
+
+    regions = []
+    for label_id in range(1, num_labels):  # skip background (0)
+        region_mask = (labels == label_id).astype(np.uint8) * 255
+        area = int(np.sum(region_mask > 0))
+        if area < min_area:
+            continue
+
+        if dilation_px > 0:
+            kernel_size = dilation_px * 2 + 1
+            kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
+            region_mask = cv2.dilate(region_mask, kernel, iterations=1)
+
+        regions.append((area, Image.fromarray(region_mask, mode='L')))
+
+    regions.sort(key=lambda x: x[0], reverse=True)
+    return [region for _, region in regions[:max_regions]]
 
 
 def _extract_face_regions(image):
@@ -1897,9 +1931,6 @@ def _extract_face_regions(image):
         list[PIL.Image mode L] — one mask per face, sorted by area descending.
         Each mask is dilated by ADETAILER_FACE_DILATION px, regions < ADETAILER_MIN_REGION_AREA filtered out.
     """
-    import numpy as np
-    import cv2
-
     from core.segmentation import create_smart_mask
 
     # Get combined face mask (class 11 = face in SCHP)
@@ -1908,41 +1939,53 @@ def _extract_face_regions(image):
         classes=ADETAILER_FACE_CLASSES,
         exclude_face=False, tight=True
     )
-    mask_np = np.array(face_mask.convert('L'))
+    return _split_detail_regions(
+        face_mask,
+        dilation_px=ADETAILER_FACE_DILATION,
+        min_area=ADETAILER_MIN_REGION_AREA,
+        max_regions=ADETAILER_MAX_FACE_REGIONS,
+    )
 
-    # Binarize
-    binary = (mask_np > 127).astype(np.uint8)
 
-    # Separate into individual connected components
-    num_labels, labels = cv2.connectedComponents(binary)
+def _extract_hand_regions(image):
+    """Extract hand masks from the B4 parser when available.
 
-    regions = []
-    for label_id in range(1, num_labels):  # skip background (0)
-        region_mask = (labels == label_id).astype(np.uint8) * 255
-        area = int(np.sum(region_mask > 0))
+    B4 has a dedicated hands class (13). SCHP/B2 class 13 means something else,
+    so this intentionally avoids fusion/class overrides for hand detailing.
+    """
+    from pathlib import Path
+    from PIL import Image as PILImage
+    import torch
 
-        # Filter small regions (noise)
-        if area < ADETAILER_MIN_REGION_AREA:
-            continue
+    try:
+        from core.generation import segmentation as seg
 
-        # Dilate each face region
-        kernel_size = ADETAILER_FACE_DILATION * 2 + 1
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
-        region_mask = cv2.dilate(region_mask, kernel, iterations=1)
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        output_dir = Path("output")
+        output_dir.mkdir(exist_ok=True)
+        _, hand_array, pct, _, _, _ = seg._run_b4(
+            image, "person", [13], device, output_dir, True
+        )
+        if pct <= 0:
+            return []
 
-        regions.append((area, Image.fromarray(region_mask, mode='L')))
-
-    # Sort by area descending (largest face first)
-    regions.sort(key=lambda x: x[0], reverse=True)
-
-    return [mask for _, mask in regions]
+        hand_mask = PILImage.fromarray(hand_array, mode="L")
+        return _split_detail_regions(
+            hand_mask,
+            dilation_px=ADETAILER_HAND_DILATION,
+            min_area=ADETAILER_MIN_REGION_AREA,
+            max_regions=ADETAILER_MAX_HAND_REGIONS,
+        )
+    except Exception as e:
+        print(f"[ADETAILER] Hand detection skipped: {e}")
+        return []
 
 
 @generation_bp.route('/fix-details', methods=['POST'])
 def fix_details():
     """
-    ADetailer: detects faces via SCHP segmentation (class 11), then re-inpaints
-    each face at high resolution using crop-to-mask + Fooocus pipeline.
+    ADetailer-style refinement: detects small detail regions (faces/hands), then
+    re-inpaints each region at high resolution using crop-to-mask + Fooocus.
     """
     _set_generation_cancelled(False)
 
@@ -1960,6 +2003,7 @@ def fix_details():
         data = request.json
         generation_id = data.get('generationId') or str(uuid.uuid4())
         image_param = data.get('image')  # URL or base64
+        target = (data.get('target') or 'auto').strip().lower()
 
         # Load the image
         if image_param:
@@ -1981,7 +2025,7 @@ def fix_details():
             return validation_error('Aucune image disponible')
 
         from core.log_utils import big
-        big(f"FIX DETAILS (ADetailer) | faces")
+        big(f"FIX DETAILS (ADetailer) | {target}")
 
         model = state.last_model or 'epiCRealism XL (Moyen)'
 
@@ -1996,8 +2040,13 @@ def fix_details():
                 gen = active_generations.get(generation_id, {})
                 return gen.get("cancelled", False)
 
-        # 1. Extract face regions
-        face_masks = _extract_face_regions(img)
+        # 1. Extract detail regions. Keep faces first, then hands.
+        face_masks = []
+        hand_masks = []
+        if target in ('auto', 'all', 'face', 'faces'):
+            face_masks = _extract_face_regions(img)
+        if target in ('auto', 'all', 'hand', 'hands'):
+            hand_masks = _extract_hand_regions(img)
 
         # Free segmentation VRAM before generation
         from core.models import IS_HIGH_END_GPU
@@ -2005,12 +2054,12 @@ def fix_details():
             from core.segmentation import unload_segmentation_models
             unload_segmentation_models()
 
-        if not face_masks:
+        if not face_masks and not hand_masks:
             with generations_lock:
                 active_generations.pop(generation_id, None)
-            return validation_error('Aucun visage detecte')
+            return validation_error('Aucun visage ou main detecte')
 
-        print(f"[ADETAILER] {len(face_masks)} visage(s) detecte(s)")
+        print(f"[ADETAILER] {len(face_masks)} face(s), {len(hand_masks)} hand region(s) detected")
 
         # Cancel check after segmentation
         if is_cancelled():
@@ -2020,14 +2069,42 @@ def fix_details():
 
         # Build prompt: use ORIGINAL generation prompt + face detail suffix
         # This preserves identity (same subject/style) while adding detail keywords
-        base_prompt = state.last_prompt or "a person"
+        base_prompt = (state.last_prompt or "").strip()
+        if not base_prompt:
+            base_prompt = "same subject, matching original image style and lighting"
         face_prompt = base_prompt + ADETAILER_FACE_SUFFIX
-        print(f"[ADETAILER] Prompt: {face_prompt}")
+        hand_prompt = base_prompt + ADETAILER_HAND_SUFFIX
+        print(f"[ADETAILER] Face prompt: {face_prompt}")
+        if hand_masks:
+            print(f"[ADETAILER] Hand prompt: {hand_prompt}")
+
+        detail_regions = [
+            {
+                "kind": "face",
+                "mask": face_mask,
+                "prompt": face_prompt,
+                "negative": ADETAILER_FACE_NEG,
+                "strength": ADETAILER_FACE_STRENGTH,
+                "steps": ADETAILER_FACE_STEPS,
+            }
+            for face_mask in face_masks
+        ] + [
+            {
+                "kind": "hand",
+                "mask": hand_mask,
+                "prompt": hand_prompt,
+                "negative": ADETAILER_HAND_NEG,
+                "strength": ADETAILER_HAND_STRENGTH,
+                "steps": ADETAILER_HAND_STEPS,
+            }
+            for hand_mask in hand_masks
+        ]
 
         import time as _time
         start_time = _time.time()
         working_image = img
         faces_fixed = 0
+        hands_fixed = 0
 
         try:
             with generation_pipeline('inpaint', generation_id, model_name=model) as mgr:
@@ -2035,41 +2112,46 @@ def fix_details():
 
                 from core.processing import process_image, set_phase, clear_preview
 
-                # 2. Process each face sequentially (largest first)
-                for i, face_mask in enumerate(face_masks):
+                # 2. Process regions sequentially (largest faces first, then hands).
+                for i, region in enumerate(detail_regions):
                     if is_cancelled():
-                        raise GenerationCancelledException("Cancelled during face fix")
+                        raise GenerationCancelledException("Cancelled during detail fix")
 
-                    print(f"[ADETAILER] Processing face {i+1}/{len(face_masks)}")
+                    kind = region["kind"]
+                    print(f"[ADETAILER] Processing {kind} {i+1}/{len(detail_regions)}")
                     clear_preview()
-                    set_phase("generation", ADETAILER_FACE_STEPS)
+                    set_phase("generation", region["steps"])
 
                     result, _, status, gen_time = process_image(
                         working_image,
-                        face_prompt,
-                        ADETAILER_FACE_STRENGTH,
+                        region["prompt"],
+                        region["strength"],
                         model,
-                        mask=face_mask,
+                        mask=region["mask"],
                         enhance=False,
-                        steps=ADETAILER_FACE_STEPS,
+                        steps=region["steps"],
                         cancel_check=is_cancelled,
-                        negative_prompt=ADETAILER_FACE_NEG,
+                        negative_prompt=region["negative"],
                         pipe=pipe,
                         skip_auto_refine=True,
                         intent='fix_details',
                         metadata={
-                            "original_prompt": prompt,
+                            "original_prompt": base_prompt,
                             "router_intent": "fix_details",
+                            "detail_kind": kind,
                         },
                     )
 
                     if result is None:
-                        print(f"[ADETAILER] Face {i+1} failed: {status}")
+                        print(f"[ADETAILER] {kind} {i+1} failed: {status}")
                         continue
 
                     working_image = result
-                    faces_fixed += 1
-                    print(f"[ADETAILER] Face {i+1} done in {gen_time:.1f}s")
+                    if kind == "hand":
+                        hands_fixed += 1
+                    else:
+                        faces_fixed += 1
+                    print(f"[ADETAILER] {kind} {i+1} done in {gen_time:.1f}s")
 
         except GenerationCancelledException:
             with generations_lock:
@@ -2081,12 +2163,13 @@ def fix_details():
         with generations_lock:
             active_generations.pop(generation_id, None)
 
-        if faces_fixed > 0:
+        details_fixed = faces_fixed + hands_fixed
+        if details_fixed > 0:
             state.modified_image = working_image
             state.last_modified_image = working_image
 
             from core.log_utils import big as log_big
-            log_big(f"FIX DETAILS DONE | {faces_fixed} face(s) | {total_time:.1f}s")
+            log_big(f"FIX DETAILS DONE | {faces_fixed} face(s), {hands_fixed} hand(s) | {total_time:.1f}s")
 
             return success_response(
                 mode='fix_details',
@@ -2094,11 +2177,13 @@ def fix_details():
                 modified=pil_to_base64(working_image),
                 generation_time=total_time,
                 generation_id=generation_id,
-                prompt=face_prompt,
-                faces_fixed=faces_fixed
+                prompt=face_prompt if faces_fixed else hand_prompt,
+                faces_fixed=faces_fixed,
+                hands_fixed=hands_fixed,
+                details_fixed=details_fixed,
             )
         else:
-            return error_response('Aucun visage n\'a pu etre corrige')
+            return error_response('Aucun detail n\'a pu etre corrige')
 
     except Exception as e:
         print(f"Fix details error: {e}")

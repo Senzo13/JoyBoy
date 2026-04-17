@@ -836,9 +836,14 @@ async function fixDetailsEdit() {
                 editImg.src = newImage;
             }
 
-            const facesMsg = data.faces_fixed
-                ? ` (${editT('editor.facesFixed', '{count} visage(s)', { count: data.faces_fixed })})`
-                : '';
+            const fixedParts = [];
+            if (data.faces_fixed) {
+                fixedParts.push(editT('editor.facesFixed', '{count} visage(s)', { count: data.faces_fixed }));
+            }
+            if (data.hands_fixed) {
+                fixedParts.push(editT('editor.handsFixed', '{count} main(s)', { count: data.hands_fixed }));
+            }
+            const facesMsg = fixedParts.length ? ` (${fixedParts.join(', ')})` : '';
             Toast.success(editT('editor.detailsFixed', 'Détails corrigés en {seconds}s{faces}', {
                 seconds: data.generationTime?.toFixed(1) || '?',
                 faces: facesMsg,
