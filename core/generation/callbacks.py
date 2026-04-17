@@ -33,6 +33,30 @@ COMPOSITE_RADIUS_BRUSH = 32
 COMPOSITE_RADIUS_SEG = 48
 
 
+def _match_latent_tensor(tensor, reference, *, dtype=None):
+    """Move callback state tensors onto the live latent tensor device/dtype.
+
+    Diffusers keeps callback kwargs on the active runtime device. Captured
+    tensors created before the pipeline call may still be on CPU, which breaks
+    macOS/MPS as soon as the callback blends them with live latents.
+    """
+    if not torch.is_tensor(tensor) or not torch.is_tensor(reference):
+        return tensor
+
+    target_dtype = dtype if dtype is not None else reference.dtype
+    if tensor.device == reference.device and tensor.dtype == target_dtype:
+        return tensor
+    return tensor.to(device=reference.device, dtype=target_dtype)
+
+
+def _match_latent_device(tensor, reference):
+    if not torch.is_tensor(tensor) or not torch.is_tensor(reference):
+        return tensor
+    if tensor.device == reference.device:
+        return tensor
+    return tensor.to(device=reference.device)
+
+
 def _magnitude_preserving_blend(orig_latents, gen_latents, blend_t, detail_preservation=4.0):
     """
     Blend latents avec préservation de magnitude.
@@ -103,18 +127,24 @@ def make_soft_inpaint_callback(orig_latents, noise, soft_mask_latent,
             sigma = ((1 - alpha) / alpha) ** 0.5
 
         # Masque scalé par sigma: début=liberté débruiteur, fin=préservation original
-        sigma_t = torch.tensor(sigma, device=latents.device, dtype=torch.float64)
+        # Keep this math in fp32: Apple MPS does not reliably support fp64 ops.
+        sigma_t = torch.tensor(sigma, device=latents.device, dtype=torch.float32)
+        nmask_step = _match_latent_tensor(nmask, latents, dtype=torch.float32)
         modified_nmask = torch.pow(
-            nmask.to(torch.float64),
+            nmask_step,
             (sigma_t ** SOFT_INPAINT_BLEND_POWER) * SOFT_INPAINT_BLEND_SCALE
         ).to(latents.dtype)
         blend_t = 1.0 - modified_nmask  # 0=original, 1=denoised
 
         # Original bruité au prochain timestep (pour cohérence avec le scheduler)
         next_t = timesteps[step_index + 1]
+        next_t_batch = _match_latent_device(next_t.unsqueeze(0), latents)
+        orig_step_latents = _match_latent_tensor(orig_latents, latents)
+        noise_step = _match_latent_tensor(noise, latents)
         noised_orig = pipe.scheduler.add_noise(
-            orig_latents, noise, next_t.unsqueeze(0)
+            orig_step_latents, noise_step, next_t_batch
         )
+        noised_orig = _match_latent_tensor(noised_orig, latents)
 
         # Blend avec préservation de magnitude (élimine le gris)
         blended = _magnitude_preserving_blend(
@@ -235,6 +265,7 @@ def make_fooocus_clamp_callback(orig_latents, noise, mask_latent,
         if _step_progress[0] > ADM_SCALER_END and not _adm_reverted[0]:
             time_ids = callback_kwargs.get("add_time_ids")
             if time_ids is not None:
+                time_ids = _match_latent_tensor(time_ids, latents)
                 actual_h = orig_latents.shape[2] * 8
                 actual_w = orig_latents.shape[3] * 8
                 time_ids[:, 0] = actual_h
@@ -255,14 +286,18 @@ def make_fooocus_clamp_callback(orig_latents, noise, mask_latent,
             # This gives more natural/varied skin textures.
             # Use scheduler.add_noise for correct scaling (handles alpha/sigma math).
             next_t = timesteps[step_index + 1]
+            orig_step_latents = _match_latent_tensor(orig_latents, latents)
+            mask_step_latent = _match_latent_tensor(mask_latent, latents)
+            next_t_batch = _match_latent_device(next_t.unsqueeze(0), latents)
             _fresh_noise = torch.randn(
-                orig_latents.shape, dtype=orig_latents.dtype,
+                orig_step_latents.shape, dtype=latents.dtype,
                 generator=_energy_gen, device='cpu'
-            ).to(orig_latents.device)
+            ).to(latents.device)
             noised_orig = pipe.scheduler.add_noise(
-                orig_latents, _fresh_noise, next_t.unsqueeze(0)
+                orig_step_latents, _fresh_noise, next_t_batch
             )
-            clamped = noised_orig * (1.0 - mask_latent) + latents * mask_latent
+            noised_orig = _match_latent_tensor(noised_orig, latents)
+            clamped = noised_orig * (1.0 - mask_step_latent) + latents * mask_step_latent
             callback_kwargs["latents"] = clamped
         else:
             # Dernier step: restaurer le scheduler
