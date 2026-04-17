@@ -41,6 +41,105 @@ def _snap_canvas_size(value: float, multiple: int = 64) -> int:
     return max(multiple, int(round(value / multiple)) * multiple)
 
 
+def _resolve_expand_overlap_px(image_w: int, image_h: int) -> int:
+    """Return how much of the source edge should be regenerated.
+
+    Outpainting needs a real overlap between the original pixels and the new
+    canvas. If the keep-mask starts exactly on the source rectangle, SDXL tends
+    to preserve the rectangle as an inset photo/frame instead of continuing the
+    scene.
+    """
+    shortest = max(1, min(image_w, image_h))
+    overlap = int(round(shortest * 0.10))
+    overlap = max(40, min(overlap, 96))
+    return min(overlap, max(8, shortest // 4))
+
+
+def _resolve_expand_feather_px(overlap_px: int) -> int:
+    """Return a soft-composite feather radius derived from source overlap."""
+    return max(48, min(96, overlap_px + 16))
+
+
+def _build_expand_binary_mask(
+    target_w: int,
+    target_h: int,
+    paste_x: int,
+    paste_y: int,
+    image_w: int,
+    image_h: int,
+) -> tuple[Image.Image, int]:
+    """Build an outpaint mask where white is generated and black is preserved."""
+    overlap_px = _resolve_expand_overlap_px(image_w, image_h)
+    keep_x0 = paste_x + overlap_px
+    keep_y0 = paste_y + overlap_px
+    keep_x1 = paste_x + image_w - overlap_px
+    keep_y1 = paste_y + image_h - overlap_px
+
+    if keep_x1 <= keep_x0 or keep_y1 <= keep_y0:
+        keep_x0 = paste_x + max(1, image_w // 4)
+        keep_y0 = paste_y + max(1, image_h // 4)
+        keep_x1 = paste_x + image_w - max(1, image_w // 4)
+        keep_y1 = paste_y + image_h - max(1, image_h // 4)
+
+    mask = Image.new("L", (target_w, target_h), 255)
+    draw = ImageDraw.Draw(mask)
+    draw.rectangle((keep_x0, keep_y0, keep_x1, keep_y1), fill=0)
+    return mask, overlap_px
+
+
+def _paste_with_edge_feather(
+    canvas: Image.Image,
+    source: Image.Image,
+    xy: tuple[int, int],
+    overlap_px: int,
+) -> None:
+    """Paste source into canvas with a soft edge to avoid a visible rectangle."""
+    width, height = source.size
+    edge = min(overlap_px, max(1, width // 4), max(1, height // 4))
+    if edge <= 1:
+        canvas.paste(source, xy)
+        return
+
+    y_idx, x_idx = np.ogrid[:height, :width]
+    dist_x = np.minimum(x_idx + 1, width - x_idx)
+    dist_y = np.minimum(y_idx + 1, height - y_idx)
+    dist = np.minimum(dist_x, dist_y)
+    alpha_np = np.clip(dist / float(edge), 0.0, 1.0) * 255.0
+    alpha = Image.fromarray(alpha_np.astype(np.uint8), "L")
+    canvas.paste(source, xy, alpha)
+
+
+def _build_expand_prompts(
+    image_description: str,
+    prompt: str = "",
+    enhanced_prompt: str | None = None,
+) -> tuple[str, str]:
+    """Build outpaint prompts without poisoning CLIP with frame/border tokens."""
+    desc_words = (image_description or "").split()[:34]
+    short_desc = " ".join(desc_words) or "photorealistic scene, natural lighting"
+    continuity_prefix = (
+        "full-bleed photorealistic scene extension, continuous background from "
+        "the existing image edges, same camera perspective, same lens, same "
+        "lighting, coherent natural environment"
+    )
+
+    if prompt.strip():
+        user_prompt = (enhanced_prompt or prompt).strip()
+        full_prompt = f"{continuity_prefix}, {user_prompt}, {short_desc}"
+    else:
+        full_prompt = f"{continuity_prefix}, {short_desc}"
+
+    negative = (
+        "painting, oil painting, illustration, artistic, watercolor, drawing, "
+        "cartoon, anime, 3d render, blurry, low quality, distorted, artifacts, "
+        "ugly, different style, color mismatch, inconsistent lighting, picture "
+        "frame, photo frame, border, white border, gray border, black border, "
+        "matting, matte, pasted image, inset image, image within image, collage, "
+        "hard rectangular edge, visible seam, outline, vignette, poster, postcard"
+    )
+    return full_prompt, negative
+
+
 def _resolve_expand_canvas(
     orig_w: int,
     orig_h: int,
@@ -691,28 +790,34 @@ def expand_image(image: Image.Image, ratio: float = 1.5, prompt: str = "", model
         # Flouter le mirror-pad pour éviter des artefacts de répétition trop nets
         # On floute tout, puis on recolle l'image nette par-dessus
         canvas_blurred = canvas.filter(ImageFilter.GaussianBlur(radius=20))
-        canvas_blurred.paste(resized_rgb, (paste_x, paste_y))
         canvas = canvas_blurred
 
         print(f"[EXPAND] Canvas: {target_w}x{target_h}, image: {new_w}x{new_h}")
 
         # ===== ÉTAPE 3: CRÉER LE MASQUE (avec érosion interne) =====
         # Masque blanc = zones à générer, noir = zones à garder
-        # On érode quelques pixels vers l'intérieur de l'image pour que l'inpainting
-        # ait du contexte des bords originaux → continuation cohérente
-        erosion_px = 32  # pixels grignotés à l'intérieur pour blend cohérent
-        mask = Image.new("L", (target_w, target_h), 255)  # Tout blanc
-        # Zone noire PLUS PETITE que l'image (érodée vers l'intérieur)
-        inner_w = max(new_w - erosion_px * 2, new_w // 2)
-        inner_h = max(new_h - erosion_px * 2, new_h // 2)
-        mask_center = Image.new("L", (inner_w, inner_h), 0)
-        inner_x = paste_x + (new_w - inner_w) // 2
-        inner_y = paste_y + (new_h - inner_h) // 2
-        mask.paste(mask_center, (inner_x, inner_y))
+        # On mord franchement dans l'image originale pour que les bords soient
+        # régénérés, sinon le modèle conserve un rectangle net façon cadre.
+        binary_mask, overlap_px = _build_expand_binary_mask(
+            target_w,
+            target_h,
+            paste_x,
+            paste_y,
+            new_w,
+            new_h,
+        )
+        feather_px = _resolve_expand_feather_px(overlap_px)
+        print(f"[EXPAND] Overlap anti-cadre: {overlap_px}px, feather={feather_px}px")
 
-        # Morphological open gradient (Fooocus-style) au lieu de Gaussian blur
-        mask_np = np.array(mask)
-        mask_np = morphological_open(mask_np, radius=48)
+        # Coller la source avec un bord doux dans le canvas d'amorçage. Le
+        # centre reste net, mais le modèle ne voit plus une photo rectangulaire
+        # posée sur un fond flouté.
+        _paste_with_edge_feather(canvas, resized_rgb, (paste_x, paste_y), overlap_px)
+
+        # Morphological open gradient (Fooocus-style) au lieu de Gaussian blur.
+        # On conserve aussi le masque binaire pour le clamp latent/composite.
+        mask_np = np.array(binary_mask)
+        mask_np = morphological_open(mask_np, radius=feather_px)
         mask = Image.fromarray(mask_np)
 
         # ===== ÉTAPE 3b: FOOOCUS PRE-FILL =====
@@ -723,30 +828,25 @@ def expand_image(image: Image.Image, ratio: float = 1.5, prompt: str = "", model
         _mask_for_fill = np.array(mask)
         canvas_np = fooocus_fill(canvas_np, _mask_for_fill)
         canvas = Image.fromarray(canvas_np)
-        # Re-paste original sharp over the filled canvas
-        canvas.paste(resized_rgb, (paste_x, paste_y))
+        # Re-paste source with a feathered edge, not a hard rectangle.
+        _paste_with_edge_feather(canvas, resized_rgb, (paste_x, paste_y), overlap_px)
         print(f"[EXPAND] Fooocus pre-fill OK ({time.time() - _t_fill:.1f}s)")
 
         # ===== ÉTAPE 4: CONSTRUIRE LE PROMPT =====
         # CLIP = 77 tokens max → instructions importantes EN PREMIER, description tronquée après
-        # Garder max ~40 mots de description pour laisser de la place
-        desc_words = image_description.split()[:40]
-        short_desc = " ".join(desc_words)
-
-        # Fix: use enhance_prompt_with_ai instead of undefined enhance_prompt
+        # Important: ne pas mettre "no frame/no border" dans le positif. CLIP
+        # garde les concepts "frame/border" même si on les nie.
         from core.utility_ai import enhance_prompt as enhance_prompt_with_ai
-        no_frame_prefix = (
-            "seamless continuation from the existing image edges, no border, "
-            "no frame, no inset image, natural scene extension"
-        )
 
         if prompt.strip():
             user_prompt = enhance_prompt_with_ai(prompt)
-            full_prompt = f"{no_frame_prefix}, photorealistic photograph, same style, {user_prompt}, {short_desc}"
+            full_prompt, neg = _build_expand_prompts(
+                image_description,
+                prompt=prompt,
+                enhanced_prompt=user_prompt,
+            )
         else:
-            full_prompt = f"{no_frame_prefix}, photorealistic photograph, same style and lighting, {short_desc}"
-
-        neg = "painting, oil painting, illustration, artistic, watercolor, drawing, cartoon, anime, 3d render, blurry, low quality, distorted, artifacts, ugly, different style, color mismatch, inconsistent lighting, picture frame, photo frame, border, white border, gray border, black border, matting, matte, pasted image, inset image, image within image, collage"
+            full_prompt, neg = _build_expand_prompts(image_description)
 
         print(f"[EXPAND] Prompt: {full_prompt}")
 
@@ -784,7 +884,7 @@ def expand_image(image: Image.Image, ratio: float = 1.5, prompt: str = "", model
                 torch.cuda.empty_cache()
 
         # Masque BINAIRE en espace latent — max_pool2d(8,8) comme Fooocus
-        _mask_np_raw = np.array(mask).astype(np.float32) / 255.0
+        _mask_np_raw = np.array(binary_mask).astype(np.float32) / 255.0
         _mask_t = torch.from_numpy(_mask_np_raw).unsqueeze(0).unsqueeze(0)
         _mask_fullres = torch.nn.functional.interpolate(
             _mask_t, size=(_fill_latents.shape[2] * 8, _fill_latents.shape[3] * 8),
@@ -849,8 +949,8 @@ def expand_image(image: Image.Image, ratio: float = 1.5, prompt: str = "", model
                 # Flouter la depth étendue pour transition douce
                 depth_canvas = Image.fromarray(depth_padded)
                 depth_canvas = depth_canvas.filter(ImageFilter.GaussianBlur(radius=15))
-                # Recoller la depth nette de l'original
-                depth_canvas.paste(depth_orig, (paste_x, paste_y))
+                # Recoller la depth avec le même feather anti-cadre que l'image.
+                _paste_with_edge_feather(depth_canvas, depth_orig, (paste_x, paste_y), overlap_px)
                 pipe_kwargs['control_image'] = depth_canvas
                 pipe_kwargs['controlnet_conditioning_scale'] = 0.4
                 print(f"[EXPAND] ControlNet Depth activé (scale=0.4, depth étendue)")
@@ -893,10 +993,10 @@ def expand_image(image: Image.Image, ratio: float = 1.5, prompt: str = "", model
         original_canvas.paste(resized_rgb, (paste_x, paste_y))
 
         # Masque binaire pour le compositing: noir=original, blanc=généré
-        _comp_mask = np.array(mask)
+        _comp_mask = np.array(binary_mask)
         result_np = np.array(result)
         original_canvas_np = np.array(original_canvas)
-        result = Image.fromarray(_pixel_composite(result_np, original_canvas_np, _comp_mask, radius=32))
+        result = Image.fromarray(_pixel_composite(result_np, original_canvas_np, _comp_mask, radius=feather_px))
         print(f"[EXPAND] Fooocus pixel composite OK")
 
         # Fine-tuning pass removed: pixel compositing above is sufficient
