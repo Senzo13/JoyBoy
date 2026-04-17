@@ -49,6 +49,15 @@ def get_gpu_profile():
     return jsonify(profile)
 
 
+@system_bp.route('/api/version/status')
+def get_version_status():
+    """Return local version plus lightweight GitHub release/update signals."""
+    from core.infra.versioning import get_app_version_status
+
+    force_refresh = str(request.args.get('refresh', '')).lower() in {'1', 'true', 'yes'}
+    return jsonify(get_app_version_status(force_refresh=force_refresh))
+
+
 # ========== VRAM / RAM MONITORING ==========
 
 @system_bp.route('/api/vram/status')

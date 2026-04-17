@@ -35,6 +35,7 @@ PUBLIC_DOCS = [
     "docs/LOCAL_PACKS.md",
     "docs/ARCHITECTURE.md",
     "docs/SEO_AND_DISCOVERY.md",
+    "docs/RELEASES.md",
 ]
 
 
@@ -97,6 +98,7 @@ def _section_score(checks: list[dict], section: str) -> int:
 def run_harness_audit() -> dict:
     gitignore_text = _read_text(".gitignore")
     settings_routes_text = _read_text("web/routes/settings.py")
+    system_routes_text = _read_text("web/routes/system.py")
     models_routes_text = _read_text("web/routes/models.py")
     settings_js_text = _read_text("web/static/js/settings.js")
     index_text = _read_text("web/templates/index.html")
@@ -117,6 +119,8 @@ def run_harness_audit() -> dict:
     community_ready = all(_exists(relative_path) for relative_path in COMMUNITY_FILES)
     public_docs_ready = all(_exists(relative_path) for relative_path in PUBLIC_DOCS)
     bootstrap_present = _exists("scripts/bootstrap.py")
+    version_file_ready = _exists("VERSION")
+    update_surface_ready = version_file_ready and "/api/version/status" in system_routes_text
     release_ignores_ready = all(
         entry in gitignore_text
         for entry in ("output/", "models/", "venv/", ".env", ".joyboy/")
@@ -252,6 +256,17 @@ def run_harness_audit() -> dict:
             if release_ignores_ready
             else "Le .gitignore ne couvre pas encore tous les dossiers locaux/générés importants.",
             "Vérifier que outputs, modèles, caches, venv et secrets locaux restent hors git."
+        ),
+        _check(
+            "version_update_surface",
+            "release",
+            "Version et update checker",
+            8,
+            "pass" if update_surface_ready else "warn",
+            "VERSION et endpoint /api/version/status détectés."
+            if update_surface_ready
+            else "Le projet n'expose pas encore de version locale + checker de release.",
+            "Ajouter VERSION et une surface de vérification des releases GitHub."
         ),
         _check(
             "public_surface_review",

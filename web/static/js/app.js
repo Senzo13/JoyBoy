@@ -847,6 +847,12 @@ async function init() {
     // Mettre à jour le picker avec le modèle chat actif
     updateModelPickerDisplay();
 
+    // Version/update status is deliberately subtle: no modal, just a small
+    // header pill when a published release or dev checkout update exists.
+    if (typeof initAppVersionStatus === 'function') {
+        initAppVersionStatus();
+    }
+
     // Check onboarding almost immediately. The modal now opens from local state
     // first, so first launch does not wait on backend Doctor/model checks.
     setTimeout(() => {

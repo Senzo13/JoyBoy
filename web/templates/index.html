@@ -386,6 +386,34 @@
                         </div>
                     </div>
 
+                    <div class="settings-section" id="app-version-section">
+                        <div class="settings-section-title" id="app-version-title">Version</div>
+                        <div class="settings-version-panel">
+                            <div class="settings-version-main">
+                                <div>
+                                    <div class="settings-label" id="app-version-current-label">Version installée</div>
+                                    <div class="settings-label-desc">
+                                        JoyBoy <span id="app-version-current">--</span>
+                                    </div>
+                                </div>
+                                <div class="settings-version-badge is-muted" id="app-version-status-badge">Vérification...</div>
+                            </div>
+                            <div class="settings-info settings-version-detail" id="app-version-detail">
+                                Recherche de release GitHub et comparaison du checkout local...
+                            </div>
+                            <div class="settings-inline-actions settings-version-actions">
+                                <button class="settings-action-btn compact" id="app-version-check-btn" onclick="refreshAppVersionStatus()">
+                                    <i data-lucide="refresh-cw" aria-hidden="true"></i>
+                                    <span id="app-version-check-label">Vérifier</span>
+                                </button>
+                                <a class="settings-action-btn compact subtle hidden" id="app-version-release-link" href="#" target="_blank" rel="noopener noreferrer">
+                                    <i data-lucide="external-link" aria-hidden="true"></i>
+                                    <span id="app-version-release-label">Voir GitHub</span>
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="settings-section">
                         <div class="settings-section-title" id="general-chat-title">Modèle de conversation (Ollama)</div>
                         <div class="settings-row">
@@ -1774,6 +1802,10 @@
     <div id="home-view">
         <!-- Top right controls -->
         <div class="home-top-controls">
+            <button class="app-update-pill hidden" id="home-update-pill" onclick="openVersionSettings()" type="button">
+                <i data-lucide="download-cloud" aria-hidden="true"></i>
+                <span class="app-update-pill-label">Update</span>
+            </button>
             <button class="restart-btn" onclick="restartBackend()" title="Redémarrer le backend">
                 <i data-lucide="rotate-ccw"></i>
             </button>
@@ -1911,6 +1943,10 @@
     <div id="chat-view">
         <div class="chat-header">
             <div class="header-spacer"></div>
+            <button class="app-update-pill hidden" id="chat-update-pill" onclick="openVersionSettings()" type="button">
+                <i data-lucide="download-cloud" aria-hidden="true"></i>
+                <span class="app-update-pill-label">Update</span>
+            </button>
             <!-- Restart Backend Button -->
             <button class="restart-btn" id="restart-btn" onclick="restartBackend()" title="Redémarrer le backend">
                 <i data-lucide="rotate-ccw"></i>
@@ -2160,6 +2196,7 @@
     <script src="/static/js/state.js"></script>
     <script src="/static/js/db.js"></script>
     <script src="/static/js/settings.js"></script>
+    <script src="/static/js/version.js"></script>
     <script src="/static/js/effects.js"></script>
     <script src="/static/js/ui.js"></script>
     <script src="/static/js/modal.js"></script>

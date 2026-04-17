@@ -139,6 +139,7 @@ See [Local Packs](docs/LOCAL_PACKS.md), [Addons](docs/ADDONS.md), and [Third-Par
 - [Addons and Pack Templates](docs/ADDONS.md)
 - [Third-Party Packs](docs/THIRD_PARTY_PACKS.md)
 - [VRAM Management](docs/VRAM_MANAGEMENT.md)
+- [Releases and update checks](docs/RELEASES.md)
 - [Security and Content Policy](docs/SECURITY_AND_CONTENT_POLICY.md)
 - [Repository SEO and Discovery](docs/SEO_AND_DISCOVERY.md)
 - [Contributing Guide](CONTRIBUTING.md)

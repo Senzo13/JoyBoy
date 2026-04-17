@@ -340,6 +340,15 @@ const apiSettings = {
     }
 };
 
+// ===== APP / VERSION API =====
+
+const apiApp = {
+    async getVersionStatus(refresh = false) {
+        const suffix = refresh ? '?refresh=1' : '';
+        return apiGet(`/api/version/status${suffix}`);
+    }
+};
+
 // ===== RUNTIME API =====
 
 const apiRuntime = {
