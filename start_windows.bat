@@ -121,6 +121,7 @@ set "PYTHON_EXE=%PYTHON_DIR%\python.exe"
 set "PYTHON_URL=https://github.com/indygreg/python-build-standalone/releases/download/20241206/cpython-3.12.8+20241206-x86_64-pc-windows-msvc-install_only_stripped.tar.gz"
 set "PYTHON_ZIP=python312.tar.gz"
 set "PYTHON_TMP=python312_temp"
+set "SETUP_LOG=.joyboy\logs\windows_setup_last.log"
 set "PYTHON_NEEDS_INSTALL=0"
 
 if not exist "%PYTHON_EXE%" (
@@ -135,8 +136,25 @@ if "%PYTHON_NEEDS_INSTALL%"=="1" (
     echo.
 
     if exist "%PYTHON_DIR%" rmdir /s /q "%PYTHON_DIR%" 2>nul
+    if exist "%PYTHON_DIR%" (
+        echo    [ERREUR] Impossible de supprimer l'ancien Python portable.
+        echo    Ferme les terminaux JoyBoy/Python qui l'utilisent puis relance.
+        pause
+        goto menu
+    )
     if exist "%PYTHON_TMP%" rmdir /s /q "%PYTHON_TMP%" 2>nul
+    if exist "%PYTHON_TMP%" (
+        echo    [ERREUR] Impossible de nettoyer le dossier temporaire Python.
+        echo    Supprime %PYTHON_TMP% puis relance le setup.
+        pause
+        goto menu
+    )
     mkdir "%PYTHON_TMP%"
+    if errorlevel 1 (
+        echo    [ERREUR] Impossible de creer le dossier temporaire Python.
+        pause
+        goto menu
+    )
 
     REM Download Python with visible curl progress
     echo           Telechargement de Python 3.12 portable...
@@ -179,61 +197,23 @@ if "%PYTHON_NEEDS_INSTALL%"=="1" (
     del "%PYTHON_ZIP%" 2>nul
     if exist "%PYTHON_TMP%" rmdir /s /q "%PYTHON_TMP%" 2>nul
 
-    if not exist "%PYTHON_EXE%" (
-        echo    [ERREUR] Python extrait mais python.exe introuvable
-        echo    Chemin attendu: %PYTHON_EXE%
-        pause
-        goto menu
-    )
-    "%PYTHON_EXE%" -c "import venv; import ensurepip" >nul 2>nul
-    if errorlevel 1 (
-        echo    [ERREUR] Python portable incomplet: venv/pip indisponible
-        echo    Supprime le dossier python312 puis relance le setup.
-        pause
-        goto menu
-    )
-
     echo    [OK] Python 3.12 installe localement
     echo.
 ) else (
     echo    [0/4] Python local OK
 )
 
-REM Decide which Python to use.
-REM The venv must use Python 3.12. Otherwise recreate it before activation,
-REM so check_deps never tries to remove the active venv.
-set "VENV_OK=0"
-if exist "venv\Scripts\python.exe" (
-    venv\Scripts\python.exe -VV | findstr /B /C:"Python 3.12" >nul
-    if not errorlevel 1 set "VENV_OK=1"
+echo    [1/4] Verification / creation du venv...
+"%PYTHON_EXE%" scripts\windows_venv.py ensure
+if errorlevel 1 (
+    echo.
+    echo    [ERREUR] Venv non fonctionnel.
+    echo    Log complet: %SETUP_LOG%
+    echo.
+    pause
+    goto menu
 )
-
-if "%VENV_OK%"=="1" (
-    echo    [1/4] Environnement virtuel existant detecte
-    set "PYTHON=venv\Scripts\python.exe"
-) else (
-    if exist "venv" (
-        echo    [1/4] Venv incompatible detecte, recreation...
-        rmdir /s /q "venv" 2>nul
-        if exist "venv" (
-            echo    [ERREUR] Impossible de supprimer l'ancien venv.
-            echo    Ferme les terminaux JoyBoy/Python qui l'utilisent puis relance.
-            pause
-            goto menu
-        )
-    ) else (
-        echo    [1/4] Creation de l'environnement virtuel...
-    )
-    "%PYTHON_EXE%" -m venv venv
-    if exist "venv\Scripts\python.exe" (
-        set "PYTHON=venv\Scripts\python.exe"
-    ) else (
-        echo    [ERREUR] Impossible de creer le venv Python 3.12
-        echo    Python utilise: %PYTHON_EXE%
-        pause
-        goto menu
-    )
-)
+set "PYTHON=venv\Scripts\python.exe"
 
 echo    [2/4] Bootstrap dependances + verification...
 echo.
@@ -267,15 +247,12 @@ goto start
 
 :start
 cls
-REM Use venv if available, otherwise portable Python
+REM Normal app start must use the venv; portable Python only bootstraps setup.
 if exist "venv\Scripts\python.exe" (
     set "PY=venv\Scripts\python.exe"
 ) else (
-    set "PY=python312\python.exe"
-)
-if not exist "%PY%" (
     echo.
-    echo    [!] Python local introuvable.
+    echo    [!] Venv JoyBoy introuvable.
     echo    [!] Lance "Setup complet" une premiere fois pour creer le venv.
     echo.
     pause
