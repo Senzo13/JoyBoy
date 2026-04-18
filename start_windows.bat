@@ -231,7 +231,7 @@ if %CHECK_RESULT%==99 (
 REM Code >= 1 means setup needs another verification pass
 if %CHECK_RESULT% GEQ 1 (
     echo.
-    echo    [!] Setup incomplete or failed (code %CHECK_RESULT%) - verifying again...
+    echo    [!] Setup incomplete or failed ^(code %CHECK_RESULT%^) - verifying again...
     timeout /t 3 >nul
     goto setup
 )
