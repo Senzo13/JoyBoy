@@ -264,6 +264,31 @@ class TerminalBrainSmokeTests(unittest.TestCase):
         self.assertEqual(listed.data.get("count"), 1)
         self.assertIn("DeerFlow-style", brain._format_result_for_llm(listed))
 
+    def test_memory_context_prompt_injects_matching_facts(self):
+        old_home = os.environ.get("JOYBOY_HOME")
+        with tempfile.TemporaryDirectory() as tmp:
+            os.environ["JOYBOY_HOME"] = tmp
+            try:
+                brain = TerminalBrain()
+                brain.execute_tool(
+                    "remember_fact",
+                    {
+                        "content": "JoyBoy terminal should prefer DeerFlow-style planning.",
+                        "category": "preference",
+                        "confidence": 0.9,
+                    },
+                    os.getcwd(),
+                )
+                prompt = brain._build_memory_context_prompt("deerflow planning")
+            finally:
+                if old_home is None:
+                    os.environ.pop("JOYBOY_HOME", None)
+                else:
+                    os.environ["JOYBOY_HOME"] = old_home
+
+        self.assertIn("LOCAL MEMORY CONTEXT", prompt)
+        self.assertIn("DeerFlow-style planning", prompt)
+
     def test_existing_write_requires_read_then_verifies(self):
         brain = TerminalBrain()
         brain.current_intent = "write"

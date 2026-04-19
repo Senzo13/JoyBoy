@@ -51,7 +51,9 @@ Terminal memory is stored outside git in:
 
 The terminal only writes durable facts through the `remember_fact` tool and can
 retrieve them through `list_memory`. It must not store secrets, API keys, tokens,
-private URLs, or transient task chatter.
+private URLs, or transient task chatter. At the start of a terminal run, JoyBoy
+searches this store with the user's request and injects only a few matching
+facts as read-only context.
 
 The goal is to keep this surface contributor-friendly and easy to reason about.
 

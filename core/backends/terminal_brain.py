@@ -957,6 +957,10 @@ class TerminalBrain:
         if history:
             messages.extend(self._compact_history(history, context_size=context_size))
 
+        memory_context = self._build_memory_context_prompt(initial_message)
+        if memory_context:
+            messages.append({"role": "user", "content": memory_context})
+
         if repo_brief:
             messages.append({
                 "role": "user",
@@ -1728,6 +1732,32 @@ class TerminalBrain:
             return {"success": True, "facts": facts, "count": len(facts)}
         except Exception as exc:
             return {"success": False, "error": str(exc)}
+
+    def _build_memory_context_prompt(self, initial_message: str, limit: int = 4) -> str:
+        try:
+            from core.agent_runtime import search_terminal_memory
+
+            facts = search_terminal_memory(query=initial_message, limit=limit)
+        except Exception:
+            return ""
+
+        if not facts:
+            return ""
+
+        lines = [
+            "LOCAL MEMORY CONTEXT (read-only):",
+            "Use these facts only if directly relevant to the user's request. Ignore irrelevant facts.",
+        ]
+        for fact in facts[:limit]:
+            content = truncate_middle(str(fact.get("content", "")), 300)
+            if not content:
+                continue
+            category = str(fact.get("category", "context") or "context")
+            confidence = fact.get("confidence", "?")
+            lines.append(f"- [{category}, confidence={confidence}] {content}")
+        if len(lines) <= 2:
+            return ""
+        return "\n".join(lines)
 
     def _select_tool_names_for_turn(
         self,

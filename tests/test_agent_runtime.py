@@ -113,6 +113,29 @@ class AgentRuntimeTests(unittest.TestCase):
             self.assertEqual(len(matches), 1)
             self.assertIn("JoyBoy terminal", matches[0]["content"])
 
+    def test_file_memory_store_blocks_secret_like_facts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = FileMemoryStore(Path(tmp) / "memory.json")
+
+            secret_like_values = [
+                "OPENAI_API_KEY=sk_test_abcdefghijklmnopqrstuvwxyz",
+                "Anthropic key is sk-ant-api03-abcdefghijklmnopqrstuvwxyz",
+                "OpenRouter key is sk-or-v1-abcdefghijklmnopqrstuvwxyz",
+            ]
+            for value in secret_like_values:
+                with self.subTest(value=value):
+                    with self.assertRaises(ValueError):
+                        store.add_fact(value)
+
+    def test_file_memory_store_search_folds_accents(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = FileMemoryStore(Path(tmp) / "memory.json")
+            store.add_fact("Préférence: réponses terminales courtes.", category="preference")
+
+            matches = store.search("preference terminal", limit=3)
+
+            self.assertEqual(len(matches), 1)
+
     def test_code_explorer_subagent_returns_relevant_files(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

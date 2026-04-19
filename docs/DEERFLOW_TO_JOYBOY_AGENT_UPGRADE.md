@@ -296,6 +296,9 @@ pulling in the full LangGraph stack:
   one noisy turn cannot fan out too many backend tasks
 - local file-backed runtime memory through `remember_fact` and `list_memory`,
   stored under `~/.joyboy/agent_memory.json` instead of the repository
+- bounded memory retrieval at the start of a terminal run, injecting only a few
+  matching facts as read-only context
+- secret-like memory facts are rejected before they can be written
 
 This is still intentionally smaller than DeerFlow. The next real gaps are a
 proper sandbox provider, automatic memory summarization/retrieval middleware,

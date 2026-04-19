@@ -12,6 +12,7 @@ import json
 import math
 import os
 import re
+import unicodedata
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -22,6 +23,13 @@ from typing import Any
 MEMORY_SCHEMA_VERSION = "1.0"
 DEFAULT_MEMORY_FILENAME = "agent_memory.json"
 MAX_MEMORY_FACTS = 200
+SECRET_VALUE_PATTERNS = (
+    re.compile(r"\b(?:sk|hf|ghp|github_pat)_[A-Za-z0-9_-]{12,}\b"),
+    re.compile(r"\b(?:sk-ant|sk-or)(?:-[A-Za-z0-9_-]+){1,}\b"),
+    re.compile(r"\bAIza[0-9A-Za-z_-]{20,}\b"),
+    re.compile(r"\b[A-Za-z0-9_-]{32,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b"),
+)
+SECRET_WORD_PATTERN = re.compile(r"\b(api[_-]?key|secret|token|password|passwd|bearer)\b", re.I)
 
 
 def utc_now_iso() -> str:
@@ -42,6 +50,18 @@ def create_empty_memory() -> dict[str, Any]:
         "lastUpdated": utc_now_iso(),
         "facts": [],
     }
+
+
+def normalize_search_text(value: Any) -> str:
+    text = str(value or "").lower()
+    return unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("ascii")
+
+
+def looks_like_secret(value: str) -> bool:
+    text = str(value or "")
+    if any(pattern.search(text) for pattern in SECRET_VALUE_PATTERNS):
+        return True
+    return bool(SECRET_WORD_PATTERN.search(text) and re.search(r"[:=]\s*\S{8,}", text))
 
 
 @dataclass(frozen=True)
@@ -111,6 +131,8 @@ class FileMemoryStore:
         normalized_content = str(content or "").strip()
         if not normalized_content:
             raise ValueError("content is required")
+        if looks_like_secret(normalized_content):
+            raise ValueError("memory facts must not contain secrets, tokens, or API keys")
         normalized_category = re.sub(r"[^a-zA-Z0-9_-]+", "-", str(category or "context").strip()).strip("-").lower()
         normalized_category = normalized_category or "context"
         normalized_source = str(source or "terminal").strip()[:80] or "terminal"
@@ -142,16 +164,17 @@ class FileMemoryStore:
             limit = max(1, min(int(limit or 8), 20))
         except Exception:
             limit = 8
-        tokens = [token for token in re.split(r"\W+", str(query or "").lower()) if len(token) >= 3]
+        normalized_query = normalize_search_text(query)
+        tokens = [token for token in re.split(r"\W+", normalized_query) if len(token) >= 3]
         if not tokens:
             return list(reversed(facts))[:limit]
 
         scored: list[tuple[int, str, dict[str, Any]]] = []
         for fact in facts:
-            searchable = " ".join(
+            searchable = normalize_search_text(" ".join(
                 str(fact.get(key, ""))
                 for key in ("content", "category", "source")
-            ).lower()
+            ))
             score = sum(searchable.count(token) for token in tokens)
             if score:
                 scored.append((score, str(fact.get("createdAt", "")), fact))
