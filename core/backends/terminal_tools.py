@@ -113,6 +113,7 @@ _TOOL_RISKS = {
     "read_file": ToolRisk.READ_ONLY,
     "search": ToolRisk.READ_ONLY,
     "glob": ToolRisk.READ_ONLY,
+    "write_todos": ToolRisk.REASONING,
     "tool_search": ToolRisk.READ_ONLY,
     "write_file": ToolRisk.WRITE,
     "edit_file": ToolRisk.WRITE,

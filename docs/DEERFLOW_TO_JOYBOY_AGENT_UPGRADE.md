@@ -210,9 +210,11 @@ DeerFlow treats tests as architecture locks. JoyBoy should add tests for:
 Low risk, no big rewrite.
 
 - keep improving `ToolRegistry`
+- hide rare tool schemas behind `tool_search`
 - middle-truncate shell output so failures keep their tail
 - add loop warning tests
 - normalize all tool errors
+- keep runtime todos visible through context compaction
 - document the SSE event contract
 
 ### Phase 1: Extract Runtime Interfaces
@@ -275,6 +277,27 @@ primitives that must stay independent from Flask/UI code:
 - bounded subagents callable through `delegate_subagent`:
   - `code_explorer` for read-only repo exploration
   - `verifier` for one allowlisted test/build command without shell chaining
+
+## Second Adopted Patch
+
+JoyBoy's terminal now adopts two more DeerFlow-style runtime habits without
+pulling in the full LangGraph stack:
+
+- deferred terminal tool discovery through `tool_search`, so web, skills,
+  subagents, destructive actions, and planning tools do not spend schema tokens
+  on every small turn
+- `write_todos` task tracking for complex requests, auto-promoted only when the
+  task looks multi-step
+- active todo reminders after context compaction, so the model does not forget
+  incomplete work just because the original tool call scrolled out
+- a capped anti-premature-exit nudge when the model tries to finish while
+  todos are still pending
+- a DeerFlow-style cap on `delegate_subagent` tool calls per model response, so
+  one noisy turn cannot fan out too many backend tasks
+
+This is still intentionally smaller than DeerFlow. The next real gaps are a
+proper sandbox provider, durable memory with source/confidence, and a
+backend-managed general-purpose subagent with cancellation.
 
 The terminal brain is wired to this runtime for loop checks and shell output
 hygiene. This mirrors the DeerFlow pattern where the harness owns tool safety

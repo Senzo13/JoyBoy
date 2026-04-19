@@ -152,6 +152,76 @@ class TerminalBrainSmokeTests(unittest.TestCase):
         self.assertIn("web_fetch", names)
         self.assertIn("web_search", brain._active_promoted_tool_names)
 
+    def test_complex_task_auto_promotes_write_todos(self):
+        brain = TerminalBrain()
+        brain.current_intent = "write"
+        brain._reset_deferred_tools()
+
+        names = brain._select_tool_names_for_turn(
+            "analyse DeerFlow et améliore JoyBoy puis vérifie les tests",
+            [],
+            autonomous=False,
+        )
+
+        self.assertIn("write_todos", names)
+        self.assertIn("write_todos", brain._active_promoted_tool_names)
+
+    def test_write_todos_tracks_and_formats_plan(self):
+        brain = TerminalBrain()
+
+        result = brain.execute_tool(
+            "write_todos",
+            {
+                "todos": [
+                    {"id": "1", "content": "Audit DeerFlow", "status": "completed", "note": "middleware reviewed"},
+                    {"id": "2", "content": "Port useful behavior", "status": "in_progress"},
+                ]
+            },
+            os.getcwd(),
+        )
+
+        self.assertTrue(result.success)
+        self.assertTrue(brain._has_incomplete_todos())
+        self.assertIn("completed=1", brain._summarize_executed_tool("write_todos", {}, result)["summary"])
+        formatted = brain._format_result_for_llm(result)
+        self.assertIn("[completed] Audit DeerFlow", formatted)
+        self.assertIn("[in_progress] Port useful behavior", formatted)
+
+    def test_todo_reminder_is_injected_after_context_compaction(self):
+        brain = TerminalBrain()
+        brain.execute_tool(
+            "write_todos",
+            {"todos": [{"content": "Finish runtime work", "status": "in_progress"}]},
+            os.getcwd(),
+        )
+        messages = [
+            {"role": "system", "content": "system"},
+            {"role": "user", "content": "continue"},
+        ]
+
+        injected = brain._inject_todo_reminder(messages)
+
+        self.assertEqual(injected[1]["role"], "user")
+        self.assertIn("[ACTIVE TODO LIST]", injected[1]["content"])
+        self.assertIn("Finish runtime work", injected[1]["content"])
+
+    def test_delegate_subagent_calls_are_capped_per_response(self):
+        brain = TerminalBrain()
+        calls = [
+            {"type": "function", "function": {"name": "delegate_subagent", "arguments": {"task": f"task {i}"}}}
+            for i in range(5)
+        ]
+        calls.append({"type": "function", "function": {"name": "read_file", "arguments": {"path": "README.md"}}})
+
+        kept, dropped = brain._limit_delegate_subagent_calls(calls)
+
+        self.assertEqual(dropped, 2)
+        self.assertEqual(
+            sum(1 for call in kept if call["function"]["name"] == "delegate_subagent"),
+            3,
+        )
+        self.assertEqual(kept[-1]["function"]["name"], "read_file")
+
     def test_existing_write_requires_read_then_verifies(self):
         brain = TerminalBrain()
         brain.current_intent = "write"

@@ -26,7 +26,7 @@ JoyBoy is especially aimed at long-tail local AI workflows: **local-first SuperA
 
 - **Private local AI chat** with Ollama UI controls and local model routing.
 - **Local-first agent harness** for routing prompts, tools, jobs, models, runtime state, and optional extensions from one app.
-- **Project mode** for Codex / Claude Code-style workspace assistance, bounded repo analysis, deferred tool discovery, and terminal tools.
+- **Project mode** for Codex / Claude Code-style workspace assistance, bounded repo analysis, deferred tool discovery, terminal todos, and tool execution.
 - **Local AI workstation** that keeps chat, image generation, image editing, video tests, gallery, model imports, and runtime panels together.
 - **Web research and tool workflows** through provider-backed search/fetch tools, local skills, and pack-based extensions.
 - **Text-to-image generation** with local image models, Ollama-assisted routing, and provider imports.

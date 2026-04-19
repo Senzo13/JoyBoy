@@ -236,6 +236,46 @@ TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "write_todos",
+            "description": "Create or update the active task list for complex, multi-step work. Keep it short and update statuses as work progresses.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "todos": {
+                        "type": "array",
+                        "description": "Ordered task list. Use 2 to 6 items.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "id": {
+                                    "type": "string",
+                                    "description": "Stable short id such as '1' or 'audit-runtime'."
+                                },
+                                "content": {
+                                    "type": "string",
+                                    "description": "Concrete task description."
+                                },
+                                "status": {
+                                    "type": "string",
+                                    "enum": ["pending", "in_progress", "completed", "blocked"],
+                                    "description": "Current task status."
+                                },
+                                "note": {
+                                    "type": "string",
+                                    "description": "Optional short result or blocker note."
+                                }
+                            },
+                            "required": ["content", "status"]
+                        }
+                    }
+                },
+                "required": ["todos"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "tool_search",
             "description": "Fetch full schema definitions for deferred terminal tools. Use this only when a hidden tool is needed.",
             "parameters": {
@@ -368,6 +408,7 @@ TOOLS = [
 
 
 DEFERRED_TOOL_NAMES = (
+    "write_todos",
     "web_search",
     "web_fetch",
     "delegate_subagent",
@@ -377,6 +418,7 @@ DEFERRED_TOOL_NAMES = (
     "think",
 )
 DEFERRED_TOOL_MAX_RESULTS = 5
+MAX_DELEGATE_SUBAGENT_CALLS_PER_RESPONSE = 3
 
 
 # ===== TYPES =====
@@ -675,6 +717,11 @@ class TerminalBrain:
                 self._log_action('bash', command, result.get('success', False))
                 return ToolResult(success=result.get('success', False), tool_name=tool_name, data=result)
 
+            # === WRITE TODOS ===
+            elif tool_name == "write_todos":
+                result = self._write_todos(args.get('todos', []))
+                return ToolResult(success=result.get('success', False), tool_name=tool_name, data=result, error=result.get('error'))
+
             # === TOOL SEARCH ===
             elif tool_name == "tool_search":
                 query = args.get('query', '')
@@ -877,6 +924,7 @@ class TerminalBrain:
         force_final = bool(repo_brief)
         executed_tools = []
         continuation_nudges = 0
+        todo_completion_reminders = 0
 
         while iteration < iteration_budget:
             iteration += 1
@@ -891,6 +939,7 @@ class TerminalBrain:
                 )
                 tools_for_model = [] if force_final else self.tool_registry.ollama_tools(tool_names_for_turn)
                 messages = self._compact_loop_messages(messages, context_size=self._active_context_size)
+                messages = self._inject_todo_reminder(messages)
 
                 if not autonomous and not force_final and iteration > 1:
                     estimated_prompt_tokens = self._estimate_prompt_tokens(messages, tools_for_model)
@@ -986,6 +1035,20 @@ class TerminalBrain:
                 print(f"[BRAIN] Tool calls: {len(tool_calls) if tool_calls else 0}")
                 print(f"[BRAIN] Tokens this call: {token_stats.get('total', 0)} | Total session: {total_token_stats['total']}")
 
+                if tool_calls and not autonomous:
+                    tool_calls, dropped_subagents = self._limit_delegate_subagent_calls(tool_calls)
+                    if dropped_subagents:
+                        if isinstance(message_dict, dict) and message_dict.get('tool_calls'):
+                            message_dict['tool_calls'], _ = self._limit_delegate_subagent_calls(message_dict.get('tool_calls', []))
+                        yield runtime_event(
+                            'loop_warning',
+                            action='delegate_subagent',
+                            reason=(
+                                f"Dropped {dropped_subagents} excess delegate_subagent call(s); "
+                                f"limit is {MAX_DELEGATE_SUBAGENT_CALLS_PER_RESPONSE} per model response."
+                            ),
+                        )
+
                 over_budget = (
                     not autonomous
                     and total_token_stats['total'] >= turn_token_budget
@@ -1046,6 +1109,22 @@ class TerminalBrain:
                                 "or verified shell mutation succeeded in this session. Use write_file, "
                                 "edit_file, or bash now, then verify with list_files/read_file or command "
                                 "output. Otherwise clearly say that nothing was created."
+                            )
+                        })
+                        continue
+
+                    if self._has_incomplete_todos() and not force_final and iteration < iteration_budget - 1 and todo_completion_reminders < 2:
+                        todo_completion_reminders += 1
+                        messages.append({
+                            'role': 'assistant',
+                            'content': content
+                        })
+                        messages.append({
+                            'role': 'user',
+                            'content': (
+                                "You still have incomplete active todos:\n"
+                                f"{self._format_active_todos()}\n\n"
+                                "Continue working on them. Call write_todos to update statuses before the final answer."
                             )
                         })
                         continue
@@ -1279,6 +1358,31 @@ class TerminalBrain:
             compact_calls.append(call_dict)
         return compact_calls
 
+    def _limit_delegate_subagent_calls(self, tool_calls: Any) -> tuple[List[Any], int]:
+        kept: List[Any] = []
+        delegate_count = 0
+        dropped = 0
+        for call in tool_calls or []:
+            name = self._tool_call_name(call)
+            if name == "delegate_subagent":
+                delegate_count += 1
+                if delegate_count > MAX_DELEGATE_SUBAGENT_CALLS_PER_RESPONSE:
+                    dropped += 1
+                    continue
+            kept.append(call)
+        return kept, dropped
+
+    @staticmethod
+    def _tool_call_name(call: Any) -> str:
+        if hasattr(call, "function") and hasattr(call.function, "name"):
+            return str(call.function.name or "")
+        if isinstance(call, dict):
+            function = call.get("function", {})
+            if isinstance(function, dict):
+                return str(function.get("name") or "")
+            return str(call.get("name") or "")
+        return ""
+
     @staticmethod
     def _parse_tool_arguments(raw_args: Any) -> Dict:
         if isinstance(raw_args, dict):
@@ -1331,6 +1435,9 @@ class TerminalBrain:
 
         if executed_tools and any(item.get("tool") == "bash" for item in executed_tools):
             names.append("delegate_subagent")
+
+        if self._is_complex_task_request(initial_message) or len(executed_tools) >= 2:
+            names.append("write_todos")
 
         seen = set()
         ordered: List[str] = []
@@ -1427,6 +1534,115 @@ class TerminalBrain:
             ],
         }
 
+    def _write_todos(self, todos: Any) -> Dict:
+        if not isinstance(todos, list):
+            return {"success": False, "error": "todos must be a list"}
+        if not todos:
+            self.current_plan = None
+            return {"success": True, "todos": [], "summary": "Todo list cleared"}
+
+        normalized: List[PlanTask] = []
+        valid_statuses = {item.value for item in PlanStatus}
+        for index, item in enumerate(todos[:8], start=1):
+            if not isinstance(item, dict):
+                continue
+            content = str(item.get("content") or item.get("title") or "").strip()
+            if not content:
+                continue
+            raw_status = str(item.get("status") or "pending").strip().lower()
+            if raw_status not in valid_statuses:
+                raw_status = "pending"
+            task_id = str(item.get("id") or index).strip() or str(index)
+            note = str(item.get("note") or item.get("result") or "").strip()
+            normalized.append(
+                PlanTask(
+                    id=task_id[:48],
+                    title=content[:240],
+                    status=PlanStatus(raw_status),
+                    result=note[:280] if note else None,
+                )
+            )
+
+        if not normalized:
+            return {"success": False, "error": "todos must include at least one item with content"}
+
+        current_index = 0
+        for index, task in enumerate(normalized):
+            if task.status in {PlanStatus.PENDING, PlanStatus.IN_PROGRESS, PlanStatus.BLOCKED}:
+                current_index = index
+                break
+        else:
+            current_index = len(normalized)
+
+        self.current_plan = ExecutionPlan(
+            title="Terminal task list",
+            goal="Complete the user's request",
+            tasks=normalized,
+            current_task_index=current_index,
+        )
+        counts = {status.value: 0 for status in PlanStatus}
+        for task in normalized:
+            counts[task.status.value] = counts.get(task.status.value, 0) + 1
+        return {
+            "success": True,
+            "todos": [self._task_to_dict(task) for task in normalized],
+            "counts": counts,
+            "incomplete": self._has_incomplete_todos(),
+        }
+
+    @staticmethod
+    def _task_to_dict(task: PlanTask) -> Dict[str, Any]:
+        return {
+            "id": task.id,
+            "content": task.title,
+            "status": task.status.value,
+            "note": task.result or "",
+        }
+
+    def _has_incomplete_todos(self) -> bool:
+        if not self.current_plan or not self.current_plan.tasks:
+            return False
+        return any(task.status != PlanStatus.COMPLETED for task in self.current_plan.tasks)
+
+    def _format_active_todos(self) -> str:
+        if not self.current_plan or not self.current_plan.tasks:
+            return ""
+        lines = []
+        for task in self.current_plan.tasks:
+            suffix = f" - {task.result}" if task.result else ""
+            lines.append(f"- [{task.status.value}] {task.title}{suffix}")
+        return "\n".join(lines)
+
+    def _message_has_visible_todos(self, messages: List[Dict]) -> bool:
+        for msg in messages:
+            if msg.get("tool_name") == "write_todos":
+                return True
+            content = str(msg.get("content", "") or "")
+            if "[ACTIVE TODO LIST]" in content:
+                return True
+            for call in msg.get("tool_calls", []) or []:
+                function = call.get("function", {}) if isinstance(call, dict) else {}
+                if function.get("name") == "write_todos":
+                    return True
+        return False
+
+    def _inject_todo_reminder(self, messages: List[Dict]) -> List[Dict]:
+        if not self._has_incomplete_todos() or self._message_has_visible_todos(messages):
+            return messages
+        if not messages:
+            return messages
+        reminder = {
+            "role": "user",
+            "content": (
+                "[ACTIVE TODO LIST]\n"
+                "Your earlier write_todos call is no longer visible after context compaction, "
+                "but the task list is still active:\n"
+                f"{self._format_active_todos()}\n\n"
+                "Continue from this list and call write_todos when statuses change."
+            ),
+        }
+        return [messages[0], reminder] + messages[1:]
+
     def _select_tool_names_for_turn(
         self,
         initial_message: str,
@@ -1508,6 +1724,18 @@ class TerminalBrain:
         wants_create = any(word in msg for word in ("cree", "creer", "cr?er", "create", "mets", "mettre", "genere", "make"))
         simple_scope = any(word in msg for word in ("simple", "minimal", "basique", "vite", "dedans", "ici")) or len(msg.split()) <= 9
         return wants_react and wants_template and wants_create and simple_scope
+
+    def _is_complex_task_request(self, message: str) -> bool:
+        msg = self._intent_text(message)
+        complex_markers = (
+            "analyse et", "corrige", "regle", "ameliore", "améliore", "implemente",
+            "implémente", "refactor", "audit", "compare", "deerflow", "commit",
+            "push", "termine", "terminé", "continue", "tout le projet", "long",
+            "plusieurs", "multi", "tests", "verifie", "vérifie",
+        )
+        if any(marker in msg for marker in complex_markers):
+            return True
+        return len([part for part in re.split(r"\s+", msg) if part]) >= 18
 
     def _react_template_files(self, workspace_path: str) -> Dict[str, str]:
         package_name = re.sub(r"[^a-z0-9-]+", "-", os.path.basename(os.path.abspath(workspace_path)).lower()).strip("-")
@@ -1935,6 +2163,9 @@ Les fichiers principaux sont dans `src/`.
             summary["summary"] = f"{len(data.get('files', []))} file(s)"
         elif tool_name == "search":
             summary["summary"] = f"{len(data.get('results', []))} result(s)"
+        elif tool_name == "write_todos":
+            counts = data.get("counts", {}) if isinstance(data, dict) else {}
+            summary["summary"] = ", ".join(f"{key}={value}" for key, value in counts.items() if value) or "todo list updated"
         elif tool_name == "tool_search":
             summary["summary"] = f"{len(data.get('promoted', []))} tool(s) promoted"
         elif tool_name == "web_fetch":
@@ -2102,6 +2333,7 @@ Core contract:
 12. For web research, use web_search first, then web_fetch exact public URLs returned by search or provided by the user.
 13. After modifications, prefer delegate_subagent(verifier) with one allowlisted test/build command instead of free-form shell retries.
 14. Some rare tools are deferred to save tokens. If a needed tool is listed by name only, call tool_search once to fetch its schema, then call that tool.
+15. For complex multi-step tasks, call write_todos early with 2-6 concrete items, keep exactly one item in_progress, and update it as you work.
 
 Safe workflow for analysis:
 1. list_files once if needed.
@@ -2257,6 +2489,17 @@ You have access to filesystem, search, shell, and workspace tools. Use them to c
             output = truncate_middle(output, max(3000, min(8000, int(self._active_context_size * 1.35))))
             output = mask_workspace_paths(output, self._active_workspace_path)
             return f"[RESULT bash] {status} (code: {code})\n```\n{output}\n```"
+
+        elif result.tool_name == 'write_todos':
+            todos = data.get("todos", []) if isinstance(data, dict) else []
+            if not todos:
+                return "[RESULT write_todos] Todo list cleared"
+            lines = [
+                f"- [{item.get('status', 'pending')}] {item.get('content', '')}"
+                + (f" - {item.get('note')}" if item.get("note") else "")
+                for item in todos
+            ]
+            return "[RESULT write_todos]\n" + "\n".join(lines)
 
         elif result.tool_name == 'tool_search':
             promoted = data.get("promoted", []) if isinstance(data, dict) else []
