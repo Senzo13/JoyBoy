@@ -64,13 +64,23 @@ def _safe_pack_id(value: str) -> str:
     return cleaned[:64]
 
 
+def _path_is_inside(root: Path, target: Path) -> bool:
+    try:
+        target.resolve().relative_to(root.resolve())
+        return True
+    except (OSError, ValueError):
+        return False
+
+
 def _normalize_optional_relpath(root: Path, raw_value) -> tuple[str, str | None]:
     if not raw_value:
         return "", None
 
-    rel_value = str(raw_value).replace("\\", "/").strip().lstrip("./")
+    rel_value = str(raw_value).replace("\\", "/").strip()
+    while rel_value.startswith("./"):
+        rel_value = rel_value[2:]
     target = (root / rel_value).resolve()
-    if not str(target).startswith(str(root.resolve())):
+    if not _path_is_inside(root, target):
         return rel_value, "Chemin pack invalide (sort du dossier du pack)"
     if not target.exists():
         return rel_value, f"Ressource introuvable: {rel_value}"
@@ -110,6 +120,11 @@ def validate_pack_manifest(manifest: dict, pack_root: Path) -> dict:
         if path_error:
             errors.append(path_error)
 
+    skills_path, skills_error = _normalize_optional_relpath(pack_root, data.get("skills_path", ""))
+    normalized_paths["skills_path"] = skills_path
+    if skills_error:
+        errors.append(skills_error)
+
     return {
         "valid": not errors,
         "errors": errors,
@@ -144,6 +159,7 @@ def _load_manifest(pack_dir: Path) -> dict:
                 "prompt_assets_path": "",
                 "model_sources_path": "",
                 "ui_overrides_path": "",
+                "skills_path": "",
             },
         }
 
@@ -165,6 +181,7 @@ def _load_manifest(pack_dir: Path) -> dict:
                 "prompt_assets_path": "",
                 "model_sources_path": "",
                 "ui_overrides_path": "",
+                "skills_path": "",
             },
         }
 
@@ -264,7 +281,7 @@ def _load_pack_json_asset(pack: dict | None, rel_path_key: str) -> dict:
 
     asset_path = (Path(base_path) / rel_path).resolve()
     root = Path(base_path).resolve()
-    if not str(asset_path).startswith(str(root)) or not asset_path.exists() or not asset_path.is_file():
+    if not _path_is_inside(root, asset_path) or not asset_path.exists() or not asset_path.is_file():
         return {}
 
     try:
@@ -323,6 +340,133 @@ def get_pack_editor_prompt_assets(kind: str = "adult") -> dict:
 
 def get_pack_model_sources(kind: str = "adult") -> dict:
     return _load_effective_pack_json_asset(kind, "model_sources_path")
+
+
+def _skill_summary(content: str) -> tuple[str, str]:
+    title = ""
+    summary_lines = []
+    for raw_line in content.splitlines():
+        line = raw_line.strip()
+        if not line:
+            if summary_lines:
+                break
+            continue
+        if line.startswith("#") and not title:
+            title = line.lstrip("#").strip()
+            continue
+        if line.startswith("#"):
+            if summary_lines:
+                break
+            continue
+        summary_lines.append(line)
+        if len(" ".join(summary_lines)) >= 260:
+            break
+    summary = " ".join(summary_lines).strip()
+    return title, summary[:320]
+
+
+def _discover_pack_skills(pack: dict | None, include_private: bool = False) -> list[dict]:
+    if not pack or not pack.get("valid"):
+        return []
+
+    rel_path = str(pack.get("skills_path", "") or "").strip()
+    base_path = str(pack.get("path", "") or "").strip()
+    if not rel_path or not base_path:
+        return []
+
+    root = Path(base_path).resolve()
+    skills_root = (root / rel_path).resolve()
+    if not _path_is_inside(root, skills_root) or not skills_root.exists() or not skills_root.is_dir():
+        return []
+
+    skills = []
+    for skill_file in sorted(skills_root.rglob("SKILL.md"), key=lambda item: str(item).lower()):
+        try:
+            if not _path_is_inside(skills_root, skill_file):
+                continue
+            rel_file = skill_file.relative_to(root).as_posix()
+            rel_dir = skill_file.parent.relative_to(skills_root).as_posix()
+            slug_source = rel_dir if rel_dir != "." else skill_file.parent.name
+            skill_slug = _safe_pack_id(slug_source.replace("/", "-")) or _safe_pack_id(skill_file.parent.name)
+            if not skill_slug:
+                continue
+            excerpt = skill_file.read_text(encoding="utf-8", errors="replace")[:4000]
+            title, summary = _skill_summary(excerpt)
+            item = {
+                "id": f"{pack['id']}:{skill_slug}",
+                "pack_id": pack["id"],
+                "pack_name": pack.get("name", pack["id"]),
+                "kind": pack.get("kind", ""),
+                "name": title or skill_slug.replace("-", " ").title(),
+                "summary": summary,
+                "path": rel_file,
+            }
+            if include_private:
+                item["_content_path"] = str(skill_file.resolve())
+            skills.append(item)
+        except Exception:
+            continue
+    return skills
+
+
+def get_pack_skills(kind: str | None = None) -> list[dict]:
+    """Return metadata for active local pack skills without loading full text."""
+    packs = []
+    if kind:
+        pack = get_effective_pack(kind)
+        if pack and pack.get("valid"):
+            packs.append(pack)
+    else:
+        for pack_kind in SUPPORTED_PACK_KINDS:
+            pack = get_effective_pack(pack_kind)
+            if pack and pack.get("valid"):
+                packs.append(pack)
+
+    skills = []
+    for pack in packs:
+        skills.extend(_discover_pack_skills(pack, include_private=False))
+    return skills
+
+
+def load_pack_skill(skill_id: str, kind: str | None = None) -> dict:
+    """Load one active local pack skill by id.
+
+    The full SKILL.md stays outside the base prompt; terminal agents call this
+    only when the skill is relevant to the task.
+    """
+    requested = str(skill_id or "").strip()
+    if not requested:
+        return {"success": False, "error": "skill_id requis"}
+
+    packs = []
+    if kind:
+        pack = get_effective_pack(kind)
+        if pack and pack.get("valid"):
+            packs.append(pack)
+    else:
+        for pack_kind in SUPPORTED_PACK_KINDS:
+            pack = get_effective_pack(pack_kind)
+            if pack and pack.get("valid"):
+                packs.append(pack)
+
+    for pack in packs:
+        for skill in _discover_pack_skills(pack, include_private=True):
+            if skill.get("id") != requested:
+                continue
+            content_path = Path(str(skill.get("_content_path", "")))
+            try:
+                content = content_path.read_text(encoding="utf-8", errors="replace")
+            except Exception as exc:
+                return {"success": False, "error": f"Skill illisible: {exc}"}
+            clean_skill = {key: value for key, value in skill.items() if not key.startswith("_")}
+            return {
+                "success": True,
+                "skill": clean_skill,
+                "content": content[:20000],
+                "truncated": len(content) > 20000,
+            }
+
+    return {"success": False, "error": f"Skill introuvable ou pack inactif: {requested}"}
 
 
 def invalidate_runtime_pack_caches() -> None:

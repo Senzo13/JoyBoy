@@ -1265,13 +1265,13 @@
                         <div class="models-card-head">
                             <div class="models-card-icon"><i data-lucide="key-round" aria-hidden="true"></i></div>
                             <div>
-                                <div class="settings-section-title" id="models-providers-title">Providers locaux</div>
+                                <div class="settings-section-title" id="models-providers-title">Providers et LLM</div>
                                 <div class="settings-label-desc" id="provider-settings-note">
                                     Clés stockées localement hors git. Les variables d'environnement gardent la priorité.
                                 </div>
                             </div>
                         </div>
-                        <div id="provider-settings-list" class="settings-info">Chargement...</div>
+                        <div id="provider-settings-list" class="provider-settings-list">Chargement...</div>
                     </div>
 
                     <div class="settings-section models-summary-card">
@@ -1332,72 +1332,95 @@
 
                     <!-- Panel Texte (Ollama) -->
                     <div class="models-subpanel active" id="models-text-panel">
-                        <div class="settings-section">
-                            <div class="settings-section-title" id="models-text-installed-title">Modèles installés</div>
-                            <div id="ollama-installed-models" class="ollama-models-list">
-                                <div class="settings-info">Chargement...</div>
+                        <div class="models-inner-tabs" aria-label="Modèles texte">
+                            <button class="models-inner-tab active" type="button" onclick="switchModelsInnerTab('models-text-panel', 'install', this)">Installer</button>
+                            <button class="models-inner-tab" type="button" onclick="switchModelsInnerTab('models-text-panel', 'installed', this)">Installés</button>
+                        </div>
+
+                        <div class="models-inner-panel active" data-inner-panel="install">
+                            <div class="settings-section">
+                                <div class="settings-section-title" id="models-text-install-title">Installer un modèle</div>
+                                <div class="ollama-search-container">
+                                    <input type="text" id="ollama-search-input" class="settings-input" placeholder="Rechercher..." onkeyup="if(event.key==='Enter') searchOllamaModels()">
+                                    <button class="settings-action-btn" id="models-ollama-search-btn" onclick="searchOllamaModels()">Rechercher</button>
+                                </div>
+                                <div class="model-filters">
+                                    <button class="filter-chip active" id="models-filter-all" data-filter="all" onclick="toggleModelFilter('all')">Tous</button>
+                                    <button class="filter-chip" id="models-filter-vision" data-filter="vision" onclick="toggleModelFilter('vision')">👁️ Vision</button>
+                                    <button class="filter-chip" id="models-filter-open" data-filter="uncensored" onclick="toggleModelFilter('uncensored')">Open</button>
+                                    <button class="filter-chip" id="models-filter-fast" data-filter="fast" onclick="toggleModelFilter('fast')">Rapide</button>
+                                    <button class="filter-chip" id="models-filter-powerful" data-filter="powerful" onclick="toggleModelFilter('powerful')">Puissant</button>
+                                </div>
+                                <div id="ollama-search-results" class="ollama-models-list">
+                                    <div class="settings-info">Modèles populaires</div>
+                                </div>
                             </div>
                         </div>
-                        <div class="settings-section">
-                            <div class="settings-section-title" id="models-text-install-title">Installer un modèle</div>
-                            <div class="ollama-search-container">
-                                <input type="text" id="ollama-search-input" class="settings-input" placeholder="Rechercher..." onkeyup="if(event.key==='Enter') searchOllamaModels()">
-                                <button class="settings-action-btn" id="models-ollama-search-btn" onclick="searchOllamaModels()">Rechercher</button>
-                            </div>
-                            <div class="model-filters">
-                                <button class="filter-chip active" id="models-filter-all" data-filter="all" onclick="toggleModelFilter('all')">Tous</button>
-                                <button class="filter-chip" id="models-filter-vision" data-filter="vision" onclick="toggleModelFilter('vision')">👁️ Vision</button>
-                                <button class="filter-chip" id="models-filter-open" data-filter="uncensored" onclick="toggleModelFilter('uncensored')">Open</button>
-                                <button class="filter-chip" id="models-filter-fast" data-filter="fast" onclick="toggleModelFilter('fast')">Rapide</button>
-                                <button class="filter-chip" id="models-filter-powerful" data-filter="powerful" onclick="toggleModelFilter('powerful')">Puissant</button>
-                            </div>
-                            <div id="ollama-search-results" class="ollama-models-list">
-                                <div class="settings-info">Modèles populaires</div>
+
+                        <div class="models-inner-panel" data-inner-panel="installed">
+                            <div class="settings-section">
+                                <div class="settings-section-title" id="models-text-installed-title">Modèles installés</div>
+                                <div id="ollama-installed-models" class="ollama-models-list">
+                                    <div class="settings-info">Chargement...</div>
+                                </div>
                             </div>
                         </div>
                     </div>
 
                     <!-- Panel Image (HuggingFace) -->
                     <div class="models-subpanel" id="models-image-panel">
-                        <div class="settings-section">
-                            <div class="settings-section-title" id="models-provider-import-title">Importer depuis une source provider</div>
-                            <div class="settings-row">
-                                <div>
-                                    <div class="settings-label" id="models-provider-source-label">Source Hugging Face / CivitAI</div>
-                                    <div class="settings-label-desc" id="models-provider-source-desc">Colle un repo id, une URL de modèle ou un lien CivitAI. JoyBoy résout ensuite la bonne source.</div>
-                                </div>
-                            </div>
-                            <div class="settings-row">
-                                <div style="display:flex; gap:8px; width:100%; flex-wrap:wrap;">
-                                    <input type="text" id="model-source-input" class="settings-input" placeholder="Ex: org/model, https://huggingface.co/org/model, https://civitai.com/models/12345" style="flex:1; min-width: 320px;">
-                                    <select class="settings-select" id="model-source-family" style="max-width: 180px;">
-                                        <option value="image" selected>Image</option>
-                                        <option value="generic">Generic</option>
-                                        <option value="video">Video</option>
-                                        <option value="utility">Utility</option>
-                                    </select>
-                                    <button class="settings-action-btn" id="models-provider-analyze-btn" onclick="resolveModelImportSource()">Analyser</button>
-                                </div>
-                            </div>
-                            <div id="models-provider-output"><div id="model-source-output" class="settings-info">Aucune source analysée.</div></div>
+                        <div class="models-inner-tabs" aria-label="Modèles image">
+                            <button class="models-inner-tab active" type="button" onclick="switchModelsInnerTab('models-image-panel', 'import', this)">Importer</button>
+                            <button class="models-inner-tab" type="button" onclick="switchModelsInnerTab('models-image-panel', 'catalog', this)">Catalogue</button>
+                            <button class="models-inner-tab" type="button" onclick="switchModelsInnerTab('models-image-panel', 'installed', this)">Installés</button>
                         </div>
 
-                        <div class="settings-section">
-                            <div class="settings-section-title" id="models-image-installed-title">Modèles installés</div>
-                            <div id="image-installed-models" class="ollama-models-list">
-                                <div class="settings-info">Chargement...</div>
+                        <div class="models-inner-panel active" data-inner-panel="import">
+                            <div class="settings-section">
+                                <div class="settings-section-title" id="models-provider-import-title">Importer depuis une source provider</div>
+                                <div class="settings-row">
+                                    <div>
+                                        <div class="settings-label" id="models-provider-source-label">Source Hugging Face / CivitAI</div>
+                                        <div class="settings-label-desc" id="models-provider-source-desc">Colle un repo id, une URL de modèle ou un lien CivitAI. JoyBoy résout ensuite la bonne source.</div>
+                                    </div>
+                                </div>
+                                <div class="settings-row">
+                                    <div style="display:flex; gap:8px; width:100%; flex-wrap:wrap;">
+                                        <input type="text" id="model-source-input" class="settings-input" placeholder="Ex: org/model, https://huggingface.co/org/model, https://civitai.com/models/12345" style="flex:1; min-width: 320px;">
+                                        <select class="settings-select" id="model-source-family" style="max-width: 180px;">
+                                            <option value="image" selected>Image</option>
+                                            <option value="generic">Generic</option>
+                                            <option value="video">Video</option>
+                                            <option value="utility">Utility</option>
+                                        </select>
+                                        <button class="settings-action-btn" id="models-provider-analyze-btn" onclick="resolveModelImportSource()">Analyser</button>
+                                    </div>
+                                </div>
+                                <div id="models-provider-output"><div id="model-source-output" class="settings-info">Aucune source analysée.</div></div>
                             </div>
                         </div>
-                        <div class="settings-section">
-                            <div class="settings-section-title" id="models-image-install-title">Installer un modèle</div>
-                            <div class="model-filters">
-                                <button class="filter-chip active" id="models-image-filter-all" data-filter="all" onclick="toggleImageModelFilter('all')">Tous</button>
-                                <button class="filter-chip" id="models-image-filter-inpaint" data-filter="inpaint" onclick="toggleImageModelFilter('inpaint')">Inpaint</button>
-                                <button class="filter-chip" id="models-image-filter-txt2img" data-filter="txt2img" onclick="toggleImageModelFilter('txt2img')">Text2Img</button>
-                                <button class="filter-chip" id="models-image-filter-nsfw" data-filter="nsfw" onclick="toggleImageModelFilter('nsfw')">Local+</button>
+
+                        <div class="models-inner-panel" data-inner-panel="catalog">
+                            <div class="settings-section">
+                                <div class="settings-section-title" id="models-image-install-title">Installer un modèle</div>
+                                <div class="model-filters">
+                                    <button class="filter-chip active" id="models-image-filter-all" data-filter="all" onclick="toggleImageModelFilter('all')">Tous</button>
+                                    <button class="filter-chip" id="models-image-filter-inpaint" data-filter="inpaint" onclick="toggleImageModelFilter('inpaint')">Inpaint</button>
+                                    <button class="filter-chip" id="models-image-filter-txt2img" data-filter="txt2img" onclick="toggleImageModelFilter('txt2img')">Text2Img</button>
+                                    <button class="filter-chip" id="models-image-filter-nsfw" data-filter="nsfw" onclick="toggleImageModelFilter('nsfw')">Local+</button>
+                                </div>
+                                <div id="image-available-models" class="ollama-models-list">
+                                    <div class="settings-info">Chargement...</div>
+                                </div>
                             </div>
-                            <div id="image-available-models" class="ollama-models-list">
-                                <div class="settings-info">Chargement...</div>
+                        </div>
+
+                        <div class="models-inner-panel" data-inner-panel="installed">
+                            <div class="settings-section">
+                                <div class="settings-section-title" id="models-image-installed-title">Modèles installés</div>
+                                <div id="image-installed-models" class="ollama-models-list">
+                                    <div class="settings-info">Chargement...</div>
+                                </div>
                             </div>
                         </div>
                     </div>

@@ -170,8 +170,8 @@ def _check_providers() -> dict:
         "key": "providers",
         "label": "Providers",
         "status": "warning",
-        "detail": "Aucun provider configuré. Les téléchargements gated/privés seront limités.",
-        "action": "Ajoute au moins une clé Hugging Face ou CivitAI dans Paramètres > Modèles.",
+        "detail": "Aucun provider configuré. Les téléchargements gated et les LLM cloud restent désactivés.",
+        "action": "Ajoute Hugging Face/CivitAI pour les modèles, ou OpenAI/OpenRouter/DeepSeek pour les LLM cloud.",
     }
 
 

@@ -20,6 +20,12 @@ my-addon/
     prompt_assets.json
     model_sources.json
     ui_overrides.json
+  skills/
+    code-review/
+      SKILL.md
+  skills/
+    code-review/
+      SKILL.md
 ```
 
 You can start from:
@@ -48,6 +54,7 @@ Every pack must expose a `pack.json` file:
   "prompt_assets_path": "assets/prompt_assets.json",
   "model_sources_path": "assets/model_sources.json",
   "ui_overrides_path": "assets/ui_overrides.json",
+  "skills_path": "skills",
   "feature_flags_required": []
 }
 ```
@@ -73,6 +80,12 @@ Use `adult` only for local-only packs that should not be marketed as part of the
 
 `ui_overrides.json`
 : Declares optional UI surfaces or labels that should only appear when the pack is active.
+
+`skills/`
+: Optional folder containing one or more `SKILL.md` workflows. JoyBoy injects
+only the skill index into the terminal prompt; the agent must call `load_skill`
+to read the full workflow when it is relevant. This keeps coding knowledge
+progressive instead of bloating every turn.
 
 The current validator checks that the manifest and referenced files exist. Schemas should stay simple and explicit so contributors and AI coding agents can modify them safely.
 
@@ -163,6 +176,7 @@ Chaque pack expose un fichier `pack.json`:
   "prompt_assets_path": "assets/prompt_assets.json",
   "model_sources_path": "assets/model_sources.json",
   "ui_overrides_path": "assets/ui_overrides.json",
+  "skills_path": "skills",
   "feature_flags_required": []
 }
 ```
@@ -174,6 +188,12 @@ Valeurs `kind` supportées:
 - `adult`
 
 Utilise `adult` uniquement pour des packs locaux qui ne doivent pas être marketés comme surface du core public.
+
+## Skills Agent
+
+Le dossier optionnel `skills/` peut contenir des workflows `SKILL.md`.
+JoyBoy n’injecte que l’index dans le prompt terminal; l’agent doit appeler
+`load_skill` pour charger le workflow complet quand la tâche correspond.
 
 ## Import
 

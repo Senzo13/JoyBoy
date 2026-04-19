@@ -12,6 +12,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Optional
 
+from core.agent_runtime.output import truncate_middle
+
 
 class ToolRisk:
     READ_ONLY = "read_only"
@@ -108,6 +110,9 @@ _TOOL_RISKS = {
     "delete_file": ToolRisk.DESTRUCTIVE,
     "bash": ToolRisk.SHELL,
     "web_search": ToolRisk.NETWORK,
+    "web_fetch": ToolRisk.NETWORK,
+    "delegate_subagent": ToolRisk.SHELL,
+    "load_skill": ToolRisk.READ_ONLY,
     "think": ToolRisk.REASONING,
     "open_workspace": ToolRisk.READ_ONLY,
 }

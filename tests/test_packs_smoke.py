@@ -63,6 +63,12 @@ class PackRegistrySmokeTest(unittest.TestCase):
             },
             "labels": {"demo": "Pack label"},
         }, ensure_ascii=False, indent=2), encoding="utf-8")
+        skill_dir = source_dir / "skills" / "code-review"
+        skill_dir.mkdir(parents=True, exist_ok=True)
+        (skill_dir / "SKILL.md").write_text(
+            "# Code Review\n\nUse this workflow for careful code review with findings first.\n",
+            encoding="utf-8",
+        )
 
         manifest = {
             "id": "adult-demo",
@@ -75,6 +81,7 @@ class PackRegistrySmokeTest(unittest.TestCase):
             "prompt_assets_path": "assets/prompts.json",
             "model_sources_path": "assets/models.json",
             "ui_overrides_path": "assets/ui.json",
+            "skills_path": "skills",
             "feature_flags_required": ["adult_features_enabled"],
         }
         (source_dir / "pack.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -101,6 +108,12 @@ class PackRegistrySmokeTest(unittest.TestCase):
         self.assertEqual(self.packs.get_pack_prompt_assets()["router_system_prompt"], "pack router prompt")
         self.assertEqual(self.packs.get_pack_editor_prompt_assets()["auto_fill_prompt"], "pack auto fill prompt")
         self.assertEqual(self.packs.get_pack_model_sources()["image_models"][0]["id"], "pack-model")
+        skills = self.packs.get_pack_skills("adult")
+        self.assertEqual(skills[0]["id"], "adult-demo:code-review")
+        self.assertEqual(skills[0]["name"], "Code Review")
+        loaded_skill = self.packs.load_pack_skill("adult-demo:code-review", "adult")
+        self.assertTrue(loaded_skill["success"])
+        self.assertIn("findings first", loaded_skill["content"])
 
     def test_inactive_installed_pack_blocks_private_bridge_fallback(self) -> None:
         self.local_config.set_feature_flag("public_repo_mode", False)
@@ -116,6 +129,19 @@ class PackRegistrySmokeTest(unittest.TestCase):
         self.assertEqual(self.packs.get_pack_prompt_assets(), {})
         self.assertEqual(self.packs.get_pack_editor_prompt_assets(), {})
         self.assertEqual(self.packs.get_pack_model_sources(), {})
+
+    def test_manifest_rejects_paths_outside_pack_root(self) -> None:
+        source_dir = self._create_pack_source()
+        source_dir_other = Path(str(source_dir) + "-other")
+        source_dir_other.mkdir()
+        (source_dir_other / "secret.json").write_text("{}", encoding="utf-8")
+        manifest = json.loads((source_dir / "pack.json").read_text(encoding="utf-8"))
+        manifest["router_rules_path"] = "../adult_demo_pack-other/secret.json"
+
+        result = self.packs.validate_pack_manifest(manifest, source_dir)
+
+        self.assertFalse(result["valid"])
+        self.assertTrue(any("sort du dossier" in error for error in result["errors"]))
 
 
 if __name__ == "__main__":

@@ -787,6 +787,10 @@ function findInstalledToolCapableModel() {
 let terminalToolModel = null;
 let terminalInputLocked = false;
 
+function terminalUsesCloudModel(modelId) {
+    return typeof isTerminalCloudModelId === 'function' && isTerminalCloudModelId(modelId);
+}
+
 // ===== TERMINAL INPUT LOCK =====
 
 /**
@@ -1097,8 +1101,9 @@ async function enterTerminalMode(workspace = null, pendingMessage = '') {
     // 1. Vérifier si l'utilisateur a choisi un modèle dans les settings
     const savedTerminalModel = userSettings?.terminalModel;
     if (savedTerminalModel) {
-        // Vérifier si ce modèle est installé
-        const isInstalled = CHAT_MODELS?.some(m => m.id === savedTerminalModel);
+        // Vérifier si ce modèle est installé ou si c'est un profil cloud configuré.
+        const isInstalled = terminalUsesCloudModel(savedTerminalModel)
+            || CHAT_MODELS?.some(m => m.id === savedTerminalModel);
         if (isInstalled) {
             console.log('[TERMINAL] Utilisation du modèle configuré:', savedTerminalModel);
             toolModel = savedTerminalModel;
@@ -1136,19 +1141,23 @@ async function enterTerminalMode(workspace = null, pendingMessage = '') {
     terminalToolModel = toolModel;
 
     if (toolModel) {
-        // D'abord décharger tous les autres modèles Ollama pour libérer la VRAM
-        console.log('[TERMINAL] Déchargement des modèles existants...');
-        await apiModels.unloadAll();
-
-        // Précharger le modèle tool-capable avec loading animé
-        const loadingEl = showTerminalLoading(terminalT('terminal.loadingModel', 'Chargement de {model}...', { model: toolModel }));
-        const warmupResult = await apiOllama.warmup(toolModel, true);
-        if (warmupResult.ok) {
-            // Affiche "Prêt !" puis disparaît avec animation
-            await hideTerminalLoading(loadingEl, terminalT('terminal.readyModel', 'Prêt ! Modèle : {model}', { model: toolModel }));
+        if (terminalUsesCloudModel(toolModel)) {
+            addTerminalLine(terminalT('terminal.cloudModelReady', 'LLM cloud prêt : {model}', { model: toolModel }), 'success');
         } else {
-            // En cas d'erreur, juste supprimer le loading
-            await hideTerminalLoading(loadingEl);
+            // D'abord décharger tous les autres modèles Ollama pour libérer la VRAM
+            console.log('[TERMINAL] Déchargement des modèles existants...');
+            await apiModels.unloadAll();
+
+            // Précharger le modèle tool-capable avec loading animé
+            const loadingEl = showTerminalLoading(terminalT('terminal.loadingModel', 'Chargement de {model}...', { model: toolModel }));
+            const warmupResult = await apiOllama.warmup(toolModel, true);
+            if (warmupResult.ok) {
+                // Affiche "Prêt !" puis disparaît avec animation
+                await hideTerminalLoading(loadingEl, terminalT('terminal.readyModel', 'Prêt ! Modèle : {model}', { model: toolModel }));
+            } else {
+                // En cas d'erreur, juste supprimer le loading
+                await hideTerminalLoading(loadingEl);
+            }
         }
     }
 
@@ -1313,7 +1322,9 @@ async function onImageRemovedTerminal() {
 
     // Recharger le modèle tool-capable (ou chat par défaut)
     const modelToReload = terminalToolModel || userSettings.chatModel || 'qwen3.5:2b';
-    await apiOllama.warmup(modelToReload, true);
+    if (!terminalUsesCloudModel(modelToReload)) {
+        await apiOllama.warmup(modelToReload, true);
+    }
 
     // Restaurer l'affichage du modèle
     const modelDisplay = document.querySelector('.terminal-header .model-picker-btn span');
@@ -1467,8 +1478,11 @@ function setTerminalWorkspace(workspace, persist = true) {
     setTerminalBodyState(!!workspace?.path, workspace || null);
 
     if (workspace?.path && !terminalToolModel) {
-        terminalToolModel = findInstalledToolCapableModel()
-            || userSettings?.terminalModel
+        const configuredTerminalModel = userSettings?.terminalModel;
+        const configuredModelUsable = configuredTerminalModel
+            && (terminalUsesCloudModel(configuredTerminalModel) || CHAT_MODELS?.some(m => m.id === configuredTerminalModel));
+        terminalToolModel = (configuredModelUsable ? configuredTerminalModel : null)
+            || findInstalledToolCapableModel()
             || userSettings?.chatModel
             || 'qwen3.5:2b';
     }

@@ -7,6 +7,7 @@ from core.backends.terminal_tools import (
     PermissionEngine,
     ToolRisk,
     build_default_terminal_tool_registry,
+    truncate_middle,
 )
 from core.backends.workspace_tools import glob_files, write_file
 
@@ -31,6 +32,22 @@ LEGACY_TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "web_fetch",
+            "description": "Fetch a URL",
+            "parameters": {"type": "object", "properties": {"url": {"type": "string"}}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "delegate_subagent",
+            "description": "Run subagent",
+            "parameters": {"type": "object", "properties": {"task": {"type": "string"}}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "delete_file",
             "description": "Delete a file",
             "parameters": {"type": "object", "properties": {"path": {"type": "string"}}},
@@ -40,20 +57,36 @@ LEGACY_TOOLS = [
 
 
 class TerminalToolRegistryTests(unittest.TestCase):
+    def test_truncate_middle_preserves_head_and_tail(self):
+        text = "HEAD-" + ("x" * 120) + "-TAIL"
+
+        truncated = truncate_middle(text, 40)
+
+        self.assertLessEqual(len(truncated), 40)
+        self.assertTrue(truncated.startswith("HEAD-"))
+        self.assertTrue(truncated.endswith("-TAIL"))
+        self.assertIn("truncated", truncated)
+
     def test_registry_converts_legacy_tools(self):
         registry = build_default_terminal_tool_registry(LEGACY_TOOLS)
 
         read_tool = registry.get("read_file")
         bash_tool = registry.get("bash")
+        fetch_tool = registry.get("web_fetch")
+        subagent_tool = registry.get("delegate_subagent")
         delete_tool = registry.get("delete_file")
 
         self.assertIsNotNone(read_tool)
         self.assertIsNotNone(bash_tool)
+        self.assertIsNotNone(fetch_tool)
+        self.assertIsNotNone(subagent_tool)
         self.assertIsNotNone(delete_tool)
         self.assertEqual(read_tool.risk, ToolRisk.READ_ONLY)
         self.assertEqual(bash_tool.risk, ToolRisk.SHELL)
+        self.assertEqual(fetch_tool.risk, ToolRisk.NETWORK)
+        self.assertEqual(subagent_tool.risk, ToolRisk.SHELL)
         self.assertEqual(delete_tool.risk, ToolRisk.DESTRUCTIVE)
-        self.assertEqual(len(registry.ollama_tools()), 3)
+        self.assertEqual(len(registry.ollama_tools()), 5)
 
     def test_permission_allows_safe_shell_command(self):
         registry = build_default_terminal_tool_registry(LEGACY_TOOLS)

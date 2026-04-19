@@ -18,6 +18,30 @@ The public core should stay focused on reusable infrastructure:
 * provider configuration
 * UI shell
 
+## Agent runtime
+
+JoyBoy keeps agent/coding behavior in a reusable public-core layer:
+
+```text
+core/agent_runtime/
+```
+
+This layer owns runtime contracts that should not depend on Flask routes or UI
+state:
+
+* stream event names and schema versions
+* tool loop guardrails
+* tool output truncation
+* host path masking before tool output reaches the model
+* LLM provider catalog and provider-prefixed cloud model client
+* bounded backend-managed subagents for coding workflows:
+  * `code_explorer` for read-only codebase context
+  * `verifier` for one allowlisted test/build command without shell chaining
+
+Terminal mode can use this runtime today, and future subagents, MCP tools, pack
+skills, and coding providers should plug into it instead of duplicating tool
+logic in routes.
+
 The goal is to keep this surface contributor-friendly and easy to reason about.
 
 ## Local configuration
@@ -40,6 +64,10 @@ Priority order:
 1. process environment
 2. `.env`
 3. local JoyBoy config
+
+LLM cloud providers are optional. The terminal runtime accepts provider-prefixed
+model ids for OpenAI-compatible providers, for example `openai:gpt-4o-mini` or
+`openrouter:provider/model-name`. See `docs/LLM_PROVIDERS.md`.
 
 ## Local packs
 

@@ -15,12 +15,24 @@ Sources:
 
 import os
 import json
+import re
 from collections import defaultdict
 from typing import Dict, List, Optional, Any, Generator
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from config import TOOL_CAPABLE_MODELS, TOOL_EXCLUDED_MODELS
+from core.agent_runtime import (
+    CloudModelError,
+    ToolLoopGuard,
+    chat_with_cloud_model,
+    is_cloud_model_name,
+    mask_workspace_paths,
+    runtime_event,
+    tool_guard_reason,
+    tool_signature,
+    truncate_middle,
+)
 from core.backends.terminal_tools import (
     PermissionEngine,
     build_default_terminal_tool_registry,
@@ -240,6 +252,74 @@ TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "web_fetch",
+            "description": "Fetch readable text from an exact public URL returned by web_search or provided by the user.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string",
+                        "description": "Exact http(s) URL to fetch."
+                    }
+                },
+                "required": ["url"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "delegate_subagent",
+            "description": "Run a backend-managed subagent for code exploration or controlled verification. Use code_explorer for broad analysis and verifier for tests/build checks.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "task": {
+                        "type": "string",
+                        "description": "Concrete exploration task for the subagent."
+                    },
+                    "agent_type": {
+                        "type": "string",
+                        "enum": ["code_explorer", "verifier"],
+                        "description": "Subagent type. code_explorer is read-only; verifier runs one allowlisted test/build command."
+                    },
+                    "max_files": {
+                        "type": "integer",
+                        "description": "Maximum relevant files to return. Default: 8, max: 16."
+                    },
+                    "command": {
+                        "type": "string",
+                        "description": "Verifier command, for example 'python -m unittest discover -s tests' or 'npm test'. Required for verifier."
+                    },
+                    "timeout_seconds": {
+                        "type": "integer",
+                        "description": "Verifier timeout in seconds. Default: 90, max: 180."
+                    }
+                },
+                "required": ["task"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "load_skill",
+            "description": "Load an active local pack SKILL.md workflow by skill_id when it is relevant to the user's task.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "skill_id": {
+                        "type": "string",
+                        "description": "Skill id from the local pack skills list, for example 'my-pack:code-review'."
+                    }
+                },
+                "required": ["skill_id"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "think",
             "description": "Think briefly before acting. Useful for planning complex tasks, but do not loop on it.",
             "parameters": {
@@ -351,8 +431,9 @@ class TerminalBrain:
         # Keep the agent useful without letting a small local model spin forever.
         # `/auto` can still raise the budget for longer coding tasks.
         self.max_iterations = 8
-        self.max_non_autonomous_tokens = 12000
+        self.max_non_autonomous_tokens = 6500
         self._active_context_size = 4096
+        self._active_workspace_path = ""
         self.current_plan: Optional[ExecutionPlan] = None
         self._read_files_by_workspace = defaultdict(dict)
 
@@ -568,6 +649,30 @@ class TerminalBrain:
                 result = self._execute_web_search(query)
                 return ToolResult(success=result.get('success', False), tool_name=tool_name, data=result)
 
+            # === WEB FETCH ===
+            elif tool_name == "web_fetch":
+                url = args.get('url', '')
+                result = self._execute_web_fetch(url)
+                return ToolResult(success=result.get('success', False), tool_name=tool_name, data=result, error=result.get('error'))
+
+            # === DELEGATE SUBAGENT ===
+            elif tool_name == "delegate_subagent":
+                result = self._delegate_subagent(
+                    args.get('agent_type', 'code_explorer'),
+                    args.get('task', ''),
+                    workspace_path,
+                    max_files=args.get('max_files', 8),
+                    command=args.get('command', ''),
+                    timeout_seconds=args.get('timeout_seconds', 90),
+                )
+                return ToolResult(success=result.get('status') == 'completed', tool_name=tool_name, data=result, error=result.get('error'))
+
+            # === LOAD SKILL ===
+            elif tool_name == "load_skill":
+                skill_id = args.get('skill_id', '')
+                result = self._load_pack_skill(skill_id)
+                return ToolResult(success=result.get('success', False), tool_name=tool_name, data=result, error=result.get('error'))
+
             # === OPEN WORKSPACE ===
             elif tool_name == "open_workspace":
                 result = self._open_workspace_folder(workspace_path)
@@ -612,12 +717,14 @@ class TerminalBrain:
         - {'type': 'done', 'full_response': '...'} - Terminé
         - {'type': 'error', 'message': '...'} - Erreur
         """
-        if not HAS_OLLAMA:
-            yield {'type': 'error', 'message': 'Package ollama non installé. pip install ollama'}
+        model = model or self.default_model
+        use_cloud_model = is_cloud_model_name(model)
+        if not use_cloud_model and not HAS_OLLAMA:
+            yield runtime_event('error', message='Package ollama non installé. pip install ollama')
             return
 
-        model = model or self.default_model
         self._active_context_size = max(2048, int(context_size or 4096))
+        self._active_workspace_path = workspace_path
         resource_scheduler = None
         resource_lease_id = None
 
@@ -643,8 +750,8 @@ class TerminalBrain:
             print(f"[BRAIN] Resource scheduler skipped: {exc}")
 
         # Vérifier si le modèle supporte les tools
-        if not is_tool_capable(model):
-            yield {'type': 'warning', 'message': f"Le modèle {model} ne supporte peut-être pas bien les tools. Recommandé: qwen3.5, qwen3, llama3.1"}
+        if not use_cloud_model and not is_tool_capable(model):
+            yield runtime_event('warning', message=f"Le modèle {model} ne supporte peut-être pas bien les tools. Recommandé: qwen3.5, qwen3, llama3.1")
 
         # Détecter le mode autonome via mot-clé
         if '/auto' in initial_message.lower() or '!auto' in initial_message.lower() or autonomous:
@@ -658,28 +765,29 @@ class TerminalBrain:
         else:
             self.current_intent = self.detect_intent(initial_message)
         self.write_blocked = False
+        response_token_limit = 4096 if autonomous else (1024 if self.is_read_only_intent(self.current_intent) else 2048)
 
-        yield {'type': 'intent', 'intent': self.current_intent, 'read_only': self.is_read_only_intent(self.current_intent), 'autonomous': autonomous}
+        yield runtime_event('intent', intent=self.current_intent, read_only=self.is_read_only_intent(self.current_intent), autonomous=autonomous)
 
         if self._is_open_workspace_request(initial_message):
             args = {}
-            yield {'type': 'tool_call', 'name': 'open_workspace', 'args': args}
+            yield runtime_event('tool_call', name='open_workspace', args=args)
             result = self.execute_tool('open_workspace', args, workspace_path)
-            yield {'type': 'tool_result', 'result': {
+            yield runtime_event('tool_result', result={
                 'success': result.success,
                 'tool_name': result.tool_name,
                 'data': result.data,
                 'error': result.error,
                 'write_blocked': False
-            }}
+            })
             text = (
                 f"Dossier ouvert: {result.data.get('path', workspace_path)}"
                 if result.success
                 else f"Je n'ai pas réussi à ouvrir le dossier: {result.error or 'erreur inconnue'}"
             )
-            yield {'type': 'content', 'text': text, 'token_stats': {}}
+            yield runtime_event('content', text=text, token_stats={})
             _end_resource_lease()
-            yield {'type': 'done', 'full_response': text, 'token_stats': {'prompt_tokens': 0, 'completion_tokens': 0, 'total': 0}}
+            yield runtime_event('done', full_response=text, token_stats={'prompt_tokens': 0, 'completion_tokens': 0, 'total': 0})
             return
 
         # System prompt par défaut
@@ -716,46 +824,57 @@ class TerminalBrain:
         full_response = ""
         iteration = 0
         iteration_budget = 20 if autonomous else (3 if repo_brief else self.max_iterations)
-        turn_token_budget = max(3500, min(self.max_non_autonomous_tokens, int(self._active_context_size * 1.35)))
+        turn_token_budget = max(2500, min(self.max_non_autonomous_tokens, int(self._active_context_size * 0.9)))
         total_token_stats = {'prompt_tokens': 0, 'completion_tokens': 0, 'total': 0}
-        tool_seen = defaultdict(int)
+        loop_guard = ToolLoopGuard()
         guard_hits = 0
         force_final = bool(repo_brief)
         executed_tools = []
+        continuation_nudges = 0
 
         while iteration < iteration_budget:
             iteration += 1
-            yield {'type': 'thinking', 'iteration': iteration, 'max_iterations': iteration_budget}
+            yield runtime_event('thinking', iteration=iteration, max_iterations=iteration_budget)
 
             try:
                 # Appel Ollama avec tools
                 tools_for_model = [] if force_final else self.tool_registry.ollama_tools()
                 messages = self._compact_loop_messages(messages, context_size=self._active_context_size)
-                print(f"[BRAIN] Calling ollama.chat with model={model}, tools={len(tools_for_model)} tools")
-                chat_kwargs = {
-                    "model": model,
-                    "messages": messages,
-                    "stream": False,
-                    # Qwen reasoning models can spend the whole budget in hidden
-                    # thinking and return message.content=None. Terminal mode
-                    # needs visible answers first; tools already provide traces.
-                    "think": False,
-                    "keep_alive": "10m",
-                    "options": {
-                        'num_ctx': self._active_context_size,  # Utiliser la config utilisateur
-                        'num_predict': 4096 if autonomous else 2048,
-                        'temperature': 0.2,
-                    },
-                }
-                if tools_for_model:
-                    chat_kwargs["tools"] = tools_for_model
-                try:
-                    response = ollama.chat(**chat_kwargs)
-                except TypeError as exc:
-                    if "keep_alive" not in str(exc):
-                        raise
-                    chat_kwargs.pop("keep_alive", None)
-                    response = ollama.chat(**chat_kwargs)
+                if use_cloud_model:
+                    print(f"[BRAIN] Calling cloud model={model}, tools={len(tools_for_model)} tools")
+                    response = chat_with_cloud_model(
+                        model,
+                        messages=messages,
+                        tools=tools_for_model,
+                        max_tokens=response_token_limit,
+                        temperature=0.2,
+                    )
+                else:
+                    print(f"[BRAIN] Calling ollama.chat with model={model}, tools={len(tools_for_model)} tools")
+                    chat_kwargs = {
+                        "model": model,
+                        "messages": messages,
+                        "stream": False,
+                        # Qwen reasoning models can spend the whole budget in hidden
+                        # thinking and return message.content=None. Terminal mode
+                        # needs visible answers first; tools already provide traces.
+                        "think": False,
+                        "keep_alive": "10m",
+                        "options": {
+                            'num_ctx': self._active_context_size,  # Utiliser la config utilisateur
+                            'num_predict': response_token_limit,
+                            'temperature': 0.2,
+                        },
+                    }
+                    if tools_for_model:
+                        chat_kwargs["tools"] = tools_for_model
+                    try:
+                        response = ollama.chat(**chat_kwargs)
+                    except TypeError as exc:
+                        if "keep_alive" not in str(exc):
+                            raise
+                        chat_kwargs.pop("keep_alive", None)
+                        response = ollama.chat(**chat_kwargs)
                 print(f"[BRAIN] Response type: {type(response)}")
 
                 # Gérer réponse objet ou dict
@@ -785,6 +904,9 @@ class TerminalBrain:
                     token_stats['prompt_tokens'] = response.prompt_eval_count or 0
                 if hasattr(response, 'eval_count'):
                     token_stats['completion_tokens'] = response.eval_count or 0
+                if isinstance(response, dict):
+                    token_stats['prompt_tokens'] = int(response.get('prompt_eval_count') or 0)
+                    token_stats['completion_tokens'] = int(response.get('eval_count') or 0)
                 token_stats['total'] = token_stats.get('prompt_tokens', 0) + token_stats.get('completion_tokens', 0)
 
                 # Accumuler les stats de tokens
@@ -796,27 +918,30 @@ class TerminalBrain:
                 print(f"[BRAIN] Tool calls: {len(tool_calls) if tool_calls else 0}")
                 print(f"[BRAIN] Tokens this call: {token_stats.get('total', 0)} | Total session: {total_token_stats['total']}")
 
-                if not autonomous and total_token_stats['total'] >= turn_token_budget and not force_final:
-                    force_final = True
-                    yield {
-                        'type': 'loop_warning',
-                        'action': 'token_budget',
-                        'reason': 'Turn token budget reached; switching to a final synthesis.'
-                    }
-                    messages.append({
-                        'role': 'user',
-                        'content': (
-                            "Stop using tools: the turn budget is reached. Produce a concrete final answer "
-                            "from the observed evidence. If context is insufficient, name the exact files "
-                            "that should be read next."
-                        )
-                    })
-                    continue
+                over_budget = (
+                    not autonomous
+                    and total_token_stats['total'] >= turn_token_budget
+                    and not force_final
+                )
 
                 # Si du texte, l'envoyer avec les stats
                 if content:
                     full_response += content
-                    yield {'type': 'content', 'text': content, 'token_stats': token_stats}
+                    yield runtime_event('content', text=content, token_stats=token_stats)
+
+                if over_budget:
+                    yield runtime_event(
+                        'loop_warning',
+                        action='token_budget',
+                        reason='Turn token budget reached; stopping before another model call.',
+                    )
+                    if not full_response.strip():
+                        final_text = self._budget_fallback_answer(initial_message, executed_tools)
+                        full_response += final_text
+                        yield runtime_event('content', text=final_text, token_stats={})
+                    _end_resource_lease()
+                    yield runtime_event('done', full_response=full_response, token_stats=total_token_stats)
+                    return
 
                 # Si pas de tool calls, vérifier si le modèle voulait continuer
                 if not tool_calls:
@@ -827,7 +952,7 @@ class TerminalBrain:
                             executed_tools=executed_tools,
                         )
                         full_response += final_text
-                        yield {'type': 'content', 'text': final_text, 'token_stats': token_stats}
+                        yield runtime_event('content', text=final_text, token_stats=token_stats)
 
                     # Détecter si le contenu suggère une continuation
                     continuation_keywords = [
@@ -857,10 +982,11 @@ class TerminalBrain:
                         })
                         continue
 
-                    if wants_to_continue and iteration < iteration_budget - 1:
+                    if wants_to_continue and not force_final and iteration < iteration_budget - 1 and continuation_nudges < 1:
                         # Le modèle voulait continuer mais n'a pas fait de tool call
                         # Relancer avec un message de nudge
                         print(f"[BRAIN] Modèle veut continuer mais pas de tool call - relance")
+                        continuation_nudges += 1
                         messages.append({
                             'role': 'assistant',
                             'content': content
@@ -872,7 +998,7 @@ class TerminalBrain:
                         continue  # Relancer la boucle
 
                     _end_resource_lease()
-                    yield {'type': 'done', 'full_response': full_response, 'token_stats': total_token_stats}
+                    yield runtime_event('done', full_response=full_response, token_stats=total_token_stats)
                     return
 
                 # Ajouter la réponse du LLM aux messages
@@ -885,11 +1011,13 @@ class TerminalBrain:
                         # Objet ToolCall
                         tool_name = tc.function.name
                         args_raw = tc.function.arguments
+                        tool_call_id = getattr(tc, "id", "")
                     else:
                         # Dict
                         func = tc.get('function', {})
                         tool_name = func.get('name', '')
                         args_raw = func.get('arguments', {})
+                        tool_call_id = tc.get('id', '')
 
                     # Parse les arguments
                     if isinstance(args_raw, str):
@@ -902,17 +1030,11 @@ class TerminalBrain:
 
                     print(f"[BRAIN] Executing tool: {tool_name}({args})")
 
-                    signature = self._tool_signature(tool_name, args)
-                    tool_seen[signature] += 1
-                    guard_reason = self._tool_guard_reason(tool_name, args, tool_seen[signature], executed_tools)
+                    guard_reason = loop_guard.check(tool_name, args, executed_tools)
                     if guard_reason and not autonomous:
                         guard_hits += 1
                         force_final = True
-                        yield {
-                            'type': 'loop_warning',
-                            'action': tool_name,
-                            'reason': guard_reason,
-                        }
+                        yield runtime_event('loop_warning', action=tool_name, reason=guard_reason)
                         guard_text = (
                             f"[TERMINAL GUARDRAIL] {guard_reason}. "
                             "Stop repetitive tools and produce the final synthesis now."
@@ -921,9 +1043,9 @@ class TerminalBrain:
                         if guard_hits >= 2:
                             final_text = self._guardrail_fallback_answer(initial_message, executed_tools)
                             full_response += final_text
-                            yield {'type': 'content', 'text': final_text, 'token_stats': {}}
+                            yield runtime_event('content', text=final_text, token_stats={})
                             _end_resource_lease()
-                            yield {'type': 'done', 'full_response': full_response, 'token_stats': total_token_stats}
+                            yield runtime_event('done', full_response=full_response, token_stats=total_token_stats)
                             return
                         messages.append({
                             'role': 'user',
@@ -931,19 +1053,19 @@ class TerminalBrain:
                         })
                         continue
 
-                    yield {'type': 'tool_call', 'name': tool_name, 'args': args}
+                    yield runtime_event('tool_call', name=tool_name, args=args)
 
                     # Exécuter le tool
                     result = self.execute_tool(tool_name, args, workspace_path)
                     executed_tools.append(self._summarize_executed_tool(tool_name, args, result))
 
-                    yield {'type': 'tool_result', 'result': {
+                    yield runtime_event('tool_result', result={
                         'success': result.success,
                         'tool_name': result.tool_name,
                         'data': result.data,
                         'error': result.error,
                         'write_blocked': self.write_blocked
-                    }}
+                    })
 
                     # Reset flag
                     if self.write_blocked:
@@ -951,19 +1073,26 @@ class TerminalBrain:
 
                     # Ajouter le résultat aux messages pour le LLM
                     result_text = self._format_result_for_llm(result)
-                    messages.append({
+                    tool_message = {
                         "role": "tool",
                         "tool_name": result.tool_name,
                         "content": result_text
-                    })
+                    }
+                    if tool_call_id:
+                        tool_message["tool_call_id"] = tool_call_id
+                    messages.append(tool_message)
 
+            except CloudModelError as e:
+                _end_resource_lease()
+                yield runtime_event('error', message=str(e))
+                return
             except Exception as e:
                 _end_resource_lease()
-                yield {'type': 'error', 'message': str(e)}
+                yield runtime_event('error', message=str(e))
                 return
 
         _end_resource_lease()
-        yield {'type': 'error', 'message': f'Iteration limit reached ({iteration_budget})'}
+        yield runtime_event('error', message=f'Iteration limit reached ({iteration_budget})')
 
     # ===== HELPERS =====
 
@@ -1044,11 +1173,22 @@ class TerminalBrain:
         overview_words = ("analyse", "audit", "regarde", "explore", "inspecte", "comprendre")
         repo_words = ("repo", "projet", "codebase", "workspace", "dossier")
         write_words = ("corrige", "fix", "modifie", "ajoute", "supprime", "implémente", "implemente")
-        return (
-            any(word in msg for word in overview_words)
-            and any(word in msg for word in repo_words)
-            and not any(word in msg for word in write_words)
+        if any(word in msg for word in write_words):
+            return False
+        if not any(word in msg for word in overview_words):
+            return False
+        if re.search(r"[\w./\\-]+\.(py|js|jsx|ts|tsx|css|html|md|json|yaml|yml|toml|txt|go|rs|java|cs|php|rb)\b", msg):
+            return False
+        if any(word in msg for word in repo_words):
+            return True
+
+        compact = re.sub(r"\s+", " ", msg).strip(" .!?;:")
+        vague_targets = (
+            "analyse", "analyse le", "analyse la", "analyse les", "analyse ça",
+            "analyse ca", "analyse ceci", "analyse ici", "regarde ça",
+            "regarde ca", "regarde le", "explore le", "inspecte le",
         )
+        return compact in vague_targets or len(compact.split()) <= 3
 
     def _is_open_workspace_request(self, message: str) -> bool:
         msg = (message or "").lower()
@@ -1059,19 +1199,20 @@ class TerminalBrain:
     def _build_repo_brief(self, workspace_path: str) -> tuple[str, List[Dict]]:
         """Build a bounded repo brief and emit normal tool events for the UI."""
         from core.workspace_tools import get_workspace_summary, list_files, read_file
+        from core.agent_runtime import run_subagent
 
         events: List[Dict] = []
         lines: List[str] = []
 
-        events.append({'type': 'tool_call', 'name': 'list_files', 'args': {'path': '.'}})
+        events.append(runtime_event('tool_call', name='list_files', args={'path': '.'}))
         root_listing = list_files(workspace_path, '.', max_files=80)
-        events.append({'type': 'tool_result', 'result': {
+        events.append(runtime_event('tool_result', result={
             'success': root_listing.get('success', False),
             'tool_name': 'list_files',
             'data': root_listing,
             'error': root_listing.get('error'),
             'write_blocked': False,
-        }})
+        }))
 
         summary = get_workspace_summary(workspace_path)
         if summary.get("success"):
@@ -1096,6 +1237,39 @@ class TerminalBrain:
             if root_dirs:
                 lines.append("Visible root directories: " + ", ".join(root_dirs[:18]))
 
+        explorer_args = {
+            "agent_type": "code_explorer",
+            "task": "Build a concise repository overview. Prefer README and configuration files, then likely app entrypoints.",
+            "max_files": 8,
+        }
+        events.append(runtime_event('tool_call', name='delegate_subagent', args=explorer_args))
+        explorer = run_subagent(
+            "code_explorer",
+            workspace_path,
+            explorer_args["task"],
+            max_files=explorer_args["max_files"],
+        )
+        events.append(runtime_event('tool_result', result={
+            'success': explorer.get('status') == 'completed',
+            'tool_name': 'delegate_subagent',
+            'data': explorer,
+            'error': explorer.get('error'),
+            'write_blocked': False,
+        }))
+        if explorer.get("status") == "completed":
+            observations = explorer.get("observations", [])
+            if observations:
+                lines.append("Explorer observations: " + " | ".join(str(item) for item in observations[:3]))
+            for item in explorer.get("files", [])[:6]:
+                path = item.get("path", "")
+                excerpt = item.get("excerpt", "")
+                if not path or not excerpt:
+                    continue
+                lines.append(
+                    f"\n--- {path} ({item.get('lines', 0)} lines, explorer) ---\n"
+                    f"{truncate_middle(excerpt, 1400)}"
+                )
+
         preferred = [
             "README.md", "readme.md", "pyproject.toml", "package.json",
             "requirements.txt", "web/app.py", "app.py", "core/__init__.py",
@@ -1109,14 +1283,14 @@ class TerminalBrain:
             if not result.get("success"):
                 continue
             read_count += 1
-            events.append({'type': 'tool_call', 'name': 'read_file', 'args': {'path': path, 'max_lines': 120}})
-            events.append({'type': 'tool_result', 'result': {
+            events.append(runtime_event('tool_call', name='read_file', args={'path': path, 'max_lines': 120}))
+            events.append(runtime_event('tool_result', result={
                 'success': True,
                 'tool_name': 'read_file',
                 'data': result,
                 'error': None,
                 'write_blocked': False,
-            }})
+            }))
             content = result.get("content", "")
             excerpt = content[:1800]
             if len(content) > len(excerpt):
@@ -1184,11 +1358,7 @@ class TerminalBrain:
         )
 
     def _tool_signature(self, tool_name: str, args: Dict) -> str:
-        try:
-            clean_args = json.dumps(args or {}, sort_keys=True, ensure_ascii=False)
-        except TypeError:
-            clean_args = str(args)
-        return f"{tool_name}:{clean_args}"
+        return tool_signature(tool_name, args)
 
     def _tool_guard_reason(
         self,
@@ -1198,32 +1368,7 @@ class TerminalBrain:
         executed_tools: List[Dict],
     ) -> Optional[str]:
         """Return a reason when a tool call is clearly no-progress noise."""
-        if seen_count >= 3:
-            return f"repeated call {seen_count} times: {tool_name}({args})"
-
-        path = str((args or {}).get("path", "")).strip()
-        pattern = str((args or {}).get("pattern", "")).strip()
-        command = str((args or {}).get("command", "")).strip().lower()
-
-        if tool_name == "read_file" and path in {"", ".", "./"}:
-            return "read_file must target a file, not the workspace root"
-
-        noisy_roots = {"**/*", "*", ".", "./"}
-        if tool_name == "glob" and pattern in noisy_roots and len(executed_tools) >= 2:
-            return "broad glob already gave enough context; read specific files or conclude"
-
-        if tool_name == "search" and pattern in {"", ".", ".*"}:
-            return "search pattern is too broad to produce useful signal"
-
-        repeated_shell = {"ls", "ls -la", "dir", "pwd", "find . -type f"}
-        if tool_name == "bash" and command in repeated_shell and len(executed_tools) >= 2:
-            return f"exploratory shell command already used: {command}"
-
-        recent_names = [item.get("tool") for item in executed_tools[-4:]]
-        if len(recent_names) == 4 and len(set(recent_names)) <= 2 and tool_name in {"list_files", "glob", "bash"}:
-            return "repeated exploration without reading useful files"
-
-        return None
+        return tool_guard_reason(tool_name, args, seen_count, executed_tools)
 
     def _summarize_executed_tool(self, tool_name: str, args: Dict, result: ToolResult) -> Dict:
         summary = {"tool": tool_name, "args": args or {}, "success": result.success}
@@ -1240,6 +1385,13 @@ class TerminalBrain:
             summary["summary"] = f"{len(data.get('files', []))} file(s)"
         elif tool_name == "search":
             summary["summary"] = f"{len(data.get('results', []))} result(s)"
+        elif tool_name == "web_fetch":
+            summary["summary"] = f"{data.get('title', 'page')} ({data.get('length', 0)} chars)"
+        elif tool_name == "delegate_subagent":
+            summary["summary"] = f"{data.get('agent_type', 'subagent')} {data.get('status', 'unknown')}"
+        elif tool_name == "load_skill":
+            skill = data.get("skill", {}) if isinstance(data, dict) else {}
+            summary["summary"] = skill.get("id", "skill loaded")
         elif tool_name == "bash":
             summary["summary"] = f"code {data.get('return_code', '?')}"
         elif tool_name == "open_workspace":
@@ -1336,6 +1488,26 @@ class TerminalBrain:
             "JoyBoy utilisera le scan borné au lieu de refaire `ls/glob/pwd` en boucle."
         )
 
+    def _budget_fallback_answer(self, initial_message: str, executed_tools: List[Dict]) -> str:
+        if executed_tools:
+            bullet_lines = [
+                f"- {item.get('tool')} {item.get('args', {})}: {item.get('summary', '')}"
+                for item in executed_tools[-6:]
+            ]
+            return (
+                "J'ai coupé avant de relancer le modèle pour ne pas brûler plus de tokens.\n\n"
+                "Dernières observations utiles:\n"
+                + "\n".join(bullet_lines)
+                + "\n\nRelance avec une cible plus précise, ou demande `analyse le projet`: "
+                "JoyBoy utilisera le scan borné sans boucle d'exploration."
+            )
+
+        return (
+            "J'ai coupé avant un nouvel appel modèle pour éviter une boucle coûteuse. "
+            "Aucun outil n'avait encore produit de contexte utile; demande `analyse le projet` "
+            "ou cible un fichier précis."
+        )
+
     def build_system_prompt(
         self,
         workspace_path: str,
@@ -1355,10 +1527,12 @@ class TerminalBrain:
             if force_response_language
             else "Final answer language: match the user's language.\n"
         )
+        skill_index = self._build_skill_index_prompt()
         return f"""You are JoyBoy Terminal, an expert coding agent working inside a local project folder.
 
 Workspace name: {project_name}
-Workspace path: {workspace_path}
+Workspace path visible to you: /workspace
+Host workspace path: hidden by JoyBoy runtime; do not mention local absolute paths unless the user asks.
 {language_rule}
 Core contract:
 1. Use tools for real work. Do not pretend that files were created, edited, installed, or tested.
@@ -1371,6 +1545,9 @@ Core contract:
 8. If a command or edit fails, inspect the error, adjust once or twice, then explain the blocker.
 9. Keep context lean: read focused file chunks, summarize large outputs, and avoid dumping entire files.
 10. For final code snippets, use fenced Markdown blocks with a language tag.
+11. For broad codebase tasks, prefer delegate_subagent(code_explorer) over repeated list_files/glob/search loops.
+12. For web research, use web_search first, then web_fetch exact public URLs returned by search or provided by the user.
+13. After modifications, prefer delegate_subagent(verifier) with one allowlisted test/build command instead of free-form shell retries.
 
 Safe workflow for analysis:
 1. list_files once if needed.
@@ -1387,6 +1564,7 @@ Safe workflow for project scaffolding:
 1. run the scaffold command inside the workspace.
 2. verify the generated folder and package.json.
 3. read the key generated files before describing them.
+{skill_index}
 
 You have access to filesystem, search, shell, and workspace tools. Use them to complete the user's task."""
 
@@ -1394,9 +1572,35 @@ You have access to filesystem, search, shell, and workspace tools. Use them to c
         """Default Claude-Code-style terminal system prompt."""
         return self.build_system_prompt(workspace_path)
 
+    def _build_skill_index_prompt(self) -> str:
+        try:
+            from core.infra.packs import get_pack_skills
+
+            skills = get_pack_skills()
+        except Exception:
+            skills = []
+
+        if not skills:
+            return ""
+
+        lines = [
+            "",
+            "Local pack skills:",
+            "- Use load_skill only when a listed skill clearly matches the task.",
+            "- Do not load every skill preemptively; keep context lean.",
+        ]
+        for skill in skills[:20]:
+            summary = f" - {skill.get('summary', '')}" if skill.get("summary") else ""
+            lines.append(f"- {skill.get('id')}: {skill.get('name', 'Skill')}{summary}")
+        if len(skills) > 20:
+            lines.append(f"- ... {len(skills) - 20} more skill(s) hidden from the base prompt.")
+        return "\n".join(lines)
+
     def _format_result_for_llm(self, result: ToolResult) -> str:
         """Formate le résultat d'un tool pour le LLM"""
         if not result.success:
+            if result.tool_name == 'delegate_subagent' and result.data:
+                return self._format_delegate_subagent_for_llm(result.data)
             if result.tool_name == 'bash' and result.data:
                 data = result.data
                 output = data.get('output', '')
@@ -1409,6 +1613,8 @@ You have access to filesystem, search, shell, and workspace tools. Use them to c
                     )
                     if verification.get('package_json') is not None:
                         output += f" (package.json: {'yes' if verification.get('package_json') else 'no'})"
+                output = truncate_middle(output, max(3000, min(8000, int(self._active_context_size * 1.35))))
+                output = mask_workspace_paths(output, self._active_workspace_path)
                 return f"[ERROR bash] {result.error or 'Command failed'}\n```\n{output}\n```"
             return f"[ERROR {result.tool_name}] {result.error}"
 
@@ -1471,6 +1677,8 @@ You have access to filesystem, search, shell, and workspace tools. Use them to c
                 )
                 if verification.get('package_json') is not None:
                     output += f" (package.json: {'yes' if verification.get('package_json') else 'no'})"
+            output = truncate_middle(output, max(3000, min(8000, int(self._active_context_size * 1.35))))
+            output = mask_workspace_paths(output, self._active_workspace_path)
             return f"[RESULT bash] {status} (code: {code})\n```\n{output}\n```"
 
         elif result.tool_name == 'web_search':
@@ -1483,6 +1691,22 @@ You have access to filesystem, search, shell, and workspace tools. Use them to c
             ])
             return f"[RESULT web_search]\n{results_text}"
 
+        elif result.tool_name == 'web_fetch':
+            title = data.get("title", "Untitled")
+            url = data.get("url", "")
+            content = truncate_middle(data.get("content", ""), max(3000, min(9000, int(self._active_context_size * 1.5))))
+            return f"[RESULT web_fetch] {title}\nURL: {url}\n````markdown\n{content}\n````"
+
+        elif result.tool_name == 'delegate_subagent':
+            return self._format_delegate_subagent_for_llm(data)
+
+        elif result.tool_name == 'load_skill':
+            skill = data.get("skill", {}) if isinstance(data, dict) else {}
+            content = data.get("content", "") if isinstance(data, dict) else ""
+            content = truncate_middle(content, max(3500, min(9000, int(self._active_context_size * 1.5))))
+            suffix = "\n... (skill truncated)" if data.get("truncated") else ""
+            return f"[RESULT load_skill] {skill.get('id', '')} - {skill.get('name', 'Skill')}\n````markdown\n{content}{suffix}\n````"
+
         elif result.tool_name == 'think':
             return f"[THOUGHT] {data.get('thought', '')} - Continue with the appropriate concrete action."
 
@@ -1490,6 +1714,44 @@ You have access to filesystem, search, shell, and workspace tools. Use them to c
             return f"[RESULT open_workspace] Folder opened: {data.get('path', '')}"
 
         return f"[RESULT {result.tool_name}] OK"
+
+    def _format_delegate_subagent_for_llm(self, data: Dict) -> str:
+        observations = data.get("observations", []) if isinstance(data, dict) else []
+        files = data.get("files", []) if isinstance(data, dict) else []
+        commands = data.get("commands", []) if isinstance(data, dict) else []
+        warnings = data.get("warnings", []) if isinstance(data, dict) else []
+        lines = [
+            f"[RESULT delegate_subagent] {data.get('agent_type', 'subagent')} {data.get('status', '')}",
+            f"Task id: {data.get('task_id', '')}",
+            f"Summary: {data.get('summary', '')}",
+        ]
+        if observations:
+            lines.append("Observations:")
+            lines.extend(f"- {item}" for item in observations[:8])
+        if commands:
+            lines.append("Commands:")
+            for item in commands[:4]:
+                lines.append(f"- {item.get('command', '')} (code: {item.get('return_code', 'n/a')})")
+                output = item.get("output", "")
+                if output:
+                    lines.append("```")
+                    lines.append(truncate_middle(output, 5000))
+                    lines.append("```")
+                if item.get("error"):
+                    lines.append(f"  error: {item.get('error')}")
+        if warnings:
+            lines.append("Warnings:")
+            lines.extend(f"- {item}" for item in warnings[:5])
+        if files:
+            lines.append("Relevant files:")
+            for item in files[:8]:
+                excerpt = item.get("excerpt", "")
+                if excerpt:
+                    excerpt = truncate_middle(excerpt, 1800)
+                    lines.append(f"\n--- {item.get('path', '')} ({item.get('lines', '?')} lines) ---\n{excerpt}")
+                else:
+                    lines.append(f"- {item.get('path', '')}: {item.get('error', 'unreadable')}")
+        return "\n".join(lines)
 
     def _open_workspace_folder(self, workspace_path: str) -> Dict:
         """Open the current workspace in the OS file explorer."""
@@ -1724,14 +1986,13 @@ You have access to filesystem, search, shell, and workspace tools. Use them to c
             if result.stderr:
                 output += f"\n[STDERR]\n{result.stderr}"
 
-            if len(output) > 8000:
-                output = output[:8000] + "\n... (tronqué)"
+            output = truncate_middle(mask_workspace_paths(output, workspace_path), 8000)
 
             response = {
                 "success": result.returncode == 0,
                 "output": output,
                 "return_code": result.returncode,
-                "error": result.stderr if result.returncode != 0 else None
+                "error": mask_workspace_paths(result.stderr, workspace_path) if result.returncode != 0 else None
             }
             verification = self._verify_bash_side_effects(command, workspace_path, parts)
             if verification:
@@ -1758,6 +2019,40 @@ You have access to filesystem, search, shell, and workspace tools. Use them to c
             return {"success": False, "error": "web_search module is unavailable"}
         except Exception as e:
             return {"success": False, "error": str(e)}
+
+    def _execute_web_fetch(self, url: str) -> Dict:
+        """Fetch a readable public web page."""
+        url = str(url or "").strip()
+        if not (url.startswith("https://") or url.startswith("http://")):
+            return {"success": False, "error": "URL must start with http:// or https://"}
+        try:
+            from core.web_search import fetch_page_content
+
+            return fetch_page_content(url)
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def _load_pack_skill(self, skill_id: str) -> Dict:
+        try:
+            from core.infra.packs import load_pack_skill
+
+            return load_pack_skill(skill_id)
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def _delegate_subagent(self, agent_type: str, task: str, workspace_path: str, **kwargs) -> Dict:
+        try:
+            from core.agent_runtime import run_subagent
+
+            return run_subagent(agent_type, workspace_path, task, **kwargs)
+        except Exception as e:
+            return {
+                "status": "error",
+                "agent_type": agent_type or "code_explorer",
+                "task": task,
+                "error": str(e),
+                "summary": "Subagent failed.",
+            }
 
     # ===== INTENT DETECTION =====
 

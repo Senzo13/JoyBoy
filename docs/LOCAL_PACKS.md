@@ -30,6 +30,7 @@ Each pack must expose a `pack.json` manifest with the following fields:
 - `prompt_assets_path`
 - `model_sources_path`
 - `ui_overrides_path`
+- `skills_path` (optional)
 - `feature_flags_required`
 
 Supported `kind` values currently include:

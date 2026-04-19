@@ -1106,7 +1106,23 @@ async function loadProviderSettings() {
         return;
     }
 
-    container.innerHTML = providers.map(renderProviderSettingsRow).join('');
+    const assetProviders = providers.filter(provider => getProviderSettingsScope(provider) === 'assets');
+    const llmProviders = providers.filter(provider => getProviderSettingsScope(provider) === 'llm');
+    const groups = [
+        renderProviderSettingsGroup(
+            t('providers.assetsTitle', 'Téléchargement de modèles'),
+            t('providers.assetsDesc', 'Clés utilisées pour récupérer des poids, repos privés et assets image/video.'),
+            assetProviders
+        ),
+        renderProviderSettingsGroup(
+            t('providers.llmTitle', 'LLM cloud / terminal'),
+            t('providers.llmDesc', 'Clés utilisées par le harnais terminal pour appeler des modèles cloud sans consommer ta VRAM.'),
+            llmProviders,
+            renderTerminalModelProfilesSummary(data)
+        ),
+    ].filter(Boolean);
+
+    container.innerHTML = groups.join('') || `<div class="settings-info">${t('providers.empty', 'Aucun provider configuré')}</div>`;
     refreshSettingsActionChrome(container);
 }
 
@@ -1364,6 +1380,92 @@ function getPublicCoreState() {
             ? t('settings.general.publicModeEnabled', 'Actif : JoyBoy se comporte comme un core public, les extensions locales restent opt-in.')
             : t('settings.general.publicModeDisabled', 'Désactivé : le bridge privé local reste autorisé sur cette machine.')
     };
+}
+
+function getProviderSettingsScope(provider) {
+    if (provider?.scope) return provider.scope;
+    return String(provider?.key || '').includes('API_KEY') ? 'llm' : 'assets';
+}
+
+function renderProviderSettingsGroup(title, description, providers, extraHtml = '') {
+    if (!providers.length && !extraHtml) return '';
+    return `
+        <div class="provider-settings-group">
+            <div class="provider-settings-group-head">
+                <div>
+                    <div class="settings-label">${escapeHtml(title)}</div>
+                    <div class="settings-label-desc">${escapeHtml(description)}</div>
+                </div>
+            </div>
+            ${providers.length ? `<div class="provider-settings-grid">${providers.map(renderProviderSettingsRow).join('')}</div>` : ''}
+            ${extraHtml || ''}
+        </div>
+    `;
+}
+
+function renderTerminalModelProfilesSummary(data) {
+    const profiles = Array.isArray(data?.terminal_model_profiles) ? data.terminal_model_profiles : [];
+    const cloudProfiles = profiles.filter(profile => profile.provider !== 'ollama' && profile.terminal_runtime);
+    if (!cloudProfiles.length) return '';
+
+    const configuredProfiles = cloudProfiles.filter(profile => profile.configured);
+    const visibleProfiles = (configuredProfiles.length ? configuredProfiles : cloudProfiles).slice(0, 8);
+    const statusText = configuredProfiles.length
+        ? t('providers.cloudReady', '{count} profils cloud prêts pour le terminal', { count: configuredProfiles.length })
+        : t('providers.cloudNeedsKey', 'Ajoute une clé pour activer les profils cloud terminal.');
+
+    const pills = visibleProfiles.map(profile => {
+        const modelId = String(profile.id || '');
+        const modelIdArg = escapeHtml(JSON.stringify(modelId));
+        const label = profile.configured
+            ? t('providers.cloudProfileReady', 'prêt')
+            : t('providers.cloudProfileLocked', 'clé manquante');
+        const button = profile.configured ? `
+            <button class="llm-profile-action" type="button" onclick="selectTerminalCloudModel(${modelIdArg})">
+                ${escapeHtml(t('providers.useInTerminal', 'Terminal'))}
+            </button>
+        ` : '';
+        return `
+            <span class="llm-profile-pill ${profile.configured ? 'ready' : 'locked'}" title="${escapeHtml(modelId)}">
+                <strong>${escapeHtml(profile.provider_label || profile.provider || '')}</strong>
+                <span>${escapeHtml(profile.model || modelId)}</span>
+                <em>${escapeHtml(label)}</em>
+                ${button}
+            </span>
+        `;
+    }).join('');
+
+    return `
+        <div class="llm-provider-summary">
+            <div class="settings-label-desc">${escapeHtml(statusText)}</div>
+            <div class="llm-profile-pills">${pills}</div>
+        </div>
+    `;
+}
+
+function selectTerminalCloudModel(modelId) {
+    const cleanModelId = String(modelId || '').trim();
+    if (!cleanModelId) return;
+
+    userSettings.terminalModel = cleanModelId;
+    const select = document.getElementById('terminal-model-select');
+    if (select) {
+        if (![...select.options].some(option => option.value === cleanModelId)) {
+            const option = document.createElement('option');
+            option.value = cleanModelId;
+            option.textContent = cleanModelId;
+            select.appendChild(option);
+        }
+        select.value = cleanModelId;
+    }
+    if (typeof terminalToolModel !== 'undefined') {
+        terminalToolModel = cleanModelId;
+    }
+    saveSettings();
+    if (typeof updateModelPickerDisplay === 'function') updateModelPickerDisplay();
+    if (typeof Toast !== 'undefined') {
+        Toast.success(t('providers.terminalModelSelected', 'Modèle terminal : {model}', { model: cleanModelId }));
+    }
 }
 
 function renderProviderSettingsRow(provider) {
@@ -3921,6 +4023,22 @@ function switchModelsSubtab(type, clickedEl) {
     }
 }
 
+function switchModelsInnerTab(panelId, tabName, clickedEl) {
+    const panel = document.getElementById(panelId);
+    if (!panel) return;
+
+    panel.querySelectorAll('.models-inner-tab').forEach(tab => {
+        tab.classList.toggle('active', tab === clickedEl);
+    });
+    panel.querySelectorAll('.models-inner-panel').forEach(innerPanel => {
+        innerPanel.classList.toggle('active', innerPanel.dataset.innerPanel === tabName);
+    });
+
+    if (panelId === 'models-image-panel' && (tabName === 'catalog' || tabName === 'installed')) {
+        checkModelsStatus();
+    }
+}
+
 // Vérifier si un modèle Ollama est disponible
 async function checkOllamaModelAvailable() {
     // Vérifier si Ollama est installé et tourne
@@ -5366,12 +5484,14 @@ async function populateTerminalModelSelect() {
 
     // Garder l'option Auto
     select.innerHTML = `<option value="auto">${escapeHtml(t('settings.terminal.autoOption', 'Auto (premier compatible)'))}</option>`;
+    const localGroup = document.createElement('optgroup');
+    localGroup.label = t('settings.terminal.localGroup', 'Ollama local');
+    const cloudGroup = document.createElement('optgroup');
+    cloudGroup.label = t('settings.terminal.cloudGroup', 'LLM cloud');
 
     // Récupérer les modèles Ollama installés
     const result = await apiOllama.getModels();
-    if (!result.ok || !result.data.models) return;
-
-    const models = result.data.models;
+    const models = result.ok && result.data.models ? result.data.models : [];
     const toolCapableModels = [];
 
     for (const model of models) {
@@ -5405,7 +5525,25 @@ async function populateTerminalModelSelect() {
         if (lowerName.includes('qwen3.5:2b') || lowerName.includes('qwen3.5:4b')) {
             option.textContent += ` ${t('settings.terminal.recommendedSuffix', '(recommandé)')}`;
         }
-        select.appendChild(option);
+        localGroup.appendChild(option);
+    }
+
+    if (localGroup.children.length > 0) {
+        select.appendChild(localGroup);
+    }
+
+    const cloudModels = typeof loadTerminalCloudModelProfiles === 'function'
+        ? await loadTerminalCloudModelProfiles()
+        : (Array.isArray(window.joyboyTerminalCloudModels) ? window.joyboyTerminalCloudModels : []);
+    for (const model of cloudModels || []) {
+        const option = document.createElement('option');
+        option.value = model.id;
+        option.textContent = `${model.name} ${t('settings.terminal.cloudSuffix', '(cloud)')}`;
+        cloudGroup.appendChild(option);
+    }
+
+    if (cloudGroup.children.length > 0) {
+        select.appendChild(cloudGroup);
     }
 
     // Sélectionner le modèle sauvegardé
@@ -5423,6 +5561,9 @@ async function populateTerminalModelSelect() {
  */
 function updateTerminalModel(value) {
     userSettings.terminalModel = value === 'auto' ? null : value;
+    if (typeof terminalToolModel !== 'undefined') {
+        terminalToolModel = userSettings.terminalModel || terminalToolModel;
+    }
 
     // Mettre à jour l'info
     const infoEl = document.getElementById('terminal-model-info');
@@ -5442,6 +5583,8 @@ function updateTerminalModel(value) {
     Toast.success(t('settings.terminal.modelToast', 'Modèle terminal : {model}', {
         model: value === 'auto' ? 'Auto' : value,
     }));
+    saveSettings();
+    if (typeof updateModelPickerDisplay === 'function') updateModelPickerDisplay();
 }
 
 // Obtenir le workspace actif (pour le chat)

@@ -72,11 +72,14 @@ def providers_status():
         get_provider_status,
     )
     from core.infra.packs import get_feature_exposure_map, get_pack_index, get_pack_ui_overrides
+    from core.agent_runtime import get_llm_provider_catalog, get_terminal_model_profiles
 
     overview = get_local_config_overview()
     return jsonify({
         'success': True,
         'providers': get_provider_status(),
+        'llm_providers': get_llm_provider_catalog(),
+        'terminal_model_profiles': get_terminal_model_profiles(),
         'features': get_feature_flags(),
         'onboarding': get_onboarding_state(),
         'packs': get_pack_index()['packs'],

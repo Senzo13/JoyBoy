@@ -15,6 +15,11 @@ class TerminalBrainSmokeTests(unittest.TestCase):
         self.assertIn("You are JoyBoy Terminal", prompt)
         self.assertIn("Always call read_file", prompt)
         self.assertIn("Do not pretend that files were created", prompt)
+        self.assertIn("Workspace path visible to you: /workspace", prompt)
+        self.assertIn("prefer delegate_subagent(code_explorer)", prompt)
+        self.assertIn("use web_search first, then web_fetch", prompt)
+        self.assertIn("delegate_subagent(verifier)", prompt)
+        self.assertNotIn("C:/projects/demo", prompt)
         self.assertNotIn("TOUJOURS", prompt)
         self.assertNotIn("RÈGLES", prompt)
 
@@ -39,6 +44,30 @@ class TerminalBrainSmokeTests(unittest.TestCase):
         reason = brain._tool_guard_reason("read_file", {"path": "."}, 1, [])
 
         self.assertEqual(reason, "read_file must target a file, not the workspace root")
+
+    def test_vague_analysis_uses_bounded_repo_overview(self):
+        brain = TerminalBrain()
+
+        self.assertTrue(brain._is_repo_overview_request("Analyse le"))
+        self.assertTrue(brain._is_repo_overview_request("analyse ça"))
+        self.assertTrue(brain._is_repo_overview_request("analyse le projet"))
+        self.assertFalse(brain._is_repo_overview_request("analyse core/backends/terminal_brain.py"))
+
+    def test_budget_fallback_ends_without_another_model_call(self):
+        brain = TerminalBrain()
+        observed = [
+            {
+                "tool": "list_files",
+                "args": {"path": "."},
+                "success": True,
+                "summary": "0 item(s)",
+            }
+        ]
+
+        text = brain._budget_fallback_answer("analyse le", observed)
+
+        self.assertIn("coupé avant de relancer", text)
+        self.assertIn("list_files", text)
 
     def test_existing_write_requires_read_then_verifies(self):
         brain = TerminalBrain()
@@ -100,6 +129,14 @@ class TerminalBrainSmokeTests(unittest.TestCase):
             )
             self.assertFalse(missing.get("verified"))
             self.assertFalse(os.path.exists(Path(tmp) / "missing-app"))
+
+    def test_web_fetch_rejects_non_url(self):
+        brain = TerminalBrain()
+
+        result = brain.execute_tool("web_fetch", {"url": "example.com"}, os.getcwd())
+
+        self.assertFalse(result.success)
+        self.assertIn("http", result.error)
 
 
 if __name__ == "__main__":

@@ -881,6 +881,12 @@
   font-weight: 600;
 }
 
+.model-picker-badge.cloud {
+  background: rgba(14, 165, 233, 0.15);
+  color: #38bdf8;
+  font-weight: 600;
+}
+
 .model-picker-tabs {
   display: flex;
   border-top: 1px solid rgba(255, 255, 255, 0.06);

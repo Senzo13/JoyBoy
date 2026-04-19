@@ -923,9 +923,80 @@ function getCurrentMode() {
  */
 function _formatModelName(modelId) {
     if (!modelId) return 'Auto';
+    if (isTerminalCloudModelId(modelId)) return formatTerminalCloudModelName(modelId);
     const parts = modelId.split(':');
     const tag = parts[1] || 'latest';
     return tag === 'latest' ? parts[0] : `${parts[0]} ${tag}`;
+}
+
+const TERMINAL_CLOUD_PROVIDER_IDS = new Set([
+    'openai',
+    'openrouter',
+    'anthropic',
+    'gemini',
+    'deepseek',
+    'moonshot',
+    'novita',
+    'minimax',
+    'volcengine',
+    'glm',
+    'vllm'
+]);
+let TERMINAL_CLOUD_MODELS = [];
+window.joyboyTerminalCloudModels = TERMINAL_CLOUD_MODELS;
+
+function isTerminalCloudModelId(modelId) {
+    const raw = String(modelId || '').trim();
+    const providerId = raw.includes(':') ? raw.split(':', 1)[0].toLowerCase() : '';
+    return TERMINAL_CLOUD_PROVIDER_IDS.has(providerId);
+}
+
+function formatTerminalCloudModelName(modelId) {
+    const raw = String(modelId || '').trim();
+    if (!raw.includes(':')) return raw || 'Cloud';
+    const [providerId, ...modelParts] = raw.split(':');
+    const providerLabels = {
+        openai: 'OpenAI',
+        openrouter: 'OpenRouter',
+        deepseek: 'DeepSeek',
+        moonshot: 'Kimi',
+        novita: 'Novita',
+        minimax: 'MiniMax',
+        anthropic: 'Claude',
+        gemini: 'Gemini',
+        volcengine: 'Doubao',
+        glm: 'GLM',
+        vllm: 'vLLM',
+    };
+    return `${providerLabels[providerId.toLowerCase()] || providerId} ${modelParts.join(':')}`;
+}
+
+async function loadTerminalCloudModelProfiles() {
+    try {
+        const result = await apiSettings.getProviderStatus();
+        if (!result.ok || !result.data) return TERMINAL_CLOUD_MODELS;
+
+        const profiles = Array.isArray(result.data.terminal_model_profiles)
+            ? result.data.terminal_model_profiles
+            : [];
+        TERMINAL_CLOUD_MODELS = profiles
+            .filter(profile => profile.provider !== 'ollama' && profile.terminal_runtime && profile.configured)
+            .map(profile => ({
+                id: profile.id,
+                name: formatTerminalCloudModelName(profile.id),
+                desc: `${profile.provider_label || profile.provider} · Cloud · Tools · VRAM libre`,
+                badge: 'cloud',
+                icon: 'cloud',
+                toolCapable: true,
+                cloud: true,
+                provider: profile.provider,
+                providerLabel: profile.provider_label,
+            }));
+        window.joyboyTerminalCloudModels = TERMINAL_CLOUD_MODELS;
+    } catch (err) {
+        console.warn('[PICKER] Erreur chargement profils cloud:', err);
+    }
+    return TERMINAL_CLOUD_MODELS;
 }
 
 /**
@@ -934,7 +1005,8 @@ function _formatModelName(modelId) {
 function getActiveModelName(mode) {
     switch (mode) {
         case 'terminal':
-            const termModel = typeof userSettings !== 'undefined' ? userSettings.chatModel : null;
+            const termModel = (typeof terminalToolModel !== 'undefined' && terminalToolModel)
+                || (typeof userSettings !== 'undefined' ? (userSettings.terminalModel || userSettings.chatModel) : null);
             return termModel ? _formatModelName(termModel) : 'Terminal';
 
         case 'inpaint':
@@ -1106,6 +1178,8 @@ async function loadTextModelsForPicker() {
             TEXT_MODELS = CHAT_MODELS;
         }
 
+        await loadTerminalCloudModelProfiles();
+
         // Mettre à jour selectedChatModel depuis les settings
         if (userSettings.chatModel) {
             selectedChatModel = userSettings.chatModel;
@@ -1230,6 +1304,7 @@ function modelPickerBadgeLabel(model) {
     if (model?.badge === 'vision') return uiT('modelPicker.badges.vision', 'Vision');
     if (model?.badge === 'download') return uiT('modelPicker.badges.download', 'Télécharger');
     if (model?.badge === 'tools') return uiT('modelPicker.badges.tools', 'Tools');
+    if (model?.badge === 'cloud') return uiT('modelPicker.badges.cloud', 'Cloud');
     if (model?.imported) return uiT('modelPicker.badges.local', 'Local');
     return uiT('modelPicker.badges.balanced', 'Équilibré');
 }
@@ -1322,6 +1397,7 @@ function getModelPickerUseCase(model, tab, pickerId) {
     if (model.badge === 'fast') hints.push(uiT('modelPicker.useCase.fastStartup', 'startup rapide'));
     if (model.badge === 'powerful') hints.push(uiT('modelPicker.useCase.betterFidelity', 'meilleure fidélité'));
     if (model.badge === 'vision') hints.push(uiT('modelPicker.useCase.imageAnalysis', 'analyse image'));
+    if (model.cloud) hints.push(uiT('modelPicker.useCase.cloudRuntime', 'LLM cloud'));
     if (model.adult === true && isAdultModeEnabled()) hints.push(uiT('modelPicker.useCase.localPack', 'pack local'));
 
     return hints.slice(0, 2).join(' • ');
@@ -1477,6 +1553,7 @@ function getModelIcon(iconType) {
         'eye': '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>',
         'download': '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',
         'wrench': '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>',
+        'cloud': '<path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/>',
     };
     return icons[iconType] || icons['auto'];
 }
@@ -1654,7 +1731,10 @@ function getModelsForTab(tab) {
  * - Déduplique par famille (qwen2.5:7b, qwen2.5:latest → garde un seul)
  */
 function filterTerminalModels(models) {
-    if (!models || models.length === 0) return [];
+    const cloudModels = Array.isArray(window.joyboyTerminalCloudModels)
+        ? window.joyboyTerminalCloudModels
+        : TERMINAL_CLOUD_MODELS;
+    if (!models || models.length === 0) return cloudModels || [];
 
     // 1. Filtrer les tool-capable
     const toolCapable = models.filter(m => m.toolCapable === true);
@@ -1691,13 +1771,21 @@ function filterTerminalModels(models) {
     }
 
     // 3. Retourner la liste dédupliquée
-    return Array.from(seen.values()).map(v => v.model);
+    return [
+        ...Array.from(seen.values()).map(v => v.model),
+        ...(cloudModels || []),
+    ];
 }
 
 function getSelectedModelForTab(tab) {
     if (tab === 'inpaint') return selectedInpaintModel;
     if (tab === 'text2img') return selectedText2ImgModel;
     if (tab === 'vision') return selectedVisionModel || (VISION_MODELS_LIST[0]?.id);
+    if (tab === 'chat' && typeof terminalMode !== 'undefined' && terminalMode) {
+        return (typeof terminalToolModel !== 'undefined' && terminalToolModel)
+            || userSettings.terminalModel
+            || selectedChatModel;
+    }
     return selectedChatModel;
 }
 
@@ -1827,6 +1915,9 @@ function selectPickerModel(modelId, pickerId = 'home') {
                 }
             });
         }
+    } else if (typeof terminalMode !== 'undefined' && terminalMode) {
+        terminalToolModel = modelId;
+        userSettings.terminalModel = modelId;
     } else {
         selectedChatModel = modelId;
         selectedTextModel = modelId;  // Compat

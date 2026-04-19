@@ -251,7 +251,7 @@ def terminal_chat():
                 tool_name = event.get('name', '')
                 args = event.get('args', {})
                 # Extraire path des args pour compatibilité frontend
-                path = workspace_path if tool_name == 'open_workspace' else args.get('path', args.get('pattern', args.get('command', args.get('query', ''))))
+                path = workspace_path if tool_name == 'open_workspace' else args.get('path', args.get('pattern', args.get('command', args.get('query', args.get('url', args.get('skill_id', args.get('task', '')))))))
                 if job_manager and terminal_job_id:
                     job_manager.update(
                         terminal_job_id,
@@ -314,6 +314,19 @@ def terminal_chat():
                         result_data['tool_result']['files'] = data.get('files', [])[:30]
                     elif tool_name == 'web_search':
                         result_data['tool_result']['results'] = data.get('results', [])[:8]
+                    elif tool_name == 'web_fetch':
+                        result_data['tool_result']['summary'] = f"Page lue: {data.get('title', data.get('url', ''))}"
+                        result_data['tool_result']['content'] = data.get('content', '')[:2000]
+                    elif tool_name == 'delegate_subagent':
+                        result_data['tool_result']['summary'] = f"Subagent {data.get('agent_type', '')}: {data.get('status', '')}"
+                        result_data['tool_result']['files'] = [
+                            item.get('path', '')
+                            for item in data.get('files', [])[:8]
+                            if isinstance(item, dict)
+                        ]
+                    elif tool_name == 'load_skill':
+                        skill = data.get('skill', {})
+                        result_data['tool_result']['summary'] = f"Skill chargé: {skill.get('id', '')}"
                     elif tool_name == 'open_workspace':
                         result_data['tool_result']['summary'] = f"Dossier ouvert: {data.get('path', workspace_path)}"
 

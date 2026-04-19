@@ -18,9 +18,31 @@ except Exception:
 if get_provider_secret:
     HF_TOKEN = get_provider_secret("HF_TOKEN", "")
     CIVITAI_API_KEY = get_provider_secret("CIVITAI_API_KEY", "")
+    OPENAI_API_KEY = get_provider_secret("OPENAI_API_KEY", "")
+    OPENROUTER_API_KEY = get_provider_secret("OPENROUTER_API_KEY", "")
+    ANTHROPIC_API_KEY = get_provider_secret("ANTHROPIC_API_KEY", "")
+    GEMINI_API_KEY = get_provider_secret("GEMINI_API_KEY", "")
+    DEEPSEEK_API_KEY = get_provider_secret("DEEPSEEK_API_KEY", "")
+    MOONSHOT_API_KEY = get_provider_secret("MOONSHOT_API_KEY", "")
+    NOVITA_API_KEY = get_provider_secret("NOVITA_API_KEY", "")
+    MINIMAX_API_KEY = get_provider_secret("MINIMAX_API_KEY", "")
+    VOLCENGINE_API_KEY = get_provider_secret("VOLCENGINE_API_KEY", "")
+    ZHIPU_API_KEY = get_provider_secret("ZHIPU_API_KEY", "")
+    VLLM_API_KEY = get_provider_secret("VLLM_API_KEY", "")
 else:
     HF_TOKEN = os.environ.get("HF_TOKEN", "")
     CIVITAI_API_KEY = os.environ.get("CIVITAI_API_KEY", "")
+    OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
+    OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
+    ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+    GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+    DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
+    MOONSHOT_API_KEY = os.environ.get("MOONSHOT_API_KEY", "")
+    NOVITA_API_KEY = os.environ.get("NOVITA_API_KEY", "")
+    MINIMAX_API_KEY = os.environ.get("MINIMAX_API_KEY", "")
+    VOLCENGINE_API_KEY = os.environ.get("VOLCENGINE_API_KEY", "")
+    ZHIPU_API_KEY = os.environ.get("ZHIPU_API_KEY", "")
+    VLLM_API_KEY = os.environ.get("VLLM_API_KEY", "")
 OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
 
 # ===== IDENTITÉ DE L'IA =====
@@ -259,5 +281,8 @@ __all__ = [
     'MESSAGES', 'get_system_prompt',
     'OLLAMA_MAX_VRAM_GB', 'ENABLE_CPU_OFFLOAD',
     'TOOL_CAPABLE_MODELS', 'TOOL_EXCLUDED_MODELS',
-    'HF_TOKEN', 'CIVITAI_API_KEY', 'OLLAMA_BASE_URL',
+    'HF_TOKEN', 'CIVITAI_API_KEY', 'OPENAI_API_KEY', 'OPENROUTER_API_KEY',
+    'ANTHROPIC_API_KEY', 'GEMINI_API_KEY', 'DEEPSEEK_API_KEY',
+    'MOONSHOT_API_KEY', 'NOVITA_API_KEY', 'MINIMAX_API_KEY',
+    'VOLCENGINE_API_KEY', 'VLLM_API_KEY', 'OLLAMA_BASE_URL',
 ]
