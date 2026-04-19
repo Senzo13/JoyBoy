@@ -1723,6 +1723,40 @@ body.gallery-viewer-open {
     margin: 0;
 }
 
+.settings-provider-card .settings-card-body {
+    align-items: stretch;
+}
+
+.settings-provider-card .settings-card-body > div:first-child {
+    width: 100%;
+}
+
+.settings-provider-card .settings-card-controls {
+    flex: none;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    width: 100%;
+    min-width: 0;
+    gap: 8px;
+}
+
+.settings-provider-card .settings-card-controls .settings-input {
+    flex: none;
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+}
+
+.settings-provider-card .settings-inline-actions {
+    width: 100%;
+    justify-content: flex-end;
+}
+
+.settings-provider-card .settings-inline-actions .settings-action-btn {
+    flex: 0 0 auto;
+}
+
 .provider-settings-list::-webkit-scrollbar {
     width: 8px;
 }
