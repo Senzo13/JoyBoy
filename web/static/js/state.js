@@ -3,7 +3,7 @@
 // App Config (loaded from API)
 let APP_CONFIG = {
     name: 'JoyBoy',
-    description: 'Assistant IA créatif',
+    description: 'Harness IA local multimodal',
     logo: '/static/images/logo.png',
     monogram: '/static/images/monogramme.png'
 };

@@ -3000,7 +3000,7 @@ async function checkModelsStatus() {
                 DOM.setHtml(installedList, installed.map(model => renderImageModelItem(model, true)).join(''));
                 if (window.lucide) lucide.createIcons();
             } else {
-                DOM.setHtml(installedList, `<div class="settings-info">${escapeHtml(t('settings.models.noInstalled', 'Aucun modèle installé'))}</div>`);
+                DOM.setHtml(installedList, `<div class="settings-info">${escapeHtml(t('settings.models.noInstalled', 'Aucun modèle local'))}</div>`);
             }
         }
 
@@ -3116,7 +3116,7 @@ function renderCachedImageModelLists() {
         const installed = allImageModels.filter(m => m.downloaded && (isAdultSurfaceEnabled() || !isAdultImageSurfaceModel(m)));
         DOM.setHtml(installedList, installed.length
             ? installed.map(model => renderImageModelItem(model, true)).join('')
-            : `<div class="settings-info">${escapeHtml(t('settings.models.noInstalled', 'Aucun modèle installé'))}</div>`
+            : `<div class="settings-info">${escapeHtml(t('settings.models.noInstalled', 'Aucun modèle local'))}</div>`
         );
     }
     renderAvailableImageModels();
@@ -3325,8 +3325,8 @@ async function downloadImageModel(modelKey, sourceButton = null) {
     if (data.success) {
         // Cas 1: Modèle déjà en cache
         if (data.message === 'already_cached') {
-            Toast.success(t('settings.models.alreadyInstalledTitle', 'Déjà installé'), t('settings.models.alreadyInstalledBody', 'Ce modèle est déjà dans le cache'), 3000);
-            // Rafraîchir la liste pour afficher dans "installés"
+            Toast.success(t('settings.models.alreadyInstalledTitle', 'Déjà présent'), t('settings.models.alreadyInstalledBody', 'Ce modèle est déjà sur la machine'), 3000);
+            // Rafraîchir la liste locale.
             checkModelsStatus();
             return;
         }
@@ -3541,7 +3541,7 @@ async function loadOllamaModels() {
                 }
             }
         } else {
-            listEl.innerHTML = `<div class="settings-info">${escapeHtml(t('settings.models.noInstalledInstallBelow', 'Aucun modèle installé. Installez-en un ci-dessous.'))}</div>`;
+            listEl.innerHTML = `<div class="settings-info">${escapeHtml(t('settings.models.noInstalledInstallBelow', 'Aucun modèle sur la machine. Choisis-en un dans Disponibles.'))}</div>`;
 
             // Mettre à jour le select pour indiquer qu'il n'y a pas de modèle
             if (selectEl) {
@@ -3642,7 +3642,7 @@ async function searchOllamaModels() {
                         <span class="model-desc">${model.desc}</span>
                         <span class="model-size">${model.size}</span>
                     </div>
-                    <button class="btn-install-model" onclick="pullOllamaModel('${model.name}')">${escapeHtml(t('settings.models.installAction', 'Installer'))}</button>
+                    <button class="btn-install-model" onclick="pullOllamaModel('${model.name}')">${escapeHtml(t('settings.models.installAction', 'Télécharger'))}</button>
                 </div>
             `}).join('');
         } else {
@@ -3732,7 +3732,7 @@ async function pullOllamaModel(modelName) {
                                 if (progressDiv) progressDiv.remove();
                             }
 
-                            if (btn) btn.textContent = t('settings.models.installedAction', 'Installé');
+                            if (btn) btn.textContent = t('settings.models.installedAction', 'Prêt');
                             loadOllamaModels();
                         }
                     } catch (e) {
@@ -3754,7 +3754,7 @@ async function pullOllamaModel(modelName) {
 
         if (btn) {
             btn.disabled = false;
-            btn.textContent = t('settings.models.installAction', 'Installer');
+            btn.textContent = t('settings.models.installAction', 'Télécharger');
         }
     }
 }
@@ -4078,7 +4078,7 @@ async function checkOllamaModelAvailable() {
     if (!modelsData.models || modelsData.models.length === 0) {
         return {
             available: false,
-            message: t('settings.models.noInstalledSettingsHint', 'Aucun modèle installé. Installe un modèle dans les paramètres.')
+            message: t('settings.models.noInstalledSettingsHint', 'Aucun modèle sur la machine. Va dans Modèles > Disponibles.')
         };
     }
 

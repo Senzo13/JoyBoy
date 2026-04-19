@@ -69,6 +69,89 @@ class TerminalBrainSmokeTests(unittest.TestCase):
         self.assertIn("coupé avant de relancer", text)
         self.assertIn("list_files", text)
 
+    def test_simple_react_template_fast_path_avoids_model_tokens(self):
+        brain = TerminalBrain()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            events = list(brain.run_agentic_loop(
+                "Ok créer un template react simple dedans",
+                tmp,
+                model="openai:gpt-4o-mini",
+            ))
+
+            self.assertTrue((Path(tmp) / "package.json").exists())
+            self.assertTrue((Path(tmp) / "src" / "App.jsx").exists())
+            self.assertTrue((Path(tmp) / "src" / "main.jsx").exists())
+            self.assertFalse(any(event.get("type") == "thinking" for event in events))
+            done = [event for event in events if event.get("type") == "done"][-1]
+            self.assertEqual(done.get("token_stats", {}).get("total"), 0)
+            self.assertIn("sans appel LLM", done.get("full_response", ""))
+
+    def test_loop_message_compaction_omits_large_write_arguments(self):
+        brain = TerminalBrain()
+        huge_content = "A" * 5000
+        messages = [
+            {"role": "system", "content": "system"},
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": "write_file",
+                            "arguments": {"path": "package.json", "content": huge_content},
+                        },
+                    }
+                ],
+            },
+            {"role": "tool", "tool_name": "write_file", "content": "[RESULT write_file] OK"},
+        ]
+
+        compacted = brain._compact_loop_messages(messages, context_size=4096)
+        serialized = str(compacted)
+
+        self.assertNotIn("A" * 1000, serialized)
+        self.assertIn("omitted 5000 chars", serialized)
+
+    def test_tool_selection_omits_network_tools_for_plain_write(self):
+        brain = TerminalBrain()
+        brain.current_intent = "write"
+        brain._reset_deferred_tools()
+
+        names = brain._select_tool_names_for_turn("crée un composant", [], autonomous=False)
+
+        self.assertIn("write_file", names)
+        self.assertIn("bash", names)
+        self.assertIn("tool_search", names)
+        self.assertNotIn("web_search", names)
+        self.assertNotIn("load_skill", names)
+
+    def test_deferred_tool_search_promotes_matching_tools(self):
+        brain = TerminalBrain()
+        brain._reset_deferred_tools()
+
+        result = brain.execute_tool("tool_search", {"query": "web"}, os.getcwd())
+
+        self.assertTrue(result.success)
+        self.assertIn("web_search", result.data.get("promoted", []))
+        self.assertIn("web_fetch", result.data.get("promoted", []))
+        self.assertIn("web_search", brain._active_promoted_tool_names)
+        formatted = brain._format_result_for_llm(result)
+        self.assertIn("[RESULT tool_search]", formatted)
+        self.assertIn('"name": "web_search"', formatted)
+
+    def test_explicit_web_request_auto_promotes_web_tools(self):
+        brain = TerminalBrain()
+        brain.current_intent = "question"
+        brain._reset_deferred_tools()
+
+        names = brain._select_tool_names_for_turn("cherche sur internet la doc", [], autonomous=False)
+
+        self.assertIn("web_search", names)
+        self.assertIn("web_fetch", names)
+        self.assertIn("web_search", brain._active_promoted_tool_names)
+
     def test_existing_write_requires_read_then_verifies(self):
         brain = TerminalBrain()
         brain.current_intent = "write"

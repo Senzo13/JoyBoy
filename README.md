@@ -1,6 +1,6 @@
-# JoyBoy - Local AI Harness, Workstation, and Image Editor
+# JoyBoy - Local-First SuperAgent Harness for Chat, Code, Image, and Video
 
-**JoyBoy is a local AI harness and local AI workstation: a private ChatGPT / Grok-style chat app, local AI image editor, Ollama-assisted image generation workspace, SDXL inpainting UI, CivitAI model imports manager, local addons runtime, and Codex-style project mode in development.**
+**JoyBoy is an open-source local-first SuperAgent-style AI harness that chats, researches, codes, and creates. With workspace tools, model orchestration, providers, local packs and skills, Doctor checks, image generation, SDXL inpainting, and video workflows, it turns a consumer workstation into a private multimodal AI cockpit.**
 
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-3776ab.svg)](scripts/requirements.txt)
@@ -8,9 +8,9 @@
 [![Ollama](https://img.shields.io/badge/LLM-Ollama-0f172a.svg)](#local-secrets)
 [![Stable Diffusion](https://img.shields.io/badge/media-SDXL%20%7C%20Flux%20%7C%20Video-2563eb.svg)](#features)
 
-Run AI chat, image workflows, model management, and local creative tools on your own machine. JoyBoy is built for people who want an open source ChatGPT alternative, an offline AI assistant, a local Stable Diffusion / SDXL interface, and a privacy-focused AI harness without relying on a cloud account.
+Run AI chat, web research, project-aware coding tools, image workflows, model management, and local creative tools on your own machine. JoyBoy is built for people who want an open source ChatGPT alternative, an offline AI assistant, a local Stable Diffusion / SDXL interface, and a privacy-focused agent harness without relying on a cloud account by default.
 
-JoyBoy is especially aimed at long-tail local AI workflows: **local AI harness**, **local AI workstation**, **local AI image editor**, **Ollama image generation routing**, **SDXL inpainting UI**, **CivitAI model imports**, and **8GB VRAM Stable Diffusion / SDXL workflows** on consumer hardware.
+JoyBoy is especially aimed at long-tail local AI workflows: **local-first SuperAgent harness**, **local AI workstation**, **workspace-aware coding agent**, **local AI image editor**, **Ollama image generation routing**, **SDXL inpainting UI**, **CivitAI model imports**, and **8GB VRAM Stable Diffusion / SDXL workflows** on consumer hardware.
 
 ## Preview
 
@@ -25,8 +25,10 @@ JoyBoy is especially aimed at long-tail local AI workflows: **local AI harness**
 ## Features
 
 - **Private local AI chat** with Ollama UI controls and local model routing.
-- **Local AI harness** for routing prompts, tools, jobs, models, runtime state, and optional extensions from one app.
+- **Local-first agent harness** for routing prompts, tools, jobs, models, runtime state, and optional extensions from one app.
+- **Project mode** for Codex / Claude Code-style workspace assistance, bounded repo analysis, deferred tool discovery, and terminal tools.
 - **Local AI workstation** that keeps chat, image generation, image editing, video tests, gallery, model imports, and runtime panels together.
+- **Web research and tool workflows** through provider-backed search/fetch tools, local skills, and pack-based extensions.
 - **Text-to-image generation** with local image models, Ollama-assisted routing, and provider imports.
 - **Local AI image editor / SDXL inpainting UI** for background edits, clothing edits, lighting, brush masks, expand/outpaint, and detail fixes.
 - **Video experiments** for local image-to-video workflows on consumer GPUs.
@@ -34,7 +36,6 @@ JoyBoy is especially aimed at long-tail local AI workflows: **local AI harness**
 - **Local addons / packs** that can extend routing rules, prompt assets, model sources, and UI surfaces without polluting the public core.
 - **Gallery and metadata** for generated images/videos, prompts, models, and local artifacts.
 - **Doctor and runtime panels** for VRAM/RAM state, loaded models, provider keys, and machine readiness.
-- **Project mode in development** for Codex / Claude Code-style workspace-aware assistance and terminal tools.
 
 ## Why JoyBoy
 
@@ -58,7 +59,7 @@ JoyBoy is designed for local AI users who care about privacy, control, and hardw
 - Manage Hugging Face and CivitAI model imports from a local UI.
 - Run 8GB VRAM Stable Diffusion / SDXL workflows with profiles designed for consumer GPUs.
 - Build local addons for custom routing, prompts, model presets, and creator workflows.
-- Experiment with a local Codex-style dev assistant that can understand a project workspace.
+- Experiment with a local Codex-style dev assistant that can understand a project workspace, search the web, and use tools without exposing every schema every turn.
 
 ## Quick Start
 

@@ -16,6 +16,7 @@ Sources:
 import os
 import json
 import re
+import unicodedata
 from collections import defaultdict
 from typing import Dict, List, Optional, Any, Generator
 from dataclasses import dataclass, field
@@ -235,8 +236,25 @@ TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "tool_search",
+            "description": "Fetch full schema definitions for deferred terminal tools. Use this only when a hidden tool is needed.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Tool name or keywords. Supports select:name1,name2 for exact tool names."
+                    }
+                },
+                "required": ["query"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "web_search",
-            "description": "Search the web through the configured local search provider.",
+            "description": "Search the web or internet through the configured local search provider.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -349,6 +367,18 @@ TOOLS = [
 ]
 
 
+DEFERRED_TOOL_NAMES = (
+    "web_search",
+    "web_fetch",
+    "delegate_subagent",
+    "load_skill",
+    "delete_file",
+    "open_workspace",
+    "think",
+)
+DEFERRED_TOOL_MAX_RESULTS = 5
+
+
 # ===== TYPES =====
 
 class PlanStatus(Enum):
@@ -434,6 +464,8 @@ class TerminalBrain:
         self.max_non_autonomous_tokens = 6500
         self._active_context_size = 4096
         self._active_workspace_path = ""
+        self._active_deferred_tool_names = set()
+        self._active_promoted_tool_names = set()
         self.current_plan: Optional[ExecutionPlan] = None
         self._read_files_by_workspace = defaultdict(dict)
 
@@ -643,6 +675,12 @@ class TerminalBrain:
                 self._log_action('bash', command, result.get('success', False))
                 return ToolResult(success=result.get('success', False), tool_name=tool_name, data=result)
 
+            # === TOOL SEARCH ===
+            elif tool_name == "tool_search":
+                query = args.get('query', '')
+                result = self._execute_tool_search(query)
+                return ToolResult(success=result.get('success', False), tool_name=tool_name, data=result)
+
             # === WEB SEARCH ===
             elif tool_name == "web_search":
                 query = args.get('query', '')
@@ -765,6 +803,8 @@ class TerminalBrain:
         else:
             self.current_intent = self.detect_intent(initial_message)
         self.write_blocked = False
+        self._reset_deferred_tools()
+        self._active_promoted_tool_names.update(self._auto_promoted_deferred_tools(initial_message, []))
         response_token_limit = 4096 if autonomous else (1024 if self.is_read_only_intent(self.current_intent) else 2048)
 
         yield runtime_event('intent', intent=self.current_intent, read_only=self.is_read_only_intent(self.current_intent), autonomous=autonomous)
@@ -788,6 +828,12 @@ class TerminalBrain:
             yield runtime_event('content', text=text, token_stats={})
             _end_resource_lease()
             yield runtime_event('done', full_response=text, token_stats={'prompt_tokens': 0, 'completion_tokens': 0, 'total': 0})
+            return
+
+        if self._is_simple_react_template_request(initial_message) and not self.is_read_only_intent(self.current_intent):
+            for event in self._run_simple_react_template(workspace_path):
+                yield event
+            _end_resource_lease()
             return
 
         # System prompt par défaut
@@ -838,8 +884,30 @@ class TerminalBrain:
 
             try:
                 # Appel Ollama avec tools
-                tools_for_model = [] if force_final else self.tool_registry.ollama_tools()
+                tool_names_for_turn = self._select_tool_names_for_turn(
+                    initial_message,
+                    executed_tools=executed_tools,
+                    autonomous=autonomous,
+                )
+                tools_for_model = [] if force_final else self.tool_registry.ollama_tools(tool_names_for_turn)
                 messages = self._compact_loop_messages(messages, context_size=self._active_context_size)
+
+                if not autonomous and not force_final and iteration > 1:
+                    estimated_prompt_tokens = self._estimate_prompt_tokens(messages, tools_for_model)
+                    remaining_budget = turn_token_budget - total_token_stats['total']
+                    if remaining_budget <= 0 or estimated_prompt_tokens >= max(900, remaining_budget):
+                        yield runtime_event(
+                            'loop_warning',
+                            action='token_budget',
+                            reason='Stopping before another model call because the next prompt would exceed the turn budget.',
+                        )
+                        final_text = self._budget_fallback_answer(initial_message, executed_tools)
+                        full_response += final_text
+                        yield runtime_event('content', text=final_text, token_stats={})
+                        _end_resource_lease()
+                        yield runtime_event('done', full_response=full_response, token_stats=total_token_stats)
+                        return
+
                 if use_cloud_model:
                     print(f"[BRAIN] Calling cloud model={model}, tools={len(tools_for_model)} tools")
                     response = chat_with_cloud_model(
@@ -1119,6 +1187,15 @@ class TerminalBrain:
             compact.append({"role": role, "content": content})
             total += len(content)
         compact.reverse()
+        omitted = max(0, len([msg for msg in history if str(msg.get("content", "")).strip()]) - len(compact))
+        if omitted:
+            compact.insert(0, {
+                "role": "user",
+                "content": (
+                    f"Earlier conversation compacted: {omitted} message(s) omitted. "
+                    "Use the current workspace files and recent messages as source of truth."
+                ),
+            })
         return compact
 
     def _compact_loop_messages(self, messages: List[Dict], context_size: int = 4096) -> List[Dict]:
@@ -1142,6 +1219,8 @@ class TerminalBrain:
             compact_msg = dict(msg)
             role = compact_msg.get("role", "user")
             content = str(compact_msg.get("content", "") or "")
+            if role == "assistant" and compact_msg.get("tool_calls"):
+                compact_msg["tool_calls"] = self._compact_assistant_tool_calls(compact_msg.get("tool_calls"))
 
             if role == "tool" and len(content) > 3500:
                 content = content[:3500] + "\n... (tool result truncated for context)"
@@ -1152,14 +1231,235 @@ class TerminalBrain:
                 content = content[:3500] + f"\n... ({suffix})"
 
             compact_msg["content"] = content
-            msg_len = len(content)
+            tool_call_len = len(json.dumps(compact_msg.get("tool_calls", []), ensure_ascii=False)) if compact_msg.get("tool_calls") else 0
+            msg_len = len(content) + tool_call_len
             if kept and total + msg_len > max_chars:
                 break
             kept.append(compact_msg)
             total += msg_len
 
         kept.reverse()
+        omitted = max(0, len(tail) - len(kept))
+        if omitted:
+            summary = {
+                "role": "user",
+                "content": (
+                    f"Earlier terminal loop compacted: {omitted} message(s) omitted. "
+                    "Do not repeat old broad exploration; rely on preserved tool results or read specific files again."
+                ),
+            }
+            return [system, summary] + kept
         return [system] + kept
+
+    def _compact_assistant_tool_calls(self, tool_calls: Any) -> List[Dict]:
+        compact_calls: List[Dict] = []
+        for call in tool_calls or []:
+            call_dict = dict(call) if isinstance(call, dict) else {}
+            function = dict(call_dict.get("function", {})) if isinstance(call_dict.get("function"), dict) else {}
+            name = str(function.get("name") or call_dict.get("name") or "")
+            raw_args = function.get("arguments", {})
+            args = self._parse_tool_arguments(raw_args)
+
+            if args:
+                for key in ("content", "new_text", "old_text"):
+                    value = args.get(key)
+                    if isinstance(value, str) and len(value) > 260:
+                        args[key] = f"<omitted {len(value)} chars from terminal history after {name}>"
+
+                for key, value in list(args.items()):
+                    if isinstance(value, str) and len(value) > 1200:
+                        args[key] = truncate_middle(value, 1200)
+
+                if isinstance(raw_args, dict):
+                    function["arguments"] = args
+                else:
+                    function["arguments"] = json.dumps(args, ensure_ascii=False)
+
+            call_dict["function"] = function
+            compact_calls.append(call_dict)
+        return compact_calls
+
+    @staticmethod
+    def _parse_tool_arguments(raw_args: Any) -> Dict:
+        if isinstance(raw_args, dict):
+            return dict(raw_args)
+        if isinstance(raw_args, str) and raw_args.strip():
+            try:
+                parsed = json.loads(raw_args)
+                return parsed if isinstance(parsed, dict) else {}
+            except Exception:
+                return {}
+        return {}
+
+    def _estimate_prompt_tokens(self, messages: List[Dict], tools: List[Dict]) -> int:
+        """Rough local estimate used only to avoid one more doomed call."""
+        try:
+            char_count = len(json.dumps(messages, ensure_ascii=False)) + len(json.dumps(tools or [], ensure_ascii=False))
+        except Exception:
+            char_count = sum(len(str(msg.get("content", ""))) for msg in messages) + len(str(tools or []))
+        return max(1, int(char_count / 4))
+
+    def _reset_deferred_tools(self) -> None:
+        """Prepare a DeerFlow-style deferred tool registry for this terminal run."""
+        self._active_deferred_tool_names = {
+            name
+            for name in DEFERRED_TOOL_NAMES
+            if self.tool_registry.get(name)
+        }
+        self._active_promoted_tool_names = set()
+
+    def _auto_promoted_deferred_tools(
+        self,
+        initial_message: str,
+        executed_tools: List[Dict],
+    ) -> List[str]:
+        """Promote rare tools when the user's wording clearly asks for them."""
+        msg = self._intent_text(initial_message)
+        names: List[str] = []
+
+        if any(word in msg for word in ("web", "internet", "url", "http", "site", "cherche sur le web", "search online")):
+            names.extend(["web_search", "web_fetch"])
+
+        if any(word in msg for word in ("skill", "pack", "workflow")):
+            names.append("load_skill")
+
+        if any(word in msg for word in ("analyse", "audit", "explore", "inspecte", "test", "build", "verify", "vérifie", "verifie")):
+            names.append("delegate_subagent")
+
+        if any(word in msg for word in ("delete", "supprime", "remove", "efface")):
+            names.append("delete_file")
+
+        if executed_tools and any(item.get("tool") == "bash" for item in executed_tools):
+            names.append("delegate_subagent")
+
+        seen = set()
+        ordered: List[str] = []
+        for name in names:
+            if name in self._active_deferred_tool_names and name not in seen:
+                seen.add(name)
+                ordered.append(name)
+        return ordered
+
+    def _search_deferred_tool_names(self, query: str) -> List[str]:
+        """Search deferred tools by name/description without loading all schemas."""
+        query = str(query or "").strip()
+        candidates = [
+            name
+            for name in DEFERRED_TOOL_NAMES
+            if name in self._active_deferred_tool_names
+            and name not in self._active_promoted_tool_names
+            and self.tool_registry.get(name)
+        ]
+        if not candidates:
+            return []
+
+        if query.startswith("select:"):
+            requested = {item.strip() for item in query[7:].split(",") if item.strip()}
+            return [name for name in candidates if name in requested][:DEFERRED_TOOL_MAX_RESULTS]
+
+        if query.startswith("+"):
+            parts = query[1:].split(None, 1)
+            required = parts[0].lower() if parts else ""
+            narrowed = [name for name in candidates if required and required in name.lower()]
+            if len(parts) > 1:
+                pattern = parts[1]
+                narrowed.sort(
+                    key=lambda name: self._deferred_tool_regex_score(pattern, name),
+                    reverse=True,
+                )
+            return narrowed[:DEFERRED_TOOL_MAX_RESULTS]
+
+        if not query:
+            return candidates[:DEFERRED_TOOL_MAX_RESULTS]
+
+        try:
+            regex = re.compile(query, re.IGNORECASE)
+        except re.error:
+            regex = re.compile(re.escape(query), re.IGNORECASE)
+
+        scored = []
+        for name in candidates:
+            tool = self.tool_registry.get(name)
+            searchable = f"{name} {tool.description if tool else ''}"
+            if regex.search(searchable):
+                score = 2 if regex.search(name) else 1
+                scored.append((score, name))
+
+        if not scored:
+            tokens = [token for token in re.split(r"\W+", query.lower()) if len(token) > 2]
+            for name in candidates:
+                tool = self.tool_registry.get(name)
+                searchable = f"{name} {tool.description if tool else ''}".lower()
+                score = sum(1 for token in tokens if token in searchable)
+                if score:
+                    scored.append((score, name))
+
+        scored.sort(key=lambda item: item[0], reverse=True)
+        return [name for _, name in scored[:DEFERRED_TOOL_MAX_RESULTS]]
+
+    def _deferred_tool_regex_score(self, pattern: str, name: str) -> int:
+        tool = self.tool_registry.get(name)
+        searchable = f"{name} {tool.description if tool else ''}"
+        try:
+            regex = re.compile(pattern, re.IGNORECASE)
+        except re.error:
+            regex = re.compile(re.escape(pattern), re.IGNORECASE)
+        return len(regex.findall(searchable))
+
+    def _execute_tool_search(self, query: str) -> Dict:
+        matched_names = self._search_deferred_tool_names(query)
+        self._active_promoted_tool_names.update(matched_names)
+        tools = [
+            self.tool_registry.get(name).to_ollama_tool()
+            for name in matched_names
+            if self.tool_registry.get(name)
+        ]
+        return {
+            "success": True,
+            "query": query,
+            "promoted": matched_names,
+            "tools": tools,
+            "remaining_deferred": [
+                name
+                for name in DEFERRED_TOOL_NAMES
+                if name in self._active_deferred_tool_names
+                and name not in self._active_promoted_tool_names
+            ],
+        }
+
+    def _select_tool_names_for_turn(
+        self,
+        initial_message: str,
+        executed_tools: List[Dict],
+        autonomous: bool = False,
+    ) -> Optional[List[str]]:
+        if autonomous:
+            return None
+
+        names: List[str] = ["list_files", "read_file"]
+
+        if self.current_intent in {"write", "execute"}:
+            names.extend(["write_file", "edit_file", "bash"])
+            names.extend(["search", "glob"])
+        else:
+            names.extend(["search", "glob"])
+
+        self._active_promoted_tool_names.update(self._auto_promoted_deferred_tools(initial_message, executed_tools))
+
+        for name in DEFERRED_TOOL_NAMES:
+            if name in self._active_promoted_tool_names:
+                names.append(name)
+
+        if self._active_deferred_tool_names - self._active_promoted_tool_names:
+            names.append("tool_search")
+
+        seen = set()
+        ordered: List[str] = []
+        for name in names:
+            if name not in seen:
+                seen.add(name)
+                ordered.append(name)
+        return ordered
 
     def _is_repo_overview_request(self, message: str) -> bool:
         """Detect broad repo audits that should not rely on free-form tool loops.
@@ -1169,7 +1469,7 @@ class TerminalBrain:
         deterministic, bounded preflight scan, then asks the model to summarize
         without tools. Precise requests still use the normal agentic loop.
         """
-        msg = (message or "").lower()
+        msg = self._intent_text(message)
         overview_words = ("analyse", "audit", "regarde", "explore", "inspecte", "comprendre")
         repo_words = ("repo", "projet", "codebase", "workspace", "dossier")
         write_words = ("corrige", "fix", "modifie", "ajoute", "supprime", "implémente", "implemente")
@@ -1182,19 +1482,269 @@ class TerminalBrain:
         if any(word in msg for word in repo_words):
             return True
 
-        compact = re.sub(r"\s+", " ", msg).strip(" .!?;:")
         vague_targets = (
             "analyse", "analyse le", "analyse la", "analyse les", "analyse ça",
             "analyse ca", "analyse ceci", "analyse ici", "regarde ça",
             "regarde ca", "regarde le", "explore le", "inspecte le",
         )
-        return compact in vague_targets or len(compact.split()) <= 3
+        raw = str(message or "").lower()
+        folded = unicodedata.normalize("NFKD", raw).encode("ascii", "ignore").decode("ascii")
+        compact_candidates = {
+            re.sub(r"\s+", " ", raw).strip(" .!?;:"),
+            re.sub(r"\s+", " ", folded).strip(" .!?;:"),
+        }
+        return any(compact in vague_targets or len(compact.split()) <= 3 for compact in compact_candidates if compact)
 
     def _is_open_workspace_request(self, message: str) -> bool:
-        msg = (message or "").lower()
+        msg = self._intent_text(message)
         open_words = ("ouvre", "ouvrir", "open", "affiche", "montre")
         folder_words = ("dossier", "folder", "workspace", "projet", "répertoire", "repertoire")
         return any(word in msg for word in open_words) and any(word in msg for word in folder_words)
+
+    def _is_simple_react_template_request(self, message: str) -> bool:
+        msg = self._intent_text(message)
+        wants_react = "react" in msg
+        wants_template = any(word in msg for word in ("template", "starter", "boilerplate", "projet", "app"))
+        wants_create = any(word in msg for word in ("cree", "creer", "cr?er", "create", "mets", "mettre", "genere", "make"))
+        simple_scope = any(word in msg for word in ("simple", "minimal", "basique", "vite", "dedans", "ici")) or len(msg.split()) <= 9
+        return wants_react and wants_template and wants_create and simple_scope
+
+    def _react_template_files(self, workspace_path: str) -> Dict[str, str]:
+        package_name = re.sub(r"[^a-z0-9-]+", "-", os.path.basename(os.path.abspath(workspace_path)).lower()).strip("-")
+        package_name = package_name or "joyboy-react-app"
+        return {
+            "package.json": json.dumps({
+                "name": package_name,
+                "private": True,
+                "version": "0.1.0",
+                "type": "module",
+                "scripts": {
+                    "dev": "vite",
+                    "build": "vite build",
+                    "preview": "vite preview",
+                },
+                "dependencies": {
+                    "@vitejs/plugin-react": "^4.3.4",
+                    "vite": "^6.0.0",
+                    "react": "^18.3.1",
+                    "react-dom": "^18.3.1",
+                },
+                "devDependencies": {},
+            }, indent=2, ensure_ascii=False) + "\n",
+            "index.html": """<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>JoyBoy React Template</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
+""",
+            "src/main.jsx": """import React from 'react';
+import { createRoot } from 'react-dom/client';
+import App from './App.jsx';
+import './App.css';
+
+createRoot(document.getElementById('root')).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
+""",
+            "src/App.jsx": """export default function App() {
+  return (
+    <main className="app-shell">
+      <section className="hero">
+        <p className="eyebrow">JoyBoy React</p>
+        <h1>Template React simple</h1>
+        <p>
+          Modifie <code>src/App.jsx</code> et lance le serveur Vite pour commencer.
+        </p>
+        <div className="actions">
+          <a href="https://react.dev" target="_blank" rel="noreferrer">Docs React</a>
+          <a href="https://vite.dev" target="_blank" rel="noreferrer">Docs Vite</a>
+        </div>
+      </section>
+    </main>
+  );
+}
+""",
+            "src/App.css": """* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #f7f7fb;
+  background: #08090d;
+}
+
+a {
+  color: inherit;
+}
+
+.app-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 32px;
+}
+
+.hero {
+  width: min(680px, 100%);
+}
+
+.eyebrow {
+  margin: 0 0 12px;
+  color: #8ab4ff;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+h1 {
+  margin: 0;
+  font-size: 48px;
+  line-height: 1.05;
+}
+
+p {
+  color: #b8c0d4;
+  font-size: 18px;
+  line-height: 1.6;
+}
+
+code {
+  color: #7dd3fc;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 24px;
+}
+
+.actions a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid #2b3550;
+  border-radius: 8px;
+  background: #121722;
+  text-decoration: none;
+}
+
+.actions a:hover {
+  border-color: #5b8dff;
+}
+
+@media (max-width: 520px) {
+  .app-shell {
+    padding: 22px;
+  }
+
+  h1 {
+    font-size: 36px;
+  }
+
+  p {
+    font-size: 16px;
+  }
+}
+""",
+            ".gitignore": """node_modules
+dist
+.env
+.env.local
+""",
+            "README.md": """# JoyBoy React Template
+
+Template React minimal avec Vite.
+
+## Lancer le projet
+
+```bash
+npm install
+npm run dev
+```
+
+Les fichiers principaux sont dans `src/`.
+""",
+        }
+
+    def _run_simple_react_template(self, workspace_path: str) -> Generator[Dict, None, None]:
+        from core.workspace_tools import _resolve_workspace_path
+
+        total_token_stats = {'prompt_tokens': 0, 'completion_tokens': 0, 'total': 0}
+        list_args = {'path': '.'}
+        yield runtime_event('tool_call', name='list_files', args=list_args)
+        listing = self.execute_tool('list_files', list_args, workspace_path)
+        yield runtime_event('tool_result', result={
+            'success': listing.success,
+            'tool_name': listing.tool_name,
+            'data': listing.data,
+            'error': listing.error,
+            'write_blocked': False,
+        })
+
+        files = self._react_template_files(workspace_path)
+        conflicts = []
+        for path in files:
+            full_path = _resolve_workspace_path(workspace_path, path)
+            if full_path and os.path.exists(full_path):
+                conflicts.append(path)
+
+        if conflicts:
+            text = (
+                "Je n'ai pas créé le template React pour éviter d'écraser des fichiers existants.\n\n"
+                "Fichiers déjà présents:\n"
+                + "\n".join(f"- {path}" for path in conflicts)
+                + "\n\nSupprime ou renomme ces fichiers, ou demande explicitement une mise à jour."
+            )
+            yield runtime_event('content', text=text, token_stats=total_token_stats)
+            yield runtime_event('done', full_response=text, token_stats=total_token_stats)
+            return
+
+        created = []
+        for path, content in files.items():
+            args = {'path': path, 'content': content}
+            yield runtime_event('tool_call', name='write_file', args=args)
+            result = self.execute_tool('write_file', args, workspace_path)
+            yield runtime_event('tool_result', result={
+                'success': result.success,
+                'tool_name': result.tool_name,
+                'data': result.data,
+                'error': result.error,
+                'write_blocked': self.write_blocked,
+            })
+            if self.write_blocked:
+                self.write_blocked = False
+            if not result.success:
+                text = f"Template React interrompu: impossible d'écrire `{path}` ({result.error or 'erreur inconnue'})."
+                yield runtime_event('content', text=text, token_stats=total_token_stats)
+                yield runtime_event('done', full_response=text, token_stats=total_token_stats)
+                return
+            created.append(path)
+
+        text = (
+            "Template React simple créé sans appel LLM.\n\n"
+            "Fichiers créés:\n"
+            + "\n".join(f"- {path}" for path in created)
+            + "\n\nCommandes:\n"
+            "```bash\nnpm install\nnpm run dev\n```"
+        )
+        yield runtime_event('content', text=text, token_stats=total_token_stats)
+        yield runtime_event('done', full_response=text, token_stats=total_token_stats)
 
     def _build_repo_brief(self, workspace_path: str) -> tuple[str, List[Dict]]:
         """Build a bounded repo brief and emit normal tool events for the UI."""
@@ -1385,6 +1935,8 @@ class TerminalBrain:
             summary["summary"] = f"{len(data.get('files', []))} file(s)"
         elif tool_name == "search":
             summary["summary"] = f"{len(data.get('results', []))} result(s)"
+        elif tool_name == "tool_search":
+            summary["summary"] = f"{len(data.get('promoted', []))} tool(s) promoted"
         elif tool_name == "web_fetch":
             summary["summary"] = f"{data.get('title', 'page')} ({data.get('length', 0)} chars)"
         elif tool_name == "delegate_subagent":
@@ -1528,6 +2080,7 @@ class TerminalBrain:
             else "Final answer language: match the user's language.\n"
         )
         skill_index = self._build_skill_index_prompt()
+        deferred_tools = self._build_deferred_tools_prompt()
         return f"""You are JoyBoy Terminal, an expert coding agent working inside a local project folder.
 
 Workspace name: {project_name}
@@ -1548,6 +2101,7 @@ Core contract:
 11. For broad codebase tasks, prefer delegate_subagent(code_explorer) over repeated list_files/glob/search loops.
 12. For web research, use web_search first, then web_fetch exact public URLs returned by search or provided by the user.
 13. After modifications, prefer delegate_subagent(verifier) with one allowlisted test/build command instead of free-form shell retries.
+14. Some rare tools are deferred to save tokens. If a needed tool is listed by name only, call tool_search once to fetch its schema, then call that tool.
 
 Safe workflow for analysis:
 1. list_files once if needed.
@@ -1565,6 +2119,7 @@ Safe workflow for project scaffolding:
 2. verify the generated folder and package.json.
 3. read the key generated files before describing them.
 {skill_index}
+{deferred_tools}
 
 You have access to filesystem, search, shell, and workspace tools. Use them to complete the user's task."""
 
@@ -1594,6 +2149,28 @@ You have access to filesystem, search, shell, and workspace tools. Use them to c
             lines.append(f"- {skill.get('id')}: {skill.get('name', 'Skill')}{summary}")
         if len(skills) > 20:
             lines.append(f"- ... {len(skills) - 20} more skill(s) hidden from the base prompt.")
+        return "\n".join(lines)
+
+    def _build_deferred_tools_prompt(self) -> str:
+        remaining = [
+            name
+            for name in DEFERRED_TOOL_NAMES
+            if name in self._active_deferred_tool_names
+            and name not in self._active_promoted_tool_names
+            and self.tool_registry.get(name)
+        ]
+        if not remaining:
+            return ""
+
+        lines = [
+            "",
+            "Available deferred tools:",
+            "- Their full schemas are hidden from the base prompt to reduce token use.",
+            "- Call tool_search with select:<tool_name> or keywords only when one is actually needed.",
+        ]
+        for name in remaining:
+            tool = self.tool_registry.get(name)
+            lines.append(f"- {name}: {tool.description if tool else ''}")
         return "\n".join(lines)
 
     def _format_result_for_llm(self, result: ToolResult) -> str:
@@ -1680,6 +2257,18 @@ You have access to filesystem, search, shell, and workspace tools. Use them to c
             output = truncate_middle(output, max(3000, min(8000, int(self._active_context_size * 1.35))))
             output = mask_workspace_paths(output, self._active_workspace_path)
             return f"[RESULT bash] {status} (code: {code})\n```\n{output}\n```"
+
+        elif result.tool_name == 'tool_search':
+            promoted = data.get("promoted", []) if isinstance(data, dict) else []
+            tools = data.get("tools", []) if isinstance(data, dict) else []
+            if not promoted:
+                return f"[RESULT tool_search] No deferred tools matched: {data.get('query', '') if isinstance(data, dict) else ''}"
+            schemas = json.dumps(tools, ensure_ascii=False, indent=2)
+            return (
+                f"[RESULT tool_search] Promoted tools: {', '.join(promoted)}\n"
+                "These tool schemas are now available for the next call:\n"
+                f"```json\n{schemas}\n```"
+            )
 
         elif result.tool_name == 'web_search':
             items = data.get('results', [])
@@ -2057,13 +2646,20 @@ You have access to filesystem, search, shell, and workspace tools. Use them to c
     # ===== INTENT DETECTION =====
 
     @staticmethod
+    def _intent_text(message: str) -> str:
+        raw = str(message or "").lower()
+        folded = unicodedata.normalize("NFKD", raw).encode("ascii", "ignore").decode("ascii")
+        return f"{raw}\n{folded}"
+
+    @staticmethod
     def detect_intent(message: str) -> str:
         """Détecte l'intention: 'read', 'write', 'execute', 'question'"""
-        msg = message.lower()
+        msg = TerminalBrain._intent_text(message)
 
         # WRITE
         write_kw = ['modifie', 'modifier', 'change', 'ajoute', 'supprime', 'crée', 'créer',
-                    'écris', 'fix', 'corrige', 'refactor', 'implémente', 'update']
+                    'cree', 'creer', 'cr?er', 'écris', 'ecris', 'fix', 'corrige',
+                    'refactor', 'implémente', 'implemente', 'update', 'create', 'make']
         if any(kw in msg for kw in write_kw):
             return 'write'
 

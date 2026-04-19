@@ -93,8 +93,16 @@ class ToolRegistry:
             tools = [tool for tool in tools if tool.enabled]
         return tools
 
-    def ollama_tools(self) -> List[Dict[str, Any]]:
-        return [tool.to_ollama_tool() for tool in self.list(enabled_only=True)]
+    def ollama_tools(self, names: Optional[Iterable[str]] = None) -> List[Dict[str, Any]]:
+        if names is None:
+            return [tool.to_ollama_tool() for tool in self.list(enabled_only=True)]
+
+        selected: List[Dict[str, Any]] = []
+        for name in names:
+            tool = self.get(name)
+            if tool and tool.enabled:
+                selected.append(tool.to_ollama_tool())
+        return selected
 
     def public_tools(self) -> List[Dict[str, Any]]:
         return [tool.to_public_dict() for tool in self.list(enabled_only=False)]
@@ -105,6 +113,7 @@ _TOOL_RISKS = {
     "read_file": ToolRisk.READ_ONLY,
     "search": ToolRisk.READ_ONLY,
     "glob": ToolRisk.READ_ONLY,
+    "tool_search": ToolRisk.READ_ONLY,
     "write_file": ToolRisk.WRITE,
     "edit_file": ToolRisk.WRITE,
     "delete_file": ToolRisk.DESTRUCTIVE,
