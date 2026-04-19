@@ -14,10 +14,12 @@ from .model_client import (
     get_terminal_model_profiles,
     is_cloud_model_name,
 )
+from .memory import FileMemoryStore, remember_terminal_fact, search_terminal_memory
 from .output import mask_workspace_paths, truncate_middle
 from .subagents import run_code_explorer_subagent, run_subagent, run_verifier_subagent
 
 __all__ = [
+    "FileMemoryStore",
     "TERMINAL_EVENT_TYPES",
     "TERMINAL_EVENT_VERSION",
     "ToolLoopGuard",
@@ -27,10 +29,12 @@ __all__ = [
     "get_terminal_model_profiles",
     "is_cloud_model_name",
     "mask_workspace_paths",
+    "remember_terminal_fact",
     "runtime_event",
     "run_code_explorer_subagent",
     "run_subagent",
     "run_verifier_subagent",
+    "search_terminal_memory",
     "tool_guard_reason",
     "tool_signature",
     "truncate_middle",

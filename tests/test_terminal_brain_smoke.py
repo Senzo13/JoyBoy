@@ -152,6 +152,17 @@ class TerminalBrainSmokeTests(unittest.TestCase):
         self.assertIn("web_fetch", names)
         self.assertIn("web_search", brain._active_promoted_tool_names)
 
+    def test_memory_request_auto_promotes_memory_tools(self):
+        brain = TerminalBrain()
+        brain.current_intent = "question"
+        brain._reset_deferred_tools()
+
+        names = brain._select_tool_names_for_turn("souviens-toi de ma préférence", [], autonomous=False)
+
+        self.assertIn("remember_fact", names)
+        self.assertIn("list_memory", names)
+        self.assertIn("remember_fact", brain._active_promoted_tool_names)
+
     def test_complex_task_auto_promotes_write_todos(self):
         brain = TerminalBrain()
         brain.current_intent = "write"
@@ -221,6 +232,37 @@ class TerminalBrainSmokeTests(unittest.TestCase):
             3,
         )
         self.assertEqual(kept[-1]["function"]["name"], "read_file")
+
+    def test_terminal_memory_tools_save_and_retrieve_local_facts(self):
+        old_home = os.environ.get("JOYBOY_HOME")
+        with tempfile.TemporaryDirectory() as tmp:
+            os.environ["JOYBOY_HOME"] = tmp
+            try:
+                brain = TerminalBrain()
+                saved = brain.execute_tool(
+                    "remember_fact",
+                    {
+                        "content": "User prefers DeerFlow-style agent planning.",
+                        "category": "preference",
+                        "confidence": 0.8,
+                    },
+                    os.getcwd(),
+                )
+                listed = brain.execute_tool(
+                    "list_memory",
+                    {"query": "deerflow planning", "limit": 5},
+                    os.getcwd(),
+                )
+            finally:
+                if old_home is None:
+                    os.environ.pop("JOYBOY_HOME", None)
+                else:
+                    os.environ["JOYBOY_HOME"] = old_home
+
+        self.assertTrue(saved.success)
+        self.assertTrue(listed.success)
+        self.assertEqual(listed.data.get("count"), 1)
+        self.assertIn("DeerFlow-style", brain._format_result_for_llm(listed))
 
     def test_existing_write_requires_read_then_verifies(self):
         brain = TerminalBrain()

@@ -123,6 +123,8 @@ _TOOL_RISKS = {
     "web_fetch": ToolRisk.NETWORK,
     "delegate_subagent": ToolRisk.SHELL,
     "load_skill": ToolRisk.READ_ONLY,
+    "remember_fact": ToolRisk.WRITE,
+    "list_memory": ToolRisk.READ_ONLY,
     "think": ToolRisk.REASONING,
     "open_workspace": ToolRisk.READ_ONLY,
 }

@@ -33,6 +33,7 @@ state:
 * tool loop guardrails
 * tool output truncation
 * host path masking before tool output reaches the model
+* local file-backed memory facts for terminal agents
 * LLM provider catalog and provider-prefixed cloud model client
 * bounded backend-managed subagents for coding workflows:
   * `code_explorer` for read-only codebase context
@@ -41,6 +42,16 @@ state:
 Terminal mode can use this runtime today, and future subagents, MCP tools, pack
 skills, and coding providers should plug into it instead of duplicating tool
 logic in routes.
+
+Terminal memory is stored outside git in:
+
+```text
+~/.joyboy/agent_memory.json
+```
+
+The terminal only writes durable facts through the `remember_fact` tool and can
+retrieve them through `list_memory`. It must not store secrets, API keys, tokens,
+private URLs, or transient task chatter.
 
 The goal is to keep this surface contributor-friendly and easy to reason about.
 

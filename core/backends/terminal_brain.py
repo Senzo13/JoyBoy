@@ -378,6 +378,52 @@ TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "remember_fact",
+            "description": "Persist a stable local memory fact outside git. Use only when the user explicitly asks to remember something or when a durable project preference is clearly useful.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "content": {
+                        "type": "string",
+                        "description": "The fact to remember. Do not store secrets or one-off transient details."
+                    },
+                    "category": {
+                        "type": "string",
+                        "description": "Short category such as preference, project, workflow, or context."
+                    },
+                    "confidence": {
+                        "type": "number",
+                        "description": "Confidence from 0 to 1. Default 0.6."
+                    }
+                },
+                "required": ["content"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_memory",
+            "description": "Retrieve relevant local memory facts for the terminal agent.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Optional keywords to search in memory."
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Maximum facts to return, default 8."
+                    }
+                },
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "think",
             "description": "Think briefly before acting. Useful for planning complex tasks, but do not loop on it.",
             "parameters": {
@@ -413,6 +459,8 @@ DEFERRED_TOOL_NAMES = (
     "web_fetch",
     "delegate_subagent",
     "load_skill",
+    "remember_fact",
+    "list_memory",
     "delete_file",
     "open_workspace",
     "think",
@@ -756,6 +804,15 @@ class TerminalBrain:
             elif tool_name == "load_skill":
                 skill_id = args.get('skill_id', '')
                 result = self._load_pack_skill(skill_id)
+                return ToolResult(success=result.get('success', False), tool_name=tool_name, data=result, error=result.get('error'))
+
+            # === MEMORY ===
+            elif tool_name == "remember_fact":
+                result = self._remember_fact(args)
+                return ToolResult(success=result.get('success', False), tool_name=tool_name, data=result, error=result.get('error'))
+
+            elif tool_name == "list_memory":
+                result = self._list_memory(args)
                 return ToolResult(success=result.get('success', False), tool_name=tool_name, data=result, error=result.get('error'))
 
             # === OPEN WORKSPACE ===
@@ -1427,6 +1484,9 @@ class TerminalBrain:
         if any(word in msg for word in ("skill", "pack", "workflow")):
             names.append("load_skill")
 
+        if any(word in msg for word in ("memory", "memoire", "mémoire", "remember", "souviens", "souvenir", "retiens", "retenir")):
+            names.extend(["list_memory", "remember_fact"])
+
         if any(word in msg for word in ("analyse", "audit", "explore", "inspecte", "test", "build", "verify", "vérifie", "verifie")):
             names.append("delegate_subagent")
 
@@ -1642,6 +1702,32 @@ class TerminalBrain:
             ),
         }
         return [messages[0], reminder] + messages[1:]
+
+    def _remember_fact(self, args: Dict[str, Any]) -> Dict:
+        try:
+            from core.agent_runtime import remember_terminal_fact
+
+            saved = remember_terminal_fact(
+                content=str(args.get("content", "") or ""),
+                category=str(args.get("category", "context") or "context"),
+                confidence=float(args.get("confidence", 0.6) or 0.6),
+                source="terminal",
+            )
+            return {"success": True, **saved}
+        except Exception as exc:
+            return {"success": False, "error": str(exc)}
+
+    def _list_memory(self, args: Dict[str, Any]) -> Dict:
+        try:
+            from core.agent_runtime import search_terminal_memory
+
+            facts = search_terminal_memory(
+                query=str(args.get("query", "") or ""),
+                limit=int(args.get("limit", 8) or 8),
+            )
+            return {"success": True, "facts": facts, "count": len(facts)}
+        except Exception as exc:
+            return {"success": False, "error": str(exc)}
 
     def _select_tool_names_for_turn(
         self,
@@ -2175,6 +2261,11 @@ Les fichiers principaux sont dans `src/`.
         elif tool_name == "load_skill":
             skill = data.get("skill", {}) if isinstance(data, dict) else {}
             summary["summary"] = skill.get("id", "skill loaded")
+        elif tool_name == "remember_fact":
+            fact = data.get("fact", {}) if isinstance(data, dict) else {}
+            summary["summary"] = fact.get("id", "memory saved")
+        elif tool_name == "list_memory":
+            summary["summary"] = f"{data.get('count', 0)} fact(s)"
         elif tool_name == "bash":
             summary["summary"] = f"code {data.get('return_code', '?')}"
         elif tool_name == "open_workspace":
@@ -2334,6 +2425,8 @@ Core contract:
 13. After modifications, prefer delegate_subagent(verifier) with one allowlisted test/build command instead of free-form shell retries.
 14. Some rare tools are deferred to save tokens. If a needed tool is listed by name only, call tool_search once to fetch its schema, then call that tool.
 15. For complex multi-step tasks, call write_todos early with 2-6 concrete items, keep exactly one item in_progress, and update it as you work.
+16. Use remember_fact only for explicit durable user/project preferences. Never store secrets, API keys, tokens, private URLs, or one-off transient details.
+17. Use list_memory when the user asks about remembered context or when memory is clearly relevant.
 
 Safe workflow for analysis:
 1. list_files once if needed.
@@ -2538,6 +2631,23 @@ You have access to filesystem, search, shell, and workspace tools. Use them to c
             content = truncate_middle(content, max(3500, min(9000, int(self._active_context_size * 1.5))))
             suffix = "\n... (skill truncated)" if data.get("truncated") else ""
             return f"[RESULT load_skill] {skill.get('id', '')} - {skill.get('name', 'Skill')}\n````markdown\n{content}{suffix}\n````"
+
+        elif result.tool_name == 'remember_fact':
+            fact = data.get("fact", {}) if isinstance(data, dict) else {}
+            return (
+                "[RESULT remember_fact] Saved local memory fact "
+                f"{fact.get('id', '')}: {fact.get('content', '')}"
+            )
+
+        elif result.tool_name == 'list_memory':
+            facts = data.get("facts", []) if isinstance(data, dict) else []
+            if not facts:
+                return "[RESULT list_memory] No local memory facts matched"
+            lines = [
+                f"- {fact.get('id', '')} [{fact.get('category', 'context')}, confidence={fact.get('confidence', '?')}]: {fact.get('content', '')}"
+                for fact in facts[:10]
+            ]
+            return "[RESULT list_memory]\n" + "\n".join(lines)
 
         elif result.tool_name == 'think':
             return f"[THOUGHT] {data.get('thought', '')} - Continue with the appropriate concrete action."

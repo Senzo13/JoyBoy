@@ -294,10 +294,12 @@ pulling in the full LangGraph stack:
   todos are still pending
 - a DeerFlow-style cap on `delegate_subagent` tool calls per model response, so
   one noisy turn cannot fan out too many backend tasks
+- local file-backed runtime memory through `remember_fact` and `list_memory`,
+  stored under `~/.joyboy/agent_memory.json` instead of the repository
 
 This is still intentionally smaller than DeerFlow. The next real gaps are a
-proper sandbox provider, durable memory with source/confidence, and a
-backend-managed general-purpose subagent with cancellation.
+proper sandbox provider, automatic memory summarization/retrieval middleware,
+and a backend-managed general-purpose subagent with cancellation.
 
 The terminal brain is wired to this runtime for loop checks and shell output
 hygiene. This mirrors the DeerFlow pattern where the harness owns tool safety

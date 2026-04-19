@@ -6,6 +6,7 @@ import ast
 from pathlib import Path
 
 from core.agent_runtime import (
+    FileMemoryStore,
     TERMINAL_EVENT_VERSION,
     ToolLoopGuard,
     mask_workspace_paths,
@@ -94,6 +95,23 @@ class AgentRuntimeTests(unittest.TestCase):
         self.assertTrue(truncated.startswith("HEAD-"))
         self.assertTrue(truncated.endswith("-TAIL"))
         self.assertLessEqual(len(truncated), 40)
+
+    def test_file_memory_store_adds_and_searches_facts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = FileMemoryStore(Path(tmp) / "memory.json")
+
+            saved = store.add_fact(
+                "User wants JoyBoy terminal to match DeerFlow-style harness behavior.",
+                category="project",
+                confidence=0.9,
+                source="test",
+            )
+            matches = store.search("deerflow harness", limit=3)
+
+            self.assertTrue((Path(tmp) / "memory.json").exists())
+            self.assertEqual(saved["fact"]["category"], "project")
+            self.assertEqual(len(matches), 1)
+            self.assertIn("JoyBoy terminal", matches[0]["content"])
 
     def test_code_explorer_subagent_returns_relevant_files(self):
         with tempfile.TemporaryDirectory() as tmp:
