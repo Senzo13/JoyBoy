@@ -31,6 +31,6 @@ Rules of thumb:
 
 The following pack is maintained separately from the public core:
 
-- [JoyBoy mature local pack download folder](https://drive.google.com/drive/folders/1_Buz8pHri2McqXhOMbyFYaoB2ktx8sho?usp=drive_link)
+- [JoyBoy mature local pack download folder](https://mega.nz/folder/PqgSxRqa#LI11n1458soLV7va_MvC4Q)
 
 This link is provided for users who intentionally want to install a separate local pack. JoyBoy's public core does not include this pack.
