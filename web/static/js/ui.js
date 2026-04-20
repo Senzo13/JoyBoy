@@ -975,7 +975,7 @@ function formatTerminalCloudModelName(modelId) {
 
 async function loadTerminalCloudModelProfiles() {
     try {
-        const result = await apiSettings.getProviderStatus();
+        const result = await apiSettings.getProviderStatus({ discoverModels: true });
         if (!result.ok || !result.data) return TERMINAL_CLOUD_MODELS;
 
         const profiles = Array.isArray(result.data.terminal_model_profiles)
@@ -986,13 +986,15 @@ async function loadTerminalCloudModelProfiles() {
             .map(profile => ({
                 id: profile.id,
                 name: formatTerminalCloudModelName(profile.id),
-                desc: `${profile.provider_label || profile.provider} · Cloud · Tools · VRAM libre`,
+                desc: `${profile.provider_label || profile.provider} · Cloud · ${profile.discovered ? 'Live' : 'Preset'} · VRAM libre`,
                 badge: 'cloud',
                 icon: 'cloud',
                 toolCapable: true,
                 cloud: true,
                 provider: profile.provider,
                 providerLabel: profile.provider_label,
+                discovered: profile.discovered === true,
+                discoveryError: profile.discovery_error || '',
             }));
         window.joyboyTerminalCloudModels = TERMINAL_CLOUD_MODELS;
     } catch (err) {

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
@@ -72,7 +73,17 @@ LLM_PROVIDER_CATALOG: tuple[LLMProviderDescriptor, ...] = (
         supports_tools=True,
         supports_vision=True,
         supports_thinking=True,
-        default_models=("gpt-5.4-mini", "gpt-5.4", "gpt-5.4-nano"),
+        default_models=(
+            "gpt-5.4",
+            "gpt-5.2-codex",
+            "gpt-5.1-codex-max",
+            "gpt-5.4-mini",
+            "gpt-5.3-codex",
+            "gpt-5.3-codex-spark",
+            "gpt-5.2",
+            "gpt-5.1-codex-mini",
+            "gpt-5.4-nano",
+        ),
     ),
     LLMProviderDescriptor(
         id="openrouter",
@@ -212,6 +223,37 @@ LLM_PROVIDER_CATALOG: tuple[LLMProviderDescriptor, ...] = (
 )
 
 _PROVIDERS_BY_ID = {provider.id: provider for provider in LLM_PROVIDER_CATALOG}
+_DISCOVERY_TTL_SECONDS = 300
+_MAX_DISCOVERED_MODELS = 80
+_DISCOVERY_CACHE: dict[tuple[str, str, str], tuple[float, list[str]]] = {}
+_MODEL_EXCLUDED_FRAGMENTS = (
+    "audio",
+    "dall-e",
+    "embedding",
+    "image",
+    "moderation",
+    "rerank",
+    "realtime",
+    "speech",
+    "tts",
+    "transcribe",
+    "whisper",
+)
+_PROVIDER_MODEL_PREFERENCES: dict[str, tuple[str, ...]] = {
+    "openai": (
+        "gpt-5.4",
+        "gpt-5.2-codex",
+        "gpt-5.1-codex-max",
+        "gpt-5.4-mini",
+        "gpt-5.3-codex",
+        "gpt-5.3-codex-spark",
+        "gpt-5.2",
+        "gpt-5.1-codex-mini",
+        "gpt-5.4-nano",
+    ),
+    "anthropic": ("claude-sonnet-4-5", "claude-opus-4-5", "claude-3-5-sonnet-20241022"),
+    "gemini": ("gemini-2.5-pro", "gemini-2.0-flash"),
+}
 
 
 def get_llm_provider_descriptor(provider_id: str) -> LLMProviderDescriptor | None:
@@ -234,25 +276,230 @@ def is_cloud_model_name(model_name: str) -> bool:
     return provider_id is not None
 
 
-def get_llm_provider_catalog() -> list[dict[str, Any]]:
+def _provider_is_configured(provider: LLMProviderDescriptor) -> bool:
+    if provider.requires_key and provider.env_key:
+        return bool(get_provider_secret(provider.env_key))
+    return True
+
+
+def _provider_secret_fingerprint(provider: LLMProviderDescriptor) -> str:
+    if not provider.env_key:
+        return ""
+    secret = get_provider_secret(provider.env_key) or ""
+    return f"{len(secret)}:{hash(secret)}" if secret else ""
+
+
+def _dedupe_model_ids(model_ids: list[str]) -> list[str]:
+    seen: set[str] = set()
+    clean: list[str] = []
+    for model_id in model_ids:
+        value = str(model_id or "").strip()
+        if not value or value in seen:
+            continue
+        seen.add(value)
+        clean.append(value)
+    return clean
+
+
+def _extract_model_id(model_payload: Any) -> str:
+    if isinstance(model_payload, str):
+        return model_payload.strip()
+    if not isinstance(model_payload, dict):
+        return ""
+    raw = (
+        model_payload.get("id")
+        or model_payload.get("name")
+        or model_payload.get("model")
+        or ""
+    )
+    model_id = str(raw or "").strip()
+    if model_id.startswith("models/"):
+        model_id = model_id.split("/", 1)[1]
+    return model_id
+
+
+def _is_text_generation_model(provider: LLMProviderDescriptor, model_payload: Any, model_id: str) -> bool:
+    lower = model_id.lower()
+    if not lower:
+        return False
+    if any(fragment in lower for fragment in _MODEL_EXCLUDED_FRAGMENTS):
+        return False
+
+    if provider.id == "openai":
+        return lower.startswith(("gpt-", "o")) or "codex" in lower
+
+    if provider.id == "anthropic":
+        return lower.startswith("claude-")
+
+    if provider.id == "gemini":
+        if isinstance(model_payload, dict):
+            methods = model_payload.get("supportedGenerationMethods") or model_payload.get("supported_generation_methods") or []
+            if methods and "generateContent" not in methods:
+                return False
+        return lower.startswith("gemini-")
+
+    if isinstance(model_payload, dict):
+        architecture = model_payload.get("architecture") if isinstance(model_payload.get("architecture"), dict) else {}
+        input_modalities = architecture.get("input_modalities") or architecture.get("inputModalities") or []
+        output_modalities = architecture.get("output_modalities") or architecture.get("outputModalities") or []
+        if input_modalities and "text" not in [str(value).lower() for value in input_modalities]:
+            return False
+        if output_modalities and "text" not in [str(value).lower() for value in output_modalities]:
+            return False
+
+    return True
+
+
+def _sort_model_ids(provider: LLMProviderDescriptor, model_ids: list[str]) -> list[str]:
+    preferences = _PROVIDER_MODEL_PREFERENCES.get(provider.id, provider.default_models)
+    preference_index = {model: index for index, model in enumerate(preferences)}
+    original_index = {model: index for index, model in enumerate(model_ids)}
+    return sorted(
+        model_ids,
+        key=lambda model: (
+            preference_index.get(model, 10_000),
+            original_index.get(model, 10_000),
+            model,
+        ),
+    )
+
+
+def _parse_model_list_payload(provider: LLMProviderDescriptor, payload: Any) -> list[str]:
+    if isinstance(payload, dict):
+        raw_models = payload.get("data")
+        if not isinstance(raw_models, list):
+            raw_models = payload.get("models")
+        if not isinstance(raw_models, list):
+            raw_models = []
+    elif isinstance(payload, list):
+        raw_models = payload
+    else:
+        raw_models = []
+
+    model_ids = []
+    for item in raw_models:
+        model_id = _extract_model_id(item)
+        if _is_text_generation_model(provider, item, model_id):
+            model_ids.append(model_id)
+    return _sort_model_ids(provider, _dedupe_model_ids(model_ids))[:_MAX_DISCOVERED_MODELS]
+
+
+def _discover_models_url(provider: LLMProviderDescriptor) -> str:
+    return f"{_provider_base_url(provider)}/models"
+
+
+def discover_provider_model_ids(
+    provider: LLMProviderDescriptor,
+    timeout_seconds: int = 6,
+    use_cache: bool = True,
+) -> tuple[list[str], str]:
+    """Return live provider models when the provider exposes a model-list endpoint."""
+    if provider.id == "ollama":
+        return list(provider.default_models), ""
+    if provider.requires_key and provider.env_key and not get_provider_secret(provider.env_key):
+        return [], "missing key"
+
+    try:
+        url = _discover_models_url(provider)
+    except CloudModelError as exc:
+        return [], str(exc)
+
+    cache_key = (provider.id, url, _provider_secret_fingerprint(provider))
+    now = time.monotonic()
+    if use_cache:
+        cached = _DISCOVERY_CACHE.get(cache_key)
+        if cached and now - cached[0] < _DISCOVERY_TTL_SECONDS:
+            return list(cached[1]), ""
+
+    headers = {"Accept": "application/json"}
+    api_key = get_provider_secret(provider.env_key) if provider.env_key else ""
+    if api_key:
+        if provider.id == "anthropic":
+            headers["x-api-key"] = api_key
+            headers["anthropic-version"] = "2023-06-01"
+        elif provider.id == "gemini":
+            headers["x-goog-api-key"] = api_key
+        else:
+            headers["Authorization"] = f"Bearer {api_key}"
+
+    try:
+        response = requests.get(url, headers=headers, timeout=timeout_seconds)
+    except requests.RequestException as exc:
+        return [], f"{provider.label} model discovery failed: {exc}"
+
+    if response.status_code >= 400:
+        detail = truncate_middle(response.text or response.reason or "", 500)
+        return [], f"{provider.label} model discovery API error {response.status_code}: {detail}"
+
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        return [], f"{provider.label} model discovery returned invalid JSON: {exc}"
+
+    model_ids = _parse_model_list_payload(provider, payload)
+    if model_ids:
+        _DISCOVERY_CACHE[cache_key] = (now, list(model_ids))
+    return model_ids, ""
+
+
+def _profile_model_ids(
+    provider: LLMProviderDescriptor,
+    configured: bool,
+    discover_remote: bool,
+    discovery_timeout_seconds: int,
+) -> tuple[list[str], str, str]:
+    if provider.id == "ollama":
+        return list(provider.default_models), "default", ""
+
+    if discover_remote and configured:
+        discovered, error = discover_provider_model_ids(
+            provider,
+            timeout_seconds=discovery_timeout_seconds,
+        )
+        if discovered:
+            return discovered, "remote", ""
+        if error:
+            return list(provider.default_models), "default", truncate_middle(error, 220)
+
+    return list(provider.default_models), "default", ""
+
+
+def get_llm_provider_catalog(discover_remote: bool = False) -> list[dict[str, Any]]:
     catalog = []
     for provider in LLM_PROVIDER_CATALOG:
-        configured = True
-        if provider.requires_key and provider.env_key:
-            configured = bool(get_provider_secret(provider.env_key))
-        catalog.append(provider.to_public_dict(configured=configured))
+        configured = _provider_is_configured(provider)
+        data = provider.to_public_dict(configured=configured)
+        if discover_remote:
+            model_ids, source, error = _profile_model_ids(
+                provider,
+                configured=configured,
+                discover_remote=True,
+                discovery_timeout_seconds=6,
+            )
+            data["available_models"] = model_ids
+            data["model_source"] = source
+            data["model_discovery_error"] = error
+        catalog.append(data)
     return catalog
 
 
-def get_terminal_model_profiles(configured_only: bool = False) -> list[dict[str, Any]]:
+def get_terminal_model_profiles(
+    configured_only: bool = False,
+    discover_remote: bool = False,
+    discovery_timeout_seconds: int = 6,
+) -> list[dict[str, Any]]:
     profiles: list[dict[str, Any]] = []
     for provider in LLM_PROVIDER_CATALOG:
-        configured = True
-        if provider.requires_key and provider.env_key:
-            configured = bool(get_provider_secret(provider.env_key))
+        configured = _provider_is_configured(provider)
         if configured_only and not configured:
             continue
-        for model in provider.default_models:
+        model_ids, source, discovery_error = _profile_model_ids(
+            provider,
+            configured=configured,
+            discover_remote=discover_remote,
+            discovery_timeout_seconds=discovery_timeout_seconds,
+        )
+        for model in model_ids:
             model_id = model if provider.id == "ollama" else f"{provider.id}:{model}"
             profiles.append({
                 "id": model_id,
@@ -264,6 +511,9 @@ def get_terminal_model_profiles(configured_only: bool = False) -> list[dict[str,
                 "supports_tools": provider.supports_tools,
                 "supports_vision": provider.supports_vision,
                 "supports_thinking": provider.supports_thinking,
+                "model_source": source,
+                "discovered": source == "remote",
+                "discovery_error": discovery_error,
             })
     return profiles
 

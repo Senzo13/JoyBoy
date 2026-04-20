@@ -237,8 +237,9 @@ const apiModels = {
 // ===== SETTINGS / HARNESS API =====
 
 const apiSettings = {
-    async getProviderStatus() {
-        return apiGet('/api/providers/status');
+    async getProviderStatus(options = {}) {
+        const query = options.discoverModels ? '?discover_models=1' : '';
+        return apiGet(`/api/providers/status${query}`);
     },
 
     async getFeatureFlags() {

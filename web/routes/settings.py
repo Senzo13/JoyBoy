@@ -75,11 +75,12 @@ def providers_status():
     from core.agent_runtime import get_llm_provider_catalog, get_terminal_model_profiles
 
     overview = get_local_config_overview()
+    discover_models = str(request.args.get('discover_models', '')).lower() in {'1', 'true', 'yes'}
     return jsonify({
         'success': True,
         'providers': get_provider_status(),
         'llm_providers': get_llm_provider_catalog(),
-        'terminal_model_profiles': get_terminal_model_profiles(),
+        'terminal_model_profiles': get_terminal_model_profiles(discover_remote=discover_models),
         'features': get_feature_flags(),
         'onboarding': get_onboarding_state(),
         'packs': get_pack_index()['packs'],

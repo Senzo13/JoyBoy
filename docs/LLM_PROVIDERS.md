@@ -37,8 +37,10 @@ The prefix guard is important: `qwen3.5:2b` is treated as an Ollama model, not
 as a cloud provider.
 
 OpenAI model ids are public in the OpenAI model docs and account availability can
-also be checked with `GET /v1/models`. JoyBoy keeps a curated picker shortlist
-instead of dumping every available model and fine-tune into the UI.
+also be checked with `GET /v1/models`. JoyBoy uses live model discovery for
+configured providers when the API exposes a model-list endpoint, filters out
+non-chat families like embeddings/image/audio, and falls back to the curated
+shortlist when discovery fails.
 
 ## Supported Keys
 
@@ -93,6 +95,7 @@ The design mirrors the useful DeerFlow idea:
 
 * provider config is data, not scattered conditionals
 * API keys are resolved from env/local config at call time
+* configured provider model lists are discovered live when possible
 * tool-capable cloud models plug into the same terminal tool loop
 * provider metadata is exposed to the UI without exposing secrets
 * provider-specific behavior stays behind a model client boundary

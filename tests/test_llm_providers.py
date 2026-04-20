@@ -102,6 +102,7 @@ class LLMProviderCatalogTest(unittest.TestCase):
         self.assertIn("qwen3.5:2b", profile_ids)
         self.assertIn("openai:gpt-5.4-mini", profile_ids)
         self.assertIn("openai:gpt-5.4", profile_ids)
+        self.assertIn("openai:gpt-5.2-codex", profile_ids)
 
         os.environ["ANTHROPIC_API_KEY"] = "anthropic-test"
         os.environ["GEMINI_API_KEY"] = "gemini-test"
@@ -112,6 +113,52 @@ class LLMProviderCatalogTest(unittest.TestCase):
         self.assertIn("anthropic:claude-sonnet-4-5", profile_ids)
         self.assertIn("gemini:gemini-2.0-flash", profile_ids)
         self.assertIn("glm:glm-5.1", profile_ids)
+
+    def test_terminal_model_profiles_can_discover_remote_openai_models(self) -> None:
+        os.environ["OPENAI_API_KEY"] = "sk-test"
+        fake_response = Mock()
+        fake_response.status_code = 200
+        fake_response.json.return_value = {
+            "data": [
+                {"id": "text-embedding-3-large"},
+                {"id": "gpt-5.2-codex"},
+                {"id": "gpt-5.4"},
+                {"id": "gpt-image-1"},
+            ]
+        }
+
+        with patch("core.agent_runtime.model_client.requests.get", return_value=fake_response) as get:
+            profiles = self.model_client.get_terminal_model_profiles(
+                configured_only=True,
+                discover_remote=True,
+            )
+
+        openai_profiles = [profile for profile in profiles if profile["provider"] == "openai"]
+        self.assertEqual([profile["model"] for profile in openai_profiles], ["gpt-5.4", "gpt-5.2-codex"])
+        self.assertTrue(all(profile["discovered"] for profile in openai_profiles))
+        self.assertEqual(openai_profiles[0]["model_source"], "remote")
+        self.assertEqual(get.call_args.args[0], "https://api.openai.com/v1/models")
+        self.assertEqual(get.call_args.kwargs["headers"]["Authorization"], "Bearer sk-test")
+
+    def test_terminal_model_profiles_fall_back_when_discovery_fails(self) -> None:
+        os.environ["OPENAI_API_KEY"] = "sk-test"
+        fake_response = Mock()
+        fake_response.status_code = 401
+        fake_response.text = "bad key"
+        fake_response.reason = "Unauthorized"
+
+        with patch("core.agent_runtime.model_client.requests.get", return_value=fake_response):
+            profiles = self.model_client.get_terminal_model_profiles(
+                configured_only=True,
+                discover_remote=True,
+            )
+
+        openai_profiles = [profile for profile in profiles if profile["provider"] == "openai"]
+        profile_ids = {profile["id"] for profile in openai_profiles}
+        self.assertIn("openai:gpt-5.4", profile_ids)
+        self.assertIn("openai:gpt-5.4-mini", profile_ids)
+        self.assertTrue(all(not profile["discovered"] for profile in openai_profiles))
+        self.assertTrue(any("401" in profile["discovery_error"] for profile in openai_profiles))
 
     def test_cloud_model_requires_key(self) -> None:
         with self.assertRaises(self.model_client.CloudModelError):
