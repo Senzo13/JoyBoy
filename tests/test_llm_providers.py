@@ -172,6 +172,41 @@ class LLMProviderCatalogTest(unittest.TestCase):
         self.assertEqual(get.call_args.args[0], "https://api.openai.com/v1/models")
         self.assertEqual(get.call_args.kwargs["headers"]["Authorization"], "Bearer sk-test")
 
+    def test_terminal_model_profiles_limit_discovered_models_by_family(self) -> None:
+        os.environ["OPENAI_API_KEY"] = "sk-test"
+        fake_response = Mock()
+        fake_response.status_code = 200
+        fake_response.json.return_value = {
+            "data": [
+                {"id": "gpt-4.1-mini"},
+                {"id": "gpt-5.4"},
+                {"id": "gpt-5.4-mini", "created": 500},
+                {"id": "gpt-5.3", "created": 400},
+                {"id": "gpt-5.2", "created": 300},
+                {"id": "gpt-5.1", "created": 200},
+                {"id": "gpt-5.0", "created": 100},
+                {"id": "gpt-5-old", "created": 1},
+                {"id": "gpt-5.2-codex", "created": 600},
+                {"id": "gpt-5.1-codex-mini", "created": 500},
+                {"id": "text-embedding-3-large", "created": 999},
+            ]
+        }
+
+        with patch("core.agent_runtime.model_client.requests.get", return_value=fake_response):
+            profiles = self.model_client.get_terminal_model_profiles(
+                configured_only=True,
+                discover_remote=True,
+            )
+
+        openai_models = [profile["model"] for profile in profiles if profile["provider"] == "openai"]
+        gpt_5_models = [model for model in openai_models if model.startswith("gpt-5") and "codex" not in model]
+
+        self.assertEqual(len(gpt_5_models), 5)
+        self.assertIn("gpt-5.4-mini", gpt_5_models)
+        self.assertNotIn("gpt-5-old", gpt_5_models)
+        self.assertIn("gpt-5.2-codex", openai_models)
+        self.assertNotIn("text-embedding-3-large", openai_models)
+
     def test_terminal_model_profiles_fall_back_when_discovery_fails(self) -> None:
         os.environ["OPENAI_API_KEY"] = "sk-test"
         fake_response = Mock()

@@ -952,6 +952,23 @@ const TERMINAL_CLOUD_PROVIDER_IDS = new Set([
 ]);
 let TERMINAL_CLOUD_MODELS = [];
 window.joyboyTerminalCloudModels = TERMINAL_CLOUD_MODELS;
+let modelPickerChatSource = Settings.get('modelPickerChatSource') || 'local';
+let modelPickerChatFamily = Settings.get('modelPickerChatFamily') || 'all';
+
+const CLOUD_FAMILY_ORDER = [
+    'gpt',
+    'codex',
+    'claude',
+    'gemini',
+    'deepseek',
+    'kimi',
+    'glm',
+    'qwen',
+    'llama',
+    'mistral',
+    'openrouter',
+    'other',
+];
 
 function isTerminalCloudModelId(modelId) {
     const raw = String(modelId || '').trim();
@@ -979,6 +996,48 @@ function formatTerminalCloudModelName(modelId) {
     return `${providerLabels[providerId.toLowerCase()] || providerId} ${modelParts.join(':')}`;
 }
 
+function getCloudModelFamily(modelOrProfile) {
+    const provider = String(modelOrProfile?.provider || '').toLowerCase();
+    const rawId = String(modelOrProfile?.id || '').toLowerCase();
+    const modelName = String(modelOrProfile?.model || rawId.split(':').slice(1).join(':')).toLowerCase();
+    const parts = modelName.includes('/') ? modelName.split('/') : ['', modelName];
+    const vendor = parts[0] || provider;
+    const name = parts.slice(1).join('/') || modelName;
+
+    if (name.includes('codex')) return 'codex';
+    if (name.startsWith('gpt-') || name.includes('/gpt-') || provider === 'openai') return 'gpt';
+    if (name.startsWith('o') && /^o\d/.test(name)) return 'gpt';
+    if (name.includes('claude') || provider === 'anthropic' || vendor === 'anthropic') return 'claude';
+    if (name.includes('gemini') || provider === 'gemini' || vendor === 'google') return 'gemini';
+    if (name.includes('deepseek') || provider === 'deepseek' || vendor === 'deepseek') return 'deepseek';
+    if (name.includes('kimi') || provider === 'moonshot' || vendor === 'moonshotai') return 'kimi';
+    if (name.includes('glm') || provider === 'glm' || vendor === 'zhipu') return 'glm';
+    if (name.includes('qwen') || vendor === 'qwen') return 'qwen';
+    if (name.includes('llama') || vendor === 'meta-llama') return 'llama';
+    if (name.includes('mistral') || vendor === 'mistralai') return 'mistral';
+    if (provider === 'openrouter') return 'openrouter';
+    return 'other';
+}
+
+function getCloudFamilyLabel(familyId) {
+    const fallback = {
+        all: 'Tout',
+        gpt: 'GPT',
+        codex: 'Codex',
+        claude: 'Claude',
+        gemini: 'Gemini',
+        deepseek: 'DeepSeek',
+        kimi: 'Kimi',
+        glm: 'GLM',
+        qwen: 'Qwen',
+        llama: 'Llama',
+        mistral: 'Mistral',
+        openrouter: 'OpenRouter',
+        other: 'Autres',
+    };
+    return uiT(`modelPicker.cloudFamilies.${familyId}`, fallback[familyId] || familyId);
+}
+
 async function loadTerminalCloudModelProfiles() {
     try {
         const result = await apiSettings.getProviderStatus({ discoverModels: true });
@@ -999,6 +1058,7 @@ async function loadTerminalCloudModelProfiles() {
                 cloud: true,
                 provider: profile.provider,
                 providerLabel: profile.provider_label,
+                family: getCloudModelFamily(profile),
                 discovered: profile.discovered === true,
                 discoveryError: profile.discovery_error || '',
             }));
@@ -1022,6 +1082,48 @@ function mergeCloudChatModels(models, cloudModels) {
     const cloud = Array.isArray(cloudModels) ? cloudModels : [];
     const baseModels = (models || []).filter(model => model?.id !== 'none' || cloud.length === 0);
     return dedupeModelsById([...baseModels, ...cloud]);
+}
+
+function isCloudPickerModel(model) {
+    return model?.cloud === true || isTerminalCloudModelId(model?.id);
+}
+
+function limitCloudModelsByFamily(models, limit = 5) {
+    const counts = new Map();
+    const limited = [];
+    for (const model of models || []) {
+        const family = model.family || getCloudModelFamily(model);
+        const count = counts.get(family) || 0;
+        if (count >= limit) continue;
+        counts.set(family, count + 1);
+        limited.push({ ...model, family });
+    }
+    return limited;
+}
+
+function sortCloudFamilies(families) {
+    return [...families].sort((a, b) => {
+        const ai = CLOUD_FAMILY_ORDER.indexOf(a);
+        const bi = CLOUD_FAMILY_ORDER.indexOf(b);
+        if (ai !== -1 || bi !== -1) return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+        return getCloudFamilyLabel(a).localeCompare(getCloudFamilyLabel(b));
+    });
+}
+
+function setModelPickerChatSource(source, pickerId = 'chat') {
+    modelPickerChatSource = source === 'cloud' ? 'cloud' : 'local';
+    if (modelPickerChatSource === 'local') {
+        modelPickerChatFamily = 'all';
+    }
+    Settings.set('modelPickerChatSource', modelPickerChatSource);
+    Settings.set('modelPickerChatFamily', modelPickerChatFamily);
+    renderModelPickerList(pickerId);
+}
+
+function setModelPickerChatFamily(family, pickerId = 'chat') {
+    modelPickerChatFamily = String(family || 'all');
+    Settings.set('modelPickerChatFamily', modelPickerChatFamily);
+    renderModelPickerList(pickerId);
 }
 
 /**
@@ -1816,6 +1918,80 @@ function getSelectedModelForTab(tab) {
     return selectedChatModel;
 }
 
+function buildChatPickerFilters(models, pickerId) {
+    const localModels = (models || []).filter(model => !isCloudPickerModel(model));
+    const cloudModels = limitCloudModelsByFamily((models || []).filter(isCloudPickerModel), 5);
+    let source = modelPickerChatSource === 'cloud' ? 'cloud' : 'local';
+    if (source === 'cloud' && !cloudModels.length) source = 'local';
+    if (source === 'local' && !localModels.length && cloudModels.length) source = 'cloud';
+
+    const sourceButtons = [
+        {
+            id: 'local',
+            label: uiT('modelPicker.sources.local', 'Local'),
+            count: localModels.length,
+        },
+        {
+            id: 'cloud',
+            label: uiT('modelPicker.sources.cloud', 'Cloud'),
+            count: cloudModels.length,
+        },
+    ].map(item => `
+        <button
+            type="button"
+            class="model-picker-filter ${source === item.id ? 'active' : ''}"
+            onclick="setModelPickerChatSource('${item.id}', '${pickerId}')"
+        >
+            <span>${item.label}</span>
+            <em>${item.count}</em>
+        </button>
+    `).join('');
+
+    let familyFilters = '';
+    let filteredModels = source === 'cloud' ? cloudModels : localModels;
+    if (source === 'cloud' && cloudModels.length) {
+        const families = sortCloudFamilies(new Set(cloudModels.map(model => model.family || getCloudModelFamily(model))));
+        if (modelPickerChatFamily !== 'all' && !families.includes(modelPickerChatFamily)) {
+            modelPickerChatFamily = 'all';
+            Settings.set('modelPickerChatFamily', modelPickerChatFamily);
+        }
+        const familyButtons = ['all', ...families].map(family => {
+            const count = family === 'all'
+                ? cloudModels.length
+                : cloudModels.filter(model => (model.family || getCloudModelFamily(model)) === family).length;
+            return `
+                <button
+                    type="button"
+                    class="model-picker-family ${modelPickerChatFamily === family ? 'active' : ''}"
+                    onclick="setModelPickerChatFamily('${family}', '${pickerId}')"
+                >
+                    <span>${getCloudFamilyLabel(family)}</span>
+                    <em>${count}</em>
+                </button>
+            `;
+        }).join('');
+        familyFilters = `<div class="model-picker-family-tabs">${familyButtons}</div>`;
+        if (modelPickerChatFamily !== 'all') {
+            filteredModels = cloudModels.filter(model => (model.family || getCloudModelFamily(model)) === modelPickerChatFamily);
+        }
+    }
+
+    const emptyText = source === 'cloud'
+        ? uiT('modelPicker.emptyCloud', 'Aucun modèle cloud configuré.')
+        : uiT('modelPicker.emptyLocal', 'Aucun modèle local disponible.');
+
+    return {
+        models: filteredModels,
+        controls: `
+            <div class="model-picker-filters">
+                <div class="model-picker-source-tabs">${sourceButtons}</div>
+                ${familyFilters}
+            </div>
+        `,
+        emptyText,
+    };
+}
+
 function renderModelPickerList(pickerId = 'home') {
     const listId = pickerId === 'edit' ? 'edit-model-picker-list' :
                    pickerId === 'chat' ? 'chat-model-picker-list' : 'model-picker-list';
@@ -1839,6 +2015,15 @@ function renderModelPickerList(pickerId = 'home') {
         selectedModel = getSelectedModelForTab(tab);
     }
 
+    let filterControls = '';
+    let emptyText = uiT('modelPicker.empty', 'Aucun modèle disponible.');
+    if (tab === 'chat') {
+        const filtered = buildChatPickerFilters(models, pickerId);
+        models = filtered.models;
+        filterControls = filtered.controls;
+        emptyText = filtered.emptyText;
+    }
+
     // Trier: modèle sélectionné en premier
     const sortedModels = [...models].sort((a, b) => {
         if (a.id === selectedModel && b.id !== selectedModel) return -1;
@@ -1849,6 +2034,8 @@ function renderModelPickerList(pickerId = 'home') {
 
     list.innerHTML = `
         ${helperText ? `<div class="model-picker-helper">${helperText}</div>` : ''}
+        ${filterControls}
+        ${sortedModels.length ? '' : `<div class="model-picker-empty">${emptyText}</div>`}
         ${sortedModels.map(model => {
         let badgeClass = model.badge || 'balanced';
         const badgeText = modelPickerBadgeLabel(model);

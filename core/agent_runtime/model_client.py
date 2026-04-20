@@ -228,6 +228,7 @@ LLM_PROVIDER_CATALOG: tuple[LLMProviderDescriptor, ...] = (
 _PROVIDERS_BY_ID = {provider.id: provider for provider in LLM_PROVIDER_CATALOG}
 _DISCOVERY_TTL_SECONDS = 300
 _MAX_DISCOVERED_MODELS = 80
+_MAX_DISCOVERED_MODELS_PER_FAMILY = 5
 _DISCOVERY_CACHE: dict[tuple[str, str, str], tuple[float, list[str]]] = {}
 _MODEL_EXCLUDED_FRAGMENTS = (
     "audio",
@@ -361,6 +362,58 @@ def _extract_model_id(model_payload: Any) -> str:
     return model_id
 
 
+def _extract_model_created_at(model_payload: Any) -> int:
+    if not isinstance(model_payload, dict):
+        return 0
+    raw = (
+        model_payload.get("created")
+        or model_payload.get("created_at")
+        or model_payload.get("updated_at")
+        or model_payload.get("modified_at")
+        or 0
+    )
+    try:
+        return int(float(raw))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _model_family_id(provider: LLMProviderDescriptor, model_id: str) -> str:
+    lower = str(model_id or "").lower().strip()
+    if not lower:
+        return "other"
+
+    if provider.id == "openai":
+        if "codex" in lower:
+            return "codex"
+        if lower.startswith("gpt-"):
+            parts = lower.split("-")
+            if len(parts) >= 2:
+                major = parts[1].split(".", 1)[0]
+                return f"gpt-{major}"
+            return "gpt"
+        if lower.startswith("o"):
+            return lower.split("-", 1)[0]
+        return "openai"
+
+    if provider.id == "anthropic":
+        if "opus" in lower:
+            return "claude-opus"
+        if "sonnet" in lower:
+            return "claude-sonnet"
+        if "haiku" in lower:
+            return "claude-haiku"
+        return "claude"
+
+    if provider.id == "gemini":
+        parts = lower.split("-")
+        return "-".join(parts[:2]) if len(parts) >= 2 else "gemini"
+
+    if "/" in lower:
+        return lower.split("/", 1)[0]
+    return lower.split("-", 1)[0].split(":", 1)[0]
+
+
 def _is_text_generation_model(provider: LLMProviderDescriptor, model_payload: Any, model_id: str) -> bool:
     lower = model_id.lower()
     if not lower:
@@ -393,18 +446,35 @@ def _is_text_generation_model(provider: LLMProviderDescriptor, model_payload: An
     return True
 
 
-def _sort_model_ids(provider: LLMProviderDescriptor, model_ids: list[str]) -> list[str]:
+def _rank_model_candidates(provider: LLMProviderDescriptor, candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
     preferences = _PROVIDER_MODEL_PREFERENCES.get(provider.id, provider.default_models)
     preference_index = {model: index for index, model in enumerate(preferences)}
-    original_index = {model: index for index, model in enumerate(model_ids)}
     return sorted(
-        model_ids,
-        key=lambda model: (
-            preference_index.get(model, 10_000),
-            original_index.get(model, 10_000),
-            model,
+        candidates,
+        key=lambda candidate: (
+            0 if int(candidate.get("created") or 0) else 1,
+            -int(candidate.get("created") or 0),
+            preference_index.get(candidate["id"], 10_000),
+            candidate.get("index", 10_000),
+            candidate["id"],
         ),
     )
+
+
+def _limit_model_candidates_by_family(
+    provider: LLMProviderDescriptor,
+    candidates: list[dict[str, Any]],
+) -> list[str]:
+    limited: list[dict[str, Any]] = []
+    by_family: dict[str, list[dict[str, Any]]] = {}
+    for candidate in candidates:
+        family = _model_family_id(provider, candidate["id"])
+        by_family.setdefault(family, []).append(candidate)
+
+    for family_candidates in by_family.values():
+        limited.extend(_rank_model_candidates(provider, family_candidates)[:_MAX_DISCOVERED_MODELS_PER_FAMILY])
+
+    return [candidate["id"] for candidate in _rank_model_candidates(provider, limited)[:_MAX_DISCOVERED_MODELS]]
 
 
 def _parse_model_list_payload(provider: LLMProviderDescriptor, payload: Any) -> list[str]:
@@ -419,12 +489,19 @@ def _parse_model_list_payload(provider: LLMProviderDescriptor, payload: Any) -> 
     else:
         raw_models = []
 
-    model_ids = []
-    for item in raw_models:
+    candidates: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for index, item in enumerate(raw_models):
         model_id = _extract_model_id(item)
-        if _is_text_generation_model(provider, item, model_id):
-            model_ids.append(model_id)
-    return _sort_model_ids(provider, _dedupe_model_ids(model_ids))[:_MAX_DISCOVERED_MODELS]
+        if model_id in seen or not _is_text_generation_model(provider, item, model_id):
+            continue
+        seen.add(model_id)
+        candidates.append({
+            "id": model_id,
+            "created": _extract_model_created_at(item),
+            "index": index,
+        })
+    return _limit_model_candidates_by_family(provider, candidates)
 
 
 def _discover_models_url(provider: LLMProviderDescriptor) -> str:
