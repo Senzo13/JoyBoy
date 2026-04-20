@@ -26,6 +26,7 @@ mediapipe>=0.10.0
 omegaconf>=2.3.0
 einops>=0.7.0
 sentencepiece>=0.1.99
+num2words>=0.5.13
 bitsandbytes>=0.41.0
 optimum-quanto>=0.2.0
 peft>=0.7.0

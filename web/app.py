@@ -54,7 +54,7 @@ except Exception:
 _CRITICAL_IMPORTS = [
     'flask', 'PIL', 'numpy', 'diffusers', 'transformers', 'accelerate',
     'safetensors', 'einops', 'sentencepiece', 'peft', 'scipy', 'ftfy',
-    'omegaconf',
+    'omegaconf', 'num2words',
 ]
 _missing_pkgs = []
 for _mod in _CRITICAL_IMPORTS:

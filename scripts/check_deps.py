@@ -611,6 +611,7 @@ CRITICAL_DEPS = {
     "omegaconf": "omegaconf",
     "einops": "einops",
     "sentencepiece": "sentencepiece",
+    "num2words": "num2words",
     "peft": "peft",
     "scipy": "scipy",
     "ftfy": "ftfy",

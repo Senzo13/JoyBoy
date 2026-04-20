@@ -63,6 +63,7 @@ IMAGE_ANALYSIS_WORDS = {
 
 _pipe: Any | None = None
 _pipe_quantized = False
+_last_load_error = ""
 _lock = threading.Lock()
 _cache: dict[str, "FoodExtractResult"] = {}
 _CACHE_MAX = 64
@@ -219,7 +220,7 @@ def _build_pipeline(use_int8: bool) -> tuple[Any, bool]:
 
 
 def load_foodextract() -> tuple[Any | None, bool]:
-    global _pipe, _pipe_quantized
+    global _pipe, _pipe_quantized, _last_load_error
 
     with _lock:
         if _pipe is not None:
@@ -230,10 +231,12 @@ def load_foodextract() -> tuple[Any | None, bool]:
         print(f"[FOODEXTRACT] Loading {model_id} ({'INT8 requested' if use_int8 else 'BF16/FP16'})...")
         try:
             _pipe, _pipe_quantized = _build_pipeline(use_int8)
+            _last_load_error = ""
             print(f"[FOODEXTRACT] Ready ({'int8' if _pipe_quantized else 'native precision'})")
             return _pipe, _pipe_quantized
         except Exception as exc:
-            print(f"[FOODEXTRACT] Load failed: {exc}")
+            _last_load_error = str(exc)
+            print(f"[FOODEXTRACT] Load failed: {_last_load_error}")
             _pipe = None
             _pipe_quantized = False
             return None, False
@@ -439,7 +442,7 @@ def _run_pipeline(pipe: Any, image: Any, *, max_new_tokens: int = 220) -> Any:
     for call in attempts:
         try:
             return call()
-        except TypeError as exc:
+        except Exception as exc:
             last_error = exc
             continue
     if last_error:
@@ -458,7 +461,7 @@ def analyze_food_image(image: Any, *, max_new_tokens: int = 220) -> FoodExtractR
     if pipe is None:
         return FoodExtractResult(
             success=False,
-            error="FoodExtract model unavailable",
+            error=_last_load_error or "FoodExtract model unavailable",
             model_id=model_id,
             quantized=quantized,
         )
