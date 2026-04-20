@@ -1006,6 +1006,12 @@ class TerminalBrain:
             yield runtime_event('done', full_response=text, token_stats={'prompt_tokens': 0, 'completion_tokens': 0, 'total': 0})
             return
 
+        if self._is_simple_next_template_request(initial_message) and not self.is_read_only_intent(self.current_intent):
+            for event in self._run_simple_next_template(workspace_path, replace_existing=self._wants_template_replacement(initial_message)):
+                yield event
+            _end_resource_lease()
+            return
+
         if self._is_simple_react_template_request(initial_message) and not self.is_read_only_intent(self.current_intent):
             for event in self._run_simple_react_template(workspace_path):
                 yield event
@@ -2131,6 +2137,8 @@ class TerminalBrain:
         msg = self._folded_single_line(message)
         if any(word in msg for word in ("analyse", "audit", "explique", "compare", "review")):
             return False
+        if self._mentions_next_template(message):
+            return False
         wants_react = "react" in msg
         wants_template = any(word in msg for word in ("template", "starter", "boilerplate", "projet", "app"))
         wants_create = (
@@ -2143,6 +2151,32 @@ class TerminalBrain:
             or len(msg.split()) <= 16
         )
         return wants_react and wants_template and wants_create and simple_scope
+
+    def _mentions_next_template(self, message: str) -> bool:
+        msg = self._folded_single_line(message)
+        return bool(re.search(r"\bnext\s*js\b|\bnextjs\b|\bnext\b", msg))
+
+    def _wants_template_replacement(self, message: str) -> bool:
+        msg = self._folded_single_line(message)
+        return any(word in msg for word in ("delete", "remove", "supprime", "efface", "remplace", "replace", "convert", "convertis"))
+
+    def _is_simple_next_template_request(self, message: str) -> bool:
+        msg = self._folded_single_line(message)
+        if any(word in msg for word in ("analyse", "audit", "explique", "compare", "review")):
+            return False
+        wants_next = self._mentions_next_template(message)
+        wants_template = any(word in msg for word in ("template", "starter", "boilerplate", "projet", "app"))
+        wants_create = (
+            any(word in msg for word in ("cree", "creer", "create", "mets", "mettre", "genere", "make", "code", "coder", "fais", "fait", "veux"))
+            or self._wants_template_replacement(message)
+            or re.search(r"\bcr\s*er\b", msg) is not None
+        )
+        simple_scope = (
+            any(word in msg for word in ("simple", "minimal", "basique", "dedans", "dans", "ici", "propre", "clean"))
+            or "template" in msg
+            or len(msg.split()) <= 18
+        )
+        return wants_next and wants_template and wants_create and simple_scope
 
     def _is_casual_greeting_request(self, message: str) -> bool:
         text = self._folded_single_line(message)
@@ -2513,6 +2547,246 @@ Les fichiers principaux sont dans `src/`.
         })
         return files
 
+    def _next_template_files(self, workspace_path: str) -> Dict[str, str]:
+        package_name = re.sub(r"[^a-z0-9-]+", "-", os.path.basename(os.path.abspath(workspace_path)).lower()).strip("-")
+        package_name = package_name or "joyboy-next-app"
+        return {
+            "package.json": json.dumps({
+                "name": package_name,
+                "private": True,
+                "version": "0.1.0",
+                "scripts": {
+                    "dev": "next dev",
+                    "build": "next build",
+                    "start": "next start",
+                },
+                "dependencies": {
+                    "next": "^15.1.6",
+                    "react": "^19.0.0",
+                    "react-dom": "^19.0.0",
+                },
+                "devDependencies": {},
+            }, indent=2, ensure_ascii=False) + "\n",
+            "next.config.mjs": """/** @type {import('next').NextConfig} */
+const nextConfig = {};
+
+export default nextConfig;
+""",
+            "jsconfig.json": """{
+  "compilerOptions": {
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  }
+}
+""",
+            "src/app/layout.jsx": """import './globals.css';
+
+export const metadata = {
+  title: 'JoyBoy Next Template',
+  description: 'Template Next.js minimal cree par JoyBoy.',
+};
+
+export default function RootLayout({ children }) {
+  return (
+    <html lang="fr">
+      <body>{children}</body>
+    </html>
+  );
+}
+""",
+            "src/app/page.jsx": """export default function Home() {
+  return (
+    <main className="page-shell">
+      <section className="hero">
+        <p className="eyebrow">JoyBoy Next</p>
+        <h1>Template Next.js simple</h1>
+        <p>
+          Modifie <code>src/app/page.jsx</code>, puis lance le serveur Next pour commencer.
+        </p>
+        <div className="actions">
+          <a href="https://nextjs.org/docs" target="_blank" rel="noreferrer">Docs Next</a>
+          <a href="https://react.dev" target="_blank" rel="noreferrer">Docs React</a>
+        </div>
+      </section>
+    </main>
+  );
+}
+""",
+            "src/app/globals.css": """* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #f7f7fb;
+  background: #08090d;
+}
+
+a {
+  color: inherit;
+}
+
+.page-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 32px;
+}
+
+.hero {
+  width: min(720px, 100%);
+}
+
+.eyebrow {
+  margin: 0 0 12px;
+  color: #8ab4ff;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+h1 {
+  margin: 0;
+  font-size: 48px;
+  line-height: 1.05;
+}
+
+p {
+  color: #b8c0d4;
+  font-size: 18px;
+  line-height: 1.6;
+}
+
+code {
+  color: #7dd3fc;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 24px;
+}
+
+.actions a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid #2b3550;
+  border-radius: 8px;
+  background: #121722;
+  text-decoration: none;
+}
+
+.actions a:hover {
+  border-color: #5b8dff;
+}
+
+@media (max-width: 520px) {
+  .page-shell {
+    padding: 22px;
+  }
+
+  h1 {
+    font-size: 36px;
+  }
+
+  p {
+    font-size: 16px;
+  }
+}
+""",
+            ".gitignore": """node_modules
+.next
+out
+.env
+.env.local
+""",
+            "README.md": """# JoyBoy Next Template
+
+Template Next.js minimal avec App Router.
+
+## Lancer le projet
+
+```bash
+npm install
+npm run dev
+```
+
+Les fichiers principaux sont dans `src/app/`.
+""",
+        }
+
+    def _known_frontend_template_paths(self) -> List[str]:
+        return [
+            "package.json",
+            "index.html",
+            "next.config.mjs",
+            "jsconfig.json",
+            "public/index.html",
+            "src/main.jsx",
+            "src/App.jsx",
+            "src/App.css",
+            "src/index.js",
+            "src/App.js",
+            "src/index.css",
+            "src/app/layout.jsx",
+            "src/app/page.jsx",
+            "src/app/globals.css",
+            ".gitignore",
+            "README.md",
+        ]
+
+    def _existing_known_template_files(self, workspace_path: str) -> List[str]:
+        from core.workspace_tools import _resolve_workspace_path
+
+        existing: List[str] = []
+        for path in self._known_frontend_template_paths():
+            full_path = _resolve_workspace_path(workspace_path, path)
+            if not full_path or not os.path.isfile(full_path):
+                continue
+            existing.append(path)
+        return existing
+
+    def _delete_template_file_direct(self, workspace_path: str, relative_path: str) -> ToolResult:
+        from core.workspace_tools import _resolve_workspace_path
+
+        full_path = _resolve_workspace_path(workspace_path, relative_path)
+        if not full_path:
+            return ToolResult(success=False, tool_name="delete_file", error="Path escapes the workspace")
+        if not os.path.isfile(full_path):
+            return ToolResult(success=False, tool_name="delete_file", error=f"File not found: {relative_path}")
+
+        self._create_snapshot(full_path, relative_path)
+        try:
+            os.remove(full_path)
+        except OSError as exc:
+            return ToolResult(success=False, tool_name="delete_file", error=str(exc))
+
+        verified = self._verify_file_deleted(workspace_path, relative_path)
+        data = {
+            "path": relative_path,
+            "deleted": bool(verified.get("verified")),
+            "verified": bool(verified.get("verified")),
+        }
+        if not verified.get("verified"):
+            return ToolResult(
+                success=False,
+                tool_name="delete_file",
+                data=data,
+                error=verified.get("error", f"Verification failed for {relative_path}"),
+            )
+        self._log_action("delete_file", relative_path, True)
+        print(f"[WORKSPACE] Deleted: {relative_path}")
+        return ToolResult(success=True, tool_name="delete_file", data=data)
+
     def _run_simple_react_template(self, workspace_path: str) -> Generator[Dict, None, None]:
         from core.workspace_tools import _resolve_workspace_path
 
@@ -2620,6 +2894,100 @@ Les fichiers principaux sont dans `src/`.
             + preserved
             + "\n\nCommandes:\n"
             f"```bash\nnpm install\n{command}\n```"
+        )
+        yield runtime_event('content', text=text, token_stats=total_token_stats)
+        yield runtime_event('done', full_response=text, token_stats=total_token_stats)
+
+    def _run_simple_next_template(self, workspace_path: str, replace_existing: bool = False) -> Generator[Dict, None, None]:
+        from core.workspace_tools import _resolve_workspace_path
+
+        total_token_stats = {
+            'prompt_tokens': 0,
+            'completion_tokens': 0,
+            'total': 0,
+            'context_size': self._active_context_size,
+        }
+        list_args = {'path': '.'}
+        yield runtime_event('tool_call', name='list_files', args=list_args)
+        listing = self.execute_tool('list_files', list_args, workspace_path)
+        yield runtime_event('tool_result', result={
+            'success': listing.success,
+            'tool_name': listing.tool_name,
+            'data': listing.data,
+            'error': listing.error,
+            'write_blocked': False,
+        })
+
+        deleted = []
+        if replace_existing:
+            for path in self._existing_known_template_files(workspace_path):
+                yield runtime_event('tool_call', name='delete_file', args={'path': path})
+                result = self._delete_template_file_direct(workspace_path, path)
+                deleted.append({
+                    "path": path,
+                    "success": result.success,
+                    "error": result.error,
+                })
+                yield runtime_event('tool_result', result={
+                    'success': result.success,
+                    'tool_name': 'delete_file',
+                    'data': result.data,
+                    'error': result.error,
+                    'write_blocked': False,
+                })
+
+        files = self._next_template_files(workspace_path)
+        existing = []
+        pending_files: Dict[str, str] = {}
+        for path, content in files.items():
+            full_path = _resolve_workspace_path(workspace_path, path)
+            if full_path and os.path.exists(full_path):
+                existing.append(path)
+            else:
+                pending_files[path] = content
+
+        if existing and not replace_existing:
+            text = (
+                "Je n'ai pas écrasé les fichiers existants.\n\n"
+                "Demande explicitement de remplacer le template si tu veux convertir ce dossier en Next.js.\n\n"
+                "Conflits:\n"
+                + "\n".join(f"- {path}" for path in existing)
+            )
+            yield runtime_event('content', text=text, token_stats=total_token_stats)
+            yield runtime_event('done', full_response=text, token_stats=total_token_stats)
+            return
+
+        args = {
+            'files': [{'path': path, 'content': content} for path, content in pending_files.items()],
+            'overwrite_existing': False,
+        }
+        yield runtime_event('tool_call', name='write_files', args=args)
+        result = self.execute_tool('write_files', args, workspace_path)
+        yield runtime_event('tool_result', result={
+            'success': result.success,
+            'tool_name': result.tool_name,
+            'data': result.data,
+            'error': result.error,
+            'write_blocked': self.write_blocked,
+        })
+        if self.write_blocked:
+            self.write_blocked = False
+        if not result.success:
+            text = f"Template Next.js interrompu: {result.error or 'erreur inconnue'}."
+            yield runtime_event('content', text=text, token_stats=total_token_stats)
+            yield runtime_event('done', full_response=text, token_stats=total_token_stats)
+            return
+
+        created = [item.get('path') for item in result.data.get('files', []) if item.get('path')]
+        deleted_ok = [item['path'] for item in deleted if item.get('success')]
+        deleted_text = ("\n\nFichiers de template retirés:\n" + "\n".join(f"- {path}" for path in deleted_ok)) if deleted_ok else ""
+        text = (
+            "Template Next.js prêt sans appel LLM.\n\n"
+            "Fichiers ajoutés:\n"
+            + "\n".join(f"- {path}" for path in created)
+            + deleted_text
+            + "\n\nCommandes:\n"
+            "```bash\nnpm install\nnpm run dev\n```"
         )
         yield runtime_event('content', text=text, token_stats=total_token_stats)
         yield runtime_event('done', full_response=text, token_stats=total_token_stats)
@@ -3590,7 +3958,8 @@ You have access to filesystem, search, shell, and workspace tools. Use them to c
         write_kw = ['modifie', 'modifier', 'change', 'ajoute', 'supprime', 'crée', 'créer',
                     'cree', 'creer', 'cr?er', 'écris', 'ecris', 'fix', 'corrige',
                     'refactor', 'implémente', 'implemente', 'update', 'create', 'make',
-                    'code', 'coder', 'fais', 'fait']
+                    'code', 'coder', 'fais', 'fait', 'delete', 'remove', 'efface',
+                    'remplace', 'replace', 'convert', 'convertis']
         if any(kw in msg for kw in write_kw):
             return 'write'
 

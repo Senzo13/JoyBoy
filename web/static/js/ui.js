@@ -994,7 +994,15 @@ function isTerminalCloudModelId(modelId) {
 
 function getTerminalSelectedModelId(explicitModelId = null) {
     if (explicitModelId) return explicitModelId;
-    if (typeof terminalToolModel !== 'undefined' && terminalToolModel) return terminalToolModel;
+    if (typeof terminalToolModel !== 'undefined' && terminalToolModel) {
+        const activeCloudChatModel = typeof getActiveCloudChatModel === 'function'
+            ? getActiveCloudChatModel()
+            : null;
+        if (activeCloudChatModel && !isTerminalCloudModelId(terminalToolModel)) {
+            return activeCloudChatModel;
+        }
+        return terminalToolModel;
+    }
     if (typeof userSettings !== 'undefined') {
         return userSettings.terminalModel || userSettings.chatModel || null;
     }
@@ -2055,6 +2063,12 @@ function getSelectedModelForTab(tab) {
     if (tab === 'text2img') return selectedText2ImgModel;
     if (tab === 'vision') return selectedVisionModel || (VISION_MODELS_LIST[0]?.id);
     if (tab === 'chat' && typeof terminalMode !== 'undefined' && terminalMode) {
+        const activeCloudChatModel = typeof getActiveCloudChatModel === 'function'
+            ? getActiveCloudChatModel()
+            : null;
+        if (activeCloudChatModel && (!terminalToolModel || !isTerminalCloudModelId(terminalToolModel))) {
+            return activeCloudChatModel;
+        }
         return (typeof terminalToolModel !== 'undefined' && terminalToolModel)
             || userSettings.terminalModel
             || selectedChatModel;

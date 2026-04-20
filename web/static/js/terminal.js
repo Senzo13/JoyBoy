@@ -822,6 +822,18 @@ function getActiveCloudChatModel() {
     return terminalUsesCloudModel(chatModel) ? chatModel : null;
 }
 
+function getTerminalTextModelForRequest() {
+    const activeCloudChatModel = getActiveCloudChatModel();
+    if (activeCloudChatModel && (!terminalToolModel || !terminalUsesCloudModel(terminalToolModel))) {
+        if (terminalToolModel && terminalToolModel !== activeCloudChatModel) {
+            console.log('[TERMINAL] Modèle cloud chat prioritaire pour la requête:', activeCloudChatModel);
+        }
+        terminalToolModel = activeCloudChatModel;
+        return activeCloudChatModel;
+    }
+    return terminalToolModel || userSettings?.terminalModel || userSettings?.chatModel || 'qwen3.5:2b';
+}
+
 // ===== TERMINAL INPUT LOCK =====
 
 /**
@@ -1676,7 +1688,7 @@ async function streamTerminalChat(message, isAutoContinue = false) {
         // 3. Modèle chat par défaut (fallback)
         const modelToUse = (imageData && terminalVisionModel)
             ? terminalVisionModel
-            : (terminalToolModel || userSettings.chatModel || 'qwen3.5:2b');
+            : getTerminalTextModelForRequest();
         const effectiveContextSize = typeof getTerminalEffectiveContextSize === 'function'
             ? getTerminalEffectiveContextSize(modelToUse)
             : (userSettings.contextSize || 8192);

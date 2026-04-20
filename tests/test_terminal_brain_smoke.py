@@ -101,6 +101,30 @@ class TerminalBrainSmokeTests(unittest.TestCase):
             self.assertTrue((Path(tmp) / "src" / "App.jsx").exists())
             self.assertFalse(any(event.get("type") == "thinking" for event in events))
 
+    def test_next_template_replace_fast_path_avoids_model_tokens(self):
+        brain = TerminalBrain()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            list(brain.run_agentic_loop(
+                "ok bref créer moi un putain de template react",
+                tmp,
+                model="qwen3.5:2b",
+            ))
+            events = list(brain.run_agentic_loop(
+                "delete le template react, je veux un template next js",
+                tmp,
+                model="qwen3.5:2b",
+            ))
+
+            self.assertTrue((Path(tmp) / "package.json").exists())
+            self.assertTrue((Path(tmp) / "src" / "app" / "page.jsx").exists())
+            self.assertTrue((Path(tmp) / "src" / "app" / "layout.jsx").exists())
+            self.assertFalse((Path(tmp) / "src" / "App.jsx").exists())
+            self.assertFalse(any(event.get("type") == "thinking" for event in events))
+            done = [event for event in events if event.get("type") == "done"][-1]
+            self.assertEqual(done.get("token_stats", {}).get("total"), 0)
+            self.assertIn("Template Next.js prêt sans appel LLM", done.get("full_response", ""))
+
     def test_dangling_tool_calls_are_patched_before_cloud_model_call(self):
         brain = TerminalBrain()
         messages = [
