@@ -102,7 +102,7 @@ class TerminalBrainSmokeTests(unittest.TestCase):
         self.assertIn("call_missing", patched_tool_ids)
         self.assertIn("call_done", patched_tool_ids)
 
-    def test_stale_tool_message_before_assistant_does_not_close_tool_call(self):
+    def test_orphan_tool_message_is_converted_before_cloud_model_call(self):
         brain = TerminalBrain()
         messages = [
             {"role": "system", "content": "system"},
@@ -126,8 +126,14 @@ class TerminalBrainSmokeTests(unittest.TestCase):
             for item in patched
             if item.get("role") == "tool"
         ]
+        compacted_tool_results = [
+            item.get("content", "")
+            for item in patched
+            if item.get("role") == "user" and "[COMPACTED TOOL RESULT]" in item.get("content", "")
+        ]
 
-        self.assertEqual(patched_tool_ids.count("call_stale"), 2)
+        self.assertEqual(patched_tool_ids.count("call_stale"), 1)
+        self.assertEqual(len(compacted_tool_results), 1)
 
     def test_terminal_brain_full_access_allows_delete_file_tool(self):
         brain = TerminalBrain()
@@ -265,6 +271,19 @@ class TerminalBrainSmokeTests(unittest.TestCase):
                 {"tool": "write_files", "success": True, "summary": "2 files"},
             ])
         )
+
+    def test_write_task_keeps_tools_after_passive_guard(self):
+        brain = TerminalBrain()
+        brain.current_intent = "write"
+
+        self.assertTrue(brain._should_continue_write_after_guard("glob", []))
+        self.assertFalse(
+            brain._should_continue_write_after_guard(
+                "glob",
+                [{"tool": "write_files", "success": False}],
+            )
+        )
+        self.assertFalse(brain._should_continue_write_after_guard("edit_file", []))
 
     def test_explicit_web_request_auto_promotes_web_tools(self):
         brain = TerminalBrain()

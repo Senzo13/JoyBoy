@@ -1373,16 +1373,23 @@ class TerminalBrain:
                     guard_reason = loop_guard.check(tool_name, args, executed_tools)
                     if guard_reason and not autonomous:
                         guard_hits += 1
-                        force_final = True
                         yield runtime_event('loop_warning', action=tool_name, reason=guard_reason)
                         guard_text = (
                             f"[TERMINAL GUARDRAIL] {guard_reason}. "
-                            "Stop repetitive tools and produce the final synthesis now."
+                            "Stop repetitive tools and continue from the available context."
                         )
                         guard_message = {"role": "tool", "tool_name": tool_name, "content": guard_text}
                         if tool_call_id:
                             guard_message["tool_call_id"] = tool_call_id
                         messages.append(guard_message)
+                        if self._should_continue_write_after_guard(tool_name, executed_tools) and guard_hits < 3:
+                            messages.append({
+                                'role': 'user',
+                                'content': self._write_progress_nudge(initial_message),
+                            })
+                            continue
+
+                        force_final = True
                         if guard_hits >= 2:
                             final_text = self._guardrail_fallback_answer(initial_message, executed_tools)
                             full_response += final_text
@@ -1613,56 +1620,93 @@ class TerminalBrain:
         return compact_calls
 
     def _patch_dangling_tool_messages(self, messages: List[Dict]) -> List[Dict]:
-        """Insert synthetic tool outputs for assistant tool calls missing results.
+        """Normalize assistant/tool pairs before the next model call.
 
         Cloud providers reject histories where an assistant function_call has no
-        matching function_call_output/tool message. DeerFlow solves this with a
-        dangling-tool middleware; JoyBoy keeps the same invariant in its simple
-        dict-based loop.
+        matching function_call_output/tool message. They can also reject a
+        standalone tool message whose assistant call was compacted away.
+        DeerFlow solves this with dangling-tool middleware; JoyBoy keeps the
+        same invariant in its simple dict-based loop.
         """
         if not messages:
             return messages
 
-        if not any(isinstance(message, dict) and message.get("role") == "assistant" and message.get("tool_calls") for message in messages):
+        has_tool_protocol = any(
+            isinstance(message, dict)
+            and (
+                (message.get("role") == "assistant" and message.get("tool_calls"))
+                or message.get("role") == "tool"
+            )
+            for message in messages
+        )
+        if not has_tool_protocol:
             return messages
 
         patched: List[Dict] = []
-        patched_ids = set()
         patch_count = 0
-        for index, message in enumerate(messages):
-            patched.append(message)
-            if not isinstance(message, dict) or message.get("role") != "assistant":
-                continue
-            following_tool_ids = set()
-            for later in messages[index + 1:]:
-                if not isinstance(later, dict):
-                    continue
-                later_role = later.get("role")
-                if later_role == "tool" and later.get("tool_call_id"):
-                    following_tool_ids.add(str(later.get("tool_call_id") or ""))
-                    continue
-                if later_role in {"assistant", "user", "system"}:
-                    break
-            for call in message.get("tool_calls") or []:
-                call_id = self._tool_call_id(call)
-                if not call_id or call_id in following_tool_ids or call_id in patched_ids:
-                    continue
-                tool_name = self._tool_call_name(call) or "tool"
+        orphan_count = 0
+        pending_tool_ids: set[str] = set()
+
+        def append_missing_outputs(before_role: str | None = None) -> None:
+            nonlocal patch_count
+            if not pending_tool_ids:
+                return
+            for call_id in list(pending_tool_ids):
                 patched.append({
                     "role": "tool",
-                    "tool_name": tool_name,
+                    "tool_name": "tool",
                     "tool_call_id": call_id,
                     "content": (
                         "[TERMINAL GUARDRAIL] Tool call did not return an output "
-                        "before the next model call. Treat it as failed and continue "
+                        f"before {before_role or 'the next model call'}. Treat it as failed and continue "
                         "from the available context."
                     ),
                 })
-                patched_ids.add(call_id)
                 patch_count += 1
+            pending_tool_ids.clear()
 
-        if patch_count:
-            print(f"[BRAIN] Patched {patch_count} dangling tool call output(s)")
+        for message in messages:
+            if not isinstance(message, dict):
+                append_missing_outputs("a non-message item")
+                patched.append(message)
+                continue
+
+            role = message.get("role")
+            if role == "tool":
+                call_id = str(message.get("tool_call_id") or "").strip()
+                if call_id and call_id in pending_tool_ids:
+                    patched.append(message)
+                    pending_tool_ids.remove(call_id)
+                else:
+                    orphan_count += 1
+                    tool_name = str(message.get("tool_name") or message.get("name") or "tool").strip()
+                    patched.append({
+                        "role": "user",
+                        "content": (
+                            "[COMPACTED TOOL RESULT]\n"
+                            f"Tool result ({tool_name}) was kept after its assistant tool call left the context:\n"
+                            f"{message.get('content', '')}"
+                        ),
+                    })
+                continue
+
+            if role in {"assistant", "user", "system"}:
+                append_missing_outputs(role)
+
+            patched.append(message)
+            if role == "assistant":
+                for call in message.get("tool_calls") or []:
+                    call_id = self._tool_call_id(call)
+                    if call_id:
+                        pending_tool_ids.add(call_id)
+
+        append_missing_outputs("the next model call")
+
+        if patch_count or orphan_count:
+            print(
+                f"[BRAIN] Patched tool protocol: "
+                f"{patch_count} dangling output(s), {orphan_count} orphan tool result(s)"
+            )
         return patched
 
     def _limit_delegate_subagent_calls(self, tool_calls: Any) -> tuple[List[Any], int]:
@@ -2549,6 +2593,14 @@ class TerminalBrain:
         recent = [item.get("tool") for item in executed_tools[-4:]]
         passive_tools = {"list_files", "read_file", "glob", "search", "tool_search", "write_todos", "think"}
         return all(tool in passive_tools for tool in recent)
+
+    def _should_continue_write_after_guard(self, tool_name: str, executed_tools: List[Dict]) -> bool:
+        passive_guard_tools = {"list_files", "glob", "search", "tool_search", "write_todos", "bash"}
+        return (
+            self.current_intent in {"write", "execute"}
+            and tool_name in passive_guard_tools
+            and not self._has_attempted_mutation(executed_tools)
+        )
 
     def _write_progress_nudge(self, initial_message: str) -> str:
         if self._is_scaffold_write_request(initial_message):
