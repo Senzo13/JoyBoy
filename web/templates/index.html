@@ -1894,8 +1894,9 @@
             </div>
             <div class="prompt-input-wrapper">
                 <textarea class="prompt-input" id="prompt-input" placeholder="Comment puis-je vous aider ?" autocomplete="off" rows="1"></textarea>
-                <!-- Model Picker Custom -->
-                <div class="model-picker" id="model-picker">
+            </div>
+            <!-- Model Picker Custom -->
+            <div class="model-picker" id="model-picker">
                 <div class="model-picker-btn" onclick="toggleModelPicker()">
                     <i data-lucide="layers"></i>
                     <span id="selected-model-text">Auto</span>
@@ -1920,7 +1921,6 @@
                         </button>
                     </div>
                 </div>
-            </div>
             </div>
             <input type="hidden" id="model-select" value="">
             <button class="video-btn" id="video-btn" onclick="handleVideoClick()" data-i18n-tooltip="composer.tooltips.video">
@@ -2066,8 +2066,9 @@
                 </div>
                 <div class="prompt-input-wrapper">
                     <textarea class="prompt-input" id="chat-prompt" placeholder="Continuer la conversation..." autocomplete="off" rows="1"></textarea>
-                    <!-- Chat Model Picker Custom -->
-                    <div class="model-picker" id="chat-model-picker">
+                </div>
+                <!-- Chat Model Picker Custom -->
+                <div class="model-picker" id="chat-model-picker">
                         <div class="model-picker-btn" onclick="toggleModelPicker('chat')">
                             <i data-lucide="layers"></i>
                             <span id="chat-selected-model-text">Auto</span>
@@ -2093,7 +2094,6 @@
                             </div>
                         </div>
                     </div>
-                </div>
                 <!-- Hidden legacy dropdown -->
                 <div class="model-dropdown" id="chat-model-dropdown" style="display:none;">
                     <div class="model-selected" onclick="toggleChatDropdown()">

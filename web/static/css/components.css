@@ -251,59 +251,61 @@
 
 /* ===== INPUT BAR ===== */
 .input-bar {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto auto auto;
+  grid-template-areas:
+    "attachments attachments attachments attachments attachments attachments"
+    "prompt prompt prompt prompt prompt prompt"
+    "attach permission spacer model video send";
   align-items: center;
   background: #141414;
   border: 1px solid #262626;
-  border-radius: 28px;
-  padding: 6px 8px 6px 16px;
+  border-radius: 24px;
+  padding: 10px 10px 8px 16px;
   width: 100%;
   max-width: 850px;
-  gap: 8px;
-}
-
-.input-bar.has-attachments {
-  flex-wrap: wrap;
-  align-items: flex-end;
-  padding-top: 8px;
-  border-radius: 24px;
+  column-gap: 8px;
+  row-gap: 5px;
 }
 
 .composer-attachment-stack {
+  grid-area: attachments;
   display: none;
   align-items: center;
   gap: 8px;
+  justify-self: start;
   min-width: 0;
 }
 
-.input-bar.has-attachments .composer-attachment-stack {
-  order: 0;
+.input-bar.has-attachments .composer-attachment-stack,
+.input-bar:has(.image-preview[style*="block"], .style-ref-container.has-image, .face-ref-container.has-image) .composer-attachment-stack {
   display: flex;
-  flex: 0 0 100%;
-  justify-content: flex-end;
-  padding: 0 44px 0 42px;
 }
 
-.input-bar.has-attachments .attach-btn {
-  order: 1;
+.input-bar > .attach-btn {
+  grid-area: attach;
 }
 
-.input-bar.has-attachments .prompt-input-wrapper {
-  order: 2;
-  min-width: 0;
+.input-bar > .prompt-input-wrapper {
+  grid-area: prompt;
 }
 
-.input-bar.has-attachments .model-dropdown,
-.input-bar.has-attachments .terminal-permission-picker {
-  order: 3;
+.input-bar > .model-picker {
+  grid-area: model;
+  justify-self: end;
 }
 
-.input-bar.has-attachments .video-btn {
-  order: 4;
+.input-bar > .terminal-permission-picker {
+  grid-area: permission;
+  justify-self: start;
 }
 
-.input-bar.has-attachments .send-btn {
-  order: 5;
+.input-bar > .video-btn {
+  grid-area: video;
+}
+
+.input-bar > .send-btn {
+  grid-area: send;
 }
 
 /* ===== SHARED TOOLTIP ===== */
@@ -437,11 +439,11 @@
 }
 
 .prompt-input-wrapper {
-  flex: 1;
+  width: 100%;
   min-width: 0;
   position: relative;
-  display: flex;
-  align-items: center;
+  display: block;
+  align-self: start;
 }
 
 .prompt-input {
@@ -450,11 +452,12 @@
   border: none;
   color: white;
   font-size: 16px;
-  padding: 12px 180px 12px 12px; /* 160px pour laisser place au model picker */
+  padding: 2px 8px 4px 0;
   outline: none;
   resize: none;
-  height: 46px;
-  min-height: 46px;
+  width: 100%;
+  height: 32px;
+  min-height: 32px;
   max-height: 150px;
   overflow-y: auto;
   line-height: 1.4;
@@ -699,10 +702,10 @@
 
 /* ===== MODEL PICKER (Custom) ===== */
 .model-picker {
-  position: absolute;
-  right: 8px;
-  top: 50%;
-  transform: translateY(-50%);
+  position: relative;
+  right: auto;
+  top: auto;
+  transform: none;
   display: flex;
   flex-shrink: 0;
   z-index: 10;

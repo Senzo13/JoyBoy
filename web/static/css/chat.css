@@ -2390,8 +2390,18 @@ body.sidebar-collapsed.terminal-mode .chat-input-bar {
 }
 
 body.terminal-mode .input-bar {
+    display: grid !important;
+    grid-template-columns: auto auto minmax(0, 1fr) auto auto auto !important;
+    grid-template-areas:
+        "attachments attachments attachments attachments attachments attachments"
+        "prompt prompt prompt prompt prompt prompt"
+        "attach permission spacer model video send" !important;
+    align-items: center !important;
     max-width: none !important;
-    border-radius: 28px !important;
+    column-gap: 8px !important;
+    row-gap: 5px !important;
+    padding: 10px 10px 8px 16px !important;
+    border-radius: 24px !important;
     border-color: #262626 !important;
     background: #141414 !important;
 }
@@ -2407,8 +2417,45 @@ body.terminal-mode .prompt-input {
     color: white !important;
     font-family: inherit !important;
     font-size: 16px !important;
-    padding: 12px 180px 12px 12px !important;
+    width: 100% !important;
+    height: 32px !important;
+    min-height: 32px !important;
+    padding: 2px 8px 4px 0 !important;
     box-shadow: none !important;
+}
+
+body.terminal-mode .prompt-input-wrapper {
+    grid-area: prompt !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    display: block !important;
+    align-self: start !important;
+}
+
+body.terminal-mode .model-picker {
+    grid-area: model !important;
+    position: relative !important;
+    right: auto !important;
+    top: auto !important;
+    transform: none !important;
+    justify-self: end !important;
+}
+
+body.terminal-mode .attach-btn {
+    grid-area: attach !important;
+}
+
+body.terminal-mode .terminal-permission-picker {
+    grid-area: permission !important;
+    justify-self: start !important;
+}
+
+body.terminal-mode .video-btn {
+    grid-area: video !important;
+}
+
+body.terminal-mode .send-btn {
+    grid-area: send !important;
 }
 
 body.terminal-mode .prompt-input::placeholder {
@@ -2448,55 +2495,15 @@ body.terminal-mode .clear-image-btn {
 
 body.terminal-mode .input-bar.has-attachments,
 body.terminal-mode .input-bar:has(.image-preview[style*="block"], .style-ref-container.has-image, .face-ref-container.has-image) {
-    flex-wrap: wrap !important;
-    align-items: flex-end !important;
-    padding-top: 8px !important;
     border-radius: 24px !important;
 }
 
 body.terminal-mode .input-bar.has-attachments > .composer-attachment-stack,
 body.terminal-mode .input-bar:has(.image-preview[style*="block"], .style-ref-container.has-image, .face-ref-container.has-image) > .composer-attachment-stack {
-    order: 0 !important;
+    grid-area: attachments !important;
     display: flex !important;
-    flex: 0 0 100% !important;
-    justify-content: flex-end !important;
-    padding: 0 44px 0 42px !important;
-}
-
-body.terminal-mode .input-bar:has(.image-preview[style*="block"], .style-ref-container.has-image, .face-ref-container.has-image) > .image-preview-container,
-body.terminal-mode .input-bar:has(.image-preview[style*="block"], .style-ref-container.has-image, .face-ref-container.has-image) > .face-ref-container,
-body.terminal-mode .input-bar:has(.image-preview[style*="block"], .style-ref-container.has-image, .face-ref-container.has-image) > .style-ref-container {
-    order: 0 !important;
-}
-
-body.terminal-mode .input-bar:has(.image-preview[style*="block"], .style-ref-container.has-image, .face-ref-container.has-image) > .image-preview-container {
-    margin-left: auto !important;
-}
-
-body.terminal-mode .input-bar.has-attachments > .attach-btn,
-body.terminal-mode .input-bar:has(.image-preview[style*="block"], .style-ref-container.has-image, .face-ref-container.has-image) > .attach-btn {
-    order: 1 !important;
-}
-
-body.terminal-mode .input-bar.has-attachments > .prompt-input-wrapper,
-body.terminal-mode .input-bar:has(.image-preview[style*="block"], .style-ref-container.has-image, .face-ref-container.has-image) > .prompt-input-wrapper {
-    order: 2 !important;
-    min-width: 0 !important;
-}
-
-body.terminal-mode .input-bar.has-attachments > .terminal-permission-picker,
-body.terminal-mode .input-bar:has(.image-preview[style*="block"], .style-ref-container.has-image, .face-ref-container.has-image) > .terminal-permission-picker {
-    order: 3 !important;
-}
-
-body.terminal-mode .input-bar.has-attachments > .video-btn,
-body.terminal-mode .input-bar:has(.image-preview[style*="block"], .style-ref-container.has-image, .face-ref-container.has-image) > .video-btn {
-    order: 4 !important;
-}
-
-body.terminal-mode .input-bar.has-attachments > .send-btn,
-body.terminal-mode .input-bar:has(.image-preview[style*="block"], .style-ref-container.has-image, .face-ref-container.has-image) > .send-btn {
-    order: 5 !important;
+    justify-self: start !important;
+    padding: 0 !important;
 }
 
 body.terminal-mode .terminal-permission-btn {
@@ -2977,12 +2984,12 @@ body.terminal-mode .model-picker-item.active {
     }
 
     body.terminal-mode .prompt-input {
-        padding: 12px 130px 12px 12px !important;
+        padding: 2px 8px 4px 0 !important;
     }
 
     body.terminal-mode .input-bar.has-attachments > .composer-attachment-stack,
     body.terminal-mode .input-bar:has(.image-preview[style*="block"], .style-ref-container.has-image, .face-ref-container.has-image) > .composer-attachment-stack {
-        padding: 0 38px 0 0 !important;
+        padding: 0 !important;
     }
 
     body.terminal-mode .terminal-thinking,
