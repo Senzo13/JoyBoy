@@ -2505,6 +2505,7 @@ function handlePromptKeydown(e, inputElement) {
 
     if (e.key === 'ArrowUp' && !isMultiline) {
         e.preventDefault();
+        e.stopPropagation();
         if (promptHistory.length === 0) return;
 
         if (historyIndex === -1) {
@@ -2514,18 +2515,22 @@ function handlePromptKeydown(e, inputElement) {
         if (historyIndex < promptHistory.length - 1) {
             historyIndex++;
             inputElement.value = promptHistory[promptHistory.length - 1 - historyIndex];
+            inputElement.setSelectionRange?.(inputElement.value.length, inputElement.value.length);
             // Resize après changement
             if (typeof autoResizeTextarea === 'function') autoResizeTextarea(inputElement);
         }
     } else if (e.key === 'ArrowDown' && !isMultiline) {
         e.preventDefault();
+        e.stopPropagation();
         if (historyIndex > 0) {
             historyIndex--;
             inputElement.value = promptHistory[promptHistory.length - 1 - historyIndex];
+            inputElement.setSelectionRange?.(inputElement.value.length, inputElement.value.length);
             if (typeof autoResizeTextarea === 'function') autoResizeTextarea(inputElement);
         } else if (historyIndex === 0) {
             historyIndex = -1;
             inputElement.value = currentTypedPrompt;
+            inputElement.setSelectionRange?.(inputElement.value.length, inputElement.value.length);
             if (typeof autoResizeTextarea === 'function') autoResizeTextarea(inputElement);
         } else {
             inputElement.value = '';

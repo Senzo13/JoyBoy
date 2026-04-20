@@ -660,6 +660,8 @@ async function generateEdit() {
         // Auto-fill stays neutral in core, but an active local pack can replace
         // the prompt via /api/packs/editor-prompts without hardcoding pack text here.
         prompt = await resolveEditorAutoFillPrompt();
+    } else if (typeof addToPromptHistory === 'function') {
+        addToPromptHistory(prompt);
     }
 
     const maskCanvas = document.createElement('canvas');
