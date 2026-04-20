@@ -786,7 +786,7 @@ function updateChatPadding() {
     if (!messagesDiv) return;
     if (document.body.classList.contains('terminal-mode')) {
         const inputBar = document.querySelector('.chat-input-bar');
-        const minPad = inputBar ? (inputBar.offsetHeight + 48) : 140;
+        const minPad = inputBar ? (inputBar.offsetHeight + 96) : 188;
         messagesDiv.style.paddingBottom = `${minPad}px`;
         return;
     }

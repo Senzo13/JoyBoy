@@ -2321,7 +2321,7 @@ body.terminal-mode .chat-messages {
     background: transparent !important;
     font-family: inherit !important;
     max-width: none !important;
-    padding: calc(var(--chat-header-h, 48px) + 40px) 30px calc(var(--chat-input-h, 80px) + 48px) !important;
+    padding: calc(var(--chat-header-h, 48px) + 40px) 30px calc(var(--chat-input-h, 80px) + 96px) !important;
 }
 
 body.terminal-mode .terminal-header {
@@ -2971,7 +2971,7 @@ body.terminal-mode .model-picker-item.active {
     }
 
     body.terminal-mode .chat-messages {
-        padding: calc(var(--chat-header-h, 48px) + 52px) 12px calc(var(--chat-input-h, 80px) + 28px) !important;
+        padding: calc(var(--chat-header-h, 48px) + 52px) 12px calc(var(--chat-input-h, 80px) + 72px) !important;
     }
 
     body.terminal-mode .chat-input-bar {
