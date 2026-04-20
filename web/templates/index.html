@@ -1878,17 +1878,19 @@
             <button class="attach-btn" onclick="toggleComposerActionMenu(event)" data-i18n-tooltip="composer.tooltips.attach">
                 <i data-lucide="plus"></i>
             </button>
-            <div class="image-preview-container">
-                <img id="image-preview" class="image-preview">
-                <button id="clear-image-btn" class="clear-image-btn" onclick="clearImage()">✕</button>
-            </div>
-            <div class="face-ref-container" id="face-ref-container">
-                <div class="face-ref-slots" id="face-ref-slots"></div>
-                <button id="clear-face-ref-btn" class="clear-face-ref-btn" onclick="clearFaceRef()">✕</button>
-            </div>
-            <div class="style-ref-container" id="style-ref-container">
-                <img id="style-ref-preview" class="style-ref-preview">
-                <button id="clear-style-ref-btn" class="clear-style-ref-btn" onclick="clearStyleRef()">✕</button>
+            <div class="composer-attachment-stack">
+                <div class="image-preview-container">
+                    <img id="image-preview" class="image-preview">
+                    <button id="clear-image-btn" class="clear-image-btn" onclick="clearImage()">✕</button>
+                </div>
+                <div class="face-ref-container" id="face-ref-container">
+                    <div class="face-ref-slots" id="face-ref-slots"></div>
+                    <button id="clear-face-ref-btn" class="clear-face-ref-btn" onclick="clearFaceRef()">✕</button>
+                </div>
+                <div class="style-ref-container" id="style-ref-container">
+                    <img id="style-ref-preview" class="style-ref-preview">
+                    <button id="clear-style-ref-btn" class="clear-style-ref-btn" onclick="clearStyleRef()">✕</button>
+                </div>
             </div>
             <div class="prompt-input-wrapper">
                 <textarea class="prompt-input" id="prompt-input" placeholder="Comment puis-je vous aider ?" autocomplete="off" rows="1"></textarea>
@@ -2048,17 +2050,19 @@
                 <button class="attach-btn" onclick="toggleComposerActionMenu(event)" data-i18n-tooltip="composer.tooltips.attach">
                 <i data-lucide="plus"></i>
             </button>
-                <div class="image-preview-container">
-                    <img id="chat-image-preview" class="image-preview">
-                    <button id="chat-clear-image-btn" class="clear-image-btn" onclick="clearImage()">✕</button>
-                </div>
-                <div class="face-ref-container" id="chat-face-ref-container">
-                    <div class="face-ref-slots" id="chat-face-ref-slots"></div>
-                    <button id="chat-clear-face-ref-btn" class="clear-face-ref-btn" onclick="clearFaceRef()">✕</button>
-                </div>
-                <div class="style-ref-container" id="chat-style-ref-container">
-                    <img id="chat-style-ref-preview" class="style-ref-preview">
-                    <button id="chat-clear-style-ref-btn" class="clear-style-ref-btn" onclick="clearStyleRef()">✕</button>
+                <div class="composer-attachment-stack">
+                    <div class="image-preview-container">
+                        <img id="chat-image-preview" class="image-preview">
+                        <button id="chat-clear-image-btn" class="clear-image-btn" onclick="clearImage()">✕</button>
+                    </div>
+                    <div class="face-ref-container" id="chat-face-ref-container">
+                        <div class="face-ref-slots" id="chat-face-ref-slots"></div>
+                        <button id="chat-clear-face-ref-btn" class="clear-face-ref-btn" onclick="clearFaceRef()">✕</button>
+                    </div>
+                    <div class="style-ref-container" id="chat-style-ref-container">
+                        <img id="chat-style-ref-preview" class="style-ref-preview">
+                        <button id="chat-clear-style-ref-btn" class="clear-style-ref-btn" onclick="clearStyleRef()">✕</button>
+                    </div>
                 </div>
                 <div class="prompt-input-wrapper">
                     <textarea class="prompt-input" id="chat-prompt" placeholder="Continuer la conversation..." autocomplete="off" rows="1"></textarea>
@@ -2128,7 +2132,8 @@
                 </div>
                 <div class="terminal-permission-picker" id="terminal-permission-picker">
                     <button type="button" class="terminal-permission-btn" id="terminal-permission-btn" onclick="toggleTerminalPermissionMenu(event)" aria-haspopup="menu" aria-expanded="false">
-                        <i data-lucide="shield"></i>
+                        <i data-lucide="shield" class="terminal-permission-icon terminal-permission-icon-default"></i>
+                        <i data-lucide="shield-alert" class="terminal-permission-icon terminal-permission-icon-full"></i>
                         <span id="terminal-permission-label">Autorisations par défaut</span>
                         <i data-lucide="chevron-down" class="arrow"></i>
                     </button>

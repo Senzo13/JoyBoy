@@ -2373,6 +2373,21 @@ function getCurrentTextModel() {
 }
 
 // ===== IMAGE PREVIEWS =====
+function updateComposerAttachmentState() {
+    const refs = typeof getFaceRefImages === 'function'
+        ? getFaceRefImages()
+        : (faceRefImage ? [faceRefImage] : []);
+    const hasAttachments = Boolean(currentImage || styleRefImage || refs.length);
+    document.querySelectorAll('.input-bar').forEach((bar) => {
+        bar.classList.toggle('has-attachments', hasAttachments);
+    });
+    requestAnimationFrame(() => {
+        const chatInputBar = document.querySelector('.chat-input-bar');
+        const nextHeight = Math.max(80, Math.ceil(chatInputBar?.offsetHeight || 80));
+        document.documentElement.style.setProperty('--chat-input-h', `${nextHeight}px`);
+    });
+}
+
 function updateImagePreviews() {
     const homePreview = document.getElementById('image-preview');
     const homeClearBtn = document.getElementById('clear-image-btn');
@@ -2392,6 +2407,7 @@ function updateImagePreviews() {
     if (chatClearBtn) {
         chatClearBtn.style.display = currentImage ? 'flex' : 'none';
     }
+    updateComposerAttachmentState();
 }
 
 function clearImage() {
@@ -2470,6 +2486,7 @@ function updateFaceRefPreviews() {
                 : '';
         }
     }
+    updateComposerAttachmentState();
 }
 
 function clearFaceRef() {
@@ -2506,6 +2523,7 @@ function updateStyleRefPreviews() {
             wrap.classList.toggle('has-image', !!styleRefImage);
         }
     }
+    updateComposerAttachmentState();
 }
 
 function clearStyleRef() {

@@ -262,6 +262,50 @@
   gap: 8px;
 }
 
+.input-bar.has-attachments {
+  flex-wrap: wrap;
+  align-items: flex-end;
+  padding-top: 8px;
+  border-radius: 24px;
+}
+
+.composer-attachment-stack {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.input-bar.has-attachments .composer-attachment-stack {
+  order: 0;
+  display: flex;
+  flex: 0 0 100%;
+  justify-content: flex-end;
+  padding: 0 44px 0 42px;
+}
+
+.input-bar.has-attachments .attach-btn {
+  order: 1;
+}
+
+.input-bar.has-attachments .prompt-input-wrapper {
+  order: 2;
+  min-width: 0;
+}
+
+.input-bar.has-attachments .model-dropdown,
+.input-bar.has-attachments .terminal-permission-picker {
+  order: 3;
+}
+
+.input-bar.has-attachments .video-btn {
+  order: 4;
+}
+
+.input-bar.has-attachments .send-btn {
+  order: 5;
+}
+
 /* ===== SHARED TOOLTIP ===== */
 .joy-tooltip {
   position: fixed;
@@ -394,6 +438,7 @@
 
 .prompt-input-wrapper {
   flex: 1;
+  min-width: 0;
   position: relative;
   display: flex;
   align-items: center;
@@ -725,20 +770,19 @@ body.terminal-mode .terminal-permission-picker {
   align-items: center;
   gap: 7px;
   padding: 0 10px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: none;
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.04);
+  background: transparent;
   color: #d6d9e3;
   cursor: pointer;
   font-size: 13px;
   font-weight: 600;
   white-space: nowrap;
-  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  transition: background 0.15s ease, color 0.15s ease;
 }
 
 .terminal-permission-btn:hover {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
   color: #fff;
 }
 
@@ -746,6 +790,18 @@ body.terminal-mode .terminal-permission-picker {
   width: 15px;
   height: 15px;
   flex-shrink: 0;
+}
+
+.terminal-permission-icon-full {
+  display: none;
+}
+
+.terminal-permission-picker[data-mode="full_access"] .terminal-permission-icon-default {
+  display: none;
+}
+
+.terminal-permission-picker[data-mode="full_access"] .terminal-permission-icon-full {
+  display: block;
 }
 
 .terminal-permission-btn .arrow {
@@ -802,6 +858,16 @@ body.terminal-mode .terminal-permission-picker {
   color: #dbeafe;
 }
 
+.terminal-permission-option[data-permission-mode="full_access"] {
+  color: #fca5a5;
+}
+
+.terminal-permission-option[data-permission-mode="full_access"]:hover,
+.terminal-permission-option[data-permission-mode="full_access"][aria-checked="true"] {
+  background: rgba(239, 68, 68, 0.13);
+  color: #ff8a8a;
+}
+
 .terminal-permission-option svg {
   width: 15px;
   height: 15px;
@@ -809,11 +875,20 @@ body.terminal-mode .terminal-permission-picker {
 }
 
 .terminal-permission-picker[data-mode="full_access"] .terminal-permission-btn {
-  border-color: rgba(248, 113, 113, 0.28);
-  color: #fecaca;
+  color: #ff8a8a;
+  background: transparent;
+}
+
+.terminal-permission-picker[data-mode="full_access"] .terminal-permission-btn:hover {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ff9f9f;
 }
 
 @media (max-width: 640px) {
+  .input-bar.has-attachments .composer-attachment-stack {
+    padding: 0 38px 0 0;
+  }
+
   .terminal-permission-btn {
     width: 38px;
     padding: 0;
