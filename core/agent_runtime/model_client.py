@@ -7,9 +7,12 @@ opt-in by using a provider-prefixed model id such as `openai:gpt-5.4-mini` or
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import socket
 import time
+import uuid
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
@@ -18,6 +21,8 @@ import requests
 from core.infra.local_config import (
     get_provider_auth_status,
     get_provider_secret,
+    load_claude_code_oauth_credential,
+    load_codex_cli_credential,
 )
 
 from .output import truncate_middle
@@ -25,6 +30,13 @@ from .output import truncate_middle
 
 class CloudModelError(RuntimeError):
     """Raised when a configured cloud model cannot be called safely."""
+
+
+CODEX_CLI_BASE_URL = "https://chatgpt.com/backend-api/codex"
+ANTHROPIC_OAUTH_BETAS = "oauth-2025-04-20,claude-code-20250219,interleaved-thinking-2025-05-14"
+ANTHROPIC_OAUTH_BILLING_HEADER = (
+    "x-anthropic-billing-header: cc_version=2.1.85.351; cc_entrypoint=cli; cch=6c6d5;"
+)
 
 
 @dataclass(frozen=True)
@@ -787,20 +799,13 @@ def _anthropic_messages(messages: list[dict[str, Any]]) -> tuple[str, list[dict[
     return "\n\n".join(system_parts), converted
 
 
-def _chat_with_anthropic(
-    provider: LLMProviderDescriptor,
+def _anthropic_request_payload(
     provider_model: str,
     messages: list[dict[str, Any]],
     tools: list[dict[str, Any]] | None,
     max_tokens: int,
     temperature: float,
-    timeout_seconds: int,
 ) -> dict[str, Any]:
-    _ensure_direct_api_auth(provider)
-    api_key = get_provider_secret(provider.env_key) if provider.env_key else ""
-    if provider.requires_key and not api_key:
-        raise CloudModelError(f"Missing {provider.env_key} for provider {provider.label}")
-
     system_prompt, anthropic_messages = _anthropic_messages(messages)
     payload: dict[str, Any] = {
         "model": provider_model,
@@ -813,27 +818,10 @@ def _chat_with_anthropic(
     converted_tools = _anthropic_tools(tools)
     if converted_tools:
         payload["tools"] = converted_tools
+    return payload
 
-    headers = {
-        "Content-Type": "application/json",
-        "x-api-key": api_key,
-        "anthropic-version": os.environ.get("ANTHROPIC_VERSION", "2023-06-01"),
-    }
-    url = f"{_provider_base_url(provider)}/messages"
-    try:
-        response = requests.post(url, headers=headers, json=payload, timeout=timeout_seconds)
-    except requests.RequestException as exc:
-        raise CloudModelError(f"{provider.label} request failed: {exc}") from exc
 
-    if response.status_code >= 400:
-        detail = truncate_middle(response.text or response.reason or "", 800)
-        raise CloudModelError(f"{provider.label} API error {response.status_code}: {detail}")
-
-    try:
-        data = response.json()
-    except ValueError as exc:
-        raise CloudModelError(f"{provider.label} returned invalid JSON") from exc
-
+def _parse_anthropic_response(provider: LLMProviderDescriptor, provider_model: str, data: dict[str, Any]) -> dict[str, Any]:
     content_blocks = data.get("content") or []
     text_parts: list[str] = []
     tool_calls: list[dict[str, Any]] = []
@@ -863,6 +851,114 @@ def _chat_with_anthropic(
         "provider": provider.id,
         "model": provider_model,
     }
+
+
+def _post_anthropic_request(
+    provider: LLMProviderDescriptor,
+    provider_model: str,
+    payload: dict[str, Any],
+    headers: dict[str, str],
+    timeout_seconds: int,
+) -> dict[str, Any]:
+    url = f"{_provider_base_url(provider)}/messages"
+    try:
+        response = requests.post(url, headers=headers, json=payload, timeout=timeout_seconds)
+    except requests.RequestException as exc:
+        raise CloudModelError(f"{provider.label} request failed: {exc}") from exc
+
+    if response.status_code >= 400:
+        detail = truncate_middle(response.text or response.reason or "", 800)
+        raise CloudModelError(f"{provider.label} API error {response.status_code}: {detail}")
+
+    try:
+        data = response.json()
+    except ValueError as exc:
+        raise CloudModelError(f"{provider.label} returned invalid JSON") from exc
+    return _parse_anthropic_response(provider, provider_model, data)
+
+
+def _apply_claude_oauth_billing(payload: dict[str, Any]) -> None:
+    billing_block = {
+        "type": "text",
+        "text": os.environ.get("ANTHROPIC_BILLING_HEADER", ANTHROPIC_OAUTH_BILLING_HEADER),
+    }
+    system = payload.get("system")
+    if isinstance(system, list):
+        payload["system"] = [billing_block] + [
+            block for block in system
+            if not (isinstance(block, dict) and "x-anthropic-billing-header:" in str(block.get("text") or ""))
+        ]
+    elif isinstance(system, str) and system:
+        payload["system"] = [billing_block, {"type": "text", "text": system}]
+    else:
+        payload["system"] = [billing_block]
+
+    metadata = payload.setdefault("metadata", {})
+    if isinstance(metadata, dict) and "user_id" not in metadata:
+        device_id = hashlib.sha256(f"joyboy-{socket.gethostname()}".encode("utf-8")).hexdigest()
+        metadata["user_id"] = json.dumps(
+            {
+                "device_id": device_id,
+                "account_uuid": "joyboy",
+                "session_id": str(uuid.uuid4()),
+            },
+            ensure_ascii=False,
+        )
+
+
+def _chat_with_claude_code_oauth(
+    provider: LLMProviderDescriptor,
+    provider_model: str,
+    messages: list[dict[str, Any]],
+    tools: list[dict[str, Any]] | None,
+    max_tokens: int,
+    temperature: float,
+    timeout_seconds: int,
+) -> dict[str, Any]:
+    credential = load_claude_code_oauth_credential()
+    access_token = str((credential or {}).get("access_token") or "").strip()
+    if not access_token:
+        raise CloudModelError(
+            "Claude Code OAuth auth not found. Expected CLAUDE_CODE_OAUTH_TOKEN, "
+            "ANTHROPIC_AUTH_TOKEN, CLAUDE_CODE_CREDENTIALS_PATH, or ~/.claude/.credentials.json."
+        )
+
+    payload = _anthropic_request_payload(provider_model, messages, tools, max_tokens, temperature)
+    _apply_claude_oauth_billing(payload)
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {access_token}",
+        "anthropic-version": os.environ.get("ANTHROPIC_VERSION", "2023-06-01"),
+        "anthropic-beta": os.environ.get("ANTHROPIC_OAUTH_BETAS", ANTHROPIC_OAUTH_BETAS),
+    }
+    return _post_anthropic_request(provider, provider_model, payload, headers, timeout_seconds)
+
+
+def _chat_with_anthropic(
+    provider: LLMProviderDescriptor,
+    provider_model: str,
+    messages: list[dict[str, Any]],
+    tools: list[dict[str, Any]] | None,
+    max_tokens: int,
+    temperature: float,
+    timeout_seconds: int,
+) -> dict[str, Any]:
+    auth_status = get_provider_auth_status(provider.id, provider.env_key)
+    if auth_status["mode"] == "claude_cli":
+        return _chat_with_claude_code_oauth(provider, provider_model, messages, tools, max_tokens, temperature, timeout_seconds)
+
+    _ensure_direct_api_auth(provider)
+    api_key = get_provider_secret(provider.env_key) if provider.env_key else ""
+    if provider.requires_key and not api_key:
+        raise CloudModelError(f"Missing {provider.env_key} for provider {provider.label}")
+
+    payload = _anthropic_request_payload(provider_model, messages, tools, max_tokens, temperature)
+    headers = {
+        "Content-Type": "application/json",
+        "x-api-key": api_key,
+        "anthropic-version": os.environ.get("ANTHROPIC_VERSION", "2023-06-01"),
+    }
+    return _post_anthropic_request(provider, provider_model, payload, headers, timeout_seconds)
 
 
 def _gemini_tools(tools: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
@@ -1006,6 +1102,244 @@ def _chat_with_gemini(
     }
 
 
+def _content_to_text(content: Any) -> str:
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = [_content_to_text(item) for item in content]
+        return "\n".join(part for part in parts if part)
+    if isinstance(content, dict):
+        for key in ("text", "output"):
+            value = content.get(key)
+            if isinstance(value, str):
+                return value
+        nested = content.get("content")
+        if nested is not None:
+            return _content_to_text(nested)
+        try:
+            return json.dumps(content, ensure_ascii=False)
+        except TypeError:
+            return str(content)
+    return str(content)
+
+
+def _codex_input_items(messages: list[dict[str, Any]]) -> tuple[str, list[dict[str, Any]]]:
+    instructions_parts: list[str] = []
+    input_items: list[dict[str, Any]] = []
+
+    for message in messages:
+        role = str(message.get("role", "user") or "user")
+        content = _content_to_text(message.get("content"))
+        if role == "system":
+            if content:
+                instructions_parts.append(content)
+            continue
+        if role == "tool":
+            input_items.append({
+                "type": "function_call_output",
+                "call_id": str(message.get("tool_call_id") or "tool_result"),
+                "output": content,
+            })
+            continue
+        if role == "assistant":
+            if content:
+                input_items.append({"role": "assistant", "content": content})
+            for tool_call in _normalise_tool_calls(message.get("tool_calls")):
+                function = tool_call.get("function", {})
+                input_items.append({
+                    "type": "function_call",
+                    "name": function.get("name") or "",
+                    "arguments": str(function.get("arguments") or "{}"),
+                    "call_id": tool_call.get("id") or f"call_{len(input_items)}",
+                })
+            continue
+        input_items.append({"role": "user", "content": content})
+
+    instructions = "\n\n".join(instructions_parts) or "You are a helpful assistant."
+    return instructions, input_items
+
+
+def _codex_tools(tools: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    converted: list[dict[str, Any]] = []
+    for tool in tools or []:
+        schema = _normalise_openai_tool_schema(tool)
+        if not schema["name"]:
+            continue
+        converted.append({
+            "type": "function",
+            "name": schema["name"],
+            "description": schema["description"],
+            "parameters": schema["parameters"],
+        })
+    return converted
+
+
+def _parse_codex_sse_data_line(line: Any) -> dict[str, Any] | None:
+    if isinstance(line, bytes):
+        line = line.decode("utf-8", errors="replace")
+    line = str(line or "").strip()
+    if not line.startswith("data:"):
+        return None
+    raw_data = line[5:].strip()
+    if not raw_data or raw_data == "[DONE]":
+        return None
+    try:
+        data = json.loads(raw_data)
+    except json.JSONDecodeError:
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _merge_codex_streamed_output(
+    completed_response: dict[str, Any],
+    streamed_output_items: dict[int, dict[str, Any]],
+) -> dict[str, Any]:
+    if not streamed_output_items:
+        return completed_response
+
+    response_output = completed_response.get("output")
+    merged_output = list(response_output) if isinstance(response_output, list) else []
+    max_index = max(max(streamed_output_items), len(merged_output) - 1)
+    if max_index >= 0 and len(merged_output) <= max_index:
+        merged_output.extend([None] * (max_index + 1 - len(merged_output)))
+
+    for output_index, output_item in streamed_output_items.items():
+        existing_item = merged_output[output_index]
+        if not isinstance(existing_item, dict):
+            merged_output[output_index] = output_item
+
+    merged_response = dict(completed_response)
+    merged_response["output"] = [item for item in merged_output if isinstance(item, dict)]
+    return merged_response
+
+
+def _stream_codex_response(headers: dict[str, str], payload: dict[str, Any], timeout_seconds: int) -> dict[str, Any]:
+    try:
+        response = requests.post(
+            f"{CODEX_CLI_BASE_URL}/responses",
+            headers=headers,
+            json=payload,
+            stream=True,
+            timeout=timeout_seconds,
+        )
+    except requests.RequestException as exc:
+        raise CloudModelError(f"OpenAI Codex request failed: {exc}") from exc
+
+    try:
+        if response.status_code >= 400:
+            detail = truncate_middle(response.text or response.reason or "", 800)
+            raise CloudModelError(f"OpenAI Codex API error {response.status_code}: {detail}")
+
+        completed_response: dict[str, Any] | None = None
+        streamed_output_items: dict[int, dict[str, Any]] = {}
+        try:
+            line_iter = response.iter_lines(decode_unicode=True)
+        except TypeError:
+            line_iter = response.iter_lines()
+        for line in line_iter:
+            data = _parse_codex_sse_data_line(line)
+            if not data:
+                continue
+            event_type = data.get("type")
+            if event_type == "response.output_item.done":
+                output_index = data.get("output_index")
+                output_item = data.get("item")
+                if isinstance(output_index, int) and isinstance(output_item, dict):
+                    streamed_output_items[output_index] = output_item
+            elif event_type == "response.completed":
+                response_payload = data.get("response")
+                if isinstance(response_payload, dict):
+                    completed_response = response_payload
+
+        if completed_response is None:
+            raise CloudModelError("OpenAI Codex stream ended without response.completed")
+        return _merge_codex_streamed_output(completed_response, streamed_output_items)
+    finally:
+        close = getattr(response, "close", None)
+        if callable(close):
+            close()
+
+
+def _parse_codex_response(provider_model: str, response: dict[str, Any]) -> dict[str, Any]:
+    text_parts: list[str] = []
+    tool_calls: list[dict[str, Any]] = []
+
+    for index, output_item in enumerate(response.get("output") or []):
+        if not isinstance(output_item, dict):
+            continue
+        if output_item.get("type") == "message":
+            for part in output_item.get("content") or []:
+                part_dict = dict(part) if isinstance(part, dict) else {}
+                if part_dict.get("type") in {"output_text", "text"}:
+                    text_parts.append(str(part_dict.get("text") or ""))
+        elif output_item.get("type") == "function_call":
+            arguments = output_item.get("arguments") or "{}"
+            if isinstance(arguments, dict):
+                arguments = json.dumps(arguments, ensure_ascii=False)
+            tool_calls.append({
+                "id": output_item.get("call_id") or f"call_{index}",
+                "type": "function",
+                "function": {
+                    "name": output_item.get("name") or "",
+                    "arguments": str(arguments or "{}"),
+                },
+            })
+
+    usage = response.get("usage") or {}
+    message: dict[str, Any] = {"role": "assistant", "content": "".join(text_parts)}
+    if tool_calls:
+        message["tool_calls"] = tool_calls
+
+    return {
+        "message": message,
+        "prompt_eval_count": int(usage.get("input_tokens") or 0),
+        "eval_count": int(usage.get("output_tokens") or 0),
+        "total_duration": 0,
+        "provider": "openai",
+        "model": provider_model,
+    }
+
+
+def _chat_with_codex_cli(
+    provider_model: str,
+    messages: list[dict[str, Any]],
+    tools: list[dict[str, Any]] | None,
+    timeout_seconds: int,
+) -> dict[str, Any]:
+    credential = load_codex_cli_credential()
+    access_token = str((credential or {}).get("access_token") or "").strip()
+    if not access_token:
+        raise CloudModelError("OpenAI Codex auth not found. Expected CODEX_AUTH_PATH, CODEX_HOME/auth.json, or ~/.codex/auth.json.")
+
+    instructions, input_items = _codex_input_items(messages)
+    payload: dict[str, Any] = {
+        "model": provider_model,
+        "instructions": instructions,
+        "input": input_items,
+        "store": False,
+        "stream": True,
+        "reasoning": {"effort": "medium", "summary": "detailed"},
+    }
+    converted_tools = _codex_tools(tools)
+    if converted_tools:
+        payload["tools"] = converted_tools
+
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "originator": "codex_cli_rs",
+    }
+    account_id = str((credential or {}).get("account_id") or "").strip()
+    if account_id:
+        headers["ChatGPT-Account-ID"] = account_id
+
+    response = _stream_codex_response(headers, payload, timeout_seconds)
+    return _parse_codex_response(provider_model, response)
+
+
 def _chat_with_openai_compatible(
     provider: LLMProviderDescriptor,
     provider_model: str,
@@ -1090,6 +1424,9 @@ def chat_with_cloud_model(
     if not provider_model:
         raise CloudModelError(f"Missing model name after provider prefix: {model_name}")
 
+    auth_status = get_provider_auth_status(provider.id, provider.env_key)
+    if provider.id == "openai" and auth_status["mode"] == "codex_cli":
+        return _chat_with_codex_cli(provider_model, messages, tools, timeout_seconds)
     if provider.protocol == "anthropic":
         return _chat_with_anthropic(provider, provider_model, messages, tools, max_tokens, temperature, timeout_seconds)
     if provider.protocol == "gemini":

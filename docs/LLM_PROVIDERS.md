@@ -15,16 +15,25 @@ the stored API key.
 Supported in the public core today:
 
 * `api_key`: uses the provider key from env, `.env`, or the local UI config.
-* `subscription_cli`: exposed only for providers that publish a local account
-  CLI path, such as OpenAI Codex, Claude Code, or Gemini CLI. The UI can record
-  the choice and detect the local CLI, but the direct API client refuses to use a
-  key while this mode is selected until a dedicated connector is enabled.
+* `codex_cli`: uses Codex CLI account auth from `CODEX_AUTH_PATH`,
+  `CODEX_HOME/auth.json`, or `~/.codex/auth.json`, then calls the ChatGPT Codex
+  Responses endpoint. JoyBoy does not send `OPENAI_API_KEY` while this mode is
+  selected.
+* `claude_cli`: uses Claude Code OAuth from `CLAUDE_CODE_OAUTH_TOKEN`,
+  `ANTHROPIC_AUTH_TOKEN`, `CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR`,
+  `CLAUDE_CODE_CREDENTIALS_PATH`, or `~/.claude/.credentials.json`. JoyBoy uses
+  Bearer OAuth headers and does not send `ANTHROPIC_API_KEY` while this mode is
+  selected.
 
 This split is deliberate. OpenAI's ChatGPT/Codex subscription path and API
 Platform billing are separate systems, and other vendors make similar
 distinctions between their app/CLI subscription usage and direct API usage.
 Provider credentials stay in the same local config file, but the active mode
 decides which one is eligible at runtime.
+
+Gemini stays API-key based in the public core. DeerFlow's Gemini examples also
+use `GEMINI_API_KEY` or an OpenAI-compatible gateway, not a Gemini subscription
+CLI bridge, so JoyBoy does not expose a fake Gemini CLI mode.
 
 ## Provider Syntax
 
@@ -115,6 +124,8 @@ The design mirrors the useful DeerFlow idea:
 
 * provider config is data, not scattered conditionals
 * API keys are resolved from env/local config at call time
+* Codex CLI auth is read from the same account file DeerFlow uses
+* Claude Code OAuth accepts the same env/file handoff DeerFlow documents
 * configured provider model lists are discovered live when possible
 * tool-capable cloud models plug into the same terminal tool loop
 * provider metadata is exposed to the UI without exposing secrets

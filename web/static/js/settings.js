@@ -1517,6 +1517,9 @@ function getProviderAuthStatusLabel(status) {
         configured: t('providers.authStatusConfigured', 'actif'),
         missing_key: t('providers.authStatusMissingKey', 'clé manquante'),
         ready: t('providers.authStatusReady', 'prêt'),
+        auth_missing: t('providers.authStatusAuthMissing', 'connexion absente'),
+        auth_invalid: t('providers.authStatusAuthInvalid', 'auth invalide'),
+        auth_expired: t('providers.authStatusAuthExpired', 'session expirée'),
         connector_missing: t('providers.authStatusConnectorMissing', 'connecteur absent'),
         connector_pending: t('providers.authStatusConnectorPending', 'connecteur à brancher'),
     };

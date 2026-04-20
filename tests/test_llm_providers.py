@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import importlib
+import json
 import os
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 
@@ -25,11 +27,20 @@ class LLMProviderCatalogTest(unittest.TestCase):
                 "VLLM_API_KEY",
                 "GLM_BASE_URL",
                 "VLLM_BASE_URL",
+                "HOME",
+                "CODEX_AUTH_PATH",
+                "CODEX_HOME",
+                "CLAUDE_CODE_OAUTH_TOKEN",
+                "ANTHROPIC_AUTH_TOKEN",
+                "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR",
+                "CLAUDE_CODE_CREDENTIALS_PATH",
             )
         }
         os.environ["JOYBOY_HOME"] = self.temp_home.name
+        os.environ["HOME"] = self.temp_home.name
         for key in self.saved_env:
-            os.environ.pop(key, None)
+            if key not in {"HOME"}:
+                os.environ.pop(key, None)
 
         import core.infra.local_config as local_config
         import core.agent_runtime.model_client as model_client
@@ -104,8 +115,41 @@ class LLMProviderCatalogTest(unittest.TestCase):
         self.assertIn("api_key", {mode["id"] for mode in openai["auth_modes"]})
         self.assertIn("codex_cli", {mode["id"] for mode in openai["auth_modes"]})
 
+        gemini = by_key["GEMINI_API_KEY"]
+        self.assertEqual({mode["id"] for mode in gemini["auth_modes"]}, {"api_key"})
+
+    def test_codex_cli_auth_uses_auth_file_instead_of_cli_binary(self) -> None:
+        auth_path = Path(self.temp_home.name) / "codex-auth.json"
+        auth_path.write_text(
+            json.dumps({"tokens": {"access_token": "codex-token", "account_id": "acct_123"}}),
+            encoding="utf-8",
+        )
+        os.environ["CODEX_AUTH_PATH"] = str(auth_path)
+        self.local_config.set_provider_auth_mode("openai", "codex_cli")
+
+        providers = self.local_config.get_provider_status()
+        openai = next(provider for provider in providers if provider["key"] == "OPENAI_API_KEY")
+        codex_mode = next(mode for mode in openai["auth_modes"] if mode["id"] == "codex_cli")
+
+        self.assertEqual(openai["auth_mode"], "codex_cli")
+        self.assertEqual(openai["auth_status"], "ready")
+        self.assertTrue(openai["configured"])
+        self.assertTrue(codex_mode["auth_detected"])
+        self.assertEqual(codex_mode["status"], "ready")
+
+    def test_codex_cli_auth_reports_missing_auth_without_fake_connector_status(self) -> None:
+        self.local_config.set_provider_auth_mode("openai", "codex_cli")
+
+        providers = self.local_config.get_provider_status()
+        openai = next(provider for provider in providers if provider["key"] == "OPENAI_API_KEY")
+
+        self.assertEqual(openai["auth_status"], "auth_missing")
+        self.assertFalse(openai["configured"])
+
     def test_subscription_access_mode_blocks_direct_api_fallback(self) -> None:
         os.environ["OPENAI_API_KEY"] = "sk-test"
+        missing_auth = Path(self.temp_home.name) / "missing-codex-auth.json"
+        os.environ["CODEX_AUTH_PATH"] = str(missing_auth)
         self.local_config.set_provider_auth_mode("openai", "codex_cli")
 
         catalog = self.model_client.get_llm_provider_catalog()
@@ -123,7 +167,7 @@ class LLMProviderCatalogTest(unittest.TestCase):
                 )
 
         post.assert_not_called()
-        self.assertIn("will not use OPENAI_API_KEY", str(raised.exception))
+        self.assertIn("Codex auth not found", str(raised.exception))
 
     def test_terminal_model_profiles_include_configured_cloud_ids(self) -> None:
         os.environ["OPENAI_API_KEY"] = "sk-test"
@@ -283,6 +327,68 @@ class LLMProviderCatalogTest(unittest.TestCase):
         self.assertEqual(request_kwargs["headers"]["Authorization"], "Bearer sk-test")
         self.assertEqual(request_kwargs["json"]["tools"][0]["function"]["name"], "read_file")
 
+    def test_openai_codex_cli_chat_uses_codex_responses_api(self) -> None:
+        auth_path = Path(self.temp_home.name) / "codex-auth.json"
+        auth_path.write_text(
+            json.dumps({"tokens": {"access_token": "codex-token", "account_id": "acct_123"}}),
+            encoding="utf-8",
+        )
+        os.environ["CODEX_AUTH_PATH"] = str(auth_path)
+        self.local_config.set_provider_auth_mode("openai", "codex_cli")
+
+        completed = {
+            "type": "response.completed",
+            "response": {
+                "model": "gpt-5.4",
+                "output": [],
+                "usage": {"input_tokens": 9, "output_tokens": 4, "total_tokens": 13},
+            },
+        }
+        output_item = {
+            "type": "response.output_item.done",
+            "output_index": 0,
+            "item": {
+                "type": "message",
+                "content": [{"type": "output_text", "text": "ok codex"}],
+            },
+        }
+        fake_response = Mock()
+        fake_response.status_code = 200
+        fake_response.iter_lines.return_value = [
+            f"data: {json.dumps(output_item)}",
+            f"data: {json.dumps(completed)}",
+        ]
+
+        with patch("core.agent_runtime.model_client.requests.post", return_value=fake_response) as post:
+            result = self.model_client.chat_with_cloud_model(
+                "openai:gpt-5.4",
+                messages=[
+                    {"role": "system", "content": "You are JoyBoy."},
+                    {"role": "user", "content": "hi"},
+                ],
+                tools=[
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": "read_file",
+                            "description": "Read a file",
+                            "parameters": {"type": "object", "properties": {}},
+                        },
+                    }
+                ],
+            )
+
+        self.assertEqual(post.call_args.args[0], "https://chatgpt.com/backend-api/codex/responses")
+        request_kwargs = post.call_args.kwargs
+        self.assertEqual(request_kwargs["headers"]["Authorization"], "Bearer codex-token")
+        self.assertEqual(request_kwargs["headers"]["ChatGPT-Account-ID"], "acct_123")
+        self.assertTrue(request_kwargs["stream"])
+        self.assertNotIn("max_tokens", request_kwargs["json"])
+        self.assertEqual(request_kwargs["json"]["tools"][0]["name"], "read_file")
+        self.assertEqual(result["message"]["content"], "ok codex")
+        self.assertEqual(result["prompt_eval_count"], 9)
+        self.assertEqual(result["eval_count"], 4)
+
     def test_anthropic_chat_translates_tools_and_tool_results(self) -> None:
         os.environ["ANTHROPIC_API_KEY"] = "anthropic-test"
         fake_response = Mock()
@@ -324,6 +430,31 @@ class LLMProviderCatalogTest(unittest.TestCase):
         self.assertEqual(result["message"]["tool_calls"][0]["id"], "toolu_123")
         self.assertEqual(result["prompt_eval_count"], 20)
         self.assertEqual(result["eval_count"], 7)
+
+    def test_claude_code_oauth_uses_bearer_auth_without_api_key(self) -> None:
+        os.environ["ANTHROPIC_API_KEY"] = "anthropic-test"
+        os.environ["CLAUDE_CODE_OAUTH_TOKEN"] = "sk-ant-oat-test"
+        self.local_config.set_provider_auth_mode("anthropic", "claude_cli")
+        fake_response = Mock()
+        fake_response.status_code = 200
+        fake_response.json.return_value = {
+            "content": [{"type": "text", "text": "oauth ok"}],
+            "usage": {"input_tokens": 5, "output_tokens": 2},
+        }
+
+        with patch("core.agent_runtime.model_client.requests.post", return_value=fake_response) as post:
+            result = self.model_client.chat_with_cloud_model(
+                "anthropic:claude-sonnet-4-5",
+                messages=[{"role": "system", "content": "You are JoyBoy."}, {"role": "user", "content": "hi"}],
+            )
+
+        request_kwargs = post.call_args.kwargs
+        self.assertNotIn("x-api-key", request_kwargs["headers"])
+        self.assertEqual(request_kwargs["headers"]["Authorization"], "Bearer sk-ant-oat-test")
+        self.assertIn("oauth-2025-04-20", request_kwargs["headers"]["anthropic-beta"])
+        self.assertIn("x-anthropic-billing-header:", request_kwargs["json"]["system"][0]["text"])
+        self.assertIn("user_id", request_kwargs["json"]["metadata"])
+        self.assertEqual(result["message"]["content"], "oauth ok")
 
     def test_gemini_chat_translates_function_calls(self) -> None:
         os.environ["GEMINI_API_KEY"] = "gemini-test"

@@ -13,8 +13,10 @@ import json
 import os
 import shutil
 import sys
+import time
 from copy import deepcopy
 from pathlib import Path
+from typing import Any
 
 
 PROJECT_DIR = Path(__file__).resolve().parents[2]
@@ -89,10 +91,10 @@ PROVIDER_AUTH_OPTIONS = {
         },
         {
             "id": "codex_cli",
-            "kind": "subscription_cli",
+            "kind": "subscription_auth",
             "label": "Codex CLI",
-            "command": "codex",
-            "implemented": False,
+            "detector": "codex_cli",
+            "implemented": True,
             "docs_url": "https://help.openai.com/en/articles/11369540-using-codex-with-your-chatgpt-plan/",
         },
     ],
@@ -105,10 +107,11 @@ PROVIDER_AUTH_OPTIONS = {
         },
         {
             "id": "claude_cli",
-            "kind": "subscription_cli",
+            "kind": "subscription_auth",
             "label": "Claude Code",
+            "detector": "claude_code_oauth",
             "command": "claude",
-            "implemented": False,
+            "implemented": True,
             "docs_url": "https://docs.anthropic.com/en/docs/claude-code/costs",
         },
     ],
@@ -118,14 +121,6 @@ PROVIDER_AUTH_OPTIONS = {
             "kind": "api_key",
             "label": "API key",
             "implemented": True,
-        },
-        {
-            "id": "gemini_cli",
-            "kind": "subscription_cli",
-            "label": "Gemini CLI",
-            "command": "gemini",
-            "implemented": False,
-            "docs_url": "https://codelabs.developers.google.com/gemini-cli-deep-dive",
         },
     ],
 }
@@ -246,6 +241,180 @@ def _command_path(command: str) -> str:
     return shutil.which(command) or ""
 
 
+def _home_dir() -> Path:
+    home = os.environ.get("HOME")
+    if home:
+        return Path(home).expanduser()
+    return Path.home()
+
+
+def _read_json_object(path: Path) -> dict[str, Any] | None:
+    if not path.exists() or path.is_dir():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _dedupe_paths(paths: list[Path]) -> list[Path]:
+    seen: set[str] = set()
+    clean: list[Path] = []
+    for path in paths:
+        resolved = str(path.expanduser())
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        clean.append(path.expanduser())
+    return clean
+
+
+def _codex_cli_auth_paths() -> list[Path]:
+    paths: list[Path] = []
+    auth_path = os.environ.get("CODEX_AUTH_PATH")
+    if auth_path:
+        paths.append(Path(auth_path).expanduser())
+    codex_home = os.environ.get("CODEX_HOME")
+    if codex_home:
+        paths.append(Path(codex_home).expanduser() / "auth.json")
+    paths.append(_home_dir() / ".codex" / "auth.json")
+    return _dedupe_paths(paths)
+
+
+def load_codex_cli_credential() -> dict[str, str] | None:
+    """Load Codex CLI auth without exposing it through public status payloads."""
+    for auth_path in _codex_cli_auth_paths():
+        data = _read_json_object(auth_path)
+        if data is None:
+            continue
+        tokens = data.get("tokens", {})
+        if not isinstance(tokens, dict):
+            tokens = {}
+        access_token = str(data.get("access_token") or data.get("token") or tokens.get("access_token") or "").strip()
+        if not access_token:
+            continue
+        return {
+            "access_token": access_token,
+            "account_id": str(data.get("account_id") or tokens.get("account_id") or "").strip(),
+            "source": str(auth_path),
+        }
+    return None
+
+
+def _read_secret_from_fd(env_var: str) -> str:
+    fd_value = os.environ.get(env_var, "").strip()
+    if not fd_value:
+        return ""
+    try:
+        fd = int(fd_value)
+    except ValueError:
+        return ""
+    try:
+        return os.read(fd, 1024 * 1024).decode("utf-8").strip()
+    except OSError:
+        return ""
+
+
+def _claude_code_credential_paths() -> list[Path]:
+    paths: list[Path] = []
+    credentials_path = os.environ.get("CLAUDE_CODE_CREDENTIALS_PATH")
+    if credentials_path:
+        paths.append(Path(credentials_path).expanduser())
+    paths.append(_home_dir() / ".claude" / ".credentials.json")
+    return _dedupe_paths(paths)
+
+
+def _extract_claude_code_credential(data: dict[str, Any], source: str) -> dict[str, Any] | None:
+    oauth = data.get("claudeAiOauth", {})
+    if not isinstance(oauth, dict):
+        return None
+    access_token = str(oauth.get("accessToken") or "").strip()
+    if not access_token:
+        return None
+    expires_at = oauth.get("expiresAt") or 0
+    try:
+        expires_at_ms = int(float(expires_at))
+    except (TypeError, ValueError):
+        expires_at_ms = 0
+    if expires_at_ms and time.time() * 1000 > expires_at_ms - 60_000:
+        return None
+    return {
+        "access_token": access_token,
+        "refresh_token": str(oauth.get("refreshToken") or "").strip(),
+        "expires_at": expires_at_ms,
+        "source": source,
+    }
+
+
+def _claude_code_file_status() -> str:
+    found_file = False
+    found_expired = False
+    for credentials_path in _claude_code_credential_paths():
+        data = _read_json_object(credentials_path)
+        if data is None:
+            continue
+        found_file = True
+        oauth = data.get("claudeAiOauth", {})
+        if not isinstance(oauth, dict) or not str(oauth.get("accessToken") or "").strip():
+            continue
+        expires_at = oauth.get("expiresAt") or 0
+        try:
+            expires_at_ms = int(float(expires_at))
+        except (TypeError, ValueError):
+            expires_at_ms = 0
+        if expires_at_ms and time.time() * 1000 > expires_at_ms - 60_000:
+            found_expired = True
+
+    if found_expired:
+        return "auth_expired"
+    if found_file:
+        return "auth_invalid"
+    return "auth_missing"
+
+
+def load_claude_code_oauth_credential(consume_fd: bool = True) -> dict[str, Any] | None:
+    direct_token = (os.environ.get("CLAUDE_CODE_OAUTH_TOKEN") or os.environ.get("ANTHROPIC_AUTH_TOKEN") or "").strip()
+    if direct_token:
+        return {"access_token": direct_token, "source": "env"}
+
+    if os.environ.get("CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR"):
+        if not consume_fd:
+            return {"access_token": "", "source": "fd"}
+        fd_token = _read_secret_from_fd("CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR")
+        if fd_token:
+            return {"access_token": fd_token, "source": "fd"}
+
+    for credentials_path in _claude_code_credential_paths():
+        data = _read_json_object(credentials_path)
+        if data is None:
+            continue
+        credential = _extract_claude_code_credential(data, str(credentials_path))
+        if credential:
+            return credential
+    return None
+
+
+def _subscription_auth_detection(option: dict) -> dict[str, Any]:
+    detector = str(option.get("detector", "") or "")
+
+    if detector == "codex_cli":
+        credential = load_codex_cli_credential()
+        if credential:
+            return {"detected": True, "status": "ready", "source": credential.get("source", "")}
+        if any(path.exists() for path in _codex_cli_auth_paths()):
+            return {"detected": False, "status": "auth_invalid", "source": ""}
+        return {"detected": False, "status": "auth_missing", "source": ""}
+
+    if detector == "claude_code_oauth":
+        credential = load_claude_code_oauth_credential(consume_fd=False)
+        if credential:
+            return {"detected": True, "status": "ready", "source": credential.get("source", "")}
+        return {"detected": False, "status": _claude_code_file_status(), "source": ""}
+
+    return {"detected": False, "status": "auth_missing", "source": ""}
+
+
 def _normalise_provider_auth_mode(provider_id: str, auth_mode: str | None) -> str:
     requested = str(auth_mode or "").strip().lower()
     valid_modes = {option["id"] for option in _provider_auth_options_for(provider_id)}
@@ -292,11 +461,27 @@ def get_provider_auth_status(provider_id: str, env_key: str = "") -> dict:
         command_path = _command_path(command)
         kind = option.get("kind", "api_key")
         implemented = bool(option.get("implemented", False))
+        auth_source = ""
+        auth_detected = False
 
         if kind == "api_key":
             status = "configured" if key_configured else "missing_key"
             selectable = True
             runtime_ready = key_configured
+        elif kind == "subscription_auth":
+            auth_detection = _subscription_auth_detection(option)
+            auth_source = str(auth_detection.get("source", "") or "")
+            auth_detected = bool(auth_detection.get("detected"))
+            if not auth_detected:
+                status = str(auth_detection.get("status") or "auth_missing")
+                runtime_ready = False
+            elif implemented:
+                status = "ready"
+                runtime_ready = True
+            else:
+                status = "connector_pending"
+                runtime_ready = False
+            selectable = True
         else:
             if not command_path:
                 status = "connector_missing"
@@ -309,6 +494,8 @@ def get_provider_auth_status(provider_id: str, env_key: str = "") -> dict:
 
         option.update({
             "command_path": command_path,
+            "auth_detected": auth_detected,
+            "auth_source": auth_source,
             "selectable": selectable,
             "runtime_ready": runtime_ready,
             "status": status,
