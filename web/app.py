@@ -14,7 +14,7 @@ warnings.filterwarnings("ignore", message=".*xformers.*")
 logging.getLogger("xformers").setLevel(logging.ERROR)
 
 from flask import Flask, render_template
-from PIL import Image
+from PIL import Image, ImageOps
 import base64
 from io import BytesIO
 
@@ -217,6 +217,7 @@ def generation_pipeline(task_type, generation_id, preload_future=None, **load_kw
 def pil_to_base64(img):
     if img is None:
         return None
+    img = ImageOps.exif_transpose(img)
     buf = BytesIO()
     img.save(buf, format="PNG")
     return base64.b64encode(buf.getvalue()).decode()
@@ -229,7 +230,10 @@ def base64_to_pil(b64_string):
     if ',' in b64_string:
         b64_string = b64_string.split(',')[1]
     img_data = base64.b64decode(b64_string)
-    return Image.open(BytesIO(img_data))
+    with Image.open(BytesIO(img_data)) as img:
+        img = ImageOps.exif_transpose(img)
+        img.load()
+        return img.copy()
 
 
 def get_image_hash(img):

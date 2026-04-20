@@ -1401,24 +1401,19 @@ def unified_generate():
             needs_ip_adapter = False
 
         # ========== 4c. DETECTION ORIENTATION (avant segmentation) ==========
-        # On detecte tot pour savoir si l'image est a l'envers
-        # MediaPipe est leger (~5ms), pas de cout notable
+        # La detection nourrit le prompt, mais ne modifie jamais l'image source.
+        # Une rotation heuristique pendant la génération désaligne le preview,
+        # le masque et l'image d'origine, surtout sur les photos paysage.
         body_orientation = None
         body_pose = None
-        was_flipped = False
-        is_brush_only = analysis['mask_strategy'] == 'brush_only'
         needs_body_info = analysis['intent'] in ('nudity', 'clothing_change', 'pose_change')
 
         if needs_body_info:
             try:
                 from core.segmentation import detect_body_orientation
                 orientation_result = detect_body_orientation(img)
-                if orientation_result.get('flipped') and not is_brush_only:
-                    was_flipped = True
-                    img = img.rotate(180)
-                    print(f"[FLIP] Image retournee 180 (detection upside-down)")
-                elif orientation_result.get('flipped') and is_brush_only:
-                    print("[FLIP] Skip auto-rotate (brush_only: conserve image + masque utilisateur)")
+                if orientation_result.get('flipped'):
+                    print("[FLIP] Upside-down heuristic ignored; preserving source orientation")
                 if orientation_result['confidence'] > 0.4:
                     body_orientation = orientation_result['orientation']
                     body_pose = orientation_result.get('pose', 'standing')
@@ -1777,14 +1772,6 @@ def unified_generate():
             active_generations.pop(generation_id, None)
 
         if result:
-            # Si l'image etait a l'envers, remettre le resultat dans l'orientation originale
-            if was_flipped:
-                result = result.rotate(180)
-                original = original.rotate(180)
-                if mask:
-                    mask = mask.rotate(180)
-                print(f"[FLIP] Resultat remis dans l'orientation originale")
-
             state.original_image = original
             state.modified_image = result
             state.current_prompt = prompt
