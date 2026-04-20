@@ -249,29 +249,9 @@ def _strip_image_prefix(message: str) -> str:
 
 
 def _is_mostly_english(text: str) -> bool:
-    """Detecte si le texte est majoritairement en anglais.
-
-    Logique: si du francais est detecte -> False. Sinon, il faut au moins
-    un marqueur anglais explicite. Beaucoup de prompts francais sont ASCII
-    ("moi", "en marche", "tarpin"), donc ASCII seul ne suffit pas.
-    """
+    """Local-only shortcut: true only for prompts that are obviously English."""
     text_lower = text.lower()
     padded = f' {text_lower} '
-    fr_markers = [
-        ' une ', ' un ', ' des ', ' les ', ' la ', ' le ', ' du ', ' de la ',
-        ' sur ', ' dans ', ' avec ', ' qui ', ' elle ', ' est ', ' sont ',
-        ' cette ', ' ses ', ' son ', ' sa ', ' aux ', ' pour ', ' moi ',
-        ' toi ', ' nous ', ' vous ', ' en ', ' au ', ' marche ', ' tarpin ',
-        ' tres ', ' trop ',
-        ' noir', ' blanc', ' rouge', ' bleu', ' vert',
-        ' femme', ' homme', ' fille', ' chat', ' chien',
-        ' grand', ' petit', ' beau', ' belle',
-        ' chambre', ' maison', ' corps', ' visage', ' cheveux',
-    ]
-    fr_count = sum(1 for m in fr_markers if m in padded)
-    has_accents = any(c in text for c in 'àâéèêëïîôùûüç')
-    if has_accents or fr_count >= 2:
-        return False
     en_markers = [
         ' the ', ' a ', ' an ', ' with ', ' on ', ' in ', ' her ', ' his ',
         ' she ', ' is ', ' are ', ' from ', ' and ', ' but ', ' this ',
@@ -308,23 +288,24 @@ def enhance_prompt(prompt: str, for_inpainting: bool = True, model: str = None) 
     print(f"[ENHANCE] \"{prompt[:50]}...\" ({mode})")
     use_cloud_model = _is_cloud_text_model(model)
 
-    # Si déjà en anglais, retourner tel quel (pas de réécriture LLM)
-    if _is_mostly_english(prompt) and not use_cloud_model:
+    if use_cloud_model:
+        working_prompt = prompt
+        print(f"[ENHANCE] Cloud rewrite via {model}")
+    elif _is_mostly_english(prompt):
         print(f"[ENHANCE] Anglais detecte, skip LLM")
         return prompt, "realistic"
+    else:
+        working_prompt = _preprocess_french_prompt(prompt)
+        print(f"[ENHANCE] Pre-traite FR->EN: \"{working_prompt[:60]}...\"")
 
-    prompt = _preprocess_french_prompt(prompt)
-    print(f"[ENHANCE] Pre-traite FR->EN: \"{prompt[:60]}...\"")
-
-    # Si le preprocessing a tout traduit, retourner directement
-    if _is_mostly_english(prompt) and not use_cloud_model:
-        print(f"[ENHANCE] Pre-traitement suffisant, skip LLM")
-        return prompt, "realistic"
+        if _is_mostly_english(working_prompt):
+            print(f"[ENHANCE] Pre-traitement suffisant, skip LLM")
+            return working_prompt, "realistic"
 
     system_prompt = _load_enhance_prompt('inpainting' if for_inpainting else 'text2img')
 
     user_content = f"""Rewrite or translate this text into a clean ENGLISH prompt for image generation:
-"{prompt}"
+"{working_prompt}"
 
 Write your response in ENGLISH. Keep the user's intent. Do not write French."""
 
@@ -366,7 +347,7 @@ Write your response in ENGLISH. Keep the user's intent. Do not write French."""
             if not is_french and len(clean_response) > 5:
                 enhanced = clean_response
             else:
-                enhanced = prompt
+                enhanced = working_prompt
                 print(f"[ENHANCE] Fallback: reponse FR/invalide")
 
         if enhanced:
@@ -379,7 +360,7 @@ Write your response in ENGLISH. Keep the user's intent. Do not write French."""
         return enhanced, style
 
     print(f"[ENHANCE] Fallback: pas de reponse AI")
-    return prompt, "realistic"
+    return working_prompt, "realistic"
 
 
 _HUMAN_SUBJECT_RE = re.compile(
@@ -528,16 +509,19 @@ def extract_image_prompt(user_message: str, chat_model: str = None, model: str =
     use_model = model or chat_model
     use_cloud_model = _is_cloud_text_model(use_model)
 
-    if clean_prompt and _is_mostly_english(clean_prompt) and not use_cloud_model:
+    if use_cloud_model:
+        preprocessed = clean_prompt or user_message
+        print(f"[IMAGE-PROMPT] Cloud rewrite via {use_model}: \"{preprocessed[:80]}...\"")
+    elif clean_prompt and _is_mostly_english(clean_prompt):
         print(f"[IMAGE-PROMPT] Direct (anglais detecte): \"{clean_prompt[:80]}...\"")
         return clean_prompt
+    else:
+        preprocessed = _preprocess_french_prompt(clean_prompt or user_message)
+        print(f"[IMAGE-PROMPT] Pre-traite: \"{preprocessed[:80]}...\"")
 
-    preprocessed = _preprocess_french_prompt(clean_prompt or user_message)
-    print(f"[IMAGE-PROMPT] Pre-traite: \"{preprocessed[:80]}...\"")
-
-    if _is_mostly_english(preprocessed) and not use_cloud_model:
-        print(f"[IMAGE-PROMPT] Pre-traitement suffisant (anglais detecte)")
-        return preprocessed
+        if _is_mostly_english(preprocessed):
+            print(f"[IMAGE-PROMPT] Pre-traitement suffisant (anglais detecte)")
+            return preprocessed
 
     system_prompt = """You are a Stable Diffusion prompt translator. Convert the partially-translated description into a clean, structured English prompt.
 
