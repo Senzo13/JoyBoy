@@ -135,6 +135,41 @@ TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "write_files",
+            "description": "Create or fully replace multiple files in one backend-verified batch. Prefer this for scaffolds, templates, and multi-file creation instead of one write_file call per file. Existing files are blocked unless overwrite_existing is true and each file was read first.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "files": {
+                        "type": "array",
+                        "description": "Files to write. Keep batches focused, usually 2-12 files.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "path": {
+                                    "type": "string",
+                                    "description": "File path relative to the workspace."
+                                },
+                                "content": {
+                                    "type": "string",
+                                    "description": "Complete file content."
+                                }
+                            },
+                            "required": ["path", "content"]
+                        }
+                    },
+                    "overwrite_existing": {
+                        "type": "boolean",
+                        "description": "Allow replacing existing files only after read_file has been called for each one. Default: false."
+                    }
+                },
+                "required": ["files"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "edit_file",
             "description": "Replace an exact text slice in an existing file. Fails unless read_file was called first.",
             "parameters": {
@@ -654,7 +689,7 @@ class TerminalBrain:
             )
 
         # Protection écriture si intent = lecture seule
-        write_tools = ['write_file', 'edit_file', 'delete_file']
+        write_tools = ['write_file', 'write_files', 'edit_file', 'delete_file']
         if tool_name in write_tools and self.is_read_only_intent(self.current_intent):
             self.write_blocked = True
             return ToolResult(
@@ -707,6 +742,20 @@ class TerminalBrain:
                         return ToolResult(success=False, tool_name=tool_name, data=result, error=verified.get('error', 'Verification failed'))
                 self._log_action('write_file', path, result.get('success', False))
                 return ToolResult(success=result.get('success', False), tool_name=tool_name, data=result)
+
+            # === WRITE FILES ===
+            elif tool_name == "write_files":
+                result = self._execute_write_files_batch(
+                    args.get('files', []),
+                    workspace_path,
+                    overwrite_existing=bool(args.get('overwrite_existing', False)),
+                )
+                return ToolResult(
+                    success=result.get('success', False),
+                    tool_name=tool_name,
+                    data=result,
+                    error=result.get('error'),
+                )
 
             # === EDIT FILE ===
             elif tool_name == "edit_file":
@@ -1803,6 +1852,107 @@ class TerminalBrain:
         except Exception as exc:
             return {"success": False, "error": str(exc)}
 
+    def _execute_write_files_batch(
+        self,
+        files: Any,
+        workspace_path: str,
+        overwrite_existing: bool = False,
+    ) -> Dict[str, Any]:
+        """Write several files with one backend verification pass.
+
+        Repeated backend work stays out of the LLM loop: the model requests a
+        whole scaffold once, then JoyBoy validates, writes, and verifies locally.
+        """
+        from core.workspace_tools import write_file
+
+        if not isinstance(files, list) or not files:
+            return {"success": False, "error": "files must be a non-empty array"}
+        if len(files) > 40:
+            return {"success": False, "error": "Too many files in one batch (max 40)"}
+
+        prepared: list[tuple[str, str, str, bool]] = []
+        seen: set[str] = set()
+        conflicts: list[str] = []
+
+        for item in files:
+            if not isinstance(item, dict):
+                return {"success": False, "error": "Each file entry must be an object"}
+            path = str(item.get("path", "") or "").strip().replace("\\", "/")
+            content = item.get("content")
+            if not path:
+                return {"success": False, "error": "File path is required"}
+            if content is None:
+                return {"success": False, "error": f"Content is required for {path}"}
+            content = str(content)
+
+            full_path = self._resolve_for_snapshot(workspace_path, path)
+            if not full_path:
+                return {"success": False, "error": f"Path escapes the workspace: {path}"}
+
+            key = self._canonical_file_key(full_path)
+            if key in seen:
+                return {"success": False, "error": f"Duplicate path in batch: {path}"}
+            seen.add(key)
+
+            exists = os.path.exists(full_path)
+            if exists and not overwrite_existing:
+                conflicts.append(path)
+                continue
+
+            if exists:
+                blocked = self._require_read_before_existing_write(workspace_path, path, full_path, "write_files")
+                if blocked:
+                    return {"success": False, "error": f"{path}: {blocked.error}"}
+                is_valid, error = self._validate_write(full_path, content)
+                if not is_valid:
+                    return {"success": False, "error": f"{path}: {error}"}
+
+            prepared.append((path, full_path, content, exists))
+
+        if conflicts:
+            return {
+                "success": False,
+                "error": "Existing files blocked. Read and overwrite explicitly, or remove them from the batch.",
+                "conflicts": conflicts,
+            }
+
+        written: list[dict[str, Any]] = []
+        for path, full_path, content, existed in prepared:
+            if existed:
+                self._create_snapshot(full_path, path)
+
+            result = write_file(workspace_path, path, content)
+            if not result.get("success"):
+                return {
+                    "success": False,
+                    "error": result.get("error") or f"Failed to write {path}",
+                    "files": written,
+                }
+
+            verified = self._verify_file_write(workspace_path, path)
+            if not verified.get("verified"):
+                return {
+                    "success": False,
+                    "error": verified.get("error", f"Verification failed for {path}"),
+                    "files": written,
+                }
+
+            action = "updated" if existed else "created"
+            self._log_action("write_files", path, True)
+            written.append({
+                "path": path,
+                "action": action,
+                "bytes": len(content.encode("utf-8", errors="replace")),
+            })
+
+        return {
+            "success": True,
+            "count": len(written),
+            "files": written,
+            "created": [item["path"] for item in written if item["action"] == "created"],
+            "updated": [item["path"] for item in written if item["action"] == "updated"],
+        }
+
     def _build_memory_context_prompt(self, initial_message: str, limit: int = 4) -> str:
         try:
             from core.agent_runtime import search_terminal_memory
@@ -1841,7 +1991,7 @@ class TerminalBrain:
         names: List[str] = ["list_files", "read_file"]
 
         if self.current_intent in {"write", "execute"}:
-            names.extend(["write_file", "edit_file", "bash"])
+            names.extend(["write_file", "write_files", "edit_file", "bash"])
             names.extend(["search", "glob"])
         else:
             names.extend(["search", "glob"])
@@ -1904,11 +2054,20 @@ class TerminalBrain:
         return any(word in msg for word in open_words) and any(word in msg for word in folder_words)
 
     def _is_simple_react_template_request(self, message: str) -> bool:
-        msg = self._intent_text(message)
+        msg = self._folded_single_line(message)
+        if any(word in msg for word in ("analyse", "audit", "explique", "compare", "review")):
+            return False
         wants_react = "react" in msg
         wants_template = any(word in msg for word in ("template", "starter", "boilerplate", "projet", "app"))
-        wants_create = any(word in msg for word in ("cree", "creer", "cr?er", "create", "mets", "mettre", "genere", "make"))
-        simple_scope = any(word in msg for word in ("simple", "minimal", "basique", "vite", "dedans", "ici")) or len(msg.split()) <= 9
+        wants_create = (
+            any(word in msg for word in ("cree", "creer", "create", "mets", "mettre", "genere", "make"))
+            or re.search(r"\bcr\s*er\b", msg) is not None
+        )
+        simple_scope = (
+            any(word in msg for word in ("simple", "minimal", "basique", "vite", "dedans", "dans", "ici", "propre", "clean"))
+            or "template" in msg
+            or len(msg.split()) <= 16
+        )
         return wants_react and wants_template and wants_create and simple_scope
 
     def _is_casual_greeting_request(self, message: str) -> bool:
@@ -1967,11 +2126,18 @@ class TerminalBrain:
             return True
         return len([part for part in re.split(r"\s+", msg) if part]) >= 18
 
-    def _react_template_files(self, workspace_path: str) -> Dict[str, str]:
+    def _react_template_files(
+        self,
+        workspace_path: str,
+        variant: str = "vite",
+        include_package: bool = True,
+    ) -> Dict[str, str]:
         package_name = re.sub(r"[^a-z0-9-]+", "-", os.path.basename(os.path.abspath(workspace_path)).lower()).strip("-")
         package_name = package_name or "joyboy-react-app"
-        return {
-            "package.json": json.dumps({
+        files: Dict[str, str] = {}
+
+        if include_package:
+            files["package.json"] = json.dumps({
                 "name": package_name,
                 "private": True,
                 "version": "0.1.0",
@@ -1982,13 +2148,145 @@ class TerminalBrain:
                     "preview": "vite preview",
                 },
                 "dependencies": {
-                    "@vitejs/plugin-react": "^4.3.4",
-                    "vite": "^6.0.0",
                     "react": "^18.3.1",
                     "react-dom": "^18.3.1",
                 },
-                "devDependencies": {},
-            }, indent=2, ensure_ascii=False) + "\n",
+                "devDependencies": {
+                    "@vitejs/plugin-react": "^4.3.4",
+                    "vite": "^6.0.0",
+                },
+            }, indent=2, ensure_ascii=False) + "\n"
+
+        if variant == "cra":
+            files.update({
+                "public/index.html": """<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#111827" />
+    <title>JoyBoy React Template</title>
+  </head>
+  <body>
+    <noscript>Tu dois activer JavaScript pour utiliser cette application.</noscript>
+    <div id="root"></div>
+  </body>
+</html>
+""",
+                "src/index.js": """import React from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './App';
+import './index.css';
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+
+root.render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
+""",
+                "src/App.js": """function App() {
+  return (
+    <main className="app-shell">
+      <section className="hero">
+        <p className="eyebrow">JoyBoy React</p>
+        <h1>Template React propre</h1>
+        <p>
+          Modifie <code>src/App.js</code>, puis lance le serveur pour commencer.
+        </p>
+      </section>
+    </main>
+  );
+}
+
+export default App;
+""",
+                "src/index.css": """* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #f7f7fb;
+  background: #08090d;
+}
+
+.app-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 32px;
+}
+
+.hero {
+  width: min(680px, 100%);
+}
+
+.eyebrow {
+  margin: 0 0 12px;
+  color: #8ab4ff;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+h1 {
+  margin: 0;
+  font-size: 48px;
+  line-height: 1.05;
+}
+
+p {
+  color: #b8c0d4;
+  font-size: 18px;
+  line-height: 1.6;
+}
+
+code {
+  color: #7dd3fc;
+}
+
+@media (max-width: 520px) {
+  .app-shell {
+    padding: 22px;
+  }
+
+  h1 {
+    font-size: 36px;
+  }
+
+  p {
+    font-size: 16px;
+  }
+}
+""",
+                ".gitignore": """node_modules
+build
+.env
+.env.local
+""",
+                "README.md": """# JoyBoy React Template
+
+Template React compatible Create React App.
+
+## Lancer le projet
+
+```bash
+npm install
+npm start
+```
+
+Les fichiers principaux sont dans `src/`.
+""",
+            })
+            return files
+
+        files.update({
             "index.html": """<!doctype html>
 <html lang="fr">
   <head>
@@ -2138,7 +2436,8 @@ npm run dev
 
 Les fichiers principaux sont dans `src/`.
 """,
-        }
+        })
+        return files
 
     def _run_simple_react_template(self, workspace_path: str) -> Generator[Dict, None, None]:
         from core.workspace_tools import _resolve_workspace_path
@@ -2160,51 +2459,93 @@ Les fichiers principaux sont dans `src/`.
             'write_blocked': False,
         })
 
-        files = self._react_template_files(workspace_path)
-        conflicts = []
+        package_path = _resolve_workspace_path(workspace_path, "package.json")
+        package_exists = bool(package_path and os.path.exists(package_path))
+        variant = "vite"
+
+        if package_exists:
+            try:
+                with open(package_path, "r", encoding="utf-8", errors="replace") as handle:
+                    package_data = json.load(handle)
+                deps = {}
+                for key in ("dependencies", "devDependencies"):
+                    value = package_data.get(key, {}) if isinstance(package_data, dict) else {}
+                    if isinstance(value, dict):
+                        deps.update(value)
+                if "react-scripts" in deps:
+                    variant = "cra"
+                elif not any(name in deps for name in ("react", "react-dom", "vite", "@vitejs/plugin-react")):
+                    text = (
+                        "Je n'ai pas créé le template React automatiquement parce que `package.json` existe "
+                        "mais ne ressemble pas à un projet React.\n\n"
+                        "Demande explicitement une mise à jour/écrasement si tu veux que JoyBoy le convertisse."
+                    )
+                    yield runtime_event('content', text=text, token_stats=total_token_stats)
+                    yield runtime_event('done', full_response=text, token_stats=total_token_stats)
+                    return
+            except Exception as exc:
+                text = f"Je n'ai pas créé le template React: impossible de lire `package.json` ({exc})."
+                yield runtime_event('content', text=text, token_stats=total_token_stats)
+                yield runtime_event('done', full_response=text, token_stats=total_token_stats)
+                return
+
+        files = self._react_template_files(
+            workspace_path,
+            variant=variant,
+            include_package=not package_exists,
+        )
+        existing = []
+        pending_files: Dict[str, str] = {}
         for path in files:
             full_path = _resolve_workspace_path(workspace_path, path)
             if full_path and os.path.exists(full_path):
-                conflicts.append(path)
+                existing.append(path)
+            else:
+                pending_files[path] = files[path]
 
-        if conflicts:
+        if not pending_files:
             text = (
-                "Je n'ai pas créé le template React pour éviter d'écraser des fichiers existants.\n\n"
-                "Fichiers déjà présents:\n"
-                + "\n".join(f"- {path}" for path in conflicts)
-                + "\n\nSupprime ou renomme ces fichiers, ou demande explicitement une mise à jour."
+                "Le template React est déjà présent, je n'ai rien écrasé.\n\n"
+                "Fichiers trouvés:\n"
+                + "\n".join(f"- {path}" for path in existing)
             )
             yield runtime_event('content', text=text, token_stats=total_token_stats)
             yield runtime_event('done', full_response=text, token_stats=total_token_stats)
             return
 
-        created = []
-        for path, content in files.items():
-            args = {'path': path, 'content': content}
-            yield runtime_event('tool_call', name='write_file', args=args)
-            result = self.execute_tool('write_file', args, workspace_path)
-            yield runtime_event('tool_result', result={
-                'success': result.success,
-                'tool_name': result.tool_name,
-                'data': result.data,
-                'error': result.error,
-                'write_blocked': self.write_blocked,
-            })
-            if self.write_blocked:
-                self.write_blocked = False
-            if not result.success:
-                text = f"Template React interrompu: impossible d'écrire `{path}` ({result.error or 'erreur inconnue'})."
-                yield runtime_event('content', text=text, token_stats=total_token_stats)
-                yield runtime_event('done', full_response=text, token_stats=total_token_stats)
-                return
-            created.append(path)
+        args = {
+            'files': [{'path': path, 'content': content} for path, content in pending_files.items()],
+            'overwrite_existing': False,
+        }
+        yield runtime_event('tool_call', name='write_files', args=args)
+        result = self.execute_tool('write_files', args, workspace_path)
+        yield runtime_event('tool_result', result={
+            'success': result.success,
+            'tool_name': result.tool_name,
+            'data': result.data,
+            'error': result.error,
+            'write_blocked': self.write_blocked,
+        })
+        if self.write_blocked:
+            self.write_blocked = False
+        if not result.success:
+            text = f"Template React interrompu: {result.error or 'erreur inconnue'}."
+            yield runtime_event('content', text=text, token_stats=total_token_stats)
+            yield runtime_event('done', full_response=text, token_stats=total_token_stats)
+            return
+
+        created = [item.get('path') for item in result.data.get('files', []) if item.get('path')]
+        command = "npm start" if variant == "cra" else "npm run dev"
+        variant_label = "compatible Create React App" if variant == "cra" else "Vite"
+        preserved = ("\n\nFichiers déjà présents, laissés intacts:\n" + "\n".join(f"- {path}" for path in existing)) if existing else ""
 
         text = (
-            "Template React simple créé sans appel LLM.\n\n"
-            "Fichiers créés:\n"
+            f"Template React {variant_label} prêt sans boucle LLM.\n\n"
+            "Fichiers ajoutés:\n"
             + "\n".join(f"- {path}" for path in created)
+            + preserved
             + "\n\nCommandes:\n"
-            "```bash\nnpm install\nnpm run dev\n```"
+            f"```bash\nnpm install\n{command}\n```"
         )
         yield runtime_event('content', text=text, token_stats=total_token_stats)
         yield runtime_event('done', full_response=text, token_stats=total_token_stats)
@@ -2561,7 +2902,7 @@ Host workspace path: hidden by JoyBoy runtime; do not mention local absolute pat
 Core contract:
 1. Use tools for real work. Do not pretend that files were created, edited, installed, or tested.
 2. Always call read_file before editing or replacing an existing file.
-3. Prefer edit_file for targeted changes. Use write_file only for new files or intentional full rewrites.
+3. Prefer edit_file for targeted changes. Use write_files for scaffolds or multi-file creation. Use write_file only for a single new file or intentional full rewrite.
 4. Never call read_file on "." or on a directory. read_file is only for specific files.
 5. Do one meaningful step at a time, then verify the result before claiming success.
 6. Do not loop on list_files, glob, ls, dir, or pwd. One root exploration is enough; then read specific files.
@@ -2589,9 +2930,9 @@ Safe workflow for modifications:
 4. only then summarize what changed.
 
 Safe workflow for project scaffolding:
-1. run the scaffold command inside the workspace.
-2. verify the generated folder and package.json.
-3. read the key generated files before describing them.
+1. Prefer write_files for small templates and starter projects so the whole scaffold is one tool step.
+2. Use a scaffold command only when the user asks for a framework generator or the project is too large for a small batch.
+3. Verify the generated files or package.json before describing them.
 {skill_index}
 {deferred_tools}
 
@@ -2742,6 +3083,19 @@ You have access to filesystem, search, shell, and workspace tools. Use them to c
                 for item in todos
             ]
             return "[RESULT write_todos]\n" + "\n".join(lines)
+
+        elif result.tool_name == 'write_files':
+            files = data.get("files", []) if isinstance(data, dict) else []
+            if not files:
+                conflicts = data.get("conflicts", []) if isinstance(data, dict) else []
+                if conflicts:
+                    return "[RESULT write_files] Existing files blocked:\n" + "\n".join(f"- {path}" for path in conflicts)
+                return f"[RESULT write_files] {'OK' if result.success else 'failed'}"
+            lines = [
+                f"- {item.get('action', 'written')}: {item.get('path', '')} ({item.get('bytes', 0)} bytes)"
+                for item in files
+            ]
+            return "[RESULT write_files]\n" + "\n".join(lines)
 
         elif result.tool_name == 'tool_search':
             promoted = data.get("promoted", []) if isinstance(data, dict) else []

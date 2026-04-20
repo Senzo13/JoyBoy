@@ -116,6 +116,7 @@ _TOOL_RISKS = {
     "write_todos": ToolRisk.REASONING,
     "tool_search": ToolRisk.READ_ONLY,
     "write_file": ToolRisk.WRITE,
+    "write_files": ToolRisk.WRITE,
     "edit_file": ToolRisk.WRITE,
     "delete_file": ToolRisk.DESTRUCTIVE,
     "bash": ToolRisk.SHELL,
@@ -131,6 +132,7 @@ _TOOL_RISKS = {
 
 _TOOL_CONCURRENCY = {
     "write_file": False,
+    "write_files": False,
     "edit_file": False,
     "delete_file": False,
     "bash": False,

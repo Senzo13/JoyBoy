@@ -5589,8 +5589,9 @@ function updateTerminalReasoningEffort(value) {
     const allowed = ['low', 'medium', 'high', 'xhigh'];
     const effort = allowed.includes(String(value || '').trim()) ? String(value).trim() : 'medium';
     userSettings.terminalReasoningEffort = effort;
-    const select = document.getElementById('terminal-reasoning-select');
-    if (select) select.value = effort;
+    document.querySelectorAll('#terminal-reasoning-select, .terminal-reasoning-control').forEach(select => {
+        select.value = effort;
+    });
     saveSettings();
     if (typeof Toast !== 'undefined') {
         Toast.success(t('settings.terminal.reasoningToast', 'Raisonnement : {mode}', {

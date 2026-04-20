@@ -1452,6 +1452,7 @@ def _chat_with_openai_compatible(
     max_tokens: int,
     temperature: float,
     timeout_seconds: int,
+    reasoning_effort: str | None = None,
 ) -> dict[str, Any]:
     _ensure_direct_api_auth(provider)
     api_key = get_provider_secret(provider.env_key) if provider.env_key else ""
@@ -1468,6 +1469,8 @@ def _chat_with_openai_compatible(
     if tools:
         payload["tools"] = tools
         payload["tool_choice"] = "auto"
+    if provider.id == "openai" and reasoning_effort:
+        payload["reasoning_effort"] = _normalise_reasoning_effort(reasoning_effort)
 
     headers = {"Content-Type": "application/json"}
     if api_key:
@@ -1480,6 +1483,15 @@ def _chat_with_openai_compatible(
         response = requests.post(url, headers=headers, json=payload, timeout=timeout_seconds)
     except requests.RequestException as exc:
         raise CloudModelError(f"{provider.label} request failed: {exc}") from exc
+
+    if response.status_code >= 400 and "reasoning_effort" in payload:
+        detail = response.text or response.reason or ""
+        if "reasoning" in detail.lower() or "unsupported" in detail.lower() or "unknown" in detail.lower():
+            payload.pop("reasoning_effort", None)
+            try:
+                response = requests.post(url, headers=headers, json=payload, timeout=timeout_seconds)
+            except requests.RequestException as exc:
+                raise CloudModelError(f"{provider.label} request failed: {exc}") from exc
 
     if response.status_code >= 400:
         detail = truncate_middle(response.text or response.reason or "", 800)
@@ -1537,5 +1549,5 @@ def chat_with_cloud_model(
     if provider.protocol == "gemini":
         return _chat_with_gemini(provider, provider_model, messages, tools, max_tokens, temperature, timeout_seconds)
     if provider.openai_compatible:
-        return _chat_with_openai_compatible(provider, provider_model, messages, tools, max_tokens, temperature, timeout_seconds)
+        return _chat_with_openai_compatible(provider, provider_model, messages, tools, max_tokens, temperature, timeout_seconds, reasoning_effort=reasoning_effort)
     raise CloudModelError(f"Provider {provider_id} protocol is not supported for terminal runtime")

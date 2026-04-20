@@ -1036,6 +1036,32 @@ function getTerminalReasoningEffort(modelId = null) {
         : (saved || DEFAULT_CLOUD_REASONING_EFFORT);
 }
 
+function getReasoningLabelForPicker(effort) {
+    if (typeof terminalReasoningLabel === 'function') return terminalReasoningLabel(effort);
+    const labels = {
+        low: uiT('settings.terminal.reasoningLow', 'Bas'),
+        medium: uiT('settings.terminal.reasoningMedium', 'Moyen'),
+        high: uiT('settings.terminal.reasoningHigh', 'Élevé'),
+        xhigh: uiT('settings.terminal.reasoningXhigh', 'Très approfondi'),
+    };
+    return labels[effort] || labels.medium;
+}
+
+function buildCloudReasoningPickerControl(pickerId = 'chat') {
+    const selected = String(userSettings.terminalReasoningEffort || DEFAULT_CLOUD_REASONING_EFFORT).trim();
+    const options = ['low', 'medium', 'high', 'xhigh'].map(effort => `
+        <option value="${effort}" ${selected === effort ? 'selected' : ''}>${getReasoningLabelForPicker(effort)}</option>
+    `).join('');
+    return `
+        <div class="model-picker-reasoning" onclick="stopModelPickerControlEvent(event)">
+            <label for="${pickerId}-reasoning-select">${uiT('settings.terminal.reasoningLabel', 'Raisonnement cloud')}</label>
+            <select id="${pickerId}-reasoning-select" class="model-picker-reasoning-select terminal-reasoning-control" onchange="updateTerminalReasoningEffort(this.value)">
+                ${options}
+            </select>
+        </div>
+    `;
+}
+
 function formatTerminalCloudModelName(modelId) {
     const raw = String(modelId || '').trim();
     if (!raw.includes(':')) return raw || 'Cloud';
@@ -2058,6 +2084,7 @@ function buildChatPickerFilters(models, pickerId) {
     const emptyText = source === 'cloud'
         ? uiT('modelPicker.emptyCloud', 'Aucun modèle cloud configuré.')
         : uiT('modelPicker.emptyLocal', 'Aucun modèle local disponible.');
+    const reasoningControl = source === 'cloud' ? buildCloudReasoningPickerControl(pickerId) : '';
 
     return {
         models: filteredModels,
@@ -2065,6 +2092,7 @@ function buildChatPickerFilters(models, pickerId) {
             <div class="model-picker-filters">
                 <div class="model-picker-source-tabs">${sourceButtons}</div>
                 ${familyFilters}
+                ${reasoningControl}
             </div>
         `,
         emptyText,

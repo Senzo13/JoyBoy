@@ -820,6 +820,35 @@
   color: #e0f2fe;
 }
 
+.model-picker-reasoning {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 34px;
+  padding: 6px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.model-picker-reasoning label {
+  color: #8f8f95;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.model-picker-reasoning-select {
+  min-width: 118px;
+  height: 28px;
+  border: 1px solid rgba(56, 189, 248, 0.22);
+  border-radius: 8px;
+  background: #101219;
+  color: #e0f2fe;
+  font-size: 12px;
+  outline: none;
+}
+
 .model-picker-empty {
   padding: 14px 12px;
   border-radius: 8px;
