@@ -1506,6 +1506,63 @@ function renderProviderSettingsLinks(provider) {
     return `<div class="settings-provider-links">${links.join('')}</div>`;
 }
 
+function getProviderAuthModeLabel(mode) {
+    const modeId = String(mode?.id || '').trim();
+    return t(`providers.authMode_${modeId}`, mode?.label || modeId || 'API key');
+}
+
+function getProviderAuthStatusLabel(status) {
+    const key = String(status || '').trim();
+    const fallback = {
+        configured: t('providers.authStatusConfigured', 'actif'),
+        missing_key: t('providers.authStatusMissingKey', 'clé manquante'),
+        ready: t('providers.authStatusReady', 'prêt'),
+        connector_missing: t('providers.authStatusConnectorMissing', 'connecteur absent'),
+        connector_pending: t('providers.authStatusConnectorPending', 'connecteur à brancher'),
+    };
+    return fallback[key] || key || t('providers.authStatusMissingKey', 'clé manquante');
+}
+
+function renderProviderAuthModeControls(provider) {
+    const modes = Array.isArray(provider?.auth_modes) ? provider.auth_modes : [];
+    if (modes.length <= 1) return '';
+
+    const providerIdArg = escapeHtml(JSON.stringify(provider.provider_id || ''));
+    const providerKeyArg = escapeHtml(JSON.stringify(provider.key || ''));
+    const buttons = modes.map(mode => {
+        const modeId = String(mode?.id || '').trim();
+        const modeArg = escapeHtml(JSON.stringify(modeId));
+        const selected = modeId && modeId === provider.auth_mode;
+        const selectable = mode.selectable !== false;
+        const statusLabel = getProviderAuthStatusLabel(mode.status);
+        const label = getProviderAuthModeLabel(mode);
+        const className = [
+            'provider-auth-mode',
+            selected ? 'active' : '',
+            selectable ? '' : 'locked',
+        ].filter(Boolean).join(' ');
+        const click = selectable ? `setProviderAuthMode(${providerIdArg}, ${modeArg}, ${providerKeyArg})` : '';
+        return `
+            <button
+                type="button"
+                class="${className}"
+                ${selected ? 'aria-pressed="true"' : 'aria-pressed="false"'}
+                ${selectable ? `onclick="${click}"` : 'disabled aria-disabled="true"'}
+                data-tooltip="${escapeHtml(statusLabel)}"
+            >
+                ${escapeHtml(label)}
+            </button>
+        `;
+    }).join('');
+
+    return `
+        <div class="provider-auth-block">
+            <div class="provider-auth-label">${escapeHtml(t('providers.authModeTitle', 'Accès'))}</div>
+            <div class="provider-auth-modes">${buttons}</div>
+        </div>
+    `;
+}
+
 function renderProviderSettingsRow(provider) {
     const translatedLabel = t(`providerMeta.${provider.key}.label`, provider.label || provider.key);
     const translatedDescription = t(`providerMeta.${provider.key}.description`, provider.description || '');
@@ -1517,11 +1574,15 @@ function renderProviderSettingsRow(provider) {
         : provider.source === 'local'
             ? t('providers.sourceLocal', 'stocké localement')
             : t('providers.sourceMissing', 'non configuré');
+    const authStatusText = getProviderAuthStatusLabel(provider.auth_status);
+    const sourceDetails = provider.auth_uses_api_key === false ? authStatusText : sourceText;
     const stateText = provider.configured
         ? t('providers.configured', 'Configuré {masked}', { masked: provider.masked ? `(${provider.masked})` : '' }).trim()
         : t('providers.notConfigured', 'Non configuré');
     const stateClass = provider.configured ? 'status-ok' : 'status-warn';
     const providerLinks = renderProviderSettingsLinks(provider);
+    const authControls = renderProviderAuthModeControls(provider);
+    const apiKeyActive = provider.auth_uses_api_key !== false;
 
     return `
         <div class="settings-card settings-provider-card">
@@ -1530,16 +1591,18 @@ function renderProviderSettingsRow(provider) {
                     <div class="settings-label">${translatedLabel}</div>
                     <div class="settings-label-desc">${translatedDescription}</div>
                     <div class="settings-label-desc">
-                        <span class="${stateClass}">${stateText}</span> · ${sourceText}
+                        <span class="${stateClass}">${stateText}</span> · ${sourceDetails}
                     </div>
                 </div>
                 <div class="settings-card-controls">
+                    ${authControls}
                     <input
                         type="password"
                         id="provider-input-${provider.key}"
                         class="settings-input"
                         placeholder="${provider.placeholder || ''}"
                         autocomplete="off"
+                        ${apiKeyActive ? '' : 'disabled'}
                     >
                     ${providerLinks}
                     <div class="settings-inline-actions">
@@ -1548,6 +1611,7 @@ function renderProviderSettingsRow(provider) {
                             label: saveTooltip,
                             tooltip: saveTooltip,
                             onClick: `saveProviderSecret(${providerKeyArg})`,
+                            disabled: !apiKeyActive,
                         })}
                         ${renderSettingsIconAction({
                             icon: 'trash-2',
@@ -1561,6 +1625,19 @@ function renderProviderSettingsRow(provider) {
             </div>
         </div>
     `;
+}
+
+async function setProviderAuthMode(providerId, authMode, key = '') {
+    const result = await apiSettings.setProviderAuthMode(providerId, authMode, key);
+    if (!result.ok || !result.data?.success) {
+        Toast.error(t('common.error', 'Erreur'), result.data?.error || result.error || t('providers.authModeError', 'Impossible de changer le mode d’accès'));
+        return;
+    }
+
+    await loadProviderSettings();
+    await refreshCloudModelSurfaces();
+    if (typeof checkModelsStatus === 'function') checkModelsStatus();
+    Toast.success(t('providers.authModeSavedTitle', 'Accès mis à jour'), t('providers.authModeSavedBody', 'Le provider utilisera ce mode uniquement.'), 2200);
 }
 
 async function saveProviderSecret(key) {

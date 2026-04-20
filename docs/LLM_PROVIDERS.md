@@ -6,6 +6,26 @@ variables, `.env`, or the local UI config stored in `~/.joyboy/config.json`.
 
 Never commit API keys.
 
+## Access Modes
+
+Each provider has one active access mode. JoyBoy treats these modes as mutually
+exclusive so switching to a subscription/CLI path never silently falls back to
+the stored API key.
+
+Supported in the public core today:
+
+* `api_key`: uses the provider key from env, `.env`, or the local UI config.
+* `subscription_cli`: exposed only for providers that publish a local account
+  CLI path, such as OpenAI Codex, Claude Code, or Gemini CLI. The UI can record
+  the choice and detect the local CLI, but the direct API client refuses to use a
+  key while this mode is selected until a dedicated connector is enabled.
+
+This split is deliberate. OpenAI's ChatGPT/Codex subscription path and API
+Platform billing are separate systems, and other vendors make similar
+distinctions between their app/CLI subscription usage and direct API usage.
+Provider credentials stay in the same local config file, but the active mode
+decides which one is eligible at runtime.
+
 ## Provider Syntax
 
 Cloud models use a provider-prefixed model id in chat and terminal mode:

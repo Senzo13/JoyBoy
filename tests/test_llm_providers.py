@@ -93,6 +93,38 @@ class LLMProviderCatalogTest(unittest.TestCase):
         self.assertIn("api-keys", by_key["OPENAI_API_KEY"]["key_url"])
         self.assertIn("models", by_key["OPENAI_API_KEY"]["models_url"])
 
+    def test_provider_status_exposes_access_modes(self) -> None:
+        providers = self.local_config.get_provider_status()
+        by_key = {provider["key"]: provider for provider in providers}
+
+        openai = by_key["OPENAI_API_KEY"]
+        self.assertEqual(openai["provider_id"], "openai")
+        self.assertEqual(openai["auth_mode"], "api_key")
+        self.assertTrue(openai["auth_uses_api_key"])
+        self.assertIn("api_key", {mode["id"] for mode in openai["auth_modes"]})
+        self.assertIn("codex_cli", {mode["id"] for mode in openai["auth_modes"]})
+
+    def test_subscription_access_mode_blocks_direct_api_fallback(self) -> None:
+        os.environ["OPENAI_API_KEY"] = "sk-test"
+        self.local_config.set_provider_auth_mode("openai", "codex_cli")
+
+        catalog = self.model_client.get_llm_provider_catalog()
+        openai = next(provider for provider in catalog if provider["id"] == "openai")
+
+        self.assertFalse(openai["configured"])
+        self.assertEqual(openai["auth_mode"], "codex_cli")
+        self.assertFalse(openai["auth_uses_api_key"])
+
+        with patch("core.agent_runtime.model_client.requests.post") as post:
+            with self.assertRaises(self.model_client.CloudModelError) as raised:
+                self.model_client.chat_with_cloud_model(
+                    "openai:gpt-test",
+                    messages=[{"role": "user", "content": "hi"}],
+                )
+
+        post.assert_not_called()
+        self.assertIn("will not use OPENAI_API_KEY", str(raised.exception))
+
     def test_terminal_model_profiles_include_configured_cloud_ids(self) -> None:
         os.environ["OPENAI_API_KEY"] = "sk-test"
 

@@ -4050,6 +4050,19 @@
     Object.assign(MESSAGES.fr.providers, {
         saveError: 'Impossible d’enregistrer la clé',
         clearError: 'Impossible d’effacer la clé',
+        authModeTitle: 'Accès',
+        authMode_api_key: 'Clé API',
+        authMode_codex_cli: 'Codex CLI',
+        authMode_claude_cli: 'Claude Code',
+        authMode_gemini_cli: 'Gemini CLI',
+        authStatusConfigured: 'actif',
+        authStatusMissingKey: 'clé manquante',
+        authStatusReady: 'prêt',
+        authStatusConnectorMissing: 'connecteur absent',
+        authStatusConnectorPending: 'connecteur à brancher',
+        authModeError: 'Impossible de changer le mode d’accès',
+        authModeSavedTitle: 'Accès mis à jour',
+        authModeSavedBody: 'Le provider utilisera ce mode uniquement.',
     });
     Object.assign(MESSAGES.fr.packs, {
         toggleError: 'Impossible de changer l’état du pack',
@@ -4252,6 +4265,19 @@
     Object.assign(MESSAGES.en.providers, {
         saveError: 'Unable to save the key',
         clearError: 'Unable to clear the key',
+        authModeTitle: 'Access',
+        authMode_api_key: 'API key',
+        authMode_codex_cli: 'Codex CLI',
+        authMode_claude_cli: 'Claude Code',
+        authMode_gemini_cli: 'Gemini CLI',
+        authStatusConfigured: 'active',
+        authStatusMissingKey: 'missing key',
+        authStatusReady: 'ready',
+        authStatusConnectorMissing: 'connector missing',
+        authStatusConnectorPending: 'connector pending',
+        authModeError: 'Unable to change access mode',
+        authModeSavedTitle: 'Access updated',
+        authModeSavedBody: 'This provider will use that mode only.',
     });
     Object.assign(MESSAGES.en.packs, {
         toggleError: 'Unable to change pack state',
@@ -4454,6 +4480,19 @@
     Object.assign(MESSAGES.es.providers, {
         saveError: 'No se pudo guardar la clave',
         clearError: 'No se pudo borrar la clave',
+        authModeTitle: 'Acceso',
+        authMode_api_key: 'Clave API',
+        authMode_codex_cli: 'Codex CLI',
+        authMode_claude_cli: 'Claude Code',
+        authMode_gemini_cli: 'Gemini CLI',
+        authStatusConfigured: 'activo',
+        authStatusMissingKey: 'falta clave',
+        authStatusReady: 'listo',
+        authStatusConnectorMissing: 'conector ausente',
+        authStatusConnectorPending: 'conector pendiente',
+        authModeError: 'No se pudo cambiar el modo de acceso',
+        authModeSavedTitle: 'Acceso actualizado',
+        authModeSavedBody: 'Este provider usará solo ese modo.',
     });
     Object.assign(MESSAGES.es.packs, {
         toggleError: 'No se pudo cambiar el estado del pack',
@@ -4656,6 +4695,19 @@
     Object.assign(MESSAGES.it.providers, {
         saveError: 'Impossibile salvare la chiave',
         clearError: 'Impossibile cancellare la chiave',
+        authModeTitle: 'Accesso',
+        authMode_api_key: 'Chiave API',
+        authMode_codex_cli: 'Codex CLI',
+        authMode_claude_cli: 'Claude Code',
+        authMode_gemini_cli: 'Gemini CLI',
+        authStatusConfigured: 'attivo',
+        authStatusMissingKey: 'chiave mancante',
+        authStatusReady: 'pronto',
+        authStatusConnectorMissing: 'connettore assente',
+        authStatusConnectorPending: 'connettore da collegare',
+        authModeError: 'Impossibile cambiare modalità di accesso',
+        authModeSavedTitle: 'Accesso aggiornato',
+        authModeSavedBody: 'Questo provider userà solo quella modalità.',
     });
     Object.assign(MESSAGES.it.packs, {
         toggleError: 'Impossibile cambiare lo stato del pack',

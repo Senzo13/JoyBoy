@@ -146,6 +146,42 @@ def providers_clear_secret():
     })
 
 
+@settings_bp.route('/api/providers/auth-mode', methods=['POST'])
+def providers_set_auth_mode():
+    """Change le mode d'accès actif d'un provider LLM."""
+    from core.infra.local_config import (
+        PROVIDER_ID_BY_KEY,
+        get_local_config_overview,
+        get_provider_status,
+        set_provider_auth_mode,
+    )
+
+    data = request.get_json(silent=True) or {}
+    provider_id = str(data.get('provider_id') or data.get('provider') or '').strip().lower()
+    key = str(data.get('key') or '').strip()
+    auth_mode = str(data.get('auth_mode') or data.get('mode') or '').strip().lower()
+
+    if not provider_id and key:
+        provider_id = PROVIDER_ID_BY_KEY.get(key, "")
+    if provider_id not in set(PROVIDER_ID_BY_KEY.values()):
+        return jsonify({'success': False, 'error': f'Provider inconnu: {provider_id or key}'}), 400
+    if not auth_mode:
+        return jsonify({'success': False, 'error': 'Mode d’accès manquant'}), 400
+
+    try:
+        set_provider_auth_mode(provider_id, auth_mode)
+    except ValueError as exc:
+        return jsonify({'success': False, 'error': str(exc)}), 400
+
+    overview = get_local_config_overview()
+    return jsonify({
+        'success': True,
+        'providers': get_provider_status(),
+        'config_path': overview['config_path'],
+        'active_source': overview['active_source'],
+    })
+
+
 # ========== FEATURE FLAGS ==========
 
 @settings_bp.route('/api/features/status')

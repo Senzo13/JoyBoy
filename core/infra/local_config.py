@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import sys
 from copy import deepcopy
 from pathlib import Path
@@ -38,6 +39,7 @@ DEFAULT_LOCAL_CONFIG = {
         "ZHIPU_API_KEY": "",
         "VLLM_API_KEY": "",
     },
+    "provider_auth_modes": {},
     "features": {
         "adult_features_enabled": True,
         "public_repo_mode": False,
@@ -59,6 +61,73 @@ DEFAULT_LOCAL_CONFIG = {
         "profile_name": "",
         "last_completed_at": "",
     },
+}
+
+PROVIDER_ID_BY_KEY = {
+    "OPENAI_API_KEY": "openai",
+    "OPENROUTER_API_KEY": "openrouter",
+    "ANTHROPIC_API_KEY": "anthropic",
+    "GEMINI_API_KEY": "gemini",
+    "DEEPSEEK_API_KEY": "deepseek",
+    "MOONSHOT_API_KEY": "moonshot",
+    "NOVITA_API_KEY": "novita",
+    "MINIMAX_API_KEY": "minimax",
+    "VOLCENGINE_API_KEY": "volcengine",
+    "ZHIPU_API_KEY": "glm",
+    "VLLM_API_KEY": "vllm",
+}
+
+DEFAULT_PROVIDER_AUTH_MODE = "api_key"
+
+PROVIDER_AUTH_OPTIONS = {
+    "openai": [
+        {
+            "id": "api_key",
+            "kind": "api_key",
+            "label": "API key",
+            "implemented": True,
+        },
+        {
+            "id": "codex_cli",
+            "kind": "subscription_cli",
+            "label": "Codex CLI",
+            "command": "codex",
+            "implemented": False,
+            "docs_url": "https://help.openai.com/en/articles/11369540-using-codex-with-your-chatgpt-plan/",
+        },
+    ],
+    "anthropic": [
+        {
+            "id": "api_key",
+            "kind": "api_key",
+            "label": "API key",
+            "implemented": True,
+        },
+        {
+            "id": "claude_cli",
+            "kind": "subscription_cli",
+            "label": "Claude Code",
+            "command": "claude",
+            "implemented": False,
+            "docs_url": "https://docs.anthropic.com/en/docs/claude-code/costs",
+        },
+    ],
+    "gemini": [
+        {
+            "id": "api_key",
+            "kind": "api_key",
+            "label": "API key",
+            "implemented": True,
+        },
+        {
+            "id": "gemini_cli",
+            "kind": "subscription_cli",
+            "label": "Gemini CLI",
+            "command": "gemini",
+            "implemented": False,
+            "docs_url": "https://codelabs.developers.google.com/gemini-cli-deep-dive",
+        },
+    ],
 }
 
 PROVIDER_META = {
@@ -156,6 +225,116 @@ PROVIDER_META = {
         "secret": True,
     },
 }
+
+
+def _provider_auth_options_for(provider_id: str) -> list[dict]:
+    provider_id = str(provider_id or "").strip().lower()
+    options = PROVIDER_AUTH_OPTIONS.get(provider_id)
+    if options:
+        return deepcopy(options)
+    return [{
+        "id": DEFAULT_PROVIDER_AUTH_MODE,
+        "kind": "api_key",
+        "label": "API key",
+        "implemented": True,
+    }]
+
+
+def _command_path(command: str) -> str:
+    if not command:
+        return ""
+    return shutil.which(command) or ""
+
+
+def _normalise_provider_auth_mode(provider_id: str, auth_mode: str | None) -> str:
+    requested = str(auth_mode or "").strip().lower()
+    valid_modes = {option["id"] for option in _provider_auth_options_for(provider_id)}
+    if requested in valid_modes:
+        return requested
+    return DEFAULT_PROVIDER_AUTH_MODE
+
+
+def get_provider_auth_mode(provider_id: str) -> str:
+    provider_id = str(provider_id or "").strip().lower()
+    config = load_local_config()
+    stored = config.get("provider_auth_modes", {}).get(provider_id, DEFAULT_PROVIDER_AUTH_MODE)
+    return _normalise_provider_auth_mode(provider_id, stored)
+
+
+def set_provider_auth_mode(provider_id: str, auth_mode: str) -> dict:
+    provider_id = str(provider_id or "").strip().lower()
+    normalised = _normalise_provider_auth_mode(provider_id, auth_mode)
+    if normalised != str(auth_mode or "").strip().lower():
+        valid = ", ".join(option["id"] for option in _provider_auth_options_for(provider_id))
+        raise ValueError(f"Mode d'accès inconnu pour {provider_id}: {auth_mode}. Modes valides: {valid}")
+
+    config = load_local_config()
+    config.setdefault("provider_auth_modes", {})[provider_id] = normalised
+    return save_local_config(config)
+
+
+def provider_auth_mode_uses_api_key(provider_id: str, auth_mode: str | None = None) -> bool:
+    mode = _normalise_provider_auth_mode(provider_id, auth_mode or get_provider_auth_mode(provider_id))
+    option = next((item for item in _provider_auth_options_for(provider_id) if item["id"] == mode), None)
+    return (option or {}).get("kind") == "api_key"
+
+
+def get_provider_auth_status(provider_id: str, env_key: str = "") -> dict:
+    provider_id = str(provider_id or "").strip().lower()
+    selected_mode = get_provider_auth_mode(provider_id)
+    options = []
+    selected_option = None
+    key_configured = bool(get_provider_secret(env_key)) if env_key else False
+
+    for raw_option in _provider_auth_options_for(provider_id):
+        option = deepcopy(raw_option)
+        command = str(option.get("command", "") or "")
+        command_path = _command_path(command)
+        kind = option.get("kind", "api_key")
+        implemented = bool(option.get("implemented", False))
+
+        if kind == "api_key":
+            status = "configured" if key_configured else "missing_key"
+            selectable = True
+            runtime_ready = key_configured
+        else:
+            if not command_path:
+                status = "connector_missing"
+            elif implemented:
+                status = "ready"
+            else:
+                status = "connector_pending"
+            selectable = bool(command_path)
+            runtime_ready = bool(command_path and implemented)
+
+        option.update({
+            "command_path": command_path,
+            "selectable": selectable,
+            "runtime_ready": runtime_ready,
+            "status": status,
+            "selected": option["id"] == selected_mode,
+            "uses_api_key": kind == "api_key",
+        })
+        if option["selected"]:
+            selected_option = option
+        options.append(option)
+
+    selected_option = selected_option or options[0]
+    configured = bool(selected_option.get("runtime_ready"))
+    if selected_option.get("uses_api_key"):
+        configured = key_configured
+
+    return {
+        "provider_id": provider_id,
+        "mode": selected_option["id"],
+        "kind": selected_option.get("kind", "api_key"),
+        "label": selected_option.get("label", selected_option["id"]),
+        "uses_api_key": bool(selected_option.get("uses_api_key")),
+        "configured": configured,
+        "runtime_ready": bool(selected_option.get("runtime_ready")),
+        "status": selected_option.get("status", "missing_key"),
+        "options": options,
+    }
 
 
 def _deep_merge(base: dict, override: dict) -> dict:
@@ -301,18 +480,38 @@ def get_provider_status() -> list[dict]:
         value = str(providers.get(key, "") or "")
         env_value = os.environ.get(key, "")
         effective = env_value or value
+        provider_id = PROVIDER_ID_BY_KEY.get(key, "")
+        auth_status = get_provider_auth_status(provider_id, key) if provider_id else {
+            "provider_id": "",
+            "mode": DEFAULT_PROVIDER_AUTH_MODE,
+            "kind": "api_key",
+            "label": "API key",
+            "uses_api_key": True,
+            "configured": bool(effective),
+            "runtime_ready": bool(effective),
+            "status": "configured" if effective else "missing_key",
+            "options": _provider_auth_options_for(""),
+        }
         status.append({
             "key": key,
+            "provider_id": provider_id,
             "label": meta["label"],
             "description": meta["description"],
             "placeholder": meta["placeholder"],
             "scope": meta.get("scope", "assets"),
             "key_url": meta.get("key_url", ""),
             "models_url": meta.get("models_url", ""),
-            "configured": bool(effective),
+            "configured": bool(auth_status["configured"]),
             "source": "env" if env_value else ("local" if value else "missing"),
             "masked": mask_secret(effective),
             "local_only": bool(value) and not env_value,
+            "auth_mode": auth_status["mode"],
+            "auth_kind": auth_status["kind"],
+            "auth_label": auth_status["label"],
+            "auth_status": auth_status["status"],
+            "auth_uses_api_key": auth_status["uses_api_key"],
+            "auth_runtime_ready": auth_status["runtime_ready"],
+            "auth_modes": auth_status["options"],
         })
     return status
 

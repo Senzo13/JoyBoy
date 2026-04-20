@@ -15,7 +15,10 @@ from typing import Any
 
 import requests
 
-from core.infra.local_config import get_provider_secret
+from core.infra.local_config import (
+    get_provider_auth_status,
+    get_provider_secret,
+)
 
 from .output import truncate_middle
 
@@ -277,14 +280,54 @@ def is_cloud_model_name(model_name: str) -> bool:
 
 
 def _provider_is_configured(provider: LLMProviderDescriptor) -> bool:
+    if provider.id == "ollama":
+        return True
+    auth_status = get_provider_auth_status(provider.id, provider.env_key)
+    if not auth_status["uses_api_key"]:
+        return bool(auth_status["runtime_ready"])
     if provider.requires_key and provider.env_key:
         return bool(get_provider_secret(provider.env_key))
     return True
 
 
+def _provider_auth_public(provider: LLMProviderDescriptor) -> dict[str, Any]:
+    if provider.id == "ollama":
+        return {
+            "auth_mode": "local",
+            "auth_kind": "local",
+            "auth_label": "Local",
+            "auth_status": "ready",
+            "auth_uses_api_key": False,
+            "auth_runtime_ready": True,
+        }
+    auth_status = get_provider_auth_status(provider.id, provider.env_key)
+    return {
+        "auth_mode": auth_status["mode"],
+        "auth_kind": auth_status["kind"],
+        "auth_label": auth_status["label"],
+        "auth_status": auth_status["status"],
+        "auth_uses_api_key": auth_status["uses_api_key"],
+        "auth_runtime_ready": auth_status["runtime_ready"],
+    }
+
+
+def _ensure_direct_api_auth(provider: LLMProviderDescriptor) -> None:
+    auth_status = get_provider_auth_status(provider.id, provider.env_key)
+    if auth_status["uses_api_key"]:
+        return
+    raise CloudModelError(
+        f"{provider.label} is set to {auth_status['label']} access. "
+        f"JoyBoy will not use {provider.env_key or 'an API key'} while that mode is selected. "
+        "Switch this provider back to API key mode or enable a subscription CLI connector."
+    )
+
+
 def _provider_secret_fingerprint(provider: LLMProviderDescriptor) -> str:
     if not provider.env_key:
         return ""
+    auth_status = get_provider_auth_status(provider.id, provider.env_key)
+    if not auth_status["uses_api_key"]:
+        return auth_status["mode"]
     secret = get_provider_secret(provider.env_key) or ""
     return f"{len(secret)}:{hash(secret)}" if secret else ""
 
@@ -396,6 +439,9 @@ def discover_provider_model_ids(
     """Return live provider models when the provider exposes a model-list endpoint."""
     if provider.id == "ollama":
         return list(provider.default_models), ""
+    auth_status = get_provider_auth_status(provider.id, provider.env_key)
+    if not auth_status["uses_api_key"]:
+        return [], f"{provider.label} model discovery needs API key mode"
     if provider.requires_key and provider.env_key and not get_provider_secret(provider.env_key):
         return [], "missing key"
 
@@ -469,6 +515,7 @@ def get_llm_provider_catalog(discover_remote: bool = False) -> list[dict[str, An
     for provider in LLM_PROVIDER_CATALOG:
         configured = _provider_is_configured(provider)
         data = provider.to_public_dict(configured=configured)
+        data.update(_provider_auth_public(provider))
         if discover_remote:
             model_ids, source, error = _profile_model_ids(
                 provider,
@@ -493,6 +540,7 @@ def get_terminal_model_profiles(
         configured = _provider_is_configured(provider)
         if configured_only and not configured:
             continue
+        auth_public = _provider_auth_public(provider)
         model_ids, source, discovery_error = _profile_model_ids(
             provider,
             configured=configured,
@@ -514,6 +562,7 @@ def get_terminal_model_profiles(
                 "model_source": source,
                 "discovered": source == "remote",
                 "discovery_error": discovery_error,
+                **auth_public,
             })
     return profiles
 
@@ -670,6 +719,7 @@ def _chat_with_anthropic(
     temperature: float,
     timeout_seconds: int,
 ) -> dict[str, Any]:
+    _ensure_direct_api_auth(provider)
     api_key = get_provider_secret(provider.env_key) if provider.env_key else ""
     if provider.requires_key and not api_key:
         raise CloudModelError(f"Missing {provider.env_key} for provider {provider.label}")
@@ -803,6 +853,7 @@ def _chat_with_gemini(
     temperature: float,
     timeout_seconds: int,
 ) -> dict[str, Any]:
+    _ensure_direct_api_auth(provider)
     api_key = get_provider_secret(provider.env_key) if provider.env_key else ""
     if provider.requires_key and not api_key:
         raise CloudModelError(f"Missing {provider.env_key} for provider {provider.label}")
@@ -887,6 +938,7 @@ def _chat_with_openai_compatible(
     temperature: float,
     timeout_seconds: int,
 ) -> dict[str, Any]:
+    _ensure_direct_api_auth(provider)
     api_key = get_provider_secret(provider.env_key) if provider.env_key else ""
     if provider.requires_key and not api_key:
         raise CloudModelError(f"Missing {provider.env_key} for provider {provider.label}")

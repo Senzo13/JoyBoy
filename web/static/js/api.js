@@ -291,6 +291,14 @@ const apiSettings = {
         return apiPost('/api/providers/secret/clear', { key });
     },
 
+    async setProviderAuthMode(providerId, authMode, key = '') {
+        return apiPost('/api/providers/auth-mode', {
+            provider_id: providerId,
+            auth_mode: authMode,
+            key,
+        });
+    },
+
     async getHarnessAudit() {
         return apiGet('/api/harness/audit');
     },
