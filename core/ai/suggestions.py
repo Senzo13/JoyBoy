@@ -26,7 +26,13 @@ WOMAN_WORDS = {"woman", "female", "girl", "lady", "she", "her"}
 MAN_WORDS = {"man", "male", "boy", "guy", "he", "him"}
 ANIMAL_WORDS = {"cat", "dog", "horse", "bird", "animal", "kitten", "puppy"}
 VEHICLE_WORDS = {"car", "vehicle", "motorcycle", "bike", "truck", "road"}
-FOOD_WORDS = {"food", "plate", "meal", "dish", "cake", "drink", "coffee"}
+FOOD_WORDS = {
+    "food", "plate", "meal", "dish", "cake", "drink", "drinks", "coffee",
+    "beverage", "beverages", "bowl", "cup", "glass", "dessert", "bread",
+    "pizza", "pasta", "burger", "sandwich", "salad", "soup", "rice",
+    "noodle", "noodles", "ramen", "steak", "sushi", "fruit", "vegetable",
+    "tea", "juice", "wine", "beer", "cocktail",
+}
 INTERIOR_WORDS = {"room", "bed", "sofa", "kitchen", "bathroom", "indoor", "table", "chair"}
 WATER_WORDS = {"water", "pool", "sea", "ocean", "beach", "swimming", "underwater", "lake"}
 NATURE_WORDS = {"tree", "forest", "mountain", "garden", "grass", "sky", "field", "outdoor"}
@@ -61,6 +67,10 @@ LABELS = {
         "nature_scene": "Décor nature",
         "city_scene": "Décor ville",
         "product_light": "Photo produit",
+        "food_plating": "Dressage appétissant",
+        "menu_photo": "Photo menu",
+        "fresh_food": "Aspect frais",
+        "drink_photo": "Boisson nette",
         "warm_colors": "Couleurs chaudes",
         "vintage_photo": "Photo vintage",
         "animal_portrait": "Portrait animal",
@@ -79,6 +89,10 @@ LABELS = {
         "nature_scene": "Nature scene",
         "city_scene": "City scene",
         "product_light": "Product photo",
+        "food_plating": "Appetizing plating",
+        "menu_photo": "Menu photo",
+        "fresh_food": "Fresh look",
+        "drink_photo": "Clean drink shot",
         "warm_colors": "Warm colors",
         "vintage_photo": "Vintage photo",
         "animal_portrait": "Animal portrait",
@@ -97,6 +111,10 @@ LABELS = {
         "nature_scene": "Escena natural",
         "city_scene": "Escena urbana",
         "product_light": "Foto producto",
+        "food_plating": "Emplatado apetitoso",
+        "menu_photo": "Foto de menú",
+        "fresh_food": "Aspecto fresco",
+        "drink_photo": "Bebida nítida",
         "warm_colors": "Colores cálidos",
         "vintage_photo": "Foto vintage",
         "animal_portrait": "Retrato animal",
@@ -115,6 +133,10 @@ LABELS = {
         "nature_scene": "Scenario natura",
         "city_scene": "Scenario città",
         "product_light": "Foto prodotto",
+        "food_plating": "Impiattamento invitante",
+        "menu_photo": "Foto menu",
+        "fresh_food": "Aspetto fresco",
+        "drink_photo": "Bevanda nitida",
         "warm_colors": "Colori caldi",
         "vintage_photo": "Foto vintage",
         "animal_portrait": "Ritratto animale",
@@ -309,6 +331,47 @@ def _animal_suggestions(ctx: SuggestionContext) -> list[dict]:
     ]
 
 
+def _food_suggestions(ctx: SuggestionContext) -> list[dict]:
+    suggestions = [
+        _suggest(
+            "food_plating",
+            "make the food look freshly plated and appetizing, natural colors, realistic texture, keep the same plate and composition",
+            ctx.locale,
+        ),
+        _suggest(
+            "menu_photo",
+            "restaurant menu photography, clean side light, crisp details, realistic shadows, keep the same food and framing",
+            ctx.locale,
+        ),
+        _suggest(
+            "fresh_food",
+            "fresh editorial food photography, vibrant but natural colors, visible texture, keep the same items and composition",
+            ctx.locale,
+        ),
+    ]
+
+    if _has_any(ctx.words, {"drink", "drinks", "beverage", "beverages", "coffee", "tea", "juice", "wine", "beer", "cocktail", "cup", "glass"}):
+        suggestions.insert(1, _suggest(
+            "drink_photo",
+            "clean drink product photo, clear glass reflections, natural condensation, same drink and composition",
+            ctx.locale,
+        ))
+
+    suggestions.extend([
+        _suggest(
+            "product_light",
+            "clean product photo lighting, sharp details, natural reflections, same composition as original",
+            ctx.locale,
+        ),
+        _suggest(
+            "warm_colors",
+            "warm natural color grading, appetizing tones, realistic photo, same composition as original",
+            ctx.locale,
+        ),
+    ])
+    return suggestions
+
+
 def _generic_suggestions(ctx: SuggestionContext) -> list[dict]:
     suggestions = [
         _suggest(
@@ -381,6 +444,9 @@ def get_suggestions_for_description(
     elif ctx.content_type == "animal":
         suggestions = _animal_suggestions(ctx)
         suggestion_mode = "contextual_animal"
+    elif ctx.content_type == "food":
+        suggestions = _food_suggestions(ctx)
+        suggestion_mode = "contextual_food"
     else:
         suggestions = _generic_suggestions(ctx)
         suggestion_mode = "contextual_generic"

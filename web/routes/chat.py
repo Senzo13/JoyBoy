@@ -48,6 +48,48 @@ def _base64_to_pil(b64_string):
     return base64_to_pil(b64_string)
 
 
+def _build_image_context(image, message=""):
+    """Return a compact text context for image-aware chat turns."""
+    if image is None:
+        return ""
+
+    description = ""
+    try:
+        from core.florence import describe_image
+        description = describe_image(image, task="<CAPTION>")
+        if description:
+            print(f"[IMAGE-CONTEXT] Florence: {description[:120]}")
+    except Exception as exc:
+        print(f"[IMAGE-CONTEXT] Florence unavailable: {exc}")
+
+    food_result = None
+    try:
+        from core.food_vision import analyze_food_image, format_food_context, should_run_foodextract
+
+        if should_run_foodextract(description, user_message=message):
+            print("[FOODEXTRACT] Food/drink context requested")
+            food_result = analyze_food_image(image)
+            if food_result.success:
+                print(
+                    f"[FOODEXTRACT] is_food={food_result.is_food} "
+                    f"foods={len(food_result.food_items)} drinks={len(food_result.drink_items)}"
+                )
+            else:
+                print(f"[FOODEXTRACT] unavailable: {food_result.error}")
+            return "\n\n" + format_food_context(description, food_result)
+    except Exception as exc:
+        print(f"[FOODEXTRACT] skipped: {exc}")
+
+    if not description:
+        return ""
+
+    return (
+        "\n\n=== IMAGE CONTEXT ===\n"
+        f"Florence caption: {description}\n"
+        "Use this image context to answer the user. Do not claim certainty beyond what is visible."
+    )
+
+
 def _set_chat_stream_cancelled(value):
     import web.app as app_module
     app_module.chat_stream_cancelled = value
@@ -304,6 +346,22 @@ def get_suggestions():
 
         print(f"   Description: {description}")
 
+        food_analysis = None
+        try:
+            from core.food_vision import analyze_food_image, enrich_food_description, should_run_foodextract
+
+            if should_run_foodextract(description, user_message=data.get('message') or data.get('prompt')):
+                print("   FoodExtract: analyse food/drink...")
+                food_result = analyze_food_image(image)
+                food_analysis = food_result.to_dict()
+                if food_result.success and food_result.is_food:
+                    description = enrich_food_description(description, food_result)
+                    print(f"   FoodExtract: {food_analysis}")
+                elif food_result.error:
+                    print(f"   FoodExtract: indisponible ({food_result.error})")
+        except Exception as exc:
+            print(f"   FoodExtract: skip ({exc})")
+
         suggestion_payload = get_suggestions_for_description(
             description,
             adult_runtime_enabled=is_adult_runtime_available(),
@@ -335,7 +393,8 @@ def get_suggestions():
             'contentType': content_type,
             'sceneType': scene_type,
             'clothingState': clothing_state,
-            'description': description
+            'description': description,
+            'foodAnalysis': food_analysis,
         })
 
     except Exception as e:
@@ -376,12 +435,22 @@ def chat():
         # Log la question de l'utilisateur
         log_chat('USER', message, model=chat_model)
 
+        image = None
         # Sauvegarder l'image si fournie
         if image_b64:
-            state.last_user_image = _base64_to_pil(image_b64)
+            image = _base64_to_pil(image_b64)
+            state.last_user_image = image
+
+        image_analysis_request = False
+        if image is not None:
+            try:
+                from core.food_vision import is_image_analysis_request
+                image_analysis_request = is_image_analysis_request(message)
+            except Exception:
+                image_analysis_request = False
 
         # ===== ÉTAPE 1: Vérifier si c'est une demande d'IMAGE AVANT tout =====
-        if ollama_service.check_image_request(message, model=routing_model):
+        if not image_analysis_request and ollama_service.check_image_request(message, model=routing_model):
             image_prompt = ollama_service.generate_image_prompt(message, model=routing_model)
             if not image_prompt:
                 image_prompt = message
@@ -485,6 +554,11 @@ def chat():
         if web_context:
             system_content += f"\n\n=== RÉSULTATS DE RECHERCHE WEB ===\n{web_context}\n\nIMPORTANT: Utilise ces informations pour répondre à l'utilisateur. La recherche a été faite en anglais pour plus de résultats, mais tu DOIS répondre EN FRANÇAIS. Donne une réponse complète et détaillée basée sur le contenu des pages consultées."
 
+        if image is not None:
+            image_context = _build_image_context(image, message)
+            if image_context:
+                system_content += image_context
+
         chat_messages.append({"role": "system", "content": system_content})
 
         # L'historique contient déjà le message actuel (ajouté côté frontend)
@@ -582,6 +656,7 @@ def chat_stream():
 
     data = request.json
     message = data.get('message', '')
+    image_b64 = data.get('image')
     history = data.get('history', [])
     memories = data.get('memories', [])
     chat_model = data.get('chatModel', 'qwen3.5:2b')
@@ -604,6 +679,19 @@ def chat_stream():
     # Log la question de l'utilisateur
     log_chat('USER', message, model=chat_model)
 
+    image = None
+    image_analysis_request = False
+    if image_b64:
+        try:
+            image = _base64_to_pil(image_b64)
+            _get_state().last_user_image = image
+            from core.food_vision import is_image_analysis_request
+            image_analysis_request = is_image_analysis_request(message)
+        except Exception as exc:
+            print(f"[IMAGE-CONTEXT] Invalid image payload: {exc}")
+            image = None
+            image_analysis_request = False
+
     # ===== ÉTAPE 0: Vérifier si l'utilisateur veut changer de workspace =====
     workspace_switch = check_workspace_switch(message, all_workspaces)
     if workspace_switch:
@@ -620,7 +708,7 @@ def chat_stream():
         )
 
     # ===== ÉTAPE 1: Vérifier si c'est une demande d'IMAGE AVANT tout =====
-    is_image_request = ollama_service.check_image_request(message, model=routing_model)
+    is_image_request = False if image_analysis_request else ollama_service.check_image_request(message, model=routing_model)
 
     # Bail out si annulé pendant IMAGE-CHECK
     if _get_chat_stream_cancelled():
@@ -808,6 +896,11 @@ replacement text
         if web_context:
             system_content += web_context
             print(f"[WEB-SEARCH] Contexte web ajouté au prompt")
+
+        if image is not None:
+            image_context = _build_image_context(image, message)
+            if image_context:
+                system_content += image_context
 
         chat_messages.append({"role": "system", "content": system_content})
 

@@ -203,6 +203,16 @@ const DEV_CONTEXT_TERMS = [
     'directorio', 'codice', 'cartella', 'directory'
 ];
 
+const IMAGE_ANALYSIS_TERMS = [
+    'analyse', 'analyser', 'analysez', 'analyze', 'describe', 'décris',
+    'decris', 'décrire', 'decrire', 'detect', 'détecte', 'detecte',
+    'détecter', 'detecter', 'reconnais', 'reconnaître', 'reconnaitre',
+    'identify', 'identifie', 'identifier', 'caption', 'légende', 'legende',
+    'c\'est quoi', 'c est quoi', 'what is this', 'what\'s this',
+    'quoi dans', 'contient', 'contains', 'comida', 'bebida', 'analiza',
+    'descrivi', 'analizza'
+];
+
 function escapePromptTerm(term) {
     return String(term).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -232,6 +242,12 @@ function isDirectTextToImagePrompt(prompt) {
     return promptLooksCreativeImageRequest(prompt);
 }
 
+function isImageAnalysisPrompt(prompt) {
+    const text = (prompt || '').toLowerCase();
+    if (!text.trim()) return false;
+    return promptIncludesAnyTerm(text, IMAGE_ANALYSIS_TERMS);
+}
+
 function getExportGuidanceTypeForGeneration() {
     if (userSettings.exportGuidanceType === 'camera' || userSettings.exportGuidanceType === 'human') {
         return userSettings.exportGuidanceType;
@@ -259,10 +275,12 @@ function getActiveExportPose() {
  * Build common chat stream request params
  */
 function buildChatStreamParams(prompt) {
+    const includeImageContext = !!currentImage && isImageAnalysisPrompt(prompt);
     return {
         message: prompt,
         history: getChatContext(),
         memories: [],
+        image: includeImageContext ? currentImage : null,
         chatModel: userSettings.chatModel,
         reasoningEffort: typeof getTerminalReasoningEffort === 'function'
             ? getTerminalReasoningEffort(userSettings.chatModel)
@@ -750,6 +768,7 @@ async function generate() {
     const prompt = document.getElementById('prompt-input').value.trim();
     const model = getCurrentImageModel();  // Utilise le modèle du picker
     const directTextToImage = !currentImage && isDirectTextToImagePrompt(prompt);
+    const imageAnalysisRequest = !!currentImage && isImageAnalysisPrompt(prompt);
 
     if (!prompt) {
         Toast.error(generationT('generation.promptRequired', 'Écris ce que tu veux'));
@@ -788,7 +807,7 @@ async function generate() {
     // === QUEUE: Si déjà en génération, ajouter à la queue ===
     if (isGenerating) {
         console.log('%c[GEN] → Ajout à la queue!', 'color: #22c55e; font-weight: bold');
-        const mode = (currentImage || directTextToImage) ? 'image' : 'text';
+        const mode = ((currentImage && !imageAnalysisRequest) || directTextToImage) ? 'image' : 'text';
         const options = currentImage ? { image: currentImage } : {};
         await addToQueue(prompt, mode, options);
         document.getElementById('prompt-input').value = '';
@@ -796,9 +815,9 @@ async function generate() {
         return;
     }
 
-    pendingImage = currentImage;
-    const hasImage = !!pendingImage;
-    const isImageGeneration = hasImage || directTextToImage;
+    const hasImage = !!currentImage;
+    const isImageGeneration = (hasImage && !imageAnalysisRequest) || directTextToImage;
+    pendingImage = isImageGeneration && hasImage ? currentImage : null;
 
     if (!isImageGeneration) {
         // Vérifier si un modèle Ollama est disponible uniquement pour le chat.
@@ -1037,6 +1056,7 @@ async function continueChat() {
         return;
     }
     const directTextToImage = !currentImage && isDirectTextToImagePrompt(prompt);
+    const imageAnalysisRequest = !!currentImage && isImageAnalysisPrompt(prompt);
 
     // Mode privé : vider le chat précédent avant chaque nouvelle demande
     if (Settings.get('privacyMode')) {
@@ -1048,7 +1068,7 @@ async function continueChat() {
     // === QUEUE: Si déjà en génération, ajouter à la queue ===
     if (isGenerating) {
         console.log('%c[CHAT] → Ajout à la queue!', 'color: #22c55e; font-weight: bold');
-        const mode = terminalMode ? 'terminal' : ((currentImage || directTextToImage) ? 'image' : 'text');
+        const mode = terminalMode ? 'terminal' : (((currentImage && !imageAnalysisRequest) || directTextToImage) ? 'image' : 'text');
         const options = currentImage ? { image: currentImage } : {};
         await addToQueue(prompt, mode, options);
         document.getElementById('chat-prompt').value = '';
@@ -1094,7 +1114,7 @@ async function continueChat() {
     // Vérifier si une image est présente -> mode inpainting
     const hasImage = !!currentImage;
 
-    if (hasImage) {
+    if (hasImage && !imageAnalysisRequest) {
         // Mode image dans le chat -> utiliser le flux d'image
         console.log('[CHAT] Image détectée, passage en mode inpainting');
         await unloadTextModel();
