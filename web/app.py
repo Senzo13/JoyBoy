@@ -13,7 +13,7 @@ warnings.filterwarnings("ignore", message=".*triton.*")
 warnings.filterwarnings("ignore", message=".*xformers.*")
 logging.getLogger("xformers").setLevel(logging.ERROR)
 
-from flask import Flask, render_template
+from flask import Flask, render_template, request
 from PIL import Image, ImageOps
 import base64
 from io import BytesIO
@@ -79,6 +79,15 @@ if _missing_pkgs:
     print("[SETUP] Installation terminée!")
 
 app = Flask(__name__, static_folder='static', template_folder='templates')
+app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
+app.config['TEMPLATES_AUTO_RELOAD'] = True
+
+
+@app.after_request
+def keep_local_ui_fresh(response):
+    if request.path.startswith('/static/'):
+        response.headers['Cache-Control'] = 'no-cache, max-age=0'
+    return response
 
 # Register Blueprints
 from web.routes.chat import chat_bp

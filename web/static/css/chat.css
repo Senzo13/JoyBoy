@@ -2446,6 +2446,78 @@ body.terminal-mode .clear-image-btn {
     border: 1px solid rgba(255, 255, 255, 0.12) !important;
 }
 
+body.terminal-mode .input-bar.has-attachments,
+body.terminal-mode .input-bar:has(.image-preview[style*="block"], .style-ref-container.has-image, .face-ref-container.has-image) {
+    flex-wrap: wrap !important;
+    align-items: flex-end !important;
+    padding-top: 8px !important;
+    border-radius: 24px !important;
+}
+
+body.terminal-mode .input-bar.has-attachments > .composer-attachment-stack,
+body.terminal-mode .input-bar:has(.image-preview[style*="block"], .style-ref-container.has-image, .face-ref-container.has-image) > .composer-attachment-stack {
+    order: 0 !important;
+    display: flex !important;
+    flex: 0 0 100% !important;
+    justify-content: flex-end !important;
+    padding: 0 44px 0 42px !important;
+}
+
+body.terminal-mode .input-bar:has(.image-preview[style*="block"], .style-ref-container.has-image, .face-ref-container.has-image) > .image-preview-container,
+body.terminal-mode .input-bar:has(.image-preview[style*="block"], .style-ref-container.has-image, .face-ref-container.has-image) > .face-ref-container,
+body.terminal-mode .input-bar:has(.image-preview[style*="block"], .style-ref-container.has-image, .face-ref-container.has-image) > .style-ref-container {
+    order: 0 !important;
+}
+
+body.terminal-mode .input-bar:has(.image-preview[style*="block"], .style-ref-container.has-image, .face-ref-container.has-image) > .image-preview-container {
+    margin-left: auto !important;
+}
+
+body.terminal-mode .input-bar.has-attachments > .attach-btn,
+body.terminal-mode .input-bar:has(.image-preview[style*="block"], .style-ref-container.has-image, .face-ref-container.has-image) > .attach-btn {
+    order: 1 !important;
+}
+
+body.terminal-mode .input-bar.has-attachments > .prompt-input-wrapper,
+body.terminal-mode .input-bar:has(.image-preview[style*="block"], .style-ref-container.has-image, .face-ref-container.has-image) > .prompt-input-wrapper {
+    order: 2 !important;
+    min-width: 0 !important;
+}
+
+body.terminal-mode .input-bar.has-attachments > .terminal-permission-picker,
+body.terminal-mode .input-bar:has(.image-preview[style*="block"], .style-ref-container.has-image, .face-ref-container.has-image) > .terminal-permission-picker {
+    order: 3 !important;
+}
+
+body.terminal-mode .input-bar.has-attachments > .video-btn,
+body.terminal-mode .input-bar:has(.image-preview[style*="block"], .style-ref-container.has-image, .face-ref-container.has-image) > .video-btn {
+    order: 4 !important;
+}
+
+body.terminal-mode .input-bar.has-attachments > .send-btn,
+body.terminal-mode .input-bar:has(.image-preview[style*="block"], .style-ref-container.has-image, .face-ref-container.has-image) > .send-btn {
+    order: 5 !important;
+}
+
+body.terminal-mode .terminal-permission-btn {
+    border: none !important;
+    background: transparent !important;
+}
+
+body.terminal-mode .terminal-permission-btn:hover {
+    background: rgba(255, 255, 255, 0.06) !important;
+}
+
+body.terminal-mode .terminal-permission-picker[data-mode="full_access"] .terminal-permission-btn {
+    color: #ff8a8a !important;
+    background: transparent !important;
+}
+
+body.terminal-mode .terminal-permission-picker[data-mode="full_access"] .terminal-permission-btn:hover {
+    background: rgba(239, 68, 68, 0.1) !important;
+    color: #ff9f9f !important;
+}
+
 body.terminal-mode .user-bubble {
     background: #1a1a1a !important;
     border: 1px solid #2a2a2a !important;
@@ -2906,6 +2978,11 @@ body.terminal-mode .model-picker-item.active {
 
     body.terminal-mode .prompt-input {
         padding: 12px 130px 12px 12px !important;
+    }
+
+    body.terminal-mode .input-bar.has-attachments > .composer-attachment-stack,
+    body.terminal-mode .input-bar:has(.image-preview[style*="block"], .style-ref-container.has-image, .face-ref-container.has-image) > .composer-attachment-stack {
+        padding: 0 38px 0 0 !important;
     }
 
     body.terminal-mode .terminal-thinking,
