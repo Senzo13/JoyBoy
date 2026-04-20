@@ -2700,11 +2700,12 @@ body.terminal-mode .model-picker-item.active {
     inset: 0;
     z-index: 12000;
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     justify-content: center;
-    padding-top: 74px;
+    padding: 18px;
     background: rgba(0, 0, 0, 0.46);
     backdrop-filter: blur(8px);
+    overflow: auto;
 }
 
 .project-launcher-panel {
@@ -2920,8 +2921,8 @@ body.terminal-mode .model-picker-item.active {
     }
 
     .project-launcher-overlay {
-        align-items: flex-start;
-        padding: 58px 10px 10px;
+        align-items: center;
+        padding: 10px;
     }
 
 }
