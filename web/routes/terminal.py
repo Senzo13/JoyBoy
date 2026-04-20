@@ -93,6 +93,7 @@ def terminal_chat():
     if has_image:
         print(f"[TERMINAL] Image reçue ({len(image_b64) // 1024}KB) - modèle: {chat_model}")
 
+    from core.agent_runtime import is_cloud_model_name
     from core.terminal_brain import get_brain, is_tool_capable
 
     workspace_path = workspace['path']
@@ -149,7 +150,7 @@ def terminal_chat():
     print(f"[TERMINAL] Message: {message[:100]}..." + (" [+IMAGE]" if has_image else ""))
     print(f"{'='*60}\n")
 
-    is_capable = is_tool_capable(chat_model)
+    is_capable = is_cloud_model_name(chat_model) or is_tool_capable(chat_model)
 
     if not is_capable:
         print(f"[TERMINAL] ⚠️ Modèle {chat_model} non optimal pour le tool calling")

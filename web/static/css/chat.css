@@ -2321,7 +2321,7 @@ body.terminal-mode .chat-messages {
     background: transparent !important;
     font-family: inherit !important;
     max-width: none !important;
-    padding: calc(var(--chat-header-h, 48px) + 40px) 30px calc(100vh - var(--chat-header-h, 48px) - var(--chat-input-h, 80px)) !important;
+    padding: calc(var(--chat-header-h, 48px) + 40px) 30px calc(var(--chat-input-h, 80px) + 48px) !important;
 }
 
 body.terminal-mode .terminal-header {

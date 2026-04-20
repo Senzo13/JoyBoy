@@ -771,6 +771,12 @@ let lastScrollTop = 0;
 function updateChatPadding() {
     const messagesDiv = document.getElementById('chat-messages');
     if (!messagesDiv) return;
+    if (document.body.classList.contains('terminal-mode')) {
+        const inputBar = document.querySelector('.chat-input-bar');
+        const minPad = inputBar ? (inputBar.offsetHeight + 48) : 140;
+        messagesDiv.style.paddingBottom = `${minPad}px`;
+        return;
+    }
     const lastChild = messagesDiv.lastElementChild;
     if (!lastChild) return;
     const firstChild = messagesDiv.firstElementChild;
