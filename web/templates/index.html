@@ -1353,13 +1353,13 @@
                     <!-- Panel Texte (Ollama) -->
                     <div class="models-subpanel active" id="models-text-panel">
                         <div class="models-inner-tabs" aria-label="Modèles texte">
-                            <button class="models-inner-tab active" id="models-text-tab-available" type="button" onclick="switchModelsInnerTab('models-text-panel', 'install', this)">Disponibles</button>
-                            <button class="models-inner-tab" id="models-text-tab-local" type="button" onclick="switchModelsInnerTab('models-text-panel', 'installed', this)">Sur la machine</button>
+                            <button class="models-inner-tab active" id="models-text-tab-available" type="button" onclick="switchModelsInnerTab('models-text-panel', 'install', this)">Local</button>
+                            <button class="models-inner-tab" id="models-text-tab-local" type="button" onclick="switchModelsInnerTab('models-text-panel', 'installed', this)">Installés</button>
                         </div>
 
                         <div class="models-inner-panel active" data-inner-panel="install">
                             <div class="settings-section">
-                                <div class="settings-section-title" id="models-text-install-title">Modèles disponibles</div>
+                                <div class="settings-section-title" id="models-text-install-title">Modèles locaux</div>
                                 <div class="ollama-search-container">
                                     <input type="text" id="ollama-search-input" class="settings-input" placeholder="Rechercher..." onkeyup="if(event.key==='Enter') searchOllamaModels()">
                                     <button class="settings-action-btn" id="models-ollama-search-btn" onclick="searchOllamaModels()">Rechercher</button>
@@ -1379,7 +1379,7 @@
 
                         <div class="models-inner-panel" data-inner-panel="installed">
                             <div class="settings-section">
-                                <div class="settings-section-title" id="models-text-installed-title">Modèles sur la machine</div>
+                                <div class="settings-section-title" id="models-text-installed-title">Modèles installés</div>
                                 <div id="ollama-installed-models" class="ollama-models-list">
                                     <div class="settings-info">Chargement...</div>
                                 </div>
@@ -1392,7 +1392,7 @@
                         <div class="models-inner-tabs" aria-label="Modèles image">
                             <button class="models-inner-tab active" id="models-image-tab-import" type="button" onclick="switchModelsInnerTab('models-image-panel', 'import', this)">Importer</button>
                             <button class="models-inner-tab" id="models-image-tab-catalog" type="button" onclick="switchModelsInnerTab('models-image-panel', 'catalog', this)">Catalogue</button>
-                            <button class="models-inner-tab" id="models-image-tab-local" type="button" onclick="switchModelsInnerTab('models-image-panel', 'installed', this)">Sur la machine</button>
+                            <button class="models-inner-tab" id="models-image-tab-local" type="button" onclick="switchModelsInnerTab('models-image-panel', 'installed', this)">Installés</button>
                         </div>
 
                         <div class="models-inner-panel active" data-inner-panel="import">
@@ -1422,7 +1422,7 @@
 
                         <div class="models-inner-panel" data-inner-panel="catalog">
                             <div class="settings-section">
-                                <div class="settings-section-title" id="models-image-install-title">Modèles disponibles</div>
+                                <div class="settings-section-title" id="models-image-install-title">Modèles locaux</div>
                                 <div class="model-filters">
                                     <button class="filter-chip active" id="models-image-filter-all" data-filter="all" onclick="toggleImageModelFilter('all')">Tous</button>
                                     <button class="filter-chip" id="models-image-filter-inpaint" data-filter="inpaint" onclick="toggleImageModelFilter('inpaint')">Inpaint</button>
@@ -1437,7 +1437,7 @@
 
                         <div class="models-inner-panel" data-inner-panel="installed">
                             <div class="settings-section">
-                                <div class="settings-section-title" id="models-image-installed-title">Modèles sur la machine</div>
+                                <div class="settings-section-title" id="models-image-installed-title">Modèles installés</div>
                                 <div id="image-installed-models" class="ollama-models-list">
                                     <div class="settings-info">Chargement...</div>
                                 </div>
