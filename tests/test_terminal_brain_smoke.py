@@ -2,8 +2,10 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from core.backends.terminal_brain import TerminalBrain, ToolResult
+from core.agent_runtime import CloudModelError
 
 
 class TerminalBrainSmokeTests(unittest.TestCase):
@@ -68,6 +70,59 @@ class TerminalBrainSmokeTests(unittest.TestCase):
 
         self.assertIn("coupé avant de relancer", text)
         self.assertIn("list_files", text)
+
+    def test_cloud_error_classification_separates_quota_auth_and_transient(self):
+        brain = TerminalBrain()
+
+        self.assertEqual(
+            brain._classify_cloud_model_error(CloudModelError("OpenAI API error 429: insufficient_quota")),
+            (False, "quota"),
+        )
+        self.assertEqual(
+            brain._classify_cloud_model_error(CloudModelError("OpenAI API error 401: invalid api key")),
+            (False, "auth"),
+        )
+        self.assertEqual(
+            brain._classify_cloud_model_error(CloudModelError("OpenAI API error 503: service unavailable")),
+            (True, "transient"),
+        )
+
+    @patch("core.backends.terminal_brain.time.sleep", return_value=None)
+    @patch("core.backends.terminal_brain.chat_with_cloud_model")
+    def test_cloud_terminal_retries_transient_failure_once(self, mock_chat, _sleep):
+        mock_chat.side_effect = [
+            CloudModelError("OpenAI API error 503: service unavailable"),
+            {
+                "message": {"role": "assistant", "content": "ok cloud"},
+                "prompt_eval_count": 7,
+                "eval_count": 3,
+            },
+        ]
+        brain = TerminalBrain()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            events = list(brain.run_agentic_loop("dis bonjour", tmp, model="openai:gpt-5.4"))
+
+        warnings = [event for event in events if event.get("type") == "warning"]
+        done = [event for event in events if event.get("type") == "done"][-1]
+
+        self.assertTrue(any("Cloud model retry 1/3" in event.get("message", "") for event in warnings))
+        self.assertEqual(done.get("full_response"), "ok cloud")
+        self.assertEqual(mock_chat.call_count, 2)
+
+    def test_cloud_circuit_breaker_opens_after_repeated_transient_failures(self):
+        brain = TerminalBrain()
+
+        brain._record_cloud_circuit_failure("openai:gpt-5.4")
+        brain._record_cloud_circuit_failure("openai:gpt-5.4")
+        self.assertIsNone(brain._cloud_circuit_block_reason("openai:gpt-5.4"))
+
+        brain._record_cloud_circuit_failure("openai:gpt-5.4")
+        reason = brain._cloud_circuit_block_reason("openai:gpt-5.4")
+
+        self.assertIn("Cloud circuit breaker active for openai", reason)
+        brain._record_cloud_circuit_success("openai:gpt-5.4")
+        self.assertIsNone(brain._cloud_circuit_block_reason("openai:gpt-5.4"))
 
     def test_dangling_tool_calls_are_patched_before_cloud_model_call(self):
         brain = TerminalBrain()

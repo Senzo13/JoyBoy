@@ -7,6 +7,16 @@ from collections import defaultdict
 from typing import Any, Dict, List, Optional
 
 
+TOOL_FREQUENCY_LIMITS = {
+    "list_files": 4,
+    "glob": 4,
+    "search": 6,
+    "bash": 5,
+    "read_file": 10,
+}
+DEFAULT_TOOL_FREQUENCY_LIMIT = 12
+
+
 def tool_signature(tool_name: str, args: Dict[str, Any]) -> str:
     """Return a stable signature for repeated tool-call detection."""
     try:
@@ -21,6 +31,7 @@ def tool_guard_reason(
     args: Dict[str, Any],
     seen_count: int,
     executed_tools: List[Dict[str, Any]],
+    tool_frequency: int | None = None,
 ) -> Optional[str]:
     """Return a reason when a tool call is likely to waste turns.
 
@@ -55,6 +66,14 @@ def tool_guard_reason(
     if len(recent_names) == 4 and len(set(recent_names)) <= 2 and tool_name in {"list_files", "glob", "bash"}:
         return "repeated exploration without reading useful files"
 
+    if tool_frequency is not None:
+        frequency_limit = TOOL_FREQUENCY_LIMITS.get(tool_name, DEFAULT_TOOL_FREQUENCY_LIMIT)
+        if tool_frequency >= frequency_limit:
+            return (
+                f"{tool_name} called {tool_frequency} times this turn; "
+                "stop looping and use the collected context"
+            )
+
     return None
 
 
@@ -63,11 +82,22 @@ class ToolLoopGuard:
 
     def __init__(self) -> None:
         self._seen = defaultdict(int)
+        self._tool_frequency = defaultdict(int)
 
     def check(self, tool_name: str, args: Dict[str, Any], executed_tools: List[Dict[str, Any]]) -> Optional[str]:
         signature = tool_signature(tool_name, args)
         self._seen[signature] += 1
-        return tool_guard_reason(tool_name, args, self._seen[signature], executed_tools)
+        self._tool_frequency[tool_name] += 1
+        return tool_guard_reason(
+            tool_name,
+            args,
+            self._seen[signature],
+            executed_tools,
+            tool_frequency=self._tool_frequency[tool_name],
+        )
 
     def seen_count(self, tool_name: str, args: Dict[str, Any]) -> int:
         return self._seen.get(tool_signature(tool_name, args), 0)
+
+    def tool_frequency(self, tool_name: str) -> int:
+        return self._tool_frequency.get(tool_name, 0)

@@ -17,6 +17,7 @@ import os
 import json
 import platform
 import re
+import time
 import unicodedata
 from collections import defaultdict
 from typing import Dict, List, Optional, Any, Generator
@@ -625,6 +626,10 @@ class TerminalBrain:
         self.current_intent: str = 'question'
         self.write_blocked: bool = False
         self.permission_mode: str = DEFAULT_PERMISSION_MODE
+        self._cloud_circuit_failures = defaultdict(int)
+        self._cloud_circuit_open_until = defaultdict(float)
+        self._cloud_circuit_threshold = 3
+        self._cloud_circuit_timeout_seconds = 60
 
         # Modèle par défaut
         self.default_model = "qwen3.5:2b"
@@ -1139,15 +1144,42 @@ class TerminalBrain:
                         return
 
                 if use_cloud_model:
-                    print(f"[BRAIN] Calling cloud model={model}, tools={len(tools_for_model)} tools")
-                    response = chat_with_cloud_model(
-                        model,
-                        messages=messages,
-                        tools=tools_for_model,
-                        max_tokens=response_token_limit,
-                        temperature=0.2,
-                        reasoning_effort=reasoning_effort,
-                    )
+                    circuit_block = self._cloud_circuit_block_reason(model)
+                    if circuit_block:
+                        raise CloudModelError(circuit_block)
+                    cloud_attempt = 1
+                    cloud_max_attempts = 3
+                    while True:
+                        try:
+                            print(f"[BRAIN] Calling cloud model={model}, tools={len(tools_for_model)} tools")
+                            response = chat_with_cloud_model(
+                                model,
+                                messages=messages,
+                                tools=tools_for_model,
+                                max_tokens=response_token_limit,
+                                temperature=0.2,
+                                reasoning_effort=reasoning_effort,
+                            )
+                            self._record_cloud_circuit_success(model)
+                            break
+                        except CloudModelError as exc:
+                            retriable, reason = self._classify_cloud_model_error(exc)
+                            if retriable and cloud_attempt < cloud_max_attempts:
+                                wait_ms = self._cloud_retry_delay_ms(cloud_attempt, exc)
+                                retry_message = self._cloud_retry_message(
+                                    cloud_attempt,
+                                    cloud_max_attempts,
+                                    wait_ms,
+                                    reason,
+                                )
+                                print(f"[BRAIN] {retry_message} ({exc})")
+                                yield runtime_event('warning', message=retry_message)
+                                time.sleep(wait_ms / 1000)
+                                cloud_attempt += 1
+                                continue
+                            if retriable:
+                                self._record_cloud_circuit_failure(model)
+                            raise
                 else:
                     print(f"[BRAIN] Calling ollama.chat with model={model}, tools={len(tools_for_model)} tools")
                     chat_kwargs = {
@@ -1446,7 +1478,8 @@ class TerminalBrain:
 
             except CloudModelError as e:
                 _end_resource_lease()
-                yield runtime_event('error', message=str(e))
+                print(f"[BRAIN] Cloud model failure: {e}")
+                yield runtime_event('error', message=self._cloud_error_user_message(e))
                 return
             except Exception as e:
                 _end_resource_lease()
@@ -1503,6 +1536,109 @@ class TerminalBrain:
         if context_size <= 131072:
             return 18000
         return 26000
+
+    @staticmethod
+    def _extract_cloud_error_status_code(exc: BaseException) -> Optional[int]:
+        detail = str(exc or "")
+        match = re.search(r"\b(?:api error|error)\s+(\d{3})\b", detail, re.IGNORECASE)
+        if not match:
+            return None
+        try:
+            return int(match.group(1))
+        except ValueError:
+            return None
+
+    def _classify_cloud_model_error(self, exc: BaseException) -> tuple[bool, str]:
+        detail = str(exc or "").strip().lower()
+        status_code = self._extract_cloud_error_status_code(exc)
+
+        quota_patterns = (
+            "insufficient_quota", "quota", "billing", "credit", "payment",
+            "余额不足", "超出限额", "额度不足", "欠费",
+        )
+        auth_patterns = (
+            "authentication", "unauthorized", "invalid api key", "invalid_api_key",
+            "permission", "forbidden", "access denied", "未授权", "无权",
+        )
+        busy_patterns = (
+            "server busy", "temporarily unavailable", "try again later",
+            "please retry", "please try again", "overloaded", "high demand",
+            "rate limit", "service unavailable", "timeout", "timed out",
+        )
+        retriable_statuses = {408, 409, 425, 429, 500, 502, 503, 504}
+
+        if any(pattern in detail for pattern in quota_patterns):
+            return False, "quota"
+        if any(pattern in detail for pattern in auth_patterns):
+            return False, "auth"
+        if status_code in retriable_statuses:
+            return True, "busy" if status_code == 429 else "transient"
+        if any(pattern in detail for pattern in busy_patterns):
+            return True, "busy"
+        return False, "generic"
+
+    def _cloud_retry_delay_ms(self, attempt: int, exc: BaseException) -> int:
+        status_code = self._extract_cloud_error_status_code(exc)
+        base_delay = 1500 if status_code in {429, 503} else 1000
+        return min(base_delay * (2 ** max(0, attempt - 1)), 8000)
+
+    @staticmethod
+    def _cloud_retry_message(attempt: int, max_attempts: int, wait_ms: int, reason: str) -> str:
+        seconds = max(1, round(wait_ms / 1000))
+        if reason == "busy":
+            reason_text = "provider busy or rate-limited"
+        else:
+            reason_text = "temporary provider failure"
+        return f"Cloud model retry {attempt}/{max_attempts}: {reason_text}. Retrying in {seconds}s."
+
+    def _cloud_error_user_message(self, exc: BaseException) -> str:
+        detail = str(exc or "").strip()
+        _, reason = self._classify_cloud_model_error(exc)
+        if reason == "quota":
+            return (
+                "Le provider cloud a refusé la requête car le compte n'a plus de quota, "
+                "de crédits API, ou de facturation active."
+            )
+        if reason == "auth":
+            return (
+                "Le provider cloud a refusé la requête car l'authentification ou l'accès "
+                "est invalide. Vérifie la clé ou le mode d'accès."
+            )
+        if reason in {"busy", "transient"}:
+            return (
+                "Le provider cloud est temporairement indisponible après plusieurs tentatives. "
+                "Réessaie dans un instant."
+            )
+        return detail or "Cloud model request failed."
+
+    @staticmethod
+    def _cloud_provider_key(model_name: str) -> str:
+        provider, _, _rest = str(model_name or "").partition(":")
+        return provider or "cloud"
+
+    def _cloud_circuit_block_reason(self, model_name: str) -> Optional[str]:
+        provider_key = self._cloud_provider_key(model_name)
+        open_until = float(self._cloud_circuit_open_until.get(provider_key, 0.0) or 0.0)
+        now = time.time()
+        if open_until and now < open_until:
+            remaining = max(1, int(round(open_until - now)))
+            return (
+                f"Cloud circuit breaker active for {provider_key}. "
+                f"Too many transient failures; retry in about {remaining}s."
+            )
+        return None
+
+    def _record_cloud_circuit_success(self, model_name: str) -> None:
+        provider_key = self._cloud_provider_key(model_name)
+        self._cloud_circuit_failures[provider_key] = 0
+        self._cloud_circuit_open_until[provider_key] = 0.0
+
+    def _record_cloud_circuit_failure(self, model_name: str) -> None:
+        provider_key = self._cloud_provider_key(model_name)
+        failures = int(self._cloud_circuit_failures.get(provider_key, 0) or 0) + 1
+        self._cloud_circuit_failures[provider_key] = failures
+        if failures >= self._cloud_circuit_threshold:
+            self._cloud_circuit_open_until[provider_key] = time.time() + self._cloud_circuit_timeout_seconds
 
     def _compact_history(self, history: List[Dict], context_size: int = 4096) -> List[Dict]:
         """Keep recent terminal context inside a rough character budget.

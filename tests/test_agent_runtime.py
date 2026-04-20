@@ -76,6 +76,17 @@ class AgentRuntimeTests(unittest.TestCase):
 
         self.assertEqual(reason, "root listing already ran; read specific files or conclude")
 
+    def test_tool_loop_guard_blocks_excessive_read_frequency(self):
+        guard = ToolLoopGuard()
+        reason = None
+
+        for index in range(10):
+            executed = [{"tool": "read_file", "success": True}] * min(index, 4)
+            reason = guard.check("read_file", {"path": f"file_{index}.py"}, executed)
+
+        self.assertEqual(guard.tool_frequency("read_file"), 10)
+        self.assertIn("read_file called 10 times this turn", reason)
+
     def test_mask_workspace_paths_hides_host_root(self):
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "repo"
