@@ -1461,6 +1461,10 @@ function selectTerminalCloudModel(modelId) {
     if (typeof terminalToolModel !== 'undefined') {
         terminalToolModel = cleanModelId;
     }
+    if (typeof tokenStats !== 'undefined' && typeof getTerminalEffectiveContextSize === 'function') {
+        tokenStats.maxContextSize = getTerminalEffectiveContextSize(cleanModelId);
+        if (typeof updateTokenDisplay === 'function') updateTokenDisplay();
+    }
     saveSettings();
     if (typeof updateModelPickerDisplay === 'function') updateModelPickerDisplay();
     if (typeof Toast !== 'undefined') {
@@ -5571,10 +5575,47 @@ function updateContextSize(value) {
     saveSettings();
 }
 
+function terminalReasoningLabel(effort) {
+    const labels = {
+        low: t('settings.terminal.reasoningLow', 'Bas'),
+        medium: t('settings.terminal.reasoningMedium', 'Moyen'),
+        high: t('settings.terminal.reasoningHigh', 'Élevé'),
+        xhigh: t('settings.terminal.reasoningXhigh', 'Très approfondi'),
+    };
+    return labels[effort] || labels.medium;
+}
+
+function updateTerminalReasoningEffort(value) {
+    const allowed = ['low', 'medium', 'high', 'xhigh'];
+    const effort = allowed.includes(String(value || '').trim()) ? String(value).trim() : 'medium';
+    userSettings.terminalReasoningEffort = effort;
+    const select = document.getElementById('terminal-reasoning-select');
+    if (select) select.value = effort;
+    saveSettings();
+    if (typeof Toast !== 'undefined') {
+        Toast.success(t('settings.terminal.reasoningToast', 'Raisonnement : {mode}', {
+            mode: terminalReasoningLabel(effort),
+        }));
+    }
+}
+
 // Initialiser l'onglet terminal
 function initTerminalTab() {
     // Peupler le select des modèles terminal
     populateTerminalModelSelect();
+
+    const reasoningSelect = document.getElementById('terminal-reasoning-select');
+    if (reasoningSelect) {
+        reasoningSelect.value = userSettings.terminalReasoningEffort || 'medium';
+    }
+    const reasoningLabel = document.getElementById('terminal-reasoning-label');
+    if (reasoningLabel) reasoningLabel.textContent = t('settings.terminal.reasoningLabel', 'Raisonnement cloud');
+    const reasoningHint = document.getElementById('terminal-reasoning-hint');
+    if (reasoningHint) reasoningHint.textContent = t('settings.terminal.reasoningHint', 'Utilisé par les connecteurs compatibles, comme Codex CLI.');
+    ['low', 'medium', 'high', 'xhigh'].forEach(effort => {
+        const option = document.getElementById(`terminal-reasoning-${effort}`);
+        if (option) option.textContent = terminalReasoningLabel(effort);
+    });
 
     // Slider contexte
     const contextSlider = document.getElementById('settings-context-size');
@@ -5699,6 +5740,10 @@ function updateTerminalModel(value) {
     userSettings.terminalModel = value === 'auto' ? null : value;
     if (typeof terminalToolModel !== 'undefined') {
         terminalToolModel = userSettings.terminalModel || terminalToolModel;
+    }
+    if (typeof tokenStats !== 'undefined' && typeof getTerminalEffectiveContextSize === 'function') {
+        tokenStats.maxContextSize = getTerminalEffectiveContextSize(userSettings.terminalModel || terminalToolModel);
+        if (typeof updateTokenDisplay === 'function') updateTokenDisplay();
     }
 
     // Mettre à jour l'info

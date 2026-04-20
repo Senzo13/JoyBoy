@@ -1210,6 +1210,18 @@
                                 <option value="auto" id="terminal-model-auto-option">Auto (premier compatible)</option>
                             </select>
                         </div>
+                        <div class="settings-row">
+                            <div>
+                                <div class="settings-label" id="terminal-reasoning-label">Raisonnement cloud</div>
+                                <div class="settings-label-desc" id="terminal-reasoning-hint">Utilisé par les connecteurs compatibles, comme Codex CLI.</div>
+                            </div>
+                            <select class="settings-select" id="terminal-reasoning-select" onchange="updateTerminalReasoningEffort(this.value)">
+                                <option value="low" id="terminal-reasoning-low">Bas</option>
+                                <option value="medium" id="terminal-reasoning-medium">Moyen</option>
+                                <option value="high" id="terminal-reasoning-high">Élevé</option>
+                                <option value="xhigh" id="terminal-reasoning-xhigh">Très approfondi</option>
+                            </select>
+                        </div>
                         <div class="settings-info" id="terminal-model-info">
                             💡 Recommandés: <strong>qwen2.5:7b</strong>, <strong>llama3.1:8b</strong><br>
                             ⚠️ Éviter: deepseek-r1 (trop lent, modèle "thinking")
@@ -1892,15 +1904,15 @@
                         <!-- Models are populated by JS -->
                     </div>
                     <div class="model-picker-tabs">
-                        <button class="model-picker-tab active" data-type="inpaint" onclick="switchModelTab('inpaint')">
+                        <button class="model-picker-tab active" data-type="inpaint" onclick="switchModelTab(event, 'inpaint')">
                             <i data-lucide="eraser"></i>
                             Inpaint
                         </button>
-                        <button class="model-picker-tab" data-type="text2img" onclick="switchModelTab('text2img')">
+                        <button class="model-picker-tab" data-type="text2img" onclick="switchModelTab(event, 'text2img')">
                             <i data-lucide="image"></i>
                             Text2Img
                         </button>
-                        <button class="model-picker-tab" data-type="chat" onclick="switchModelTab('chat')">
+                        <button class="model-picker-tab" data-type="chat" onclick="switchModelTab(event, 'chat')">
                             <i data-lucide="message-square"></i>
                             Chat
                         </button>
@@ -2062,15 +2074,15 @@
                                 <!-- Models populated by JS -->
                             </div>
                             <div class="model-picker-tabs">
-                                <button class="model-picker-tab active" data-type="inpaint" onclick="switchModelTab('inpaint', 'chat')">
+                                <button class="model-picker-tab active" data-type="inpaint" onclick="switchModelTab(event, 'inpaint', 'chat')">
                                     <i data-lucide="eraser"></i>
                                     Inpaint
                                 </button>
-                                <button class="model-picker-tab" data-type="text2img" onclick="switchModelTab('text2img', 'chat')">
+                                <button class="model-picker-tab" data-type="text2img" onclick="switchModelTab(event, 'text2img', 'chat')">
                                     <i data-lucide="image"></i>
                                     Text2Img
                                 </button>
-                                <button class="model-picker-tab" data-type="chat" onclick="switchModelTab('chat', 'chat')">
+                                <button class="model-picker-tab" data-type="chat" onclick="switchModelTab(event, 'chat', 'chat')">
                                     <i data-lucide="message-square"></i>
                                     Chat
                                 </button>

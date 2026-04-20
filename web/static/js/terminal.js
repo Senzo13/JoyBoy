@@ -11,7 +11,13 @@ function terminalT(key, fallback = '', params = {}) {
 }
 
 function formatTerminalContextSize(size) {
-    return window.JoyBoyContextSizes?.format(size) || String(size);
+    const parsed = Number.parseInt(size, 10);
+    if (!Number.isFinite(parsed) || parsed <= 0) return String(size || '');
+    const config = window.JoyBoyContextSizes;
+    if (config && parsed <= config.max) return config.format(parsed);
+    if (parsed >= 1000000) return `${(parsed / 1000000).toFixed(1).replace(/\.0$/, '')}M`;
+    if (parsed >= 1024) return `${Math.round(parsed / 1024)}K`;
+    return String(parsed);
 }
 
 // ===== CONTEXT SIZE POPUP =====
@@ -71,10 +77,15 @@ function showContextSizePopup() {
 function setContextSize(size) {
     const normalizedSize = window.JoyBoyContextSizes?.normalize(size) || parseInt(size, 10) || 4096;
     userSettings.contextSize = normalizedSize;
+    if (typeof tokenStats !== 'undefined') {
+        tokenStats.maxContextSize = typeof getTerminalEffectiveContextSize === 'function'
+            ? getTerminalEffectiveContextSize()
+            : normalizedSize;
+    }
 
     // Mettre à jour l'affichage
     const maxEl = document.getElementById('tokens-max');
-    if (maxEl) maxEl.textContent = formatTerminalContextSize(normalizedSize);
+    if (maxEl) maxEl.textContent = formatTerminalContextSize(tokenStats?.maxContextSize || normalizedSize);
 
     // Mettre à jour dans les settings si ouvert
     const settingsSelect = document.getElementById('settings-context-size');
@@ -100,7 +111,10 @@ function setContextSize(size) {
 function updateTokensMaxDisplay() {
     const maxEl = document.getElementById('tokens-max');
     if (maxEl) {
-        maxEl.textContent = formatTerminalContextSize(userSettings.contextSize || 4096);
+        const maxContext = typeof getTerminalEffectiveContextSize === 'function'
+            ? getTerminalEffectiveContextSize()
+            : (userSettings.contextSize || 4096);
+        maxEl.textContent = formatTerminalContextSize(maxContext);
     }
 }
 
@@ -1151,6 +1165,9 @@ async function enterTerminalMode(workspace = null, pendingMessage = '') {
 
     // Sauvegarder le modèle tool-capable pour ce mode
     terminalToolModel = toolModel;
+    if (typeof tokenStats !== 'undefined' && typeof getTerminalEffectiveContextSize === 'function') {
+        tokenStats.maxContextSize = getTerminalEffectiveContextSize(toolModel);
+    }
 
     if (toolModel) {
         if (terminalUsesCloudModel(toolModel)) {
@@ -1497,6 +1514,9 @@ function setTerminalWorkspace(workspace, persist = true) {
             || findInstalledToolCapableModel()
             || userSettings?.chatModel
             || 'qwen3.5:2b';
+        if (typeof tokenStats !== 'undefined' && typeof getTerminalEffectiveContextSize === 'function') {
+            tokenStats.maxContextSize = getTerminalEffectiveContextSize(terminalToolModel);
+        }
     }
 
     if (workspace && persist) {
@@ -1635,6 +1655,12 @@ async function streamTerminalChat(message, isAutoContinue = false) {
         const modelToUse = (imageData && terminalVisionModel)
             ? terminalVisionModel
             : (terminalToolModel || userSettings.chatModel || 'qwen3.5:2b');
+        const effectiveContextSize = typeof getTerminalEffectiveContextSize === 'function'
+            ? getTerminalEffectiveContextSize(modelToUse)
+            : (userSettings.contextSize || 8192);
+        const reasoningEffort = typeof getTerminalReasoningEffort === 'function'
+            ? getTerminalReasoningEffort(modelToUse)
+            : null;
 
         const response = await fetch('/terminal/chat', {
             method: 'POST',
@@ -1646,7 +1672,8 @@ async function streamTerminalChat(message, isAutoContinue = false) {
                 history: chatHistory.slice(-20),
                 workspace: terminalWorkspace,
                 chatModel: modelToUse,
-                contextSize: userSettings.contextSize || 8192
+                contextSize: effectiveContextSize,
+                reasoningEffort
             }),
             signal: controller.signal
         });
@@ -1860,11 +1887,15 @@ async function streamTerminalChat(message, isAutoContinue = false) {
 
                         if (data.token_stats) {
                             console.log('[TERMINAL] Token stats:', data.token_stats);
+                            tokenStats.maxContextSize = data.token_stats.context_size
+                                || (typeof getTerminalEffectiveContextSize === 'function'
+                                    ? getTerminalEffectiveContextSize(modelToUse)
+                                    : (userSettings.contextSize || 4096));
                             if (data.token_stats.total) {
                                 tokenStats.sessionTotal += data.token_stats.total;
                                 tokenStats.lastRequestTokens = data.token_stats.total;
-                                updateTokenDisplay();
                             }
+                            updateTokenDisplay();
                         }
 
                         // Protection anti-écran vide: certains petits modèles
@@ -2064,12 +2095,12 @@ function updateTerminalModelPickerTabs(pickerElement, pickerId) {
 
     tabsContainer.innerHTML = `
         <button class="model-picker-tab ${currentModelTab === 'chat' ? 'active' : ''}"
-                data-type="chat" onclick="switchModelTab('chat', '${pickerId}')">
+                data-type="chat" onclick="switchModelTab(event, 'chat', '${pickerId}')">
             <i data-lucide="message-square"></i>
             Chat
         </button>
         <button class="model-picker-tab ${currentModelTab === 'vision' ? 'active' : ''}"
-                data-type="vision" onclick="switchModelTab('vision', '${pickerId}')">
+                data-type="vision" onclick="switchModelTab(event, 'vision', '${pickerId}')">
             <i data-lucide="eye"></i>
             Vision
         </button>

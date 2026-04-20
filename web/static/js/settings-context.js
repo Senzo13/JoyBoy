@@ -79,6 +79,7 @@ class SettingsContext {
             compositeRadius: null,
             skipAutoRefine: true,
             terminalModel: null,
+            terminalReasoningEffort: 'medium',
             workspaces: [],
             activeWorkspace: null,
             contextSize: 4096,

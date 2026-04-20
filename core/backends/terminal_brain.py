@@ -547,6 +547,8 @@ class TerminalBrain:
 
     MIN_CONTEXT_SIZE = 2048
     MAX_LOCAL_CONTEXT_SIZE = 262144
+    DEFAULT_CLOUD_CONTEXT_SIZE = 262144
+    MAX_CLOUD_CONTEXT_SIZE = 1_000_000
 
     def __init__(self):
         self.snapshots: Dict[str, FileSnapshot] = {}
@@ -849,6 +851,7 @@ class TerminalBrain:
         history: List[Dict] = None,
         autonomous: bool = False,  # Mode autonome - bypass les protections
         context_size: int = 4096,  # Taille du contexte (défaut: 4096)
+        reasoning_effort: str | None = None,
         job_id: str = None,
     ) -> Generator[Dict, None, None]:
         """
@@ -878,7 +881,7 @@ class TerminalBrain:
             yield runtime_event('error', message='Package ollama non installé. pip install ollama')
             return
 
-        self._active_context_size = self._normalize_context_size(context_size)
+        self._active_context_size = self._normalize_context_size(context_size, cloud=use_cloud_model, model=model)
         self._active_workspace_path = workspace_path
         resource_scheduler = None
         resource_lease_id = None
@@ -898,7 +901,11 @@ class TerminalBrain:
                     "terminal",
                     job_id=job_id,
                     model_name=model,
-                    requested_kwargs={"context_size": context_size, "autonomous": autonomous},
+                    requested_kwargs={
+                        "context_size": self._active_context_size,
+                        "autonomous": autonomous,
+                        "reasoning_effort": reasoning_effort or "",
+                    },
                 )
                 resource_lease_id = lease.get("id")
         except Exception as exc:
@@ -922,7 +929,10 @@ class TerminalBrain:
         self.write_blocked = False
         self._reset_deferred_tools()
         self._active_promoted_tool_names.update(self._auto_promoted_deferred_tools(initial_message, []))
-        response_token_limit = 4096 if autonomous else (1024 if self.is_read_only_intent(self.current_intent) else 2048)
+        if use_cloud_model:
+            response_token_limit = 8192 if autonomous else (2048 if self.is_read_only_intent(self.current_intent) else 4096)
+        else:
+            response_token_limit = 4096 if autonomous else (1024 if self.is_read_only_intent(self.current_intent) else 2048)
 
         yield runtime_event('intent', intent=self.current_intent, read_only=self.is_read_only_intent(self.current_intent), autonomous=autonomous)
 
@@ -968,7 +978,7 @@ class TerminalBrain:
         messages = [{"role": "system", "content": system_prompt}]
 
         if history:
-            messages.extend(self._compact_history(history, context_size=context_size))
+            messages.extend(self._compact_history(history, context_size=self._active_context_size))
 
         memory_context = self._build_memory_context_prompt(initial_message)
         if memory_context:
@@ -991,8 +1001,17 @@ class TerminalBrain:
         full_response = ""
         iteration = 0
         iteration_budget = 20 if autonomous else (3 if repo_brief else self.max_iterations)
-        turn_token_budget = self._turn_token_budget(self._active_context_size, autonomous=autonomous)
-        total_token_stats = {'prompt_tokens': 0, 'completion_tokens': 0, 'total': 0}
+        turn_token_budget = self._turn_token_budget(
+            self._active_context_size,
+            autonomous=autonomous,
+            cloud=use_cloud_model,
+        )
+        total_token_stats = {
+            'prompt_tokens': 0,
+            'completion_tokens': 0,
+            'total': 0,
+            'context_size': self._active_context_size,
+        }
         loop_guard = ToolLoopGuard()
         guard_hits = 0
         force_final = bool(repo_brief)
@@ -1039,6 +1058,7 @@ class TerminalBrain:
                         tools=tools_for_model,
                         max_tokens=response_token_limit,
                         temperature=0.2,
+                        reasoning_effort=reasoning_effort,
                     )
                 else:
                     print(f"[BRAIN] Calling ollama.chat with model={model}, tools={len(tools_for_model)} tools")
@@ -1099,11 +1119,13 @@ class TerminalBrain:
                     token_stats['prompt_tokens'] = int(response.get('prompt_eval_count') or 0)
                     token_stats['completion_tokens'] = int(response.get('eval_count') or 0)
                 token_stats['total'] = token_stats.get('prompt_tokens', 0) + token_stats.get('completion_tokens', 0)
+                token_stats['context_size'] = self._active_context_size
 
                 # Accumuler les stats de tokens
                 total_token_stats['prompt_tokens'] += token_stats.get('prompt_tokens', 0)
                 total_token_stats['completion_tokens'] += token_stats.get('completion_tokens', 0)
                 total_token_stats['total'] += token_stats.get('total', 0)
+                total_token_stats['context_size'] = self._active_context_size
 
                 print(f"[BRAIN] Content: {content[:100] if content else 'None'}...")
                 print(f"[BRAIN] Tool calls: {len(tool_calls) if tool_calls else 0}")
@@ -1317,14 +1339,31 @@ class TerminalBrain:
 
     # ===== HELPERS =====
 
-    def _normalize_context_size(self, context_size: int | str | None) -> int:
+    def _default_cloud_context_size(self, model: str | None = None) -> int:
+        model_id = str(model or "").strip().lower()
+        if model_id == "openai:gpt-5.4":
+            return 1_000_000
+        if model_id.startswith("openai:gpt-5"):
+            return 400_000
+        if model_id.startswith("gemini:"):
+            return 1_000_000
+        return self.DEFAULT_CLOUD_CONTEXT_SIZE
+
+    def _normalize_context_size(self, context_size: int | str | None, cloud: bool = False, model: str | None = None) -> int:
         try:
             value = int(context_size or 4096)
         except Exception:
             value = 4096
+        if cloud:
+            value = max(value, self._default_cloud_context_size(model))
+            return max(self.MIN_CONTEXT_SIZE, min(self.MAX_CLOUD_CONTEXT_SIZE, value))
         return max(self.MIN_CONTEXT_SIZE, min(self.MAX_LOCAL_CONTEXT_SIZE, value))
 
-    def _turn_token_budget(self, context_size: int, autonomous: bool = False) -> int:
+    def _turn_token_budget(self, context_size: int, autonomous: bool = False, cloud: bool = False) -> int:
+        if cloud:
+            if autonomous:
+                return max(32000, min(180000, int(context_size * 0.75)))
+            return max(26000, min(90000, int(context_size * 0.5)))
         if autonomous:
             return max(6500, min(self.MAX_LOCAL_CONTEXT_SIZE, int(context_size * 0.75)))
         if context_size <= 32768:
@@ -2104,7 +2143,12 @@ Les fichiers principaux sont dans `src/`.
     def _run_simple_react_template(self, workspace_path: str) -> Generator[Dict, None, None]:
         from core.workspace_tools import _resolve_workspace_path
 
-        total_token_stats = {'prompt_tokens': 0, 'completion_tokens': 0, 'total': 0}
+        total_token_stats = {
+            'prompt_tokens': 0,
+            'completion_tokens': 0,
+            'total': 0,
+            'context_size': self._active_context_size,
+        }
         list_args = {'path': '.'}
         yield runtime_event('tool_call', name='list_files', args=list_args)
         listing = self.execute_tool('list_files', list_args, workspace_path)

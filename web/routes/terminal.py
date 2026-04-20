@@ -76,6 +76,7 @@ def terminal_chat():
     workspace = data.get('workspace')  # {name, path}
     chat_model = data.get('chatModel', 'qwen3.5:2b')
     context_size = data.get('contextSize', 8192)  # Plus grand pour le code
+    reasoning_effort = data.get('reasoningEffort')
     chat_id = data.get('chatId') or data.get('conversation_id')
 
     if not message:
@@ -194,6 +195,7 @@ def terminal_chat():
             system_prompt=system_prompt,
             history=brain_history,
             context_size=context_size,
+            reasoning_effort=reasoning_effort,
             job_id=terminal_job_id,
         ):
             if job_manager and terminal_job_id and job_manager.is_cancel_requested(terminal_job_id):

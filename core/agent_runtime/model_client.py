@@ -52,12 +52,17 @@ class LLMProviderDescriptor:
     supports_tools: bool = False
     supports_vision: bool = False
     supports_thinking: bool = False
+    context_size: int = 0
+    max_output_tokens: int = 0
+    reasoning_efforts: tuple[str, ...] = field(default_factory=tuple)
+    default_reasoning_effort: str = ""
     default_models: tuple[str, ...] = field(default_factory=tuple)
     notes: str = ""
 
     def to_public_dict(self, configured: bool) -> dict[str, Any]:
         data = asdict(self)
         data["default_models"] = list(self.default_models)
+        data["reasoning_efforts"] = list(self.reasoning_efforts)
         data["configured"] = bool(configured)
         return data
 
@@ -88,6 +93,10 @@ LLM_PROVIDER_CATALOG: tuple[LLMProviderDescriptor, ...] = (
         supports_tools=True,
         supports_vision=True,
         supports_thinking=True,
+        context_size=262144,
+        max_output_tokens=32768,
+        reasoning_efforts=("low", "medium", "high", "xhigh"),
+        default_reasoning_effort="medium",
         default_models=(
             "gpt-5.4",
             "gpt-5.2-codex",
@@ -111,6 +120,10 @@ LLM_PROVIDER_CATALOG: tuple[LLMProviderDescriptor, ...] = (
         supports_tools=True,
         supports_vision=True,
         supports_thinking=True,
+        context_size=200000,
+        max_output_tokens=16384,
+        reasoning_efforts=("low", "medium", "high"),
+        default_reasoning_effort="medium",
         default_models=(
             "google/gemini-2.5-flash-preview",
             "anthropic/claude-sonnet-4",
@@ -128,6 +141,10 @@ LLM_PROVIDER_CATALOG: tuple[LLMProviderDescriptor, ...] = (
         terminal_runtime=True,
         supports_tools=True,
         supports_thinking=True,
+        context_size=128000,
+        max_output_tokens=8192,
+        reasoning_efforts=("low", "medium", "high"),
+        default_reasoning_effort="medium",
         default_models=("deepseek-chat", "deepseek-reasoner"),
     ),
     LLMProviderDescriptor(
@@ -141,6 +158,10 @@ LLM_PROVIDER_CATALOG: tuple[LLMProviderDescriptor, ...] = (
         supports_tools=True,
         supports_vision=True,
         supports_thinking=True,
+        context_size=128000,
+        max_output_tokens=8192,
+        reasoning_efforts=("low", "medium", "high"),
+        default_reasoning_effort="medium",
         default_models=("kimi-k2.5", "kimi-k2"),
     ),
     LLMProviderDescriptor(
@@ -154,6 +175,10 @@ LLM_PROVIDER_CATALOG: tuple[LLMProviderDescriptor, ...] = (
         supports_tools=True,
         supports_vision=True,
         supports_thinking=True,
+        context_size=128000,
+        max_output_tokens=8192,
+        reasoning_efforts=("low", "medium", "high"),
+        default_reasoning_effort="medium",
         default_models=("deepseek/deepseek-v3.2",),
     ),
     LLMProviderDescriptor(
@@ -167,6 +192,10 @@ LLM_PROVIDER_CATALOG: tuple[LLMProviderDescriptor, ...] = (
         supports_tools=True,
         supports_vision=True,
         supports_thinking=True,
+        context_size=128000,
+        max_output_tokens=8192,
+        reasoning_efforts=("low", "medium", "high"),
+        default_reasoning_effort="medium",
         default_models=("MiniMax-M2.5",),
     ),
     LLMProviderDescriptor(
@@ -179,6 +208,10 @@ LLM_PROVIDER_CATALOG: tuple[LLMProviderDescriptor, ...] = (
         terminal_runtime=True,
         supports_tools=True,
         supports_thinking=True,
+        context_size=262144,
+        max_output_tokens=8192,
+        reasoning_efforts=("low", "medium", "high"),
+        default_reasoning_effort="medium",
         default_models=("Qwen/Qwen3-32B",),
         notes="Set VLLM_BASE_URL when your server is not on localhost:8000/v1.",
     ),
@@ -192,6 +225,10 @@ LLM_PROVIDER_CATALOG: tuple[LLMProviderDescriptor, ...] = (
         supports_tools=True,
         supports_vision=True,
         supports_thinking=True,
+        context_size=200000,
+        max_output_tokens=8192,
+        reasoning_efforts=("low", "medium", "high"),
+        default_reasoning_effort="medium",
         default_models=("claude-sonnet-4-5", "claude-opus-4-5", "claude-3-5-sonnet-20241022"),
         notes="Native Anthropic Messages API adapter.",
     ),
@@ -205,6 +242,10 @@ LLM_PROVIDER_CATALOG: tuple[LLMProviderDescriptor, ...] = (
         supports_tools=True,
         supports_vision=True,
         supports_thinking=True,
+        context_size=1000000,
+        max_output_tokens=8192,
+        reasoning_efforts=("low", "medium", "high"),
+        default_reasoning_effort="medium",
         default_models=("gemini-2.0-flash", "gemini-2.5-pro"),
         notes="Native Google Generative Language API adapter.",
     ),
@@ -219,6 +260,10 @@ LLM_PROVIDER_CATALOG: tuple[LLMProviderDescriptor, ...] = (
         supports_tools=True,
         supports_vision=True,
         supports_thinking=True,
+        context_size=256000,
+        max_output_tokens=8192,
+        reasoning_efforts=("low", "medium", "high"),
+        default_reasoning_effort="medium",
         default_models=("doubao-seed-1-8-251228", "doubao-seed-2.0-code"),
     ),
     LLMProviderDescriptor(
@@ -232,6 +277,10 @@ LLM_PROVIDER_CATALOG: tuple[LLMProviderDescriptor, ...] = (
         supports_tools=True,
         supports_vision=True,
         supports_thinking=True,
+        context_size=128000,
+        max_output_tokens=8192,
+        reasoning_efforts=("low", "medium", "high"),
+        default_reasoning_effort="medium",
         default_models=("glm-5.1", "glm-4.5", "glm-4-plus"),
         notes="Set GLM_BASE_URL for a custom Zhipu-compatible endpoint.",
     ),
@@ -619,6 +668,38 @@ def get_llm_provider_catalog(discover_remote: bool = False) -> list[dict[str, An
     return catalog
 
 
+def _model_runtime_limits(provider: LLMProviderDescriptor, model: str) -> dict[str, Any]:
+    context_size = provider.context_size
+    max_output_tokens = provider.max_output_tokens
+    reasoning_efforts = tuple(provider.reasoning_efforts)
+    default_reasoning_effort = provider.default_reasoning_effort
+
+    lower = str(model or "").strip().lower()
+    if provider.id == "openai":
+        if lower == "gpt-5.4":
+            context_size = 1_000_000
+            max_output_tokens = 128_000
+            reasoning_efforts = ("low", "medium", "high", "xhigh")
+            default_reasoning_effort = "medium"
+        elif lower in {"gpt-5.4-mini", "gpt-5.4-nano"}:
+            context_size = 400_000
+            max_output_tokens = 128_000
+            reasoning_efforts = ("low", "medium", "high", "xhigh")
+            default_reasoning_effort = "medium"
+        elif lower.startswith("gpt-5"):
+            context_size = max(context_size, 400_000)
+            max_output_tokens = max(max_output_tokens, 128_000)
+            reasoning_efforts = reasoning_efforts or ("low", "medium", "high")
+            default_reasoning_effort = default_reasoning_effort or "medium"
+
+    return {
+        "context_size": context_size,
+        "max_output_tokens": max_output_tokens,
+        "reasoning_efforts": list(reasoning_efforts),
+        "default_reasoning_effort": default_reasoning_effort,
+    }
+
+
 def get_terminal_model_profiles(
     configured_only: bool = False,
     discover_remote: bool = False,
@@ -638,6 +719,7 @@ def get_terminal_model_profiles(
         )
         for model in model_ids:
             model_id = model if provider.id == "ollama" else f"{provider.id}:{model}"
+            limits = _model_runtime_limits(provider, model)
             profiles.append({
                 "id": model_id,
                 "provider": provider.id,
@@ -648,6 +730,7 @@ def get_terminal_model_profiles(
                 "supports_tools": provider.supports_tools,
                 "supports_vision": provider.supports_vision,
                 "supports_thinking": provider.supports_thinking,
+                **limits,
                 "model_source": source,
                 "discovered": source == "remote",
                 "discovery_error": discovery_error,
@@ -1302,11 +1385,32 @@ def _parse_codex_response(provider_model: str, response: dict[str, Any]) -> dict
     }
 
 
+def _normalise_reasoning_effort(effort: str | None, allowed: tuple[str, ...] = ("low", "medium", "high", "xhigh")) -> str:
+    clean = str(effort or "").strip().lower()
+    aliases = {
+        "bas": "low",
+        "low": "low",
+        "moyen": "medium",
+        "medium": "medium",
+        "normal": "medium",
+        "eleve": "high",
+        "élevé": "high",
+        "high": "high",
+        "tres_approfondi": "xhigh",
+        "très_approfondi": "xhigh",
+        "xhigh": "xhigh",
+        "extra": "xhigh",
+    }
+    normalised = aliases.get(clean, clean)
+    return normalised if normalised in allowed else "medium"
+
+
 def _chat_with_codex_cli(
     provider_model: str,
     messages: list[dict[str, Any]],
     tools: list[dict[str, Any]] | None,
     timeout_seconds: int,
+    reasoning_effort: str | None = None,
 ) -> dict[str, Any]:
     credential = load_codex_cli_credential()
     access_token = str((credential or {}).get("access_token") or "").strip()
@@ -1320,7 +1424,7 @@ def _chat_with_codex_cli(
         "input": input_items,
         "store": False,
         "stream": True,
-        "reasoning": {"effort": "medium", "summary": "detailed"},
+        "reasoning": {"effort": _normalise_reasoning_effort(reasoning_effort), "summary": "detailed"},
     }
     converted_tools = _codex_tools(tools)
     if converted_tools:
@@ -1414,6 +1518,7 @@ def chat_with_cloud_model(
     max_tokens: int = 2048,
     temperature: float = 0.2,
     timeout_seconds: int = 120,
+    reasoning_effort: str | None = None,
 ) -> dict[str, Any]:
     provider_id, provider_model = split_cloud_model_name(model_name)
     if not provider_id:
@@ -1426,7 +1531,7 @@ def chat_with_cloud_model(
 
     auth_status = get_provider_auth_status(provider.id, provider.env_key)
     if provider.id == "openai" and auth_status["mode"] == "codex_cli":
-        return _chat_with_codex_cli(provider_model, messages, tools, timeout_seconds)
+        return _chat_with_codex_cli(provider_model, messages, tools, timeout_seconds, reasoning_effort=reasoning_effort)
     if provider.protocol == "anthropic":
         return _chat_with_anthropic(provider, provider_model, messages, tools, max_tokens, temperature, timeout_seconds)
     if provider.protocol == "gemini":

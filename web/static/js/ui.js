@@ -593,11 +593,22 @@ function formatImageTimingDisplay(generationSeconds = null, totalSeconds = null)
  */
 function updateTokenDisplay() {
     const used = tokenStats.sessionTotal;
-    const max = tokenStats.maxContextSize || userSettings.contextSize || 4096;
+    const terminalContextMax = typeof getTerminalEffectiveContextSize === 'function'
+        ? getTerminalEffectiveContextSize()
+        : (userSettings.contextSize || 4096);
+    const max = tokenStats.maxContextSize || terminalContextMax || userSettings.contextSize || 4096;
     const lastReq = tokenStats.lastRequestTokens;
     const remaining = Math.max(0, max - used);
     const contextFormatter = window.JoyBoyContextSizes?.format;
-    const formatContextMax = (value) => contextFormatter ? contextFormatter.call(window.JoyBoyContextSizes, value) : formatTokenCount(value);
+    const formatContextMax = (value) => {
+        const parsed = Number.parseInt(value, 10);
+        if (!Number.isFinite(parsed) || parsed <= 0) return String(value || '');
+        if (contextFormatter && parsed <= window.JoyBoyContextSizes.max) {
+            return contextFormatter.call(window.JoyBoyContextSizes, parsed);
+        }
+        if (parsed >= 1000000) return `${(parsed / 1000000).toFixed(1).replace(/\.0$/, '')}M`;
+        return formatTokenCount(parsed);
+    };
 
     // Calculer le pourcentage d'utilisation
     const percentUsed = Math.min((used / max) * 100, 100);
@@ -629,8 +640,7 @@ function updateTokenDisplay() {
     if (terminalTokens && tokensUsed) {
         tokensUsed.textContent = formatTokenCount(used);
 
-        // Mettre à jour le max aussi (si changé dans les settings)
-        const contextMax = userSettings.contextSize || 4096;
+        const contextMax = tokenStats.maxContextSize || terminalContextMax || userSettings.contextSize || 4096;
         if (tokensMax) tokensMax.textContent = formatContextMax(contextMax);
 
         // Couleur basée sur le % d'utilisation par rapport au max
@@ -663,6 +673,9 @@ function resetTokenStats() {
     tokenStats.lastRequestTokens = 0;
     tokenStats.promptTokens = 0;
     tokenStats.completionTokens = 0;
+    tokenStats.maxContextSize = typeof getTerminalEffectiveContextSize === 'function'
+        ? getTerminalEffectiveContextSize()
+        : (userSettings.contextSize || 4096);
     updateTokenDisplay();
 }
 
@@ -970,10 +983,57 @@ const CLOUD_FAMILY_ORDER = [
     'other',
 ];
 
+const DEFAULT_CLOUD_CONTEXT_SIZE = 262144;
+const DEFAULT_CLOUD_REASONING_EFFORT = 'medium';
+
 function isTerminalCloudModelId(modelId) {
     const raw = String(modelId || '').trim();
     const providerId = raw.includes(':') ? raw.split(':', 1)[0].toLowerCase() : '';
     return TERMINAL_CLOUD_PROVIDER_IDS.has(providerId);
+}
+
+function getTerminalSelectedModelId(explicitModelId = null) {
+    if (explicitModelId) return explicitModelId;
+    if (typeof terminalToolModel !== 'undefined' && terminalToolModel) return terminalToolModel;
+    if (typeof userSettings !== 'undefined') {
+        return userSettings.terminalModel || userSettings.chatModel || null;
+    }
+    return null;
+}
+
+function getTerminalCloudModelProfile(modelId) {
+    const raw = String(modelId || '').trim();
+    if (!raw) return null;
+    const models = Array.isArray(window.joyboyTerminalCloudModels)
+        ? window.joyboyTerminalCloudModels
+        : [];
+    return models.find(model => model?.id === raw) || null;
+}
+
+function getTerminalEffectiveContextSize(modelId = null) {
+    const activeModel = getTerminalSelectedModelId(modelId);
+    if (isTerminalCloudModelId(activeModel)) {
+        const profile = getTerminalCloudModelProfile(activeModel);
+        const cloudContext = Number.parseInt(profile?.contextSize || profile?.context_size, 10);
+        if (Number.isFinite(cloudContext) && cloudContext > 0) return cloudContext;
+        const lower = String(activeModel || '').trim().toLowerCase();
+        if (lower === 'openai:gpt-5.4') return 1000000;
+        if (lower.startsWith('openai:gpt-5')) return 400000;
+        if (lower.startsWith('gemini:')) return 1000000;
+        return DEFAULT_CLOUD_CONTEXT_SIZE;
+    }
+    return window.JoyBoyContextSizes?.normalize(userSettings.contextSize || 4096) || (userSettings.contextSize || 4096);
+}
+
+function getTerminalReasoningEffort(modelId = null) {
+    const activeModel = getTerminalSelectedModelId(modelId);
+    if (!isTerminalCloudModelId(activeModel)) return null;
+    const profile = getTerminalCloudModelProfile(activeModel);
+    const allowed = Array.isArray(profile?.reasoningEfforts) ? profile.reasoningEfforts : [];
+    const saved = String(userSettings.terminalReasoningEffort || profile?.defaultReasoningEffort || DEFAULT_CLOUD_REASONING_EFFORT).trim();
+    return allowed.length && !allowed.includes(saved)
+        ? (profile?.defaultReasoningEffort || DEFAULT_CLOUD_REASONING_EFFORT)
+        : (saved || DEFAULT_CLOUD_REASONING_EFFORT);
 }
 
 function formatTerminalCloudModelName(modelId) {
@@ -1061,6 +1121,10 @@ async function loadTerminalCloudModelProfiles() {
                 family: getCloudModelFamily(profile),
                 discovered: profile.discovered === true,
                 discoveryError: profile.discovery_error || '',
+                contextSize: Number.parseInt(profile.context_size || 0, 10) || DEFAULT_CLOUD_CONTEXT_SIZE,
+                maxOutputTokens: Number.parseInt(profile.max_output_tokens || 0, 10) || 0,
+                reasoningEfforts: Array.isArray(profile.reasoning_efforts) ? profile.reasoning_efforts : [],
+                defaultReasoningEffort: profile.default_reasoning_effort || DEFAULT_CLOUD_REASONING_EFFORT,
             }));
         window.joyboyTerminalCloudModels = TERMINAL_CLOUD_MODELS;
     } catch (err) {
@@ -1110,7 +1174,8 @@ function sortCloudFamilies(families) {
     });
 }
 
-function setModelPickerChatSource(source, pickerId = 'chat') {
+function setModelPickerChatSource(source, pickerId = 'chat', event = null) {
+    stopModelPickerControlEvent(event);
     modelPickerChatSource = source === 'cloud' ? 'cloud' : 'local';
     if (modelPickerChatSource === 'local') {
         modelPickerChatFamily = 'all';
@@ -1120,7 +1185,8 @@ function setModelPickerChatSource(source, pickerId = 'chat') {
     renderModelPickerList(pickerId);
 }
 
-function setModelPickerChatFamily(family, pickerId = 'chat') {
+function setModelPickerChatFamily(family, pickerId = 'chat', event = null) {
+    stopModelPickerControlEvent(event);
     modelPickerChatFamily = String(family || 'all');
     Settings.set('modelPickerChatFamily', modelPickerChatFamily);
     renderModelPickerList(pickerId);
@@ -1733,6 +1799,12 @@ async function downloadVisionModel() {
 
 let activePickerId = null;
 
+function stopModelPickerControlEvent(event) {
+    if (event && typeof event.stopPropagation === 'function') {
+        event.stopPropagation();
+    }
+}
+
 function toggleModelPicker(pickerId = 'home') {
     const pickerElement = pickerId === 'chat' ?
         document.getElementById('chat-model-picker') :
@@ -1755,11 +1827,11 @@ function toggleModelPicker(pickerId = 'home') {
             const tabsContainer = pickerElement.querySelector('.model-picker-tabs');
             if (tabsContainer) {
                 tabsContainer.innerHTML = `
-                    <button class="model-picker-tab ${currentModelTab === 'chat' ? 'active' : ''}" data-type="chat" onclick="switchModelTab('chat', '${pickerId}')">
+                    <button class="model-picker-tab ${currentModelTab === 'chat' ? 'active' : ''}" data-type="chat" onclick="switchModelTab(event, 'chat', '${pickerId}')">
                         <i data-lucide="message-square"></i>
                         Chat
                     </button>
-                    <button class="model-picker-tab ${currentModelTab === 'vision' ? 'active' : ''}" data-type="vision" onclick="switchModelTab('vision', '${pickerId}')">
+                    <button class="model-picker-tab ${currentModelTab === 'vision' ? 'active' : ''}" data-type="vision" onclick="switchModelTab(event, 'vision', '${pickerId}')">
                         <i data-lucide="eye"></i>
                         Vision
                     </button>
@@ -1798,7 +1870,14 @@ function closeModelPickerOnClickOutside(e) {
     }
 }
 
-function switchModelTab(type, pickerId = 'home') {
+function switchModelTab(typeOrEvent, pickerIdOrType = 'home', maybePickerId = 'home') {
+    let type = typeOrEvent;
+    let pickerId = pickerIdOrType;
+    if (typeOrEvent && typeof typeOrEvent === 'object') {
+        stopModelPickerControlEvent(typeOrEvent);
+        type = pickerIdOrType;
+        pickerId = maybePickerId || 'home';
+    }
     currentModelTab = type;
 
     // Update tab UI for the specific picker
@@ -1940,7 +2019,7 @@ function buildChatPickerFilters(models, pickerId) {
         <button
             type="button"
             class="model-picker-filter ${source === item.id ? 'active' : ''}"
-            onclick="setModelPickerChatSource('${item.id}', '${pickerId}')"
+            onclick="setModelPickerChatSource('${item.id}', '${pickerId}', event)"
         >
             <span>${item.label}</span>
             <em>${item.count}</em>
@@ -1963,7 +2042,7 @@ function buildChatPickerFilters(models, pickerId) {
                 <button
                     type="button"
                     class="model-picker-family ${modelPickerChatFamily === family ? 'active' : ''}"
-                    onclick="setModelPickerChatFamily('${family}', '${pickerId}')"
+                    onclick="setModelPickerChatFamily('${family}', '${pickerId}', event)"
                 >
                     <span>${getCloudFamilyLabel(family)}</span>
                     <em>${count}</em>
@@ -2132,6 +2211,10 @@ function selectPickerModel(modelId, pickerId = 'home') {
     } else if (typeof terminalMode !== 'undefined' && terminalMode) {
         terminalToolModel = modelId;
         userSettings.terminalModel = modelId;
+        if (typeof tokenStats !== 'undefined') {
+            tokenStats.maxContextSize = getTerminalEffectiveContextSize(modelId);
+            updateTokenDisplay();
+        }
     } else {
         selectedChatModel = modelId;
         selectedTextModel = modelId;  // Compat
