@@ -203,9 +203,28 @@ class TerminalBrainSmokeTests(unittest.TestCase):
 
         self.assertIn("write_file", names)
         self.assertIn("bash", names)
-        self.assertIn("tool_search", names)
+        self.assertNotIn("tool_search", names)
         self.assertNotIn("web_search", names)
         self.assertNotIn("load_skill", names)
+
+    def test_template_request_is_write_and_prioritizes_batch_write(self):
+        brain = TerminalBrain()
+        message = "je veux un TEMPLATE COMPLET"
+        brain.current_intent = brain.detect_intent(message)
+        brain._reset_deferred_tools()
+
+        names = brain._select_tool_names_for_turn(message, [], autonomous=False)
+
+        self.assertEqual(brain.current_intent, "write")
+        self.assertIn("write_files", names)
+        self.assertLess(names.index("write_files"), names.index("write_file"))
+        self.assertNotIn("write_todos", names)
+        self.assertNotIn("tool_search", names)
+
+    def test_template_analysis_remains_read_only(self):
+        brain = TerminalBrain()
+
+        self.assertEqual(brain.detect_intent("analyse le template Next.js"), "read")
 
     def test_deferred_tool_search_promotes_matching_tools(self):
         brain = TerminalBrain()
@@ -220,6 +239,32 @@ class TerminalBrainSmokeTests(unittest.TestCase):
         formatted = brain._format_result_for_llm(result)
         self.assertIn("[RESULT tool_search]", formatted)
         self.assertIn('"name": "web_search"', formatted)
+
+    def test_tool_search_reports_core_tools_without_hiding_them(self):
+        brain = TerminalBrain()
+        brain.current_intent = "write"
+        brain._reset_deferred_tools()
+
+        result = brain.execute_tool(
+            "tool_search",
+            {"query": "select:write_files,write_file,edit_file"},
+            os.getcwd(),
+        )
+
+        self.assertTrue(result.success)
+        self.assertEqual(result.data.get("promoted"), [])
+        self.assertEqual(result.data.get("already_available"), ["write_files", "write_file", "edit_file"])
+        formatted = brain._format_result_for_llm(result)
+        self.assertIn("Core tools already available", formatted)
+
+    def test_write_files_counts_as_verified_mutation(self):
+        brain = TerminalBrain()
+
+        self.assertTrue(
+            brain._has_successful_mutation([
+                {"tool": "write_files", "success": True, "summary": "2 files"},
+            ])
+        )
 
     def test_explicit_web_request_auto_promotes_web_tools(self):
         brain = TerminalBrain()

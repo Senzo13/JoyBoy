@@ -505,6 +505,25 @@ DEFERRED_TOOL_NAMES = (
 )
 DEFERRED_TOOL_MAX_RESULTS = 5
 MAX_DELEGATE_SUBAGENT_CALLS_PER_RESPONSE = 3
+CORE_TOOL_NAMES = tuple(
+    item.get("function", {}).get("name", "")
+    for item in TOOLS
+    if item.get("function", {}).get("name", "")
+    and item.get("function", {}).get("name", "") not in DEFERRED_TOOL_NAMES
+    and item.get("function", {}).get("name", "") != "tool_search"
+)
+WRITE_CORE_TOOL_NAMES = ("write_files", "write_file", "edit_file", "delete_file", "bash")
+SCAFFOLD_CORE_TOOL_ORDER = (
+    "list_files",
+    "read_file",
+    "write_files",
+    "write_file",
+    "edit_file",
+    "bash",
+    "search",
+    "glob",
+)
+READ_CORE_TOOL_ORDER = ("list_files", "read_file", "search", "glob")
 
 
 # ===== TYPES =====
@@ -1085,6 +1104,7 @@ class TerminalBrain:
         executed_tools = []
         continuation_nudges = 0
         todo_completion_reminders = 0
+        write_progress_nudges = 0
 
         while iteration < iteration_budget:
             iteration += 1
@@ -1405,6 +1425,18 @@ class TerminalBrain:
                         tool_message["tool_call_id"] = tool_call_id
                     messages.append(tool_message)
 
+                if (
+                    not force_final
+                    and write_progress_nudges < 2
+                    and iteration < iteration_budget
+                    and self._should_nudge_write_progress(initial_message, executed_tools)
+                ):
+                    write_progress_nudges += 1
+                    messages.append({
+                        'role': 'user',
+                        'content': self._write_progress_nudge(initial_message),
+                    })
+
             except CloudModelError as e:
                 _end_resource_lease()
                 yield runtime_event('error', message=str(e))
@@ -1415,6 +1447,17 @@ class TerminalBrain:
                 return
 
         _end_resource_lease()
+        if executed_tools:
+            yield runtime_event(
+                'loop_warning',
+                action='iteration_limit',
+                reason=f'Iteration limit reached ({iteration_budget}); returning collected context instead of another tool loop.',
+            )
+            final_text = self._iteration_limit_fallback_answer(initial_message, executed_tools)
+            full_response += final_text
+            yield runtime_event('content', text=final_text, token_stats={})
+            yield runtime_event('done', full_response=full_response, token_stats=total_token_stats)
+            return
         yield runtime_event('error', message=f'Iteration limit reached ({iteration_budget})')
 
     # ===== HELPERS =====
@@ -1711,7 +1754,7 @@ class TerminalBrain:
         if executed_tools and any(item.get("tool") == "bash" for item in executed_tools):
             names.append("delegate_subagent")
 
-        if self._is_complex_task_request(initial_message) or len(executed_tools) >= 2:
+        if self._should_use_todos_for_request(initial_message):
             names.append("write_todos")
 
         seen = set()
@@ -1721,6 +1764,38 @@ class TerminalBrain:
                 seen.add(name)
                 ordered.append(name)
         return ordered
+
+    def _should_use_todos_for_request(self, message: str) -> bool:
+        """Keep TodoMiddleware-style planning for real multi-step work only.
+
+        DeerFlow's todo tool is deliberately not used for simple tasks. JoyBoy
+        follows the same rule so a scaffold request does not burn a full turn on
+        bookkeeping before touching files.
+        """
+        if self._is_scaffold_write_request(message):
+            return False
+        return self._is_complex_task_request(message)
+
+    def _should_offer_tool_search(self, message: str, executed_tools: List[Dict]) -> bool:
+        """Expose tool_search only when a deferred tool is plausibly needed."""
+        if not (self._active_deferred_tool_names - self._active_promoted_tool_names):
+            return False
+
+        msg = self._intent_text(message)
+        deferred_markers = (
+            "web", "internet", "url", "http", "site", "search online",
+            "cherche sur le web", "skill", "pack", "workflow", "memory",
+            "memoire", "mémoire", "remember", "souviens", "retiens",
+            "delete", "supprime", "remove", "efface", "agent", "subagent",
+            "delegate", "mcp", "outil", "tool",
+        )
+        if any(marker in msg for marker in deferred_markers):
+            return True
+        if self._should_use_todos_for_request(message):
+            return True
+        if any(item.get("tool") == "tool_search" for item in executed_tools):
+            return True
+        return False
 
     def _search_deferred_tool_names(self, query: str) -> List[str]:
         """Search deferred tools by name/description without loading all schemas."""
@@ -1779,6 +1854,20 @@ class TerminalBrain:
         scored.sort(key=lambda item: item[0], reverse=True)
         return [name for _, name in scored[:DEFERRED_TOOL_MAX_RESULTS]]
 
+    @staticmethod
+    def _tool_search_requested_names(query: str) -> List[str]:
+        query = str(query or "").strip()
+        if not query.startswith("select:"):
+            return []
+        seen: set[str] = set()
+        ordered: List[str] = []
+        for item in query[7:].split(","):
+            name = item.strip()
+            if name and name not in seen:
+                seen.add(name)
+                ordered.append(name)
+        return ordered
+
     def _deferred_tool_regex_score(self, pattern: str, name: str) -> int:
         tool = self.tool_registry.get(name)
         searchable = f"{name} {tool.description if tool else ''}"
@@ -1789,6 +1878,18 @@ class TerminalBrain:
         return len(regex.findall(searchable))
 
     def _execute_tool_search(self, query: str) -> Dict:
+        requested = self._tool_search_requested_names(query)
+        requested_core = [
+            name
+            for name in requested
+            if name in CORE_TOOL_NAMES and self.tool_registry.get(name)
+        ]
+        blocked_core = [
+            name
+            for name in requested_core
+            if name in WRITE_CORE_TOOL_NAMES and self.is_read_only_intent(self.current_intent)
+        ]
+        already_available = [name for name in requested_core if name not in blocked_core]
         matched_names = self._search_deferred_tool_names(query)
         self._active_promoted_tool_names.update(matched_names)
         tools = [
@@ -1800,6 +1901,8 @@ class TerminalBrain:
             "success": True,
             "query": query,
             "promoted": matched_names,
+            "already_available": already_available,
+            "blocked_by_intent": blocked_core,
             "tools": tools,
             "remaining_deferred": [
                 name
@@ -2080,13 +2183,13 @@ class TerminalBrain:
         if autonomous:
             return None
 
-        names: List[str] = ["list_files", "read_file"]
-
         if self.current_intent in {"write", "execute"}:
-            names.extend(["write_file", "write_files", "edit_file", "bash"])
-            names.extend(["search", "glob"])
+            if self._is_scaffold_write_request(initial_message):
+                names = list(SCAFFOLD_CORE_TOOL_ORDER)
+            else:
+                names = ["list_files", "read_file", "write_file", "write_files", "edit_file", "bash", "search", "glob"]
         else:
-            names.extend(["search", "glob"])
+            names = list(READ_CORE_TOOL_ORDER)
 
         self._active_promoted_tool_names.update(self._auto_promoted_deferred_tools(initial_message, executed_tools))
 
@@ -2094,7 +2197,7 @@ class TerminalBrain:
             if name in self._active_promoted_tool_names:
                 names.append(name)
 
-        if self._active_deferred_tool_names - self._active_promoted_tool_names:
+        if self._should_offer_tool_search(initial_message, executed_tools):
             names.append("tool_search")
 
         seen = set()
@@ -2420,7 +2523,7 @@ class TerminalBrain:
             if not item.get("success"):
                 continue
             tool = item.get("tool")
-            if tool in {"write_file", "edit_file", "delete_file"}:
+            if tool in {"write_file", "write_files", "edit_file", "delete_file"}:
                 return True
             if tool == "bash":
                 command = str((item.get("args") or {}).get("command", "")).lower()
@@ -2432,6 +2535,34 @@ class TerminalBrain:
                 if any(marker in command for marker in mutation_markers):
                     return True
         return False
+
+    def _has_attempted_mutation(self, executed_tools: List[Dict]) -> bool:
+        return any((item.get("tool") in WRITE_CORE_TOOL_NAMES) for item in executed_tools)
+
+    def _should_nudge_write_progress(self, initial_message: str, executed_tools: List[Dict]) -> bool:
+        if self.current_intent not in {"write", "execute"}:
+            return False
+        if self._has_successful_mutation(executed_tools) or self._has_attempted_mutation(executed_tools):
+            return False
+        if len(executed_tools) < 3:
+            return False
+        recent = [item.get("tool") for item in executed_tools[-4:]]
+        passive_tools = {"list_files", "read_file", "glob", "search", "tool_search", "write_todos", "think"}
+        return all(tool in passive_tools for tool in recent)
+
+    def _write_progress_nudge(self, initial_message: str) -> str:
+        if self._is_scaffold_write_request(initial_message):
+            return (
+                "[WRITE TASK REMINDER]\n"
+                "The user asked for a project/template scaffold. Stop planning or searching for write tools. "
+                "Use write_files in the next response for the actual files, or edit_file/write_file if replacing an existing file. "
+                "Then verify with list_files or read_file."
+            )
+        return (
+            "[WRITE TASK REMINDER]\n"
+            "The user asked for a modification. Stop passive exploration unless one specific file is still required. "
+            "Use edit_file, write_file, write_files, or bash now, then verify the result."
+        )
 
     def _looks_like_unverified_write_claim(self, content: str, executed_tools: List[Dict]) -> bool:
         if self.is_read_only_intent(self.current_intent) or self._has_successful_mutation(executed_tools):
@@ -2523,6 +2654,25 @@ class TerminalBrain:
             "ou cible un fichier précis."
         )
 
+    def _iteration_limit_fallback_answer(self, initial_message: str, executed_tools: List[Dict]) -> str:
+        bullet_lines = [
+            f"- {item.get('tool')} {item.get('args', {})}: {item.get('summary', '')}"
+            for item in executed_tools[-8:]
+        ]
+        if self.current_intent in {"write", "execute"} and not self._has_successful_mutation(executed_tools):
+            return (
+                "J'ai stoppé la boucle avant qu'elle continue à brûler des tokens sans appliquer de changement.\n\n"
+                "Dernières actions observées:\n"
+                + "\n".join(bullet_lines)
+                + "\n\nAucune écriture vérifiée n'a été faite. Relance la même demande: JoyBoy doit maintenant exposer "
+                "`write_files`/`edit_file` directement et éviter `tool_search`/`write_todos` sur ce type de tâche."
+            )
+        return (
+            "J'ai atteint la limite d'itérations, donc je rends l'état observé au lieu de repartir en boucle.\n\n"
+            "Dernières actions observées:\n"
+            + "\n".join(bullet_lines)
+        )
+
     def build_system_prompt(
         self,
         workspace_path: str,
@@ -2566,8 +2716,8 @@ Core contract:
 11. For broad codebase tasks, prefer delegate_subagent(code_explorer) over repeated list_files/glob/search loops.
 12. For web research, use web_search first, then web_fetch exact public URLs returned by search or provided by the user.
 13. After modifications, prefer delegate_subagent(verifier) with one allowlisted test/build command instead of free-form shell retries.
-14. Some rare tools are deferred to save tokens. If a needed tool is listed by name only, call tool_search once to fetch its schema, then call that tool.
-15. For complex multi-step tasks, call write_todos early with 2-6 concrete items, keep exactly one item in_progress, and update it as you work.
+14. Some rare tools are deferred to save tokens. If a needed deferred tool is listed by name only, call tool_search once to fetch its schema, then call that tool. Do not use tool_search for core tools like write_files, write_file, edit_file, read_file, list_files, bash, search, or glob.
+15. For complex multi-step tasks, call write_todos early with 2-6 concrete items, keep exactly one item in_progress, and update it as you work. Do not use write_todos for simple scaffolds or small direct edits.
 16. Use remember_fact only for explicit durable user/project preferences. Never store secrets, API keys, tokens, private URLs, or one-off transient details.
 17. Use list_memory when the user asks about remembered context or when memory is clearly relevant.
 
@@ -2635,6 +2785,7 @@ You have access to filesystem, search, shell, and workspace tools. Use them to c
             "Available deferred tools:",
             "- Their full schemas are hidden from the base prompt to reduce token use.",
             "- Call tool_search with select:<tool_name> or keywords only when one is actually needed.",
+            "- Core file tools are already active when the task needs them; never fetch write_files/write_file/edit_file/bash through tool_search.",
         ]
         for name in remaining:
             tool = self.tool_registry.get(name)
@@ -2752,15 +2903,28 @@ You have access to filesystem, search, shell, and workspace tools. Use them to c
 
         elif result.tool_name == 'tool_search':
             promoted = data.get("promoted", []) if isinstance(data, dict) else []
+            already_available = data.get("already_available", []) if isinstance(data, dict) else []
+            blocked_by_intent = data.get("blocked_by_intent", []) if isinstance(data, dict) else []
             tools = data.get("tools", []) if isinstance(data, dict) else []
-            if not promoted:
+            if not promoted and not already_available and not blocked_by_intent:
                 return f"[RESULT tool_search] No deferred tools matched: {data.get('query', '') if isinstance(data, dict) else ''}"
-            schemas = json.dumps(tools, ensure_ascii=False, indent=2)
-            return (
-                f"[RESULT tool_search] Promoted tools: {', '.join(promoted)}\n"
-                "These tool schemas are now available for the next call:\n"
-                f"```json\n{schemas}\n```"
-            )
+            lines: List[str] = []
+            if promoted:
+                schemas = json.dumps(tools, ensure_ascii=False, indent=2)
+                lines.append(f"Promoted deferred tools: {', '.join(promoted)}")
+                lines.append("These tool schemas are now available for the next call:")
+                lines.append(f"```json\n{schemas}\n```")
+            if already_available:
+                lines.append(
+                    "Core tools already available in this turn; call them directly, do not fetch them through tool_search: "
+                    + ", ".join(already_available)
+                )
+            if blocked_by_intent:
+                lines.append(
+                    "Core write tools were requested but this turn is read-only. The user must ask for a modification before using: "
+                    + ", ".join(blocked_by_intent)
+                )
+            return "[RESULT tool_search]\n" + "\n".join(lines)
 
         elif result.tool_name == 'web_search':
             items = data.get('results', [])
@@ -3161,9 +3325,48 @@ You have access to filesystem, search, shell, and workspace tools. Use them to c
         return f"{raw}\n{folded}"
 
     @staticmethod
+    def _is_scaffold_write_request(message: str) -> bool:
+        """Detect project/template creation requests that are write actions."""
+        msg = TerminalBrain._intent_text(message)
+        read_markers = (
+            "analyse", "explique", "montre", "lis ", "regarde",
+            "c'est quoi", "comprendre", "audit",
+        )
+        creation_markers = (
+            "je veux", "veux", "besoin", "donne", "prepare", "prépare",
+            "fais", "fait", "cree", "crée", "creer", "créer", "create",
+            "make", "build", "code", "coder", "mets", "met", "ajoute",
+            "setup", "set up",
+        )
+        scaffold_terms = (
+            "template", "starter", "scaffold", "boilerplate", "app de base",
+            "projet de base", "page complete", "page complète",
+        )
+        framework_terms = (
+            "react", "next js", "next.js", "nextjs", "vite", "app router",
+            "tailwind", "vue", "svelte",
+        )
+
+        has_scaffold_term = any(term in msg for term in scaffold_terms)
+        has_framework_term = any(term in msg for term in framework_terms)
+        has_creation = any(marker in msg for marker in creation_markers)
+        has_read = any(marker in msg for marker in read_markers)
+
+        if has_read and not has_creation:
+            return False
+        if has_scaffold_term and (has_creation or not has_read):
+            return True
+        if has_framework_term and has_creation:
+            return True
+        return False
+
+    @staticmethod
     def detect_intent(message: str) -> str:
         """Détecte l'intention: 'read', 'write', 'execute', 'question'"""
         msg = TerminalBrain._intent_text(message)
+
+        if TerminalBrain._is_scaffold_write_request(message):
+            return 'write'
 
         # WRITE
         write_kw = ['modifie', 'modifier', 'change', 'ajoute', 'supprime', 'crée', 'créer',
