@@ -1851,10 +1851,21 @@ function toggleModelPicker(pickerId = 'home') {
         const tabsContainer = pickerElement.querySelector('.model-picker-tabs');
 
         if (pickerId === 'chat' && !isTerminalPicker) {
-            currentModelTab = 'chat';
+            const validChatTabs = ['inpaint', 'text2img', 'chat'];
+            if (!validChatTabs.includes(currentModelTab)) {
+                currentModelTab = 'chat';
+            }
             if (tabsContainer) {
                 tabsContainer.innerHTML = `
-                    <button class="model-picker-tab active" data-type="chat" onclick="switchModelTab(event, 'chat', '${pickerId}')">
+                    <button class="model-picker-tab ${currentModelTab === 'inpaint' ? 'active' : ''}" data-type="inpaint" onclick="switchModelTab(event, 'inpaint', '${pickerId}')">
+                        <i data-lucide="eraser"></i>
+                        Inpaint
+                    </button>
+                    <button class="model-picker-tab ${currentModelTab === 'text2img' ? 'active' : ''}" data-type="text2img" onclick="switchModelTab(event, 'text2img', '${pickerId}')">
+                        <i data-lucide="image"></i>
+                        Text2Img
+                    </button>
+                    <button class="model-picker-tab ${currentModelTab === 'chat' ? 'active' : ''}" data-type="chat" onclick="switchModelTab(event, 'chat', '${pickerId}')">
                         <i data-lucide="message-square"></i>
                         Chat
                     </button>
@@ -1919,9 +1930,6 @@ function switchModelTab(typeOrEvent, pickerIdOrType = 'home', maybePickerId = 'h
         type = pickerIdOrType;
         pickerId = maybePickerId || 'home';
     }
-    if (pickerId === 'chat' && !(typeof terminalMode !== 'undefined' && terminalMode)) {
-        type = 'chat';
-    }
     currentModelTab = type;
 
     // Update tab UI for the specific picker
@@ -1946,7 +1954,7 @@ function getPickerEffectiveTab(pickerId = 'home') {
         if (typeof terminalMode !== 'undefined' && terminalMode) {
             return currentModelTab === 'vision' ? 'vision' : 'chat';
         }
-        return 'chat';
+        return ['inpaint', 'text2img', 'chat'].includes(currentModelTab) ? currentModelTab : 'chat';
     }
     return currentModelTab;
 }
@@ -2215,9 +2223,6 @@ function selectPickerModel(modelId, pickerId = 'home') {
 
     const modelType = getPickerEffectiveTab(pickerId);
     const previousModel = getSelectedModelForTab(modelType);
-    if (pickerId === 'chat' && !(typeof terminalMode !== 'undefined' && terminalMode)) {
-        currentModelTab = 'chat';
-    }
 
     if (modelType === 'inpaint') {
         selectedInpaintModel = modelId;
