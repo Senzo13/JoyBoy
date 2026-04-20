@@ -251,15 +251,18 @@ def _strip_image_prefix(message: str) -> str:
 def _is_mostly_english(text: str) -> bool:
     """Detecte si le texte est majoritairement en anglais.
 
-    Logique: si du français est détecté → False. Sinon, si au moins 1 marqueur
-    anglais OU si aucun caractère non-ASCII n'est trouvé (prompt court tout-ASCII) → True.
+    Logique: si du francais est detecte -> False. Sinon, il faut au moins
+    un marqueur anglais explicite. Beaucoup de prompts francais sont ASCII
+    ("moi", "en marche", "tarpin"), donc ASCII seul ne suffit pas.
     """
     text_lower = text.lower()
     padded = f' {text_lower} '
     fr_markers = [
         ' une ', ' un ', ' des ', ' les ', ' la ', ' le ', ' du ', ' de la ',
         ' sur ', ' dans ', ' avec ', ' qui ', ' elle ', ' est ', ' sont ',
-        ' cette ', ' ses ', ' son ', ' sa ', ' aux ', ' pour ',
+        ' cette ', ' ses ', ' son ', ' sa ', ' aux ', ' pour ', ' moi ',
+        ' toi ', ' nous ', ' vous ', ' en ', ' au ', ' marche ', ' tarpin ',
+        ' tres ', ' trop ',
         ' noir', ' blanc', ' rouge', ' bleu', ' vert',
         ' femme', ' homme', ' fille', ' chat', ' chien',
         ' grand', ' petit', ' beau', ' belle',
@@ -279,12 +282,19 @@ def _is_mostly_english(text: str) -> bool:
         ' bedroom', ' breast', ' body', ' face', ' make ',
     ]
     en_count = sum(1 for m in en_markers if m in padded)
-    # Si au moins 1 marqueur anglais, ou si tout est ASCII (pas de français)
     if en_count >= 1:
         return True
-    # Texte tout-ASCII sans marqueur français = probablement anglais
-    is_all_ascii = all(ord(c) < 128 for c in text)
-    return is_all_ascii and len(text.split()) >= 2
+    return False
+
+
+def _is_cloud_text_model(model: str = None) -> bool:
+    if not model:
+        return False
+    try:
+        from core.agent_runtime import is_cloud_model_name
+        return is_cloud_model_name(model)
+    except Exception:
+        return False
 
 
 def enhance_prompt(prompt: str, for_inpainting: bool = True, model: str = None) -> tuple[str, str]:
@@ -296,9 +306,10 @@ def enhance_prompt(prompt: str, for_inpainting: bool = True, model: str = None) 
     """
     mode = 'inpainting' if for_inpainting else 'text2img'
     print(f"[ENHANCE] \"{prompt[:50]}...\" ({mode})")
+    use_cloud_model = _is_cloud_text_model(model)
 
     # Si déjà en anglais, retourner tel quel (pas de réécriture LLM)
-    if _is_mostly_english(prompt):
+    if _is_mostly_english(prompt) and not use_cloud_model:
         print(f"[ENHANCE] Anglais detecte, skip LLM")
         return prompt, "realistic"
 
@@ -306,25 +317,25 @@ def enhance_prompt(prompt: str, for_inpainting: bool = True, model: str = None) 
     print(f"[ENHANCE] Pre-traite FR->EN: \"{prompt[:60]}...\"")
 
     # Si le preprocessing a tout traduit, retourner directement
-    if _is_mostly_english(prompt):
+    if _is_mostly_english(prompt) and not use_cloud_model:
         print(f"[ENHANCE] Pre-traitement suffisant, skip LLM")
         return prompt, "realistic"
 
     system_prompt = _load_enhance_prompt('inpainting' if for_inpainting else 'text2img')
 
-    user_content = f"""TRANSLATE this French text to ENGLISH for image generation:
+    user_content = f"""Rewrite or translate this text into a clean ENGLISH prompt for image generation:
 "{prompt}"
 
-Write your response in ENGLISH. Do not write French."""
+Write your response in ENGLISH. Keep the user's intent. Do not write French."""
 
     response = _call_utility(
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_content}
         ],
-        num_predict=150,
+        num_predict=200 if use_cloud_model else 150,
         temperature=0.3,
-        timeout=10,
+        timeout=30 if use_cloud_model else 10,
         model=model,
     )
 
@@ -514,15 +525,17 @@ def extract_image_prompt(user_message: str, chat_model: str = None, model: str =
         return None
 
     clean_prompt = _strip_image_prefix(user_message)
+    use_model = model or chat_model
+    use_cloud_model = _is_cloud_text_model(use_model)
 
-    if clean_prompt and _is_mostly_english(clean_prompt):
+    if clean_prompt and _is_mostly_english(clean_prompt) and not use_cloud_model:
         print(f"[IMAGE-PROMPT] Direct (anglais detecte): \"{clean_prompt[:80]}...\"")
         return clean_prompt
 
     preprocessed = _preprocess_french_prompt(clean_prompt or user_message)
     print(f"[IMAGE-PROMPT] Pre-traite: \"{preprocessed[:80]}...\"")
 
-    if _is_mostly_english(preprocessed):
+    if _is_mostly_english(preprocessed) and not use_cloud_model:
         print(f"[IMAGE-PROMPT] Pre-traitement suffisant (anglais detecte)")
         return preprocessed
 
@@ -540,8 +553,6 @@ RULES:
 "{preprocessed}"
 
 Prompt:"""
-
-    use_model = model or chat_model
 
     response = _call_utility(
         messages=[
