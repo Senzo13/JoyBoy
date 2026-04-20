@@ -264,6 +264,9 @@ function buildChatStreamParams(prompt) {
         history: getChatContext(),
         memories: [],
         chatModel: userSettings.chatModel,
+        reasoningEffort: typeof getTerminalReasoningEffort === 'function'
+            ? getTerminalReasoningEffort(userSettings.chatModel)
+            : null,
         profile: getProfileForAI(),
         allConversations: [],
         workspace: getActiveWorkspace(),
@@ -943,6 +946,7 @@ async function generate() {
             image: pendingImage,
             prompt: prompt,
             model: model,
+            chat_model: userSettings.chatModel || null,
             enhance: enhanceVal,
             enhance_mode: enhanceModeVal,
             steps: pendingImage ? userSettings.steps : (userSettings.text2imgSteps || 30),
@@ -1123,6 +1127,7 @@ async function continueChat() {
             const result = await apiGeneration.generate({
                 prompt: prompt,
                 model: inpaintModel,
+                chat_model: userSettings.chatModel || null,
                 image: pendingImage,
                 // strength géré par le Smart Router (pas d'override frontend)
                 enhance: userSettings.enhancePrompt,
@@ -1470,6 +1475,7 @@ async function generateImageFromChat(imagePrompt, targetChatId = (typeof current
             image: null,
             prompt: imagePrompt,
             model: imageModel,
+            chat_model: userSettings.chatModel || null,
             enhance: false,
             skip_enhance: true,
             steps: userSettings.text2imgSteps || 30,

@@ -101,7 +101,13 @@ def _call_utility(messages: list, num_predict: int = 50, temperature: float = 0.
         print("[UTILITY] ERREUR: aucun modèle utilitaire disponible")
         return None
 
-    if not is_ollama_running():
+    try:
+        from core.agent_runtime import is_cloud_model_name
+        use_cloud_model = is_cloud_model_name(use_model)
+    except Exception:
+        use_cloud_model = False
+
+    if not use_cloud_model and not is_ollama_running():
         print(f"[UTILITY] ERREUR: Ollama non disponible")
         return None
 

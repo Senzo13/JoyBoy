@@ -15,7 +15,6 @@ Contains:
 from __future__ import annotations
 
 from core.utility_ai import _call_utility
-from config import OLLAMA_BASE_URL
 
 
 # ============================================================
@@ -238,35 +237,13 @@ Exemples:
 
 Requ\u00eate en anglais:"""
 
-    # Utiliser le modele specifie ou le utility model
-    if model:
-        # Appel direct a Ollama avec le modele chat
-        try:
-            import requests
-            response = requests.post(
-                f"{OLLAMA_BASE_URL}/api/generate",
-                json={
-                    "model": model,
-                    "prompt": prompt,
-                    "stream": False,
-                    "think": False,
-                    "options": {"num_predict": 50, "temperature": 0.1}
-                },
-                timeout=10
-            )
-            if response.status_code == 200:
-                response = response.json().get("response", "").strip()
-            else:
-                response = None
-        except Exception:
-            response = None
-    else:
-        response = _call_utility(
-            messages=[{"role": "user", "content": prompt}],
-            num_predict=50,
-            temperature=0.1,
-            timeout=5
-        )
+    response = _call_utility(
+        messages=[{"role": "user", "content": prompt}],
+        num_predict=50,
+        temperature=0.1,
+        timeout=10 if model else 5,
+        model=model,
+    )
 
     if response:
         # Nettoyer la reponse
@@ -295,7 +272,7 @@ Requ\u00eate en anglais:"""
     return query.strip('"\'.:!? ')
 
 
-def generate_deep_search_queries(user_message: str, initial_query: str) -> list:
+def generate_deep_search_queries(user_message: str, initial_query: str, model: str = None) -> list:
     """
     Genere plusieurs requetes de recherche EN ANGLAIS pour une recherche approfondie.
     L'IA analyse la demande et genere des variations pour couvrir tous les angles.
@@ -323,7 +300,8 @@ Queries:"""
         messages=[{"role": "user", "content": prompt}],
         num_predict=150,
         temperature=0.3,
-        timeout=8
+        timeout=8,
+        model=model,
     )
 
     queries = [initial_query]  # Toujours inclure la requete initiale

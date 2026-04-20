@@ -497,6 +497,7 @@ def unified_generate():
         brush_mask_b64 = data.get('mask')  # Masque pinceau (mode edition)
         prompt = data.get('prompt', '')
         model = data.get('model') or 'epiCRealism XL (Moyen)'
+        chat_model = data.get('chat_model') or data.get('chatModel') or ''
         strength_override = data.get('strength')  # Frontend peut override
         nsfw_strength = data.get('nsfw_strength')  # NSFW slider override
         enhance = data.get('enhance', True)
@@ -797,7 +798,8 @@ def unified_generate():
             analysis = analyze_request(
                 prompt=prompt,
                 image_b64=image_b64,
-                has_brush_mask=has_brush
+                has_brush_mask=has_brush,
+                model=chat_model or None
             )
 
             # Décharger TOUS les LLM Ollama après le routing pour libérer la VRAM
@@ -1134,7 +1136,7 @@ def unified_generate():
             print(f"[ENHANCE] Skip LLM ({analysis.get('reason', 'fast shortcut')})")
         elif enhance:
             from core.utility_ai import enhance_prompt as ai_enhance
-            enhanced_prompt, style = ai_enhance(prompt, for_inpainting=is_inpainting)
+            enhanced_prompt, style = ai_enhance(prompt, for_inpainting=is_inpainting, model=chat_model or None)
             # Décharger le LLM après enhance pour libérer la VRAM avant diffusion
             try:
                 from core.ollama_service import get_loaded_models, unload_model
@@ -1511,7 +1513,7 @@ def unified_generate():
         # Si le modele n'utilise pas l'enhance LLM (ex: Kontext = instruction directe)
         if not model_pipeline.get('uses_enhance', True):
             from core.utility_ai import translate_to_english
-            final_prompt = translate_to_english(prompt)
+            final_prompt = translate_to_english(prompt, model=chat_model or None)
             neg_prompt = None if not model_pipeline.get('uses_negative_prompt', True) else analysis.get('negative_prompt')
             arch = model_behavior.get('architecture', '?').upper()
             print(f"[{arch}] Prompt (traduit): {final_prompt}")

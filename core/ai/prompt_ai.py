@@ -16,10 +16,9 @@ from __future__ import annotations
 import re
 
 from core.utility_ai import _call_utility, _load_enhance_prompt
-from config import OLLAMA_BASE_URL
 
 
-def translate_to_english(prompt: str) -> str:
+def translate_to_english(prompt: str, model: str = None) -> str:
     """
     Traduit le prompt en anglais si necessaire (pour Flux Kontext).
     Si deja en anglais, retourne tel quel.
@@ -42,7 +41,6 @@ def translate_to_english(prompt: str) -> str:
 
     print(f"[TRANSLATE] Detection francais, traduction...")
 
-    import requests
     messages = [
         {
             "role": "system",
@@ -54,7 +52,7 @@ def translate_to_english(prompt: str) -> str:
         }
     ]
 
-    result = _call_utility(messages, num_predict=200, temperature=0.1, timeout=15)
+    result = _call_utility(messages, num_predict=200, temperature=0.1, timeout=15, model=model)
 
     if result:
         print(f"[TRANSLATE] -> {result}")
@@ -289,7 +287,7 @@ def _is_mostly_english(text: str) -> bool:
     return is_all_ascii and len(text.split()) >= 2
 
 
-def enhance_prompt(prompt: str, for_inpainting: bool = True) -> tuple[str, str]:
+def enhance_prompt(prompt: str, for_inpainting: bool = True, model: str = None) -> tuple[str, str]:
     """
     Utilise le utility model pour ameliorer un prompt de generation d'image.
 
@@ -326,7 +324,8 @@ Write your response in ENGLISH. Do not write French."""
         ],
         num_predict=150,
         temperature=0.3,
-        timeout=10
+        timeout=10,
+        model=model,
     )
 
     if response:

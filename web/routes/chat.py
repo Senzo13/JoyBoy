@@ -360,12 +360,13 @@ def chat():
         history = data.get('history', [])
         memories = data.get('memories', [])
         chat_model = data.get('chatModel', 'qwen3.5:2b')
+        reasoning_effort = data.get('reasoningEffort')
         profile = data.get('profile', {})
         all_conversations = data.get('allConversations', [])
         locale = data.get('locale') or request.headers.get('Accept-Language', 'fr')
         from core.agent_runtime import CloudModelError, chat_with_cloud_model, is_cloud_model_name
         use_cloud_model = is_cloud_model_name(chat_model)
-        routing_model = None if use_cloud_model else chat_model
+        routing_model = chat_model
 
         if not message:
             return jsonify({'error': 'Message requis'}), 400
@@ -407,7 +408,7 @@ def chat():
             print(f"[WEB-SEARCH] Recherche détectée: '{search_query}' (mode: {search_mode})")
 
             # Générer plusieurs requêtes pour recherche approfondie
-            search_queries = generate_deep_search_queries(message, search_query)
+            search_queries = generate_deep_search_queries(message, search_query, model=routing_model)
             print(f"[WEB-SEARCH] Recherche profonde: {len(search_queries)} requêtes")
 
             all_pages_content = []
@@ -510,6 +511,7 @@ def chat():
                     tools=[],
                     max_tokens=4096,
                     temperature=0.5,
+                    reasoning_effort=reasoning_effort,
                 )
             except CloudModelError as exc:
                 return jsonify({'success': False, 'error': str(exc)}), 500
@@ -583,6 +585,7 @@ def chat_stream():
     history = data.get('history', [])
     memories = data.get('memories', [])
     chat_model = data.get('chatModel', 'qwen3.5:2b')
+    reasoning_effort = data.get('reasoningEffort')
     profile = data.get('profile', {})
     all_conversations = data.get('allConversations', [])
     workspace = data.get('workspace')  # {name, path} ou null
@@ -590,7 +593,7 @@ def chat_stream():
     locale = data.get('locale') or request.headers.get('Accept-Language', 'fr')
     from core.agent_runtime import CloudModelError, chat_with_cloud_model, is_cloud_model_name
     use_cloud_model = is_cloud_model_name(chat_model)
-    routing_model = None if use_cloud_model else chat_model
+    routing_model = chat_model
 
     if not message:
         return jsonify({'error': 'Message requis'}), 400
@@ -690,7 +693,7 @@ def chat_stream():
             print(f"[WEB-SEARCH] Recherche détectée: '{search_query}' (mode: {search_mode})")
 
             # Générer plusieurs requêtes pour recherche approfondie
-            search_queries = generate_deep_search_queries(message, search_query)
+            search_queries = generate_deep_search_queries(message, search_query, model=routing_model)
             total_queries = len(search_queries)
             print(f"[WEB-SEARCH] Recherche profonde: {total_queries} requêtes")
 
@@ -836,6 +839,7 @@ replacement text
                     tools=[],
                     max_tokens=4096,
                     temperature=0.5,
+                    reasoning_effort=reasoning_effort,
                 )
             except CloudModelError as exc:
                 yield f"data: {json.dumps({'error': str(exc)})}\n\n"

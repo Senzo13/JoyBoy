@@ -1847,10 +1847,25 @@ function toggleModelPicker(pickerId = 'home') {
     activePickerId = isOpen ? pickerId : null;
 
     if (isOpen) {
+        const isTerminalPicker = typeof terminalMode !== 'undefined' && terminalMode;
+        const tabsContainer = pickerElement.querySelector('.model-picker-tabs');
+
+        if (pickerId === 'chat' && !isTerminalPicker) {
+            currentModelTab = 'chat';
+            if (tabsContainer) {
+                tabsContainer.innerHTML = `
+                    <button class="model-picker-tab active" data-type="chat" onclick="switchModelTab(event, 'chat', '${pickerId}')">
+                        <i data-lucide="message-square"></i>
+                        Chat
+                    </button>
+                `;
+                if (window.lucide) lucide.createIcons();
+            }
+        }
+
         // En mode terminal, afficher Chat + Vision tabs
-        if (typeof terminalMode !== 'undefined' && terminalMode) {
+        if (isTerminalPicker) {
             // Mettre à jour les tabs pour le mode terminal
-            const tabsContainer = pickerElement.querySelector('.model-picker-tabs');
             if (tabsContainer) {
                 tabsContainer.innerHTML = `
                     <button class="model-picker-tab ${currentModelTab === 'chat' ? 'active' : ''}" data-type="chat" onclick="switchModelTab(event, 'chat', '${pickerId}')">
@@ -1904,6 +1919,9 @@ function switchModelTab(typeOrEvent, pickerIdOrType = 'home', maybePickerId = 'h
         type = pickerIdOrType;
         pickerId = maybePickerId || 'home';
     }
+    if (pickerId === 'chat' && !(typeof terminalMode !== 'undefined' && terminalMode)) {
+        type = 'chat';
+    }
     currentModelTab = type;
 
     // Update tab UI for the specific picker
@@ -1918,6 +1936,19 @@ function switchModelTab(typeOrEvent, pickerIdOrType = 'home', maybePickerId = 'h
     }
 
     renderModelPickerList(pickerId);
+}
+
+function getPickerEffectiveTab(pickerId = 'home') {
+    if (pickerId === 'edit') {
+        return 'inpaint';
+    }
+    if (pickerId === 'chat') {
+        if (typeof terminalMode !== 'undefined' && terminalMode) {
+            return currentModelTab === 'vision' ? 'vision' : 'chat';
+        }
+        return 'chat';
+    }
+    return currentModelTab;
 }
 
 function getModelsForTab(tab) {
@@ -2105,8 +2136,8 @@ function renderModelPickerList(pickerId = 'home') {
     const list = document.getElementById(listId);
     if (!list) return;
 
-    // Edit mode = forcé sur inpaint, sans modèles noMask (Flux Kontext)
-    const tab = pickerId === 'edit' ? 'inpaint' : currentModelTab;
+    // Edit mode = forcé sur inpaint, chat input = forcé sur modèles chat.
+    const tab = getPickerEffectiveTab(pickerId);
     let models = getModelsForTab(tab);
     if (pickerId === 'edit') {
         models = models.filter(m => !m.noMask);
@@ -2182,10 +2213,13 @@ function selectPickerModel(modelId, pickerId = 'home') {
         return;
     }
 
-    const modelType = currentModelTab;
-    const previousModel = getSelectedModelForTab(currentModelTab);
+    const modelType = getPickerEffectiveTab(pickerId);
+    const previousModel = getSelectedModelForTab(modelType);
+    if (pickerId === 'chat' && !(typeof terminalMode !== 'undefined' && terminalMode)) {
+        currentModelTab = 'chat';
+    }
 
-    if (currentModelTab === 'inpaint') {
+    if (modelType === 'inpaint') {
         selectedInpaintModel = modelId;
         selectedImageModel = modelId;  // Compat
         Settings.set('selectedInpaintModel', modelId);
@@ -2208,7 +2242,7 @@ function selectPickerModel(modelId, pickerId = 'home') {
                 editTextSpan.textContent = modelId;
             }
         }
-    } else if (currentModelTab === 'text2img') {
+    } else if (modelType === 'text2img') {
         selectedText2ImgModel = modelId;
         Settings.set('selectedText2ImgModel', modelId);
 
@@ -2216,7 +2250,7 @@ function selectPickerModel(modelId, pickerId = 'home') {
         if (previousModel !== modelId && typeof resetImageModelLoaded === 'function') {
             resetImageModelLoaded();
         }
-    } else if (currentModelTab === 'vision') {
+    } else if (modelType === 'vision') {
         // Gestion spéciale pour télécharger un modèle vision
         if (modelId === 'download-vision') {
             downloadVisionModel();

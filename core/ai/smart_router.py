@@ -432,7 +432,7 @@ def _correct_pose_preservation_route(llm_result: dict, prompt: str, has_brush_ma
     return corrected
 
 
-def analyze_request(prompt: str, image_b64: str = None, has_brush_mask: bool = False) -> dict:
+def analyze_request(prompt: str, image_b64: str = None, has_brush_mask: bool = False, model: str = None) -> dict:
     """
     Cerveau unique. Analyse le prompt (et l'image si fournie) pour déterminer
     la stratégie complète de génération.
@@ -589,7 +589,7 @@ def analyze_request(prompt: str, image_b64: str = None, has_brush_mask: bool = F
         return result
 
     # LLM routing (primary — understands context, not just keywords)
-    model = _find_text_model()
+    model = model or _find_text_model()
 
     if model:
         row("LLM", f"{model} (text)")

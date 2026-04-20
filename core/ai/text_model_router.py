@@ -161,6 +161,40 @@ def call_text_model(
         print("[TEXT_MODEL] Aucun modèle texte disponible")
         return None
 
+    try:
+        from core.agent_runtime import CloudModelError, chat_with_cloud_model, is_cloud_model_name
+        use_cloud_model = is_cloud_model_name(choice.name)
+    except Exception:
+        CloudModelError = RuntimeError
+        chat_with_cloud_model = None
+        use_cloud_model = False
+
+    if use_cloud_model and chat_with_cloud_model:
+        cloud_messages = []
+        for message in messages:
+            cleaned = dict(message)
+            # Utility calls are text-only today. Avoid sending Ollama-specific
+            # image payloads to API runtimes that do not accept them.
+            cleaned.pop("images", None)
+            cloud_messages.append(cleaned)
+
+        try:
+            response = chat_with_cloud_model(
+                choice.name,
+                messages=cloud_messages,
+                tools=[],
+                max_tokens=max(1, num_predict),
+                temperature=temperature,
+                timeout_seconds=max(timeout, 20),
+            )
+            content = (response.get("message") or {}).get("content", "")
+            return strip_thinking(content) or None
+        except CloudModelError as exc:
+            print(f"[TEXT_MODEL] Cloud error ({choice.name}): {exc}")
+        except Exception as exc:
+            print(f"[TEXT_MODEL] Cloud {type(exc).__name__} ({choice.name}): {exc}")
+        return None
+
     payload = {
         "model": choice.name,
         "messages": messages,
