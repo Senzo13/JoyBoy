@@ -861,7 +861,7 @@ async function generate() {
         document.getElementById('prompt-input').value = '';
 
         // Afficher immédiatement le message + skeleton
-        addChatSkeletonMessage(prompt);
+        addChatSkeletonMessage(prompt, imageAnalysisRequest ? currentImage : null);
         refocusChatInput();
 
         // Tant que la requête tourne, on garde le skeleton dans la conversation.
@@ -1249,7 +1249,7 @@ async function continueChat() {
     setSendButtonsMode(true);
 
     // Afficher immédiatement le message + skeleton
-    addChatSkeletonMessage(prompt);
+    addChatSkeletonMessage(prompt, imageAnalysisRequest ? currentImage : null);
     refocusChatInput();
 
     // Persister le skeleton actif: il sert de carte de progression si on

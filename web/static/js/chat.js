@@ -289,15 +289,19 @@ function addSkeletonMessage(prompt, userImage, hasImage, maskImage = null, chatI
  * même position visuelle que le premier — les anciens messages passent
  * au-dessus, hors de vue.
  */
-function addChatSkeletonMessage(prompt) {
+function addChatSkeletonMessage(prompt, attachedImage = null) {
     const messagesDiv = getChatMessages();
     const chatId = typeof currentChatId !== 'undefined' ? currentChatId : '';
+    const attachedImageHtml = attachedImage
+        ? `<img src="${attachedImage}" class="user-thumb" onclick="openModalSingle(this.src)">`
+        : '';
 
     // Message utilisateur permanent (sera sauvegardé)
     const userMsgHtml = `
         <div class="message user-pending-msg" data-chat-id="${chatId}">
             <div class="user-message">
                 <div class="user-bubble">${prompt}</div>
+                ${attachedImageHtml}
             </div>
         </div>
     `;
