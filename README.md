@@ -1,14 +1,14 @@
 # JoyBoy - Local-First SuperAgent Harness for Chat, Code, Image, and Video
 
-**JoyBoy is an open-source local-first SuperAgent-style AI harness that chats, researches, codes, and creates. With workspace tools, model orchestration, providers, local packs and skills, Doctor checks, image generation, SDXL inpainting, and video workflows, it turns a consumer workstation into a private multimodal AI cockpit.**
+**JoyBoy is an open-source local-first SuperAgent-style AI harness that chats, researches, codes, and creates. With workspace tools, model orchestration, optional cloud/API and CLI account connectors, local packs and skills, Doctor checks, image generation, SDXL inpainting, and video workflows, it turns a consumer workstation into a private multimodal AI cockpit.**
 
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-3776ab.svg)](scripts/requirements.txt)
 [![Local First](https://img.shields.io/badge/local--first-zero--cloud-111827.svg)](#why-joyboy)
-[![Ollama](https://img.shields.io/badge/LLM-Ollama-0f172a.svg)](#local-secrets)
+[![Ollama](https://img.shields.io/badge/LLM-Ollama-0f172a.svg)](#local-secrets-and-providers)
 [![Stable Diffusion](https://img.shields.io/badge/media-SDXL%20%7C%20Flux%20%7C%20Video-2563eb.svg)](#features)
 
-Run AI chat, web research, project-aware coding tools, image workflows, model management, and local creative tools on your own machine. JoyBoy is built for people who want an open source ChatGPT alternative, an offline AI assistant, a local Stable Diffusion / SDXL interface, and a privacy-focused agent harness without relying on a cloud account by default.
+Run AI chat, web research, project-aware coding tools, image workflows, model management, and local creative tools on your own machine. JoyBoy is built for people who want an open source ChatGPT alternative, an offline AI assistant, a local Stable Diffusion / SDXL interface, and a privacy-focused agent harness without relying on a cloud account by default. When you do want cloud models, JoyBoy can also connect provider APIs and supported local CLI/OAuth accounts from the same UI.
 
 JoyBoy is especially aimed at long-tail local AI workflows: **local-first SuperAgent harness**, **local AI workstation**, **workspace-aware coding agent**, **local AI image editor**, **Ollama image generation routing**, **SDXL inpainting UI**, **CivitAI model imports**, and **8GB VRAM Stable Diffusion / SDXL workflows** on consumer hardware.
 
@@ -25,6 +25,8 @@ JoyBoy is especially aimed at long-tail local AI workflows: **local-first SuperA
 ## Features
 
 - **Private local AI chat** with Ollama UI controls and local model routing.
+- **Optional cloud LLM providers** for chat and terminal agent mode, including OpenAI, Anthropic / Claude, Google Gemini, OpenRouter, DeepSeek, Moonshot / Kimi K2, MiniMax, Novita AI, Volcengine / Doubao, Zhipu / GLM, and OpenAI-compatible vLLM servers.
+- **Account connector modes** for supported developer subscriptions, including Codex CLI and Claude Code OAuth handoffs when those tools are already authenticated locally.
 - **Local-first agent harness** for routing prompts, tools, jobs, models, runtime state, and optional extensions from one app.
 - **Project mode** for Codex / Claude Code-style workspace assistance, bounded repo analysis, deferred tool discovery, terminal todos, and tool execution.
 - **Local AI workstation** that keeps chat, image generation, image editing, video tests, gallery, model imports, and runtime panels together.
@@ -42,6 +44,7 @@ JoyBoy is especially aimed at long-tail local AI workflows: **local-first SuperA
 JoyBoy is designed for local AI users who care about privacy, control, and hardware limits.
 
 - **Zero cloud by default**: chats, outputs, provider secrets, and optional packs stay on your computer.
+- **Bring your own provider**: stay fully local, use API keys, or switch to supported CLI/OAuth account connectors without mixing billing modes.
 - **One local app**: chat, image generation, video tests, model picker, gallery, local packs, and runtime status live together.
 - **Harness mindset**: JoyBoy coordinates models, jobs, tools, providers, and packs instead of leaving each workflow as a separate script.
 - **Consumer GPU friendly**: profiles target real machines, including 8 GB VRAM setups.
@@ -51,6 +54,8 @@ JoyBoy is designed for local AI users who care about privacy, control, and hardw
 ## Use Cases
 
 - Run a local ChatGPT-like or Grok-like assistant with Ollama.
+- Switch chat and project mode between local Ollama models, OpenAI GPT, Claude, Gemini, Kimi K2, OpenRouter models, and local OpenAI-compatible servers.
+- Use Codex CLI or Claude Code account handoffs for dev-agent workflows when those connectors are available on your machine.
 - Use a local LLM harness and local AI harness to coordinate chat, tools, model routing, and creative jobs.
 - Use JoyBoy as a local AI workstation for chat, image generation, image editing, runtime jobs, and model management.
 - Generate images locally with SDXL, Flux-style workflows, Ollama-assisted routing, and imported checkpoints.
@@ -100,13 +105,26 @@ The first inpaint, text-to-image, or video run can take longer than the next one
 
 If you have an NVIDIA GPU (RTX, GTX, or compatible pro card) but JoyBoy logs `0.0GB VRAM` or `torch ... +cpu`, run the Windows launcher and choose **Setup complet**. That repairs the local virtual environment and reinstalls PyTorch with CUDA support. Machines without CUDA/MPS can still start JoyBoy for chat, providers, local packs, imports, and lighter tools, but heavy local image/video generation will be limited.
 
-## Local Secrets
+## Local Secrets and Providers
 
 Provider keys are optional and stay local:
 
 - `HF_TOKEN`
 - `CIVITAI_API_KEY`
 - `OLLAMA_BASE_URL`
+- `OPENAI_API_KEY`
+- `OPENROUTER_API_KEY`
+- `ANTHROPIC_API_KEY`
+- `GEMINI_API_KEY`
+- `DEEPSEEK_API_KEY`
+- `MOONSHOT_API_KEY`
+- `NOVITA_API_KEY`
+- `MINIMAX_API_KEY`
+- `VOLCENGINE_API_KEY`
+- `ZHIPU_API_KEY`
+- `VLLM_API_KEY`
+- `VLLM_BASE_URL`
+- `GLM_BASE_URL`
 
 Set them through environment variables, a local `.env`, or the JoyBoy settings UI. UI-managed secrets are stored outside git in:
 
@@ -114,7 +132,9 @@ Set them through environment variables, a local `.env`, or the JoyBoy settings U
 ~/.joyboy/config.json
 ```
 
-The public repo only ships placeholders such as `HF_TOKEN=` and `CIVITAI_API_KEY=`. You only need provider keys for downloads that require them, for example gated Hugging Face models or CivitAI model imports. If you already use local models only, you can start without keys and add them later in the UI.
+The public repo only ships placeholders such as `HF_TOKEN=`, `CIVITAI_API_KEY=`, and optional LLM provider variables. You only need provider keys for downloads or cloud models that require them, for example gated Hugging Face models, CivitAI model imports, OpenAI GPT, Claude, Gemini, Kimi K2, or OpenRouter models. If you already use local models only, you can start without keys and add them later in the UI.
+
+JoyBoy also supports connector-style auth for local developer tools when available. Codex CLI can be read from your local Codex auth, and Claude Code can use local Claude Code OAuth credentials. These are separate from API-key mode so selecting a subscription connector does not also consume the matching provider API key.
 
 ## Public Core + Local Packs
 
