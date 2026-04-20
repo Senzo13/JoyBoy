@@ -360,6 +360,8 @@ body.sidebar-collapsed #models-view {
     transition: background 0.15s;
     position: relative;
     margin-bottom: 2px;
+    touch-action: manipulation;
+    user-select: none;
 }
 
 .chat-list-icon {
@@ -461,6 +463,149 @@ body.sidebar-collapsed #models-view {
 
 .chat-list-rename:hover {
     color: #4a9eff;
+}
+
+.chat-list-action-popover {
+    position: fixed;
+    z-index: 2200;
+    min-width: 190px;
+    max-width: min(300px, calc(100vw - 16px));
+    padding: 8px;
+    background: rgba(18, 20, 24, 0.97);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 8px;
+    box-shadow: 0 14px 36px rgba(0, 0, 0, 0.42);
+    backdrop-filter: blur(14px);
+}
+
+.chat-list-action-title {
+    max-width: 260px;
+    padding: 4px 8px 8px;
+    color: rgba(255, 255, 255, 0.62);
+    font-size: 12px;
+    line-height: 1.3;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.chat-list-action-option {
+    width: 100%;
+    min-height: 34px;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 0 9px;
+    color: rgba(255, 255, 255, 0.88);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.chat-list-action-option:hover,
+.chat-list-action-option:focus-visible {
+    outline: none;
+    color: #fff;
+    background: rgba(74, 158, 255, 0.14);
+    border-color: rgba(74, 158, 255, 0.32);
+}
+
+.chat-list-action-option svg {
+    width: 16px;
+    height: 16px;
+    flex: 0 0 auto;
+}
+
+.chat-list-rename-popover {
+    width: min(300px, calc(100vw - 16px));
+}
+
+.chat-list-rename-label {
+    display: block;
+    margin: 2px 2px 7px;
+    color: rgba(255, 255, 255, 0.72);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.chat-list-rename-input {
+    width: 100%;
+    height: 36px;
+    padding: 0 10px;
+    color: #f6f7fb;
+    background: rgba(0, 0, 0, 0.28);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 6px;
+    outline: none;
+}
+
+.chat-list-rename-input:focus {
+    border-color: rgba(74, 158, 255, 0.72);
+    box-shadow: 0 0 0 2px rgba(74, 158, 255, 0.18);
+}
+
+.chat-list-rename-input.is-invalid {
+    border-color: rgba(233, 69, 96, 0.72);
+    box-shadow: 0 0 0 2px rgba(233, 69, 96, 0.14);
+}
+
+.chat-list-rename-error {
+    min-height: 17px;
+    margin: 5px 2px 7px;
+    color: #ff7d93;
+    font-size: 12px;
+    line-height: 1.35;
+}
+
+.chat-list-rename-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.chat-list-rename-cancel,
+.chat-list-rename-save {
+    min-height: 32px;
+    padding: 0 11px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.chat-list-rename-cancel {
+    color: rgba(255, 255, 255, 0.74);
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.chat-list-rename-cancel:hover,
+.chat-list-rename-cancel:focus-visible {
+    outline: none;
+    color: #fff;
+    background: rgba(255, 255, 255, 0.09);
+    border-color: rgba(255, 255, 255, 0.18);
+}
+
+.chat-list-rename-save {
+    color: #fff;
+    background: rgba(74, 158, 255, 0.22);
+    border: 1px solid rgba(74, 158, 255, 0.42);
+}
+
+.chat-list-rename-save:hover,
+.chat-list-rename-save:focus-visible {
+    outline: none;
+    background: rgba(74, 158, 255, 0.32);
+    border-color: rgba(74, 158, 255, 0.6);
+}
+
+.chat-list-rename-save:disabled {
+    opacity: 0.6;
+    cursor: wait;
 }
 
 .sidebar-footer {

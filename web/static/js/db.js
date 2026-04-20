@@ -336,13 +336,283 @@ async function deleteChat(chatId, event) {
 
 async function renameChat(chatId, event) {
     if (event) event.stopPropagation();
-    const record = await getChatRecord(chatId);
+    openChatRenameEditor(chatId, event);
+}
+
+let chatListLongPressTimer = null;
+let chatListLongPressPoint = null;
+let chatListLongPressPointer = null;
+let chatListSuppressClickUntil = 0;
+let chatListPopoverCleanup = null;
+
+const CHAT_LIST_LONG_PRESS_MS = 620;
+const CHAT_LIST_LONG_PRESS_MOVE_PX = 9;
+
+function clearChatListLongPress() {
+    if (chatListLongPressTimer) {
+        clearTimeout(chatListLongPressTimer);
+        chatListLongPressTimer = null;
+    }
+    if (chatListLongPressPointer?.element && chatListLongPressPointer.pointerId !== undefined) {
+        try {
+            chatListLongPressPointer.element.releasePointerCapture?.(chatListLongPressPointer.pointerId);
+        } catch (_) {
+            // Pointer capture may already be released by the browser.
+        }
+    }
+    chatListLongPressPoint = null;
+    chatListLongPressPointer = null;
+}
+
+function closeChatListPopover() {
+    if (chatListPopoverCleanup) {
+        chatListPopoverCleanup();
+        chatListPopoverCleanup = null;
+    }
+    document.querySelectorAll('.chat-list-action-popover').forEach(node => node.remove());
+}
+
+function chatListPopoverPosition(popover, x, y) {
+    const margin = 8;
+    const rect = popover.getBoundingClientRect();
+    const left = Math.max(margin, Math.min(x, window.innerWidth - rect.width - margin));
+    const top = Math.max(margin, Math.min(y, window.innerHeight - rect.height - margin));
+    popover.style.left = `${left}px`;
+    popover.style.top = `${top}px`;
+}
+
+function getChatListAnchorPoint(event) {
+    if (Number.isFinite(event?.clientX) && Number.isFinite(event?.clientY)) {
+        return { x: event.clientX, y: event.clientY };
+    }
+    const rect = event?.currentTarget?.getBoundingClientRect?.();
+    if (rect) {
+        return { x: rect.left + 24, y: rect.top + Math.min(rect.height, 42) };
+    }
+    return { x: 20, y: 20 };
+}
+
+function attachChatListPopoverLifecycle(popover) {
+    const closeOnPointerDown = (event) => {
+        if (popover.contains(event.target)) return;
+        closeChatListPopover();
+    };
+    const closeOnKeydown = (event) => {
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            closeChatListPopover();
+        }
+    };
+    const closeOnWindowChange = () => closeChatListPopover();
+
+    document.addEventListener('pointerdown', closeOnPointerDown, true);
+    document.addEventListener('keydown', closeOnKeydown, true);
+    window.addEventListener('resize', closeOnWindowChange);
+    window.addEventListener('scroll', closeOnWindowChange, true);
+
+    chatListPopoverCleanup = () => {
+        document.removeEventListener('pointerdown', closeOnPointerDown, true);
+        document.removeEventListener('keydown', closeOnKeydown, true);
+        window.removeEventListener('resize', closeOnWindowChange);
+        window.removeEventListener('scroll', closeOnWindowChange, true);
+    };
+}
+
+function openChatListActionMenu(chatId, event) {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    clearChatListLongPress();
+    closeChatListPopover();
+
+    const record = chatRecordsCache.find(item => item.id === chatId);
     if (!record) return;
-    const nextTitle = prompt(apiT('chat.renamePrompt', 'Nom de la conversation'), record.title || '');
-    if (!nextTitle) return;
-    record.title = cleanChatTitle(nextTitle);
-    record.updatedAt = Date.now();
-    await putChatRecord(record);
+
+    const point = getChatListAnchorPoint(event);
+    const popover = document.createElement('div');
+    popover.className = 'chat-list-action-popover';
+    popover.setAttribute('role', 'menu');
+    popover.dataset.chatId = chatId;
+    popover.innerHTML = `
+        <div class="chat-list-action-title">${escapeHtml(record.title || apiT('chat.newConversation', 'Nouvelle conversation'))}</div>
+        <button class="chat-list-action-option" type="button" role="menuitem">
+            <i data-lucide="pencil"></i>
+            <span>${escapeHtml(apiT('chat.rename', 'Renommer'))}</span>
+        </button>
+    `;
+
+    const button = popover.querySelector('.chat-list-action-option');
+    button?.addEventListener('click', (clickEvent) => openChatRenameEditor(chatId, clickEvent, point));
+
+    document.body.appendChild(popover);
+    chatListPopoverPosition(popover, point.x, point.y);
+    attachChatListPopoverLifecycle(popover);
+    if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [popover] });
+    button?.focus();
+}
+
+function openChatRenameEditor(chatId, event = null, fallbackPoint = null) {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+
+    const record = chatRecordsCache.find(item => item.id === chatId);
+    if (!record) return;
+
+    const point = fallbackPoint || getChatListAnchorPoint(event);
+    closeChatListPopover();
+
+    const popover = document.createElement('div');
+    popover.className = 'chat-list-action-popover chat-list-rename-popover';
+    popover.setAttribute('role', 'dialog');
+    popover.setAttribute('aria-label', apiT('chat.rename', 'Renommer'));
+    popover.dataset.chatId = chatId;
+    popover.innerHTML = `
+        <label class="chat-list-rename-label" for="chat-rename-input">
+            ${escapeHtml(apiT('chat.renamePrompt', 'Nouveau nom'))}
+        </label>
+        <input
+            id="chat-rename-input"
+            class="chat-list-rename-input"
+            type="text"
+            maxlength="80"
+            value="${escapeHtml(record.title || '')}"
+            placeholder="${escapeHtml(apiT('chat.renamePlaceholder', 'Nom de la conversation'))}"
+        >
+        <div class="chat-list-rename-error" aria-live="polite"></div>
+        <div class="chat-list-rename-actions">
+            <button class="chat-list-rename-cancel" type="button">${escapeHtml(apiT('common.cancel', 'Annuler'))}</button>
+            <button class="chat-list-rename-save" type="button">${escapeHtml(apiT('common.save', 'Enregistrer'))}</button>
+        </div>
+    `;
+
+    const input = popover.querySelector('.chat-list-rename-input');
+    const error = popover.querySelector('.chat-list-rename-error');
+    const cancel = popover.querySelector('.chat-list-rename-cancel');
+    const save = popover.querySelector('.chat-list-rename-save');
+    let isSaving = false;
+
+    const commit = async () => {
+        if (isSaving) return;
+        const nextTitle = (input?.value || '').replace(/\s+/g, ' ').trim();
+        if (!nextTitle) {
+            input?.classList.add('is-invalid');
+            if (error) error.textContent = apiT('chat.renameEmpty', 'Le nom ne peut pas être vide.');
+            return;
+        }
+
+        try {
+            isSaving = true;
+            if (save) save.disabled = true;
+            const freshRecord = await getChatRecord(chatId);
+            if (!freshRecord) {
+                closeChatListPopover();
+                return;
+            }
+
+            freshRecord.title = cleanChatTitle(nextTitle);
+            freshRecord.updatedAt = Date.now();
+            await putChatRecord(freshRecord);
+            closeChatListPopover();
+            if (typeof Toast !== 'undefined') {
+                Toast.success(apiT('chat.renameSaved', 'Conversation renommée'));
+            }
+        } catch (err) {
+            console.error('[CHAT] Rename failed:', err);
+            isSaving = false;
+            if (save) save.disabled = false;
+            if (error) error.textContent = apiT('chat.renameFailed', 'Impossible de renommer la conversation.');
+            if (typeof Toast !== 'undefined') {
+                Toast.error(apiT('chat.renameFailed', 'Impossible de renommer la conversation.'));
+            }
+        }
+    };
+
+    input?.addEventListener('input', () => {
+        input.classList.remove('is-invalid');
+        if (error) error.textContent = '';
+    });
+    input?.addEventListener('keydown', (keyEvent) => {
+        if (keyEvent.key === 'Enter') {
+            keyEvent.preventDefault();
+            commit();
+        }
+    });
+    cancel?.addEventListener('click', () => closeChatListPopover());
+    save?.addEventListener('click', commit);
+
+    document.body.appendChild(popover);
+    chatListPopoverPosition(popover, point.x, point.y);
+    attachChatListPopoverLifecycle(popover);
+    requestAnimationFrame(() => {
+        input?.focus();
+        input?.select();
+    });
+}
+
+function isChatListControlTarget(event) {
+    return Boolean(event?.target?.closest?.('button, input, textarea, select, a, .chat-list-action-popover'));
+}
+
+function handleChatListItemClick(chatId, event) {
+    if (isChatListControlTarget(event) || Date.now() < chatListSuppressClickUntil) {
+        event?.preventDefault?.();
+        event?.stopPropagation?.();
+        chatListSuppressClickUntil = 0;
+        return;
+    }
+    loadChat(chatId);
+}
+
+function startChatListLongPress(chatId, event) {
+    if (isChatListControlTarget(event)) return;
+    if (event?.button !== undefined && event.button !== 0) return;
+
+    clearChatListLongPress();
+    closeChatListPopover();
+
+    chatListLongPressPoint = { x: event.clientX || 0, y: event.clientY || 0 };
+    chatListLongPressPointer = { element: event.currentTarget, pointerId: event.pointerId };
+    try {
+        event.currentTarget?.setPointerCapture?.(event.pointerId);
+    } catch (_) {
+        // Some browsers do not allow capture for every pointer type.
+    }
+
+    chatListLongPressTimer = setTimeout(() => {
+        chatListSuppressClickUntil = Date.now() + 900;
+        openChatListActionMenu(chatId, {
+            preventDefault() {},
+            stopPropagation() {},
+            clientX: chatListLongPressPoint?.x || event.clientX || 20,
+            clientY: chatListLongPressPoint?.y || event.clientY || 20,
+            currentTarget: event.currentTarget,
+        });
+    }, CHAT_LIST_LONG_PRESS_MS);
+}
+
+function moveChatListLongPress(event) {
+    if (!chatListLongPressTimer || !chatListLongPressPoint) return;
+    const dx = Math.abs((event.clientX || 0) - chatListLongPressPoint.x);
+    const dy = Math.abs((event.clientY || 0) - chatListLongPressPoint.y);
+    if (dx > CHAT_LIST_LONG_PRESS_MOVE_PX || dy > CHAT_LIST_LONG_PRESS_MOVE_PX) {
+        clearChatListLongPress();
+    }
+}
+
+function handleChatListItemKeydown(chatId, event) {
+    if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        loadChat(chatId);
+        return;
+    }
+
+    if (event.key === 'F2') {
+        renameChat(chatId, event);
+        return;
+    }
+
+    if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) {
+        openChatListActionMenu(chatId, event);
+    }
 }
 
 // ===== RUNTIME JOBS =====
@@ -522,15 +792,35 @@ function renderChatList() {
         const workspaceName = isWorkspaceChat ? escapeHtml(record.workspace.name || record.workspace.path) : '';
         const itemTitle = isWorkspaceChat ? `${title} - ${escapeHtml(record.workspace.path)}` : title;
         const iconName = isWorkspaceChat ? 'folder-code' : 'message-square';
-        const doubleClick = isWorkspaceChat ? `ondblclick="openWorkspaceFolderFromChat('${record.id}', event)"` : '';
+        const chatIdArg = escapeHtml(JSON.stringify(record.id));
+        const doubleClick = isWorkspaceChat ? `ondblclick="openWorkspaceFolderFromChat(${chatIdArg}, event)"` : '';
+        const renameLabel = escapeHtml(apiT('chat.rename', 'Renommer'));
+        const deleteLabel = escapeHtml(apiT('chat.delete', 'Supprimer'));
         return `
-            <div class="chat-list-item${active}" onclick="loadChat('${record.id}')" ${doubleClick} title="${itemTitle}">
+            <div
+                class="chat-list-item${active}"
+                role="button"
+                tabindex="0"
+                onclick="handleChatListItemClick(${chatIdArg}, event)"
+                onkeydown="handleChatListItemKeydown(${chatIdArg}, event)"
+                onpointerdown="startChatListLongPress(${chatIdArg}, event)"
+                onpointermove="moveChatListLongPress(event)"
+                onpointerup="clearChatListLongPress()"
+                onpointercancel="clearChatListLongPress()"
+                onpointerleave="clearChatListLongPress()"
+                oncontextmenu="openChatListActionMenu(${chatIdArg}, event)"
+                ${doubleClick}
+                title="${itemTitle}"
+            >
                 <i data-lucide="${iconName}" class="chat-list-icon"></i>
                 <span class="chat-list-title">${title}</span>
                 ${isWorkspaceChat ? `<span class="chat-list-mode-badge" title="${workspaceName}">Dev</span>` : ''}
                 ${hasRunningJob ? `<span class="chat-list-status" title="${statusTitle}"></span>` : ''}
                 <span class="chat-list-date">${date}</span>
-                <button class="chat-list-delete" onclick="deleteChat('${record.id}', event)" title="${apiT('chat.delete', 'Supprimer')}">
+                <button class="chat-list-rename" onclick="renameChat(${chatIdArg}, event)" title="${renameLabel}" aria-label="${renameLabel}">
+                    <i data-lucide="pencil"></i>
+                </button>
+                <button class="chat-list-delete" onclick="deleteChat(${chatIdArg}, event)" title="${deleteLabel}" aria-label="${deleteLabel}">
                     <i data-lucide="trash-2"></i>
                 </button>
             </div>
