@@ -90,6 +90,8 @@ class LLMProviderCatalogTest(unittest.TestCase):
         self.assertEqual(by_key["OPENAI_API_KEY"]["scope"], "llm")
         self.assertEqual(by_key["OPENROUTER_API_KEY"]["scope"], "llm")
         self.assertEqual(by_key["ZHIPU_API_KEY"]["scope"], "llm")
+        self.assertIn("api-keys", by_key["OPENAI_API_KEY"]["key_url"])
+        self.assertIn("models", by_key["OPENAI_API_KEY"]["models_url"])
 
     def test_terminal_model_profiles_include_configured_cloud_ids(self) -> None:
         os.environ["OPENAI_API_KEY"] = "sk-test"
@@ -98,7 +100,8 @@ class LLMProviderCatalogTest(unittest.TestCase):
         profile_ids = {profile["id"] for profile in profiles}
 
         self.assertIn("qwen3.5:2b", profile_ids)
-        self.assertIn("openai:gpt-4o-mini", profile_ids)
+        self.assertIn("openai:gpt-5.4-mini", profile_ids)
+        self.assertIn("openai:gpt-5.4", profile_ids)
 
         os.environ["ANTHROPIC_API_KEY"] = "anthropic-test"
         os.environ["GEMINI_API_KEY"] = "gemini-test"

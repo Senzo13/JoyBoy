@@ -347,6 +347,8 @@
             clearedBody: '{key} a été retiré du stockage local',
             saveTooltip: 'Enregistrer la clé {key}',
             clearTooltip: 'Effacer la clé {key}',
+            createKey: 'Créer une clé',
+            viewModels: 'Voir les modèles',
             emptyInputTitle: 'Clé vide',
             emptyInputBody: 'Colle une valeur avant d’enregistrer',
             note: 'Clés stockées localement hors git. Priorité : {precedence}. Source active : {source}{legacyHint}',
@@ -721,6 +723,8 @@
             clearedBody: '{key} was removed from local storage',
             saveTooltip: 'Save the {key} key',
             clearTooltip: 'Clear the {key} key',
+            createKey: 'Create key',
+            viewModels: 'View models',
             emptyInputTitle: 'Empty key',
             emptyInputBody: 'Paste a value before saving',
             note: 'Keys are stored locally outside git. Priority: {precedence}. Active source: {source}{legacyHint}',
@@ -885,7 +889,7 @@
         },
         providers: {
             configured: 'Configurado {masked}', notConfigured: 'No configurado', sourceEnv: 'por variable de entorno (prioridad máxima)', sourceLocal: 'guardado localmente', sourceMissing: 'no configurado',
-            loading: 'Cargando providers...', empty: 'Ningún provider configurado', error: 'Error de provider: {error}', savedTitle: 'Provider guardado', savedBody: '{key} ya está disponible localmente', clearedTitle: 'Provider borrado', clearedBody: '{key} se eliminó del almacenamiento local', saveTooltip: 'Guardar la clave {key}', clearTooltip: 'Borrar la clave {key}', emptyInputTitle: 'Clave vacía', emptyInputBody: 'Pega un valor antes de guardar', note: 'Las claves se guardan localmente fuera de git. Prioridad: {precedence}. Fuente activa: {source}{legacyHint}', legacyHint: ' (ruta local antigua detectada)',
+            loading: 'Cargando providers...', empty: 'Ningún provider configurado', error: 'Error de provider: {error}', savedTitle: 'Provider guardado', savedBody: '{key} ya está disponible localmente', clearedTitle: 'Provider borrado', clearedBody: '{key} se eliminó del almacenamiento local', saveTooltip: 'Guardar la clave {key}', clearTooltip: 'Borrar la clave {key}', createKey: 'Crear clave', viewModels: 'Ver modelos', emptyInputTitle: 'Clave vacía', emptyInputBody: 'Pega un valor antes de guardar', note: 'Las claves se guardan localmente fuera de git. Prioridad: {precedence}. Fuente activa: {source}{legacyHint}', legacyHint: ' (ruta local antigua detectada)',
         },
         packs: {
             loading: 'Cargando packs locales...', empty: 'No se detectó ningún pack local. Importa un zip, indica una carpeta local o usa `python scripts/bootstrap.py pack-install` en una máquina privada.', error: 'Error de pack: {error}', note: 'Los packs locales viven en {path}. El core público sigue neutro; los packs amplían el comportamiento local.', importedTitle: 'Pack importado', importedBody: '{name} instalado localmente', toggledTitle: 'Pack local', toggledEnabled: 'Pack activado localmente', toggledDisabled: 'Pack desactivado localmente', importHintTitle: 'Pack local', importHintBody: 'Indica una carpeta local o importa un archivo zip.', importZipTooltip: 'Importar un archivo de pack (.zip)', importPathTooltip: 'Importar el pack desde esta ruta', activateTooltip: 'Activar {name}', deactivateTooltip: 'Desactivar {name}', invalid: 'Pack inválido', active: 'Activo localmente', installed: 'Instalado, inactivo', noCapabilities: 'Sin capacidades declaradas',
@@ -1016,7 +1020,7 @@
         },
         providers: {
             configured: 'Configurato {masked}', notConfigured: 'Non configurato', sourceEnv: 'tramite variabile d’ambiente (priorità massima)', sourceLocal: 'salvato localmente', sourceMissing: 'non configurato',
-            loading: 'Caricamento providers...', empty: 'Nessun provider configurato', error: 'Errore provider: {error}', savedTitle: 'Provider salvato', savedBody: '{key} è disponibile localmente', clearedTitle: 'Provider rimosso', clearedBody: '{key} è stato rimosso dallo storage locale', saveTooltip: 'Salva la chiave {key}', clearTooltip: 'Cancella la chiave {key}', emptyInputTitle: 'Chiave vuota', emptyInputBody: 'Incolla un valore prima di salvare', note: 'Le chiavi sono salvate localmente fuori da git. Priorità: {precedence}. Sorgente attiva: {source}{legacyHint}', legacyHint: ' (rilevato vecchio percorso locale)',
+            loading: 'Caricamento providers...', empty: 'Nessun provider configurato', error: 'Errore provider: {error}', savedTitle: 'Provider salvato', savedBody: '{key} è disponibile localmente', clearedTitle: 'Provider rimosso', clearedBody: '{key} è stato rimosso dallo storage locale', saveTooltip: 'Salva la chiave {key}', clearTooltip: 'Cancella la chiave {key}', createKey: 'Crea chiave', viewModels: 'Vedi modelli', emptyInputTitle: 'Chiave vuota', emptyInputBody: 'Incolla un valore prima di salvare', note: 'Le chiavi sono salvate localmente fuori da git. Priorità: {precedence}. Sorgente attiva: {source}{legacyHint}', legacyHint: ' (rilevato vecchio percorso locale)',
         },
         packs: {
             loading: 'Caricamento pack locali...', empty: 'Nessun pack locale rilevato. Importa uno zip, indica una cartella locale o usa `python scripts/bootstrap.py pack-install` su una macchina privata.', error: 'Errore pack: {error}', note: 'I pack locali si trovano in {path}. Il core pubblico resta neutro; i pack estendono il comportamento locale.', importedTitle: 'Pack importato', importedBody: '{name} installato localmente', toggledTitle: 'Pack locale', toggledEnabled: 'Pack attivato localmente', toggledDisabled: 'Pack disattivato localmente', importHintTitle: 'Pack locale', importHintBody: 'Indica una cartella locale o importa un archivio zip.', importZipTooltip: 'Importa un archivio pack (.zip)', importPathTooltip: 'Importa il pack da questo percorso', activateTooltip: 'Attiva {name}', deactivateTooltip: 'Disattiva {name}', invalid: 'Pack non valido', active: 'Attivo localmente', installed: 'Installato, non attivo', noCapabilities: 'Nessuna capacità dichiarata',
@@ -1034,6 +1038,10 @@
             CIVITAI_API_KEY: {
                 label: 'CivitAI',
                 description: 'Pour les téléchargements CivitAI et les ressources qui demandent un compte',
+            },
+            OPENAI_API_KEY: {
+                label: 'OpenAI',
+                description: 'Pour utiliser GPT dans le chat et le terminal agentique',
             },
         },
     });
@@ -1294,6 +1302,10 @@
             CIVITAI_API_KEY: {
                 label: 'CivitAI',
                 description: 'For CivitAI downloads and resources that require an account',
+            },
+            OPENAI_API_KEY: {
+                label: 'OpenAI',
+                description: 'Use GPT models in chat and the agentic terminal',
             },
         },
     });
@@ -1653,6 +1665,10 @@
                 label: 'CivitAI',
                 description: 'Para descargas desde CivitAI y recursos que requieren cuenta',
             },
+            OPENAI_API_KEY: {
+                label: 'OpenAI',
+                description: 'Usa modelos GPT en el chat y el terminal agéntico',
+            },
         },
     });
     Object.assign(MESSAGES.es.common, {
@@ -1912,6 +1928,10 @@
             CIVITAI_API_KEY: {
                 label: 'CivitAI',
                 description: 'Per download da CivitAI e risorse che richiedono un account',
+            },
+            OPENAI_API_KEY: {
+                label: 'OpenAI',
+                description: 'Usa i modelli GPT nella chat e nel terminale agentico',
             },
         },
     });

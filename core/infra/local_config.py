@@ -82,6 +82,8 @@ PROVIDER_META = {
         "placeholder": "sk-...",
         "scope": "llm",
         "secret": True,
+        "key_url": "https://platform.openai.com/api-keys",
+        "models_url": "https://developers.openai.com/api/docs/models",
     },
     "OPENROUTER_API_KEY": {
         "label": "OpenRouter",
@@ -305,6 +307,8 @@ def get_provider_status() -> list[dict]:
             "description": meta["description"],
             "placeholder": meta["placeholder"],
             "scope": meta.get("scope", "assets"),
+            "key_url": meta.get("key_url", ""),
+            "models_url": meta.get("models_url", ""),
             "configured": bool(effective),
             "source": "env" if env_value else ("local" if value else "missing"),
             "masked": mask_secret(effective),

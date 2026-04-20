@@ -1,7 +1,7 @@
 """LLM provider catalog and lightweight cloud chat client.
 
 The runtime stays local-first: Ollama remains the default path. Cloud models are
-opt-in by using a provider-prefixed model id such as `openai:gpt-4o-mini` or
+opt-in by using a provider-prefixed model id such as `openai:gpt-5.4-mini` or
 `openrouter:provider/model`.
 """
 
@@ -72,7 +72,7 @@ LLM_PROVIDER_CATALOG: tuple[LLMProviderDescriptor, ...] = (
         supports_tools=True,
         supports_vision=True,
         supports_thinking=True,
-        default_models=("gpt-4o-mini", "gpt-4o"),
+        default_models=("gpt-5.4-mini", "gpt-5.4", "gpt-5.4-nano"),
     ),
     LLMProviderDescriptor(
         id="openrouter",

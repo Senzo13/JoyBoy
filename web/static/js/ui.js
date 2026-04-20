@@ -1001,6 +1001,21 @@ async function loadTerminalCloudModelProfiles() {
     return TERMINAL_CLOUD_MODELS;
 }
 
+function dedupeModelsById(models) {
+    const seen = new Map();
+    for (const model of models || []) {
+        if (!model?.id || seen.has(model.id)) continue;
+        seen.set(model.id, model);
+    }
+    return Array.from(seen.values());
+}
+
+function mergeCloudChatModels(models, cloudModels) {
+    const cloud = Array.isArray(cloudModels) ? cloudModels : [];
+    const baseModels = (models || []).filter(model => model?.id !== 'none' || cloud.length === 0);
+    return dedupeModelsById([...baseModels, ...cloud]);
+}
+
 /**
  * Retourne le nom du modèle actif selon le mode
  */
@@ -1180,7 +1195,9 @@ async function loadTextModelsForPicker() {
             TEXT_MODELS = CHAT_MODELS;
         }
 
-        await loadTerminalCloudModelProfiles();
+        const cloudProfiles = await loadTerminalCloudModelProfiles();
+        CHAT_MODELS = mergeCloudChatModels(CHAT_MODELS, cloudProfiles);
+        TEXT_MODELS = CHAT_MODELS;
 
         // Mettre à jour selectedChatModel depuis les settings
         if (userSettings.chatModel) {
@@ -1773,10 +1790,10 @@ function filterTerminalModels(models) {
     }
 
     // 3. Retourner la liste dédupliquée
-    return [
+    return dedupeModelsById([
         ...Array.from(seen.values()).map(v => v.model),
         ...(cloudModels || []),
-    ];
+    ]);
 }
 
 function getSelectedModelForTab(tab) {

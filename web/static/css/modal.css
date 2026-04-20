@@ -1748,6 +1748,28 @@ body.gallery-viewer-open {
     box-sizing: border-box;
 }
 
+.settings-provider-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.settings-provider-link {
+    color: #bfdbfe;
+    font-size: 11px;
+    text-decoration: none;
+    border: 1px solid rgba(96, 165, 250, 0.20);
+    border-radius: 8px;
+    padding: 5px 8px;
+    background: rgba(59, 130, 246, 0.08);
+}
+
+.settings-provider-link:hover {
+    color: #fff;
+    border-color: rgba(96, 165, 250, 0.44);
+    background: rgba(59, 130, 246, 0.14);
+}
+
 .settings-provider-card .settings-inline-actions {
     width: 100%;
     justify-content: flex-end;

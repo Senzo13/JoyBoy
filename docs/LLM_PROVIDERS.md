@@ -1,6 +1,6 @@
 # LLM Providers
 
-JoyBoy is local-first. Ollama remains the default chat and terminal runtime.
+JoyBoy is local-first. Ollama remains the default local chat and terminal runtime.
 Cloud LLM providers are optional and must be configured through environment
 variables, `.env`, or the local UI config stored in `~/.joyboy/config.json`.
 
@@ -8,10 +8,12 @@ Never commit API keys.
 
 ## Provider Syntax
 
-Terminal cloud models use a provider-prefixed model id:
+Cloud models use a provider-prefixed model id in chat and terminal mode:
 
 ```text
-openai:gpt-4o-mini
+openai:gpt-5.4-mini
+openai:gpt-5.4
+openai:gpt-5.4-nano
 openrouter:provider/model-name
 anthropic:claude-sonnet-4-5
 gemini:gemini-2.5-pro
@@ -33,6 +35,10 @@ qwen3.5:4b
 
 The prefix guard is important: `qwen3.5:2b` is treated as an Ollama model, not
 as a cloud provider.
+
+OpenAI model ids are public in the OpenAI model docs and account availability can
+also be checked with `GET /v1/models`. JoyBoy keeps a curated picker shortlist
+instead of dumping every available model and fine-tune into the UI.
 
 ## Supported Keys
 
@@ -61,7 +67,8 @@ server is not available at `http://localhost:8000/v1`.
 
 ## Runtime Status
 
-Terminal mode now supports three runtime families:
+Chat and terminal mode can use these provider families when their keys are
+configured:
 
 * OpenAI
 * OpenRouter
@@ -90,5 +97,6 @@ The design mirrors the useful DeerFlow idea:
 * provider metadata is exposed to the UI without exposing secrets
 * provider-specific behavior stays behind a model client boundary
 
-This lets JoyBoy use cloud LLMs for coding and terminal work while keeping image,
-inpainting, video, packs, and local routing on the existing local machine stack.
+This lets JoyBoy use cloud LLMs for chat, coding, and terminal work while
+keeping image, inpainting, video, packs, and local routing on the existing local
+machine stack.

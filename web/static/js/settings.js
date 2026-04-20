@@ -1468,6 +1468,44 @@ function selectTerminalCloudModel(modelId) {
     }
 }
 
+async function refreshCloudModelSurfaces() {
+    if (typeof loadTextModelsForPicker === 'function') {
+        await loadTextModelsForPicker();
+    } else if (typeof loadTerminalCloudModelProfiles === 'function') {
+        await loadTerminalCloudModelProfiles();
+    }
+    if (typeof populateTerminalModelSelect === 'function') {
+        await populateTerminalModelSelect();
+    }
+    if (typeof renderModelPickerList === 'function') {
+        renderModelPickerList('home');
+        renderModelPickerList('chat');
+    }
+    if (typeof updateModelPickerDisplay === 'function') {
+        updateModelPickerDisplay();
+    }
+}
+
+function renderProviderSettingsLinks(provider) {
+    const links = [];
+    if (provider.key_url) {
+        links.push(`
+            <a class="settings-provider-link" href="${escapeHtml(provider.key_url)}" target="_blank" rel="noopener noreferrer">
+                ${escapeHtml(t('providers.createKey', 'Créer une clé'))}
+            </a>
+        `);
+    }
+    if (provider.models_url) {
+        links.push(`
+            <a class="settings-provider-link" href="${escapeHtml(provider.models_url)}" target="_blank" rel="noopener noreferrer">
+                ${escapeHtml(t('providers.viewModels', 'Voir les modèles'))}
+            </a>
+        `);
+    }
+    if (!links.length) return '';
+    return `<div class="settings-provider-links">${links.join('')}</div>`;
+}
+
 function renderProviderSettingsRow(provider) {
     const translatedLabel = t(`providerMeta.${provider.key}.label`, provider.label || provider.key);
     const translatedDescription = t(`providerMeta.${provider.key}.description`, provider.description || '');
@@ -1483,6 +1521,7 @@ function renderProviderSettingsRow(provider) {
         ? t('providers.configured', 'Configuré {masked}', { masked: provider.masked ? `(${provider.masked})` : '' }).trim()
         : t('providers.notConfigured', 'Non configuré');
     const stateClass = provider.configured ? 'status-ok' : 'status-warn';
+    const providerLinks = renderProviderSettingsLinks(provider);
 
     return `
         <div class="settings-card settings-provider-card">
@@ -1502,6 +1541,7 @@ function renderProviderSettingsRow(provider) {
                         placeholder="${provider.placeholder || ''}"
                         autocomplete="off"
                     >
+                    ${providerLinks}
                     <div class="settings-inline-actions">
                         ${renderSettingsIconAction({
                             icon: 'save',
@@ -1540,6 +1580,7 @@ async function saveProviderSecret(key) {
 
     if (input) input.value = '';
     await loadProviderSettings();
+    await refreshCloudModelSurfaces();
     if (typeof checkModelsStatus === 'function') checkModelsStatus();
     Toast.success(t('providers.savedTitle', 'Provider enregistré'), t('providers.savedBody', '{key} est disponible localement', { key }), 2500);
 }
@@ -1554,6 +1595,7 @@ async function clearProviderSecret(key) {
     const input = document.getElementById(`provider-input-${key}`);
     if (input) input.value = '';
     await loadProviderSettings();
+    await refreshCloudModelSurfaces();
     if (typeof checkModelsStatus === 'function') checkModelsStatus();
     Toast.info(t('providers.clearedTitle', 'Provider effacé'), t('providers.clearedBody', '{key} a été retiré du stockage local', { key }), 2500);
 }

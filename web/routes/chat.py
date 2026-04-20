@@ -363,6 +363,9 @@ def chat():
         profile = data.get('profile', {})
         all_conversations = data.get('allConversations', [])
         locale = data.get('locale') or request.headers.get('Accept-Language', 'fr')
+        from core.agent_runtime import CloudModelError, chat_with_cloud_model, is_cloud_model_name
+        use_cloud_model = is_cloud_model_name(chat_model)
+        routing_model = None if use_cloud_model else chat_model
 
         if not message:
             return jsonify({'error': 'Message requis'}), 400
@@ -377,8 +380,8 @@ def chat():
             state.last_user_image = _base64_to_pil(image_b64)
 
         # ===== ÉTAPE 1: Vérifier si c'est une demande d'IMAGE AVANT tout =====
-        if ollama_service.check_image_request(message, model=chat_model):
-            image_prompt = ollama_service.generate_image_prompt(message, model=chat_model)
+        if ollama_service.check_image_request(message, model=routing_model):
+            image_prompt = ollama_service.generate_image_prompt(message, model=routing_model)
             if not image_prompt:
                 image_prompt = message
                 print(f"[CHAT] Fallback: utilisation du message original comme prompt")
@@ -397,7 +400,7 @@ def chat():
         from core.utility_ai import check_web_search, generate_deep_search_queries
         from core.web_search import deep_search
 
-        is_web_search_request, search_query, search_mode = check_web_search(message)
+        is_web_search_request, search_query, search_mode = check_web_search(message, model=routing_model)
         web_context = ""
 
         if is_web_search_request and search_query:
@@ -499,6 +502,33 @@ def chat():
             print(f"{content}")
         print("\n" + "=" * 60 + "\n")
 
+        if use_cloud_model:
+            try:
+                cloud_response = chat_with_cloud_model(
+                    chat_model,
+                    messages=chat_messages,
+                    tools=[],
+                    max_tokens=4096,
+                    temperature=0.5,
+                )
+            except CloudModelError as exc:
+                return jsonify({'success': False, 'error': str(exc)}), 500
+
+            message_payload = cloud_response.get("message") or {}
+            response = str(message_payload.get("content") or "")
+            log_chat(AI_NAME, response, model=chat_model)
+            return jsonify({
+                'success': True,
+                'response': response,
+                'intent': 'chat',
+                'new_memories': [],
+                'token_stats': {
+                    'prompt_tokens': int(cloud_response.get('prompt_eval_count') or 0),
+                    'completion_tokens': int(cloud_response.get('eval_count') or 0),
+                    'total_tokens': int(cloud_response.get('prompt_eval_count') or 0) + int(cloud_response.get('eval_count') or 0),
+                },
+            })
+
         # Appel à Ollama
         response, success = ollama_service.chat(chat_messages, model=chat_model, max_tokens=-1)
 
@@ -558,6 +588,9 @@ def chat_stream():
     workspace = data.get('workspace')  # {name, path} ou null
     context_size = data.get('contextSize', 4096)
     locale = data.get('locale') or request.headers.get('Accept-Language', 'fr')
+    from core.agent_runtime import CloudModelError, chat_with_cloud_model, is_cloud_model_name
+    use_cloud_model = is_cloud_model_name(chat_model)
+    routing_model = None if use_cloud_model else chat_model
 
     if not message:
         return jsonify({'error': 'Message requis'}), 400
@@ -584,7 +617,7 @@ def chat_stream():
         )
 
     # ===== ÉTAPE 1: Vérifier si c'est une demande d'IMAGE AVANT tout =====
-    is_image_request = ollama_service.check_image_request(message, model=chat_model)
+    is_image_request = ollama_service.check_image_request(message, model=routing_model)
 
     # Bail out si annulé pendant IMAGE-CHECK
     if _get_chat_stream_cancelled():
@@ -594,7 +627,7 @@ def chat_stream():
 
     if is_image_request:
         # C'est une demande d'image -> Réponse rapide + génération
-        image_prompt = ollama_service.generate_image_prompt(message, model=chat_model)
+        image_prompt = ollama_service.generate_image_prompt(message, model=routing_model)
 
         # Fallback: si l'extraction a échoué, utiliser le message original
         if not image_prompt:
@@ -638,7 +671,7 @@ def chat_stream():
     from core.web_search import deep_search
 
     # Utiliser le modèle chat pour la traduction (évite la censure du utility model)
-    is_web_search_request, search_query, search_mode = check_web_search(message, model=chat_model)
+    is_web_search_request, search_query, search_mode = check_web_search(message, model=routing_model)
     print(f"[WEB-CHECK] Résultat: is_search={is_web_search_request}, query='{search_query}', mode={search_mode}")
 
     # ===== ÉTAPE 2: Chat normal (recherche web faite DANS le générateur pour feedback temps réel) =====
@@ -795,6 +828,38 @@ replacement text
 
         # --- Streaming LLM ---
         full_response = ""
+        if use_cloud_model:
+            try:
+                cloud_response = chat_with_cloud_model(
+                    chat_model,
+                    messages=chat_messages,
+                    tools=[],
+                    max_tokens=4096,
+                    temperature=0.5,
+                )
+            except CloudModelError as exc:
+                yield f"data: {json.dumps({'error': str(exc)})}\n\n"
+                return
+
+            message_payload = cloud_response.get("message") or {}
+            full_response = str(message_payload.get("content") or "")
+            if full_response:
+                yield f"data: {json.dumps({'content': full_response})}\n\n"
+
+            log_chat(AI_NAME, full_response, model=chat_model)
+            done_data = {
+                'done': True,
+                'new_memories': [],
+                'token_stats': {
+                    'prompt_tokens': int(cloud_response.get('prompt_eval_count') or 0),
+                    'completion_tokens': int(cloud_response.get('eval_count') or 0),
+                    'total_tokens': int(cloud_response.get('prompt_eval_count') or 0) + int(cloud_response.get('eval_count') or 0),
+                    'context_size': context_size,
+                },
+            }
+            yield f"data: {json.dumps(done_data)}\n\n"
+            return
+
         for chunk in ollama_service.chat_stream_with_context(chat_messages, model=chat_model, max_tokens=-1, context_size=context_size):
             # Vérifier annulation
             if _get_chat_stream_cancelled():
