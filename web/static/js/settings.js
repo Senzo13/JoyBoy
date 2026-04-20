@@ -5423,8 +5423,12 @@ function renderWorkspacesList() {
 
 // Mettre à jour la taille du contexte
 function updateContextSize(value) {
-    userSettings.contextSize = parseInt(value);
-    document.getElementById('settings-context-size-value').textContent = value;
+    const contextConfig = window.JoyBoyContextSizes;
+    const contextSize = contextConfig?.normalize(value) || parseInt(value, 10) || 4096;
+    userSettings.contextSize = contextSize;
+
+    const valueEl = document.getElementById('settings-context-size-value');
+    if (valueEl) valueEl.textContent = contextConfig?.format(contextSize) || String(contextSize);
 
     // Mettre à jour l'info
     const infoEl = document.getElementById('context-size-info');
@@ -5434,9 +5438,12 @@ function updateContextSize(value) {
             4096: t('settings.terminal.vramExtra1', '~1-2 GB VRAM en plus'),
             8192: t('settings.terminal.vramExtra2', '~2-4 GB VRAM en plus'),
             16384: t('settings.terminal.vramExtra4', '~4-8 GB VRAM en plus'),
-            32768: t('settings.terminal.vramExtra8', '~8-16 GB VRAM en plus')
+            32768: t('settings.terminal.vramExtra8', '~8-16 GB VRAM en plus'),
+            65536: t('settings.terminal.vramExtra16', '~16-24 GB VRAM/RAM en plus'),
+            131072: t('settings.terminal.vramExtra32', '~32 GB+ VRAM/RAM en plus'),
+            262144: t('settings.terminal.vramExtra64', '~64 GB+ VRAM/RAM en plus')
         };
-        infoEl.textContent = vramInfo[value] || t('settings.terminal.moreTokensMoreVram', 'Plus de tokens = plus de VRAM');
+        infoEl.textContent = vramInfo[contextSize] || t('settings.terminal.moreTokensMoreVram', 'Plus de tokens = plus de VRAM');
     }
 
     saveSettings();
@@ -5451,9 +5458,16 @@ function initTerminalTab() {
     const contextSlider = document.getElementById('settings-context-size');
     const contextValue = document.getElementById('settings-context-size-value');
     if (contextSlider) {
-        contextSlider.value = userSettings.contextSize ?? 4096;
-        contextValue.textContent = userSettings.contextSize ?? 4096;
-        updateContextSize(userSettings.contextSize ?? 4096);
+        const contextConfig = window.JoyBoyContextSizes;
+        if (contextConfig) {
+            contextSlider.min = contextConfig.min;
+            contextSlider.max = contextConfig.max;
+            contextSlider.step = contextConfig.step;
+        }
+        const contextSize = contextConfig?.normalize(userSettings.contextSize ?? 4096) || (userSettings.contextSize ?? 4096);
+        contextSlider.value = contextSize;
+        if (contextValue) contextValue.textContent = contextConfig?.format(contextSize) || String(contextSize);
+        updateContextSize(contextSize);
     }
 
     // Liste des workspaces

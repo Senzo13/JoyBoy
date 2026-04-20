@@ -545,6 +545,9 @@ class TerminalBrain:
     4. Repeat jusqu'à réponse finale sans tools
     """
 
+    MIN_CONTEXT_SIZE = 2048
+    MAX_LOCAL_CONTEXT_SIZE = 262144
+
     def __init__(self):
         self.snapshots: Dict[str, FileSnapshot] = {}
         self.action_history: List[Dict] = []
@@ -865,7 +868,7 @@ class TerminalBrain:
             yield runtime_event('error', message='Package ollama non installé. pip install ollama')
             return
 
-        self._active_context_size = max(2048, int(context_size or 4096))
+        self._active_context_size = self._normalize_context_size(context_size)
         self._active_workspace_path = workspace_path
         resource_scheduler = None
         resource_lease_id = None
@@ -978,7 +981,7 @@ class TerminalBrain:
         full_response = ""
         iteration = 0
         iteration_budget = 20 if autonomous else (3 if repo_brief else self.max_iterations)
-        turn_token_budget = max(2500, min(self.max_non_autonomous_tokens, int(self._active_context_size * 0.9)))
+        turn_token_budget = self._turn_token_budget(self._active_context_size, autonomous=autonomous)
         total_token_stats = {'prompt_tokens': 0, 'completion_tokens': 0, 'total': 0}
         loop_guard = ToolLoopGuard()
         guard_hits = 0
@@ -1303,6 +1306,24 @@ class TerminalBrain:
         yield runtime_event('error', message=f'Iteration limit reached ({iteration_budget})')
 
     # ===== HELPERS =====
+
+    def _normalize_context_size(self, context_size: int | str | None) -> int:
+        try:
+            value = int(context_size or 4096)
+        except Exception:
+            value = 4096
+        return max(self.MIN_CONTEXT_SIZE, min(self.MAX_LOCAL_CONTEXT_SIZE, value))
+
+    def _turn_token_budget(self, context_size: int, autonomous: bool = False) -> int:
+        if autonomous:
+            return max(6500, min(self.MAX_LOCAL_CONTEXT_SIZE, int(context_size * 0.75)))
+        if context_size <= 32768:
+            return max(2500, min(self.max_non_autonomous_tokens, int(context_size * 0.9)))
+        if context_size <= 65536:
+            return 12000
+        if context_size <= 131072:
+            return 18000
+        return 26000
 
     def _compact_history(self, history: List[Dict], context_size: int = 4096) -> List[Dict]:
         """Keep recent terminal context inside a rough character budget.

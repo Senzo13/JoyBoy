@@ -596,6 +596,8 @@ function updateTokenDisplay() {
     const max = tokenStats.maxContextSize || userSettings.contextSize || 4096;
     const lastReq = tokenStats.lastRequestTokens;
     const remaining = Math.max(0, max - used);
+    const contextFormatter = window.JoyBoyContextSizes?.format;
+    const formatContextMax = (value) => contextFormatter ? contextFormatter.call(window.JoyBoyContextSizes, value) : formatTokenCount(value);
 
     // Calculer le pourcentage d'utilisation
     const percentUsed = Math.min((used / max) * 100, 100);
@@ -612,7 +614,7 @@ function updateTokenDisplay() {
             <div class="token-info ${colorClass.replace('tokens-', 'token-')}">
                 <span class="token-used">${formatTokenCount(used)}</span>
                 <span class="token-separator">/</span>
-                <span class="token-max">${formatTokenCount(max)}</span>
+                <span class="token-max">${formatContextMax(max)}</span>
                 ${lastReq ? `<span class="token-last">(+${lastReq})</span>` : ''}
             </div>
         `;
@@ -629,7 +631,7 @@ function updateTokenDisplay() {
 
         // Mettre à jour le max aussi (si changé dans les settings)
         const contextMax = userSettings.contextSize || 4096;
-        if (tokensMax) tokensMax.textContent = formatTokenCount(contextMax);
+        if (tokensMax) tokensMax.textContent = formatContextMax(contextMax);
 
         // Couleur basée sur le % d'utilisation par rapport au max
         const usagePercent = (used / contextMax) * 100;

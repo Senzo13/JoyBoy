@@ -1352,6 +1352,8 @@ body.terminal-mode .terminal-header {
     padding: 20px;
     z-index: 10001;
     min-width: 280px;
+    max-height: min(80vh, 560px);
+    overflow-y: auto;
 }
 
 .context-size-overlay {
@@ -1410,6 +1412,14 @@ body.terminal-mode .terminal-header {
 .context-size-option .size-desc {
     color: #666;
     font-size: 11px;
+}
+
+.context-size-note {
+    color: #8b98aa;
+    font-size: 11px;
+    line-height: 1.45;
+    margin-top: 12px;
+    max-width: 320px;
 }
 
 /* ===== AUTONOMOUS MODE INDICATOR ===== */

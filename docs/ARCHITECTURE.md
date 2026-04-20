@@ -57,6 +57,12 @@ facts as read-only context.
 
 The goal is to keep this surface contributor-friendly and easy to reason about.
 
+Terminal context size is a local Ollama runtime setting, not a promise that every
+model can actually use the window. The UI exposes 2K through 256K and clamps the
+backend to the same maximum. Small and default contexts keep the strict per-turn
+token guard; 64K, 128K, and 256K raise that guard in bounded tiers so larger
+local windows have a real effect without bringing back unbounded tool loops.
+
 ## Local configuration
 
 Machine-specific state lives outside git in:

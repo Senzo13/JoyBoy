@@ -1222,10 +1222,10 @@
                                 <div class="settings-label" id="terminal-context-label">Tokens de contexte</div>
                                 <div class="settings-slider-value" id="settings-context-size-value">4096</div>
                             </div>
-                            <input type="range" class="settings-slider" id="settings-context-size" min="2048" max="32768" value="4096" step="2048" oninput="updateContextSize(this.value)">
+                            <input type="range" class="settings-slider" id="settings-context-size" min="2048" max="262144" value="4096" step="2048" oninput="updateContextSize(this.value)">
                         </div>
                         <div class="settings-info" id="context-size-info">
-                            Plus de tokens = conversations plus longues mais plus de VRAM
+                            Ollama local peut monter jusqu'à 256K, si le modèle et ta VRAM/RAM suivent.
                         </div>
                     </div>
                     <div class="settings-section">

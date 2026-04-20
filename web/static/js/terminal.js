@@ -10,13 +10,18 @@ function terminalT(key, fallback = '', params = {}) {
     return fallback || key;
 }
 
+function formatTerminalContextSize(size) {
+    return window.JoyBoyContextSizes?.format(size) || String(size);
+}
+
 // ===== CONTEXT SIZE POPUP =====
 
 /**
  * Affiche un popup pour modifier la taille du contexte
  */
 function showContextSizePopup() {
-    const currentSize = userSettings.contextSize || 4096;
+    const contextConfig = window.JoyBoyContextSizes;
+    const currentSize = contextConfig?.normalize(userSettings.contextSize || 4096) || (userSettings.contextSize || 4096);
 
     const sizes = [
         { value: 2048, label: '2K', desc: terminalT('terminal.contextEconomy', 'Économe (~1GB)') },
@@ -24,6 +29,9 @@ function showContextSizePopup() {
         { value: 8192, label: '8K', desc: terminalT('terminal.contextMedium', 'Moyen (~3GB)') },
         { value: 16384, label: '16K', desc: terminalT('terminal.contextLarge', 'Grand (~5GB)') },
         { value: 32768, label: '32K', desc: terminalT('terminal.contextMax', 'Max (~8GB)') },
+        { value: 65536, label: '64K', desc: terminalT('terminal.contextVeryLarge', 'Très grand (~16GB+)') },
+        { value: 131072, label: '128K', desc: terminalT('terminal.contextHuge', 'Énorme (~32GB+)') },
+        { value: 262144, label: '256K', desc: terminalT('terminal.contextUltra', 'Extrême (~64GB+)') },
     ];
 
     const optionsHtml = sizes.map(s => `
@@ -46,6 +54,7 @@ function showContextSizePopup() {
         <div class="context-size-options">
             ${optionsHtml}
         </div>
+        <div class="context-size-note">${escapeHtml(terminalT('terminal.contextLocalNote', 'Ollama local : certains modèles refuseront les très grands contextes ou iront beaucoup plus lentement.'))}</div>
     `;
     popup.onclick = (e) => e.stopPropagation();
 
@@ -60,15 +69,18 @@ function showContextSizePopup() {
  * Définit la nouvelle taille du contexte
  */
 function setContextSize(size) {
-    userSettings.contextSize = size;
+    const normalizedSize = window.JoyBoyContextSizes?.normalize(size) || parseInt(size, 10) || 4096;
+    userSettings.contextSize = normalizedSize;
 
     // Mettre à jour l'affichage
     const maxEl = document.getElementById('tokens-max');
-    if (maxEl) maxEl.textContent = size;
+    if (maxEl) maxEl.textContent = formatTerminalContextSize(normalizedSize);
 
     // Mettre à jour dans les settings si ouvert
     const settingsSelect = document.getElementById('settings-context-size');
-    if (settingsSelect) settingsSelect.value = size;
+    if (settingsSelect) settingsSelect.value = normalizedSize;
+    const settingsValue = document.getElementById('settings-context-size-value');
+    if (settingsValue) settingsValue.textContent = formatTerminalContextSize(normalizedSize);
 
     // Fermer le popup
     const overlay = document.querySelector('.context-size-overlay');
@@ -76,10 +88,10 @@ function setContextSize(size) {
 
     // Notification
     if (typeof Toast !== 'undefined') {
-        Toast.success(terminalT('terminal.contextSizeToast', 'Contexte : {size} tokens', { size }));
+        Toast.success(terminalT('terminal.contextSizeToast', 'Contexte : {size} tokens', { size: formatTerminalContextSize(normalizedSize) }));
     }
 
-    console.log(`[TERMINAL] Context size: ${size}`);
+    console.log(`[TERMINAL] Context size: ${normalizedSize}`);
 }
 
 /**
@@ -88,7 +100,7 @@ function setContextSize(size) {
 function updateTokensMaxDisplay() {
     const maxEl = document.getElementById('tokens-max');
     if (maxEl) {
-        maxEl.textContent = userSettings.contextSize || 4096;
+        maxEl.textContent = formatTerminalContextSize(userSettings.contextSize || 4096);
     }
 }
 

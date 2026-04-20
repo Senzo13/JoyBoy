@@ -289,6 +289,15 @@ class TerminalBrainSmokeTests(unittest.TestCase):
         self.assertIn("LOCAL MEMORY CONTEXT", prompt)
         self.assertIn("DeerFlow-style planning", prompt)
 
+    def test_large_local_context_scales_terminal_budget_safely(self):
+        brain = TerminalBrain()
+
+        self.assertEqual(brain._normalize_context_size(999999), 262144)
+        self.assertLessEqual(brain._turn_token_budget(32768), brain.max_non_autonomous_tokens)
+        self.assertEqual(brain._turn_token_budget(65536), 12000)
+        self.assertEqual(brain._turn_token_budget(131072), 18000)
+        self.assertEqual(brain._turn_token_budget(262144), 26000)
+
     def test_existing_write_requires_read_then_verifies(self):
         brain = TerminalBrain()
         brain.current_intent = "write"

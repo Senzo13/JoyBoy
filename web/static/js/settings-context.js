@@ -3,6 +3,39 @@
 // Auto-saves to localStorage, supports subscribe/notify pattern.
 // Provides a Proxy-based `userSettings` for full backward compatibility.
 
+const JoyBoyContextSizes = Object.freeze({
+    min: 2048,
+    max: 262144,
+    step: 2048,
+    options: Object.freeze([
+        { value: 2048, label: '2K', infoKey: 'vramExtra0' },
+        { value: 4096, label: '4K', infoKey: 'vramExtra1' },
+        { value: 8192, label: '8K', infoKey: 'vramExtra2' },
+        { value: 16384, label: '16K', infoKey: 'vramExtra4' },
+        { value: 32768, label: '32K', infoKey: 'vramExtra8' },
+        { value: 65536, label: '64K', infoKey: 'vramExtra16' },
+        { value: 131072, label: '128K', infoKey: 'vramExtra32' },
+        { value: 262144, label: '256K', infoKey: 'vramExtra64' },
+    ]),
+    normalize(value) {
+        const parsed = Number.parseInt(value, 10);
+        const safe = Number.isFinite(parsed) ? parsed : 4096;
+        const clamped = Math.min(this.max, Math.max(this.min, safe));
+        return Math.round(clamped / this.step) * this.step;
+    },
+    format(value) {
+        const normalized = this.normalize(value);
+        if (normalized >= 1024) return `${Math.round(normalized / 1024)}K`;
+        return String(normalized);
+    },
+    optionFor(value) {
+        const normalized = this.normalize(value);
+        return this.options.find(option => option.value === normalized) || null;
+    },
+});
+
+window.JoyBoyContextSizes = JoyBoyContextSizes;
+
 class SettingsContext {
     constructor() {
         this._subscribers = new Map();
