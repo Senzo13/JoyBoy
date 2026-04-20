@@ -3604,6 +3604,27 @@ async function checkOllamaStatus() {
     return data;
 }
 
+function settingsIsCloudTextModel(modelId) {
+    const raw = String(modelId || '').trim();
+    if (!raw) return false;
+    if (typeof isTerminalCloudModelId === 'function') {
+        return isTerminalCloudModelId(raw);
+    }
+    const providerId = raw.includes(':') ? raw.split(':', 1)[0].toLowerCase() : '';
+    return ['openai', 'openrouter', 'anthropic', 'gemini', 'deepseek', 'moonshot', 'novita', 'minimax', 'volcengine', 'glm', 'vllm'].includes(providerId);
+}
+
+function settingsFormatTextModelName(modelId) {
+    return typeof _formatModelName === 'function' ? _formatModelName(modelId) : modelId;
+}
+
+function settingsRenderCloudChatOption(selectEl, modelId) {
+    if (!selectEl || !modelId) return;
+    const label = settingsFormatTextModelName(modelId);
+    selectEl.innerHTML = `<option value="${escapeHtml(modelId)}">${escapeHtml(label)}</option>`;
+    selectEl.value = modelId;
+}
+
 async function loadOllamaModels() {
     const listEl = DOM.get('ollama-installed-models');
     const selectEl = DOM.get('settings-chat-model');
@@ -3619,10 +3640,12 @@ async function loadOllamaModels() {
 
     const data = result.data;
     try {
+        const activeChatModel = userSettings.chatModel;
+        const activeChatIsCloud = settingsIsCloudTextModel(activeChatModel);
 
         if (data.models && data.models.length > 0) {
             listEl.innerHTML = data.models.map(model => {
-                const isEquipped = model.name === userSettings.chatModel;
+                const isEquipped = !activeChatIsCloud && model.name === activeChatModel;
                 const displayName = typeof _formatModelName === 'function' ? _formatModelName(model.name) : model.name;
                 return `
                 <div class="ollama-model-item ${isEquipped ? 'equipped' : ''}">
@@ -3645,14 +3668,18 @@ async function loadOllamaModels() {
 
             // Update chat model select
             if (selectEl) {
-                selectEl.innerHTML = data.models.map(model => {
+                const localOptions = data.models.map(model => {
                     const dn = typeof _formatModelName === 'function' ? _formatModelName(model.name) : model.name;
-                    return `<option value="${model.name}">${dn}</option>`;
+                    return `<option value="${escapeHtml(model.name)}">${escapeHtml(dn)}</option>`;
                 }).join('');
+                const cloudOption = activeChatIsCloud
+                    ? `<option value="${escapeHtml(activeChatModel)}">${escapeHtml(settingsFormatTextModelName(activeChatModel))}</option>`
+                    : '';
+                selectEl.innerHTML = `${cloudOption}${localOptions}`;
 
                 // Vérifier si le modèle sélectionné existe toujours
-                const modelExists = data.models.some(m => m.name === userSettings.chatModel);
-                if (!modelExists) {
+                const modelExists = data.models.some(m => m.name === activeChatModel);
+                if (!modelExists && !activeChatIsCloud) {
                     userSettings.chatModel = data.models[0].name;
                     saveSettings();
                 }
@@ -3671,9 +3698,13 @@ async function loadOllamaModels() {
 
             // Mettre à jour le select pour indiquer qu'il n'y a pas de modèle
             if (selectEl) {
-                selectEl.innerHTML = `<option value="">${escapeHtml(t('settings.models.noModels', 'Aucun modèle'))}</option>`;
-                userSettings.chatModel = '';
-                saveSettings();
+                if (activeChatIsCloud) {
+                    settingsRenderCloudChatOption(selectEl, activeChatModel);
+                } else {
+                    selectEl.innerHTML = `<option value="">${escapeHtml(t('settings.models.noModels', 'Aucun modèle'))}</option>`;
+                    userSettings.chatModel = '';
+                    saveSettings();
+                }
             }
         }
     } catch (e) {
@@ -3898,7 +3929,7 @@ async function equipModel(modelName) {
     console.log(`[MODEL] Changement: ${oldModel} -> ${modelName}`);
 
     // 1. Décharger l'ancien modèle pour libérer la mémoire
-    if (oldModel) {
+    if (oldModel && !settingsIsCloudTextModel(oldModel)) {
         console.log(`[MODEL] Déchargement de ${oldModel}...`);
         await apiOllama.unload(oldModel);
         console.log(`[MODEL] ${oldModel} déchargé`);
@@ -3925,6 +3956,10 @@ async function equipModel(modelName) {
     }
 
     // 4. Préchauffer le nouveau modèle (force=true pour ignorer le cache)
+    if (settingsIsCloudTextModel(modelName)) {
+        console.log(`[MODEL] Warmup ignoré pour le modèle cloud ${modelName}`);
+        return;
+    }
     console.log(`[MODEL] Préchauffage de ${modelName}...`);
     const warmupResult = await apiOllama.warmup(modelName, true);
     if (warmupResult.ok && warmupResult.data?.success) {
@@ -4167,6 +4202,11 @@ function switchModelsInnerTab(panelId, tabName, clickedEl) {
 
 // Vérifier si un modèle Ollama est disponible
 async function checkOllamaModelAvailable() {
+    const selectedModel = userSettings.chatModel;
+    if (settingsIsCloudTextModel(selectedModel)) {
+        return { available: true, cloud: true };
+    }
+
     // Vérifier si Ollama est installé et tourne
     const statusResult = await apiOllama.getStatus();
     if (!statusResult.ok) {
@@ -4209,7 +4249,6 @@ async function checkOllamaModelAvailable() {
     }
 
     // Vérifier si le modèle sélectionné existe
-    const selectedModel = userSettings.chatModel;
     const modelExists = modelsData.models.some(m => m.name === selectedModel);
 
     if (!modelExists) {
@@ -4250,6 +4289,14 @@ function showNoModelError(message) {
 
 // Mettre à jour le sélecteur de modèle si le modèle n'existe plus
 async function validateSelectedModel() {
+    const selectEl = DOM.get('settings-chat-model');
+    if (!selectEl) return;
+
+    if (settingsIsCloudTextModel(userSettings.chatModel)) {
+        settingsRenderCloudChatOption(selectEl, userSettings.chatModel);
+        return;
+    }
+
     const result = await apiOllama.getModels();
     if (!result.ok) {
         console.error('Erreur validation modèle:', result.error);
@@ -4257,9 +4304,6 @@ async function validateSelectedModel() {
     }
 
     const data = result.data;
-    const selectEl = DOM.get('settings-chat-model');
-    if (!selectEl) return;
-
     if (!data.models || data.models.length === 0) {
         selectEl.innerHTML = `<option value="">${escapeHtml(t('settings.models.noModels', 'Aucun modèle'))}</option>`;
         userSettings.chatModel = '';

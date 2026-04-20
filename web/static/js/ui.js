@@ -2208,6 +2208,21 @@ function renderModelPickerList(pickerId = 'home') {
     `;
 }
 
+function unloadPreviousLocalTextModelWhenUsingCloud(previousModel, nextModel) {
+    if (!previousModel || previousModel === nextModel) return;
+    if (!isTerminalCloudModelId(nextModel) || isTerminalCloudModelId(previousModel)) return;
+    if (typeof apiOllama === 'undefined' || typeof apiOllama.unload !== 'function') return;
+
+    console.log('[MODEL] Switch vers cloud, déchargement du modèle local:', previousModel);
+    apiOllama.unload(previousModel).then(result => {
+        if (result?.ok) {
+            console.log('[MODEL] Modèle local déchargé après switch cloud:', previousModel);
+        }
+    }).catch(err => {
+        console.warn('[MODEL] Déchargement local après switch cloud ignoré:', err);
+    });
+}
+
 function selectPickerModel(modelId, pickerId = 'home') {
     // Edit picker = sélection indépendante pour l'éditeur
     if (pickerId === 'edit') {
@@ -2286,6 +2301,10 @@ function selectPickerModel(modelId, pickerId = 'home') {
         selectedChatModel = modelId;
         selectedTextModel = modelId;  // Compat
         userSettings.chatModel = modelId;
+    }
+
+    if (modelType === 'chat') {
+        unloadPreviousLocalTextModelWhenUsingCloud(previousModel, modelId);
     }
 
     // Log côté serveur

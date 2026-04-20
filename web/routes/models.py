@@ -361,11 +361,16 @@ def ollama_warmup():
     try:
         from core.model_manager import ModelManager
         from core import ollama_service
+        from core.agent_runtime import is_cloud_model_name
         data = request.json
         model_name = data.get('model')
 
         if not model_name:
             return jsonify({'success': False, 'error': 'model requis'})
+
+        if is_cloud_model_name(model_name):
+            print(f"[WARMUP] Skip cloud model {model_name}")
+            return jsonify({'success': True, 'skipped': True, 'reason': 'cloud_model'})
 
         # Ne pas warmup pendant une generation d'image
         mgr = ModelManager.get()

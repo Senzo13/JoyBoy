@@ -817,6 +817,11 @@ function terminalUsesCloudModel(modelId) {
     return typeof isTerminalCloudModelId === 'function' && isTerminalCloudModelId(modelId);
 }
 
+function getActiveCloudChatModel() {
+    const chatModel = userSettings?.chatModel;
+    return terminalUsesCloudModel(chatModel) ? chatModel : null;
+}
+
 // ===== TERMINAL INPUT LOCK =====
 
 /**
@@ -1123,14 +1128,20 @@ async function enterTerminalMode(workspace = null, pendingMessage = '') {
 
     // === VÉRIFIER ET TÉLÉCHARGER UN MODÈLE TOOL-CAPABLE ===
     let toolModel = null;
+    const activeCloudChatModel = getActiveCloudChatModel();
 
     // 1. Vérifier si l'utilisateur a choisi un modèle dans les settings
     const savedTerminalModel = userSettings?.terminalModel;
     if (savedTerminalModel) {
         // Vérifier si ce modèle est installé ou si c'est un profil cloud configuré.
-        const isInstalled = terminalUsesCloudModel(savedTerminalModel)
-            || CHAT_MODELS?.some(m => m.id === savedTerminalModel);
-        if (isInstalled) {
+        const savedTerminalIsCloud = terminalUsesCloudModel(savedTerminalModel);
+        const savedTerminalIsLocal = CHAT_MODELS?.some(m => m.id === savedTerminalModel);
+        if (savedTerminalIsCloud) {
+            console.log('[TERMINAL] Utilisation du modèle configuré:', savedTerminalModel);
+            toolModel = savedTerminalModel;
+        } else if (activeCloudChatModel) {
+            console.log('[TERMINAL] Modèle chat cloud prioritaire sur le terminal local:', activeCloudChatModel);
+        } else if (savedTerminalIsLocal) {
             console.log('[TERMINAL] Utilisation du modèle configuré:', savedTerminalModel);
             toolModel = savedTerminalModel;
         } else {
@@ -1138,12 +1149,20 @@ async function enterTerminalMode(workspace = null, pendingMessage = '') {
         }
     }
 
-    // 2. Sinon, auto-détecter un modèle tool-capable
+    // 2. Sinon, reprendre le modèle cloud déjà choisi dans le chat.
+    if (!toolModel) {
+        if (activeCloudChatModel) {
+            console.log('[TERMINAL] Utilisation du modèle cloud chat actif:', activeCloudChatModel);
+            toolModel = activeCloudChatModel;
+        }
+    }
+
+    // 3. Sinon, auto-détecter un modèle tool-capable local
     if (!toolModel) {
         toolModel = findInstalledToolCapableModel();
     }
 
-    // 3. Si aucun trouvé, télécharger le défaut
+    // 4. Si aucun trouvé, télécharger le défaut
     if (!toolModel) {
         console.log('[TERMINAL] Aucun modèle tool-capable, téléchargement de', DEFAULT_TERMINAL_MODEL);
 
@@ -1508,9 +1527,12 @@ function setTerminalWorkspace(workspace, persist = true) {
 
     if (workspace?.path && !terminalToolModel) {
         const configuredTerminalModel = userSettings?.terminalModel;
-        const configuredModelUsable = configuredTerminalModel
-            && (terminalUsesCloudModel(configuredTerminalModel) || CHAT_MODELS?.some(m => m.id === configuredTerminalModel));
-        terminalToolModel = (configuredModelUsable ? configuredTerminalModel : null)
+        const activeCloudChatModel = getActiveCloudChatModel();
+        const configuredCloudModel = configuredTerminalModel && terminalUsesCloudModel(configuredTerminalModel);
+        const configuredLocalModel = configuredTerminalModel && CHAT_MODELS?.some(m => m.id === configuredTerminalModel);
+        terminalToolModel = (configuredCloudModel ? configuredTerminalModel : null)
+            || activeCloudChatModel
+            || (configuredLocalModel ? configuredTerminalModel : null)
             || findInstalledToolCapableModel()
             || userSettings?.chatModel
             || 'qwen3.5:2b';
