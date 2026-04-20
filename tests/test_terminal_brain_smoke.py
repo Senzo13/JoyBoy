@@ -87,6 +87,26 @@ class TerminalBrainSmokeTests(unittest.TestCase):
             self.assertEqual(done.get("token_stats", {}).get("total"), 0)
             self.assertIn("sans appel LLM", done.get("full_response", ""))
 
+    def test_casual_greeting_fast_path_avoids_agentic_tool_loop(self):
+        brain = TerminalBrain()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            events = list(brain.run_agentic_loop("yo mec", tmp, model="qwen3.5:2b"))
+
+        self.assertFalse(any(event.get("type") == "thinking" for event in events))
+        self.assertFalse(any(event.get("type") == "tool_call" for event in events))
+        done = [event for event in events if event.get("type") == "done"][-1]
+        self.assertEqual(done.get("token_stats", {}).get("total"), 0)
+        self.assertIn("Je suis là", done.get("full_response", ""))
+
+    def test_casual_greeting_detection_does_not_capture_real_work(self):
+        brain = TerminalBrain()
+
+        self.assertTrue(brain._is_casual_greeting_request("yO MEC"))
+        self.assertTrue(brain._is_casual_greeting_request("Yo j'ai dis"))
+        self.assertFalse(brain._is_casual_greeting_request("yo analyse le projet"))
+        self.assertFalse(brain._is_casual_greeting_request("salut corrige ce fichier"))
+
     def test_loop_message_compaction_omits_large_write_arguments(self):
         brain = TerminalBrain()
         huge_content = "A" * 5000

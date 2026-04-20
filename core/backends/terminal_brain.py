@@ -864,6 +864,16 @@ class TerminalBrain:
         """
         model = model or self.default_model
         use_cloud_model = is_cloud_model_name(model)
+
+        if self._is_casual_greeting_request(initial_message):
+            self.current_intent = "question"
+            self.write_blocked = False
+            text = self._casual_greeting_answer(initial_message)
+            yield runtime_event('intent', intent=self.current_intent, read_only=True, autonomous=False)
+            yield runtime_event('content', text=text, token_stats={})
+            yield runtime_event('done', full_response=text, token_stats={'prompt_tokens': 0, 'completion_tokens': 0, 'total': 0})
+            return
+
         if not use_cloud_model and not HAS_OLLAMA:
             yield runtime_event('error', message='Package ollama non installé. pip install ollama')
             return
@@ -1861,6 +1871,50 @@ class TerminalBrain:
         wants_create = any(word in msg for word in ("cree", "creer", "cr?er", "create", "mets", "mettre", "genere", "make"))
         simple_scope = any(word in msg for word in ("simple", "minimal", "basique", "vite", "dedans", "ici")) or len(msg.split()) <= 9
         return wants_react and wants_template and wants_create and simple_scope
+
+    def _is_casual_greeting_request(self, message: str) -> bool:
+        text = self._folded_single_line(message)
+        if not text or len(text) > 90:
+            return False
+
+        action_words = (
+            "analyse", "audit", "regarde", "inspecte", "explore", "cherche",
+            "cree", "creer", "create", "make", "ajoute", "modifie", "corrige",
+            "fix", "debug", "test", "installe", "install", "commit", "push",
+            "fichier", "file", "repo", "projet", "workspace", "dossier",
+            "terminal", "commande", "erreur", "error", "log",
+        )
+        if any(word in text for word in action_words):
+            return False
+
+        words = text.split()
+        if len(words) > 7:
+            return False
+
+        greeting_words = (
+            "yo", "yoo", "salut", "slt", "coucou", "hey", "hello", "hi",
+            "bonjour", "bonsoir", "wesh", "bjr",
+        )
+        if words and words[0] in greeting_words:
+            return True
+
+        return any(phrase in text for phrase in ("ca va", "ça va", "t es la", "tu es la", "t'es la"))
+
+    @staticmethod
+    def _folded_single_line(message: str) -> str:
+        raw = str(message or "").lower()
+        folded = unicodedata.normalize("NFKD", raw).encode("ascii", "ignore").decode("ascii")
+        folded = re.sub(r"[^a-z0-9' ]+", " ", folded)
+        return re.sub(r"\s+", " ", folded).strip()
+
+    def _casual_greeting_answer(self, message: str) -> str:
+        text = self._folded_single_line(message)
+        words = set(text.split())
+        if words & {"hello", "hey", "hi"} and not words & {"mec", "frero", "salut", "bonjour", "wesh"}:
+            return "Hey, I'm here. Tell me what you want to do."
+        if "j ai dis" in text or "j'ai dis" in text:
+            return "Je suis là, je t'écoute. Le terminal repart en mode conversation propre."
+        return "Je suis là, mec. Dis-moi ce que tu veux faire."
 
     def _is_complex_task_request(self, message: str) -> bool:
         msg = self._intent_text(message)
