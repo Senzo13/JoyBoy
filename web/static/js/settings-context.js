@@ -80,6 +80,7 @@ class SettingsContext {
             skipAutoRefine: true,
             terminalModel: null,
             terminalReasoningEffort: 'medium',
+            terminalPermissionMode: 'default',
             workspaces: [],
             activeWorkspace: null,
             contextSize: 4096,

@@ -24,6 +24,16 @@ class ToolRisk:
     REASONING = "reasoning"
 
 
+DEFAULT_PERMISSION_MODE = "default"
+FULL_ACCESS_PERMISSION_MODE = "full_access"
+TERMINAL_PERMISSION_MODES = {DEFAULT_PERMISSION_MODE, FULL_ACCESS_PERMISSION_MODE}
+
+
+def normalize_permission_mode(mode: str | None) -> str:
+    normalized = str(mode or DEFAULT_PERMISSION_MODE).strip().lower().replace("-", "_")
+    return normalized if normalized in TERMINAL_PERMISSION_MODES else DEFAULT_PERMISSION_MODE
+
+
 @dataclass(frozen=True)
 class ToolDefinition:
     name: str
@@ -61,6 +71,7 @@ class PermissionDecision:
     reason: str = ""
     risk: str = ToolRisk.READ_ONLY
     requires_confirmation: bool = False
+    mode: str = DEFAULT_PERMISSION_MODE
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -68,6 +79,7 @@ class PermissionDecision:
             "reason": self.reason,
             "risk": self.risk,
             "requires_confirmation": self.requires_confirmation,
+            "mode": self.mode,
         }
 
 
@@ -178,6 +190,9 @@ class PermissionEngine:
         re.compile(r"\bgit\s+reset\s+--hard\b", re.I),
         re.compile(r"\bgit\s+clean\s+-[^\s]*[fd][^\s]*\b", re.I),
         re.compile(r"\bgit\s+checkout\s+--\s+", re.I),
+    ]
+
+    _CRITICAL_SHELL_PATTERNS = [
         re.compile(r"\bformat\b", re.I),
         re.compile(r"\bmkfs(?:\.[a-z0-9]+)?\b", re.I),
         re.compile(r"\bshutdown\b", re.I),
@@ -191,31 +206,39 @@ class PermissionEngine:
     def __init__(self, registry: ToolRegistry):
         self.registry = registry
 
-    def check(self, tool_name: str, args: Dict[str, Any], workspace_path: str) -> PermissionDecision:
+    def check(
+        self,
+        tool_name: str,
+        args: Dict[str, Any],
+        workspace_path: str,
+        permission_mode: str | None = None,
+    ) -> PermissionDecision:
+        mode = normalize_permission_mode(permission_mode)
         tool = self.registry.get(tool_name)
         if not tool:
-            return PermissionDecision(False, f"Unknown tool: {tool_name}", risk="unknown")
+            return PermissionDecision(False, f"Unknown tool: {tool_name}", risk="unknown", mode=mode)
         if not tool.enabled:
-            return PermissionDecision(False, f"Tool disabled: {tool_name}", risk=tool.risk)
+            return PermissionDecision(False, f"Tool disabled: {tool_name}", risk=tool.risk, mode=mode)
 
         if not self._valid_workspace(workspace_path):
-            return PermissionDecision(False, "Invalid or inaccessible workspace", risk=tool.risk)
+            return PermissionDecision(False, "Invalid or inaccessible workspace", risk=tool.risk, mode=mode)
 
-        if tool.risk == ToolRisk.DESTRUCTIVE:
+        if tool.risk == ToolRisk.DESTRUCTIVE and mode != FULL_ACCESS_PERMISSION_MODE:
             return PermissionDecision(
                 False,
-                "Destructive action blocked: confirmation UI is not available yet.",
+                "Destructive action blocked: switch terminal permissions to full access first.",
                 risk=tool.risk,
                 requires_confirmation=True,
+                mode=mode,
             )
 
         if tool_name == "bash":
             command = str(args.get("command", ""))
-            shell_decision = self._check_shell_command(command)
+            shell_decision = self._check_shell_command(command, permission_mode=mode)
             if not shell_decision.allowed:
                 return shell_decision
 
-        return PermissionDecision(True, risk=tool.risk)
+        return PermissionDecision(True, risk=tool.risk, mode=mode)
 
     @staticmethod
     def _valid_workspace(workspace_path: str) -> bool:
@@ -226,19 +249,32 @@ class PermissionEngine:
         except Exception:
             return False
 
-    def _check_shell_command(self, command: str) -> PermissionDecision:
+    def _check_shell_command(self, command: str, permission_mode: str | None = None) -> PermissionDecision:
+        mode = normalize_permission_mode(permission_mode)
         normalized = " ".join(command.strip().split())
         if not normalized:
-            return PermissionDecision(False, "Empty command", risk=ToolRisk.SHELL)
+            return PermissionDecision(False, "Empty command", risk=ToolRisk.SHELL, mode=mode)
 
         lowered = normalized.lower()
-        for pattern in self._DESTRUCTIVE_SHELL_PATTERNS:
+        for pattern in self._CRITICAL_SHELL_PATTERNS:
             if pattern.search(lowered):
                 return PermissionDecision(
                     False,
-                    "Command blocked: destructive action or unconfirmed privilege elevation.",
+                    "Command blocked: critical system or privilege action.",
                     risk=ToolRisk.SHELL,
                     requires_confirmation=True,
+                    mode=mode,
                 )
 
-        return PermissionDecision(True, risk=ToolRisk.SHELL)
+        if mode != FULL_ACCESS_PERMISSION_MODE:
+            for pattern in self._DESTRUCTIVE_SHELL_PATTERNS:
+                if pattern.search(lowered):
+                    return PermissionDecision(
+                        False,
+                        "Command blocked: switch terminal permissions to full access first.",
+                        risk=ToolRisk.SHELL,
+                        requires_confirmation=True,
+                        mode=mode,
+                    )
+
+        return PermissionDecision(True, risk=ToolRisk.SHELL, mode=mode)

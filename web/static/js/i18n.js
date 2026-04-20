@@ -3238,6 +3238,11 @@
         terminal: {
             contextSizeToast: 'Contexte : {size} tokens',
             permissionConfirmationRequired: '(confirmation requise)',
+            permissions: {
+                label: 'Autorisations',
+                default: 'Autorisations par défaut',
+                fullAccess: 'Accès complet',
+            },
             contextPopupTitle: 'Taille du contexte',
             contextEconomy: 'Économe (~1GB)',
             contextStandard: 'Standard (~2GB)',
@@ -3462,6 +3467,11 @@
         terminal: {
             contextSizeToast: 'Context: {size} tokens',
             permissionConfirmationRequired: '(confirmation required)',
+            permissions: {
+                label: 'Permissions',
+                default: 'Default permissions',
+                fullAccess: 'Full access',
+            },
             contextPopupTitle: 'Context size',
             contextEconomy: 'Light (~1GB)',
             contextStandard: 'Standard (~2GB)',
@@ -3686,6 +3696,11 @@
         terminal: {
             contextSizeToast: 'Contexto: {size} tokens',
             permissionConfirmationRequired: '(requiere confirmación)',
+            permissions: {
+                label: 'Permisos',
+                default: 'Permisos predeterminados',
+                fullAccess: 'Acceso completo',
+            },
             contextPopupTitle: 'Tamaño del contexto',
             contextEconomy: 'Ligero (~1GB)',
             contextStandard: 'Estándar (~2GB)',
@@ -3910,6 +3925,11 @@
         terminal: {
             contextSizeToast: 'Contesto: {size} token',
             permissionConfirmationRequired: '(conferma richiesta)',
+            permissions: {
+                label: 'Autorizzazioni',
+                default: 'Autorizzazioni predefinite',
+                fullAccess: 'Accesso completo',
+            },
             contextPopupTitle: 'Dimensione contesto',
             contextEconomy: 'Leggero (~1GB)',
             contextStandard: 'Standard (~2GB)',

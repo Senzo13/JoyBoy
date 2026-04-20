@@ -15,6 +15,7 @@ Sources:
 
 import os
 import json
+import platform
 import re
 import unicodedata
 from collections import defaultdict
@@ -35,8 +36,10 @@ from core.agent_runtime import (
     truncate_middle,
 )
 from core.backends.terminal_tools import (
+    DEFAULT_PERMISSION_MODE,
     PermissionEngine,
     build_default_terminal_tool_registry,
+    normalize_permission_mode,
 )
 
 # Ollama client - auto-install si manquant
@@ -602,6 +605,7 @@ class TerminalBrain:
         # Protection écriture
         self.current_intent: str = 'question'
         self.write_blocked: bool = False
+        self.permission_mode: str = DEFAULT_PERMISSION_MODE
 
         # Modèle par défaut
         self.default_model = "qwen3.5:2b"
@@ -679,7 +683,12 @@ class TerminalBrain:
             write_file, edit_file, delete_file
         )
 
-        permission = self.permission_engine.check(tool_name, args or {}, workspace_path)
+        permission = self.permission_engine.check(
+            tool_name,
+            args or {},
+            workspace_path,
+            permission_mode=self.permission_mode,
+        )
         if not permission.allowed:
             return ToolResult(
                 success=False,
@@ -898,9 +907,10 @@ class TerminalBrain:
         model: str = None,
         system_prompt: str = None,
         history: List[Dict] = None,
-        autonomous: bool = False,  # Mode autonome - bypass les protections
+        autonomous: bool = False,  # Mode autonome: autorise les tâches longues, sans changer les permissions destructrices
         context_size: int = 4096,  # Taille du contexte (défaut: 4096)
         reasoning_effort: str | None = None,
+        permission_mode: str | None = None,
         job_id: str = None,
     ) -> Generator[Dict, None, None]:
         """
@@ -916,12 +926,19 @@ class TerminalBrain:
         """
         model = model or self.default_model
         use_cloud_model = is_cloud_model_name(model)
+        self.permission_mode = normalize_permission_mode(permission_mode)
 
         if self._is_casual_greeting_request(initial_message):
             self.current_intent = "question"
             self.write_blocked = False
             text = self._casual_greeting_answer(initial_message)
-            yield runtime_event('intent', intent=self.current_intent, read_only=True, autonomous=False)
+            yield runtime_event(
+                'intent',
+                intent=self.current_intent,
+                read_only=True,
+                autonomous=False,
+                permission_mode=self.permission_mode,
+            )
             yield runtime_event('content', text=text, token_stats={})
             yield runtime_event('done', full_response=text, token_stats={'prompt_tokens': 0, 'completion_tokens': 0, 'total': 0})
             return
@@ -954,6 +971,7 @@ class TerminalBrain:
                         "context_size": self._active_context_size,
                         "autonomous": autonomous,
                         "reasoning_effort": reasoning_effort or "",
+                        "permission_mode": self.permission_mode,
                     },
                 )
                 resource_lease_id = lease.get("id")
@@ -971,8 +989,8 @@ class TerminalBrain:
 
         # Détecter l'intention (ou forcer write si mode autonome)
         if autonomous:
-            self.current_intent = 'write'  # Mode autonome = tout est permis
-            print(f"[BRAIN] 🤖 MODE AUTONOME ACTIVÉ - Aucune restriction")
+            self.current_intent = 'write'
+            print(f"[BRAIN] 🤖 MODE AUTONOME ACTIVÉ")
         else:
             self.current_intent = self.detect_intent(initial_message)
         self.write_blocked = False
@@ -983,7 +1001,13 @@ class TerminalBrain:
         else:
             response_token_limit = 4096 if autonomous else (1024 if self.is_read_only_intent(self.current_intent) else 2048)
 
-        yield runtime_event('intent', intent=self.current_intent, read_only=self.is_read_only_intent(self.current_intent), autonomous=autonomous)
+        yield runtime_event(
+            'intent',
+            intent=self.current_intent,
+            read_only=self.is_read_only_intent(self.current_intent),
+            autonomous=autonomous,
+            permission_mode=self.permission_mode,
+        )
 
         if self._is_open_workspace_request(initial_message):
             args = {}
@@ -1004,18 +1028,6 @@ class TerminalBrain:
             yield runtime_event('content', text=text, token_stats={})
             _end_resource_lease()
             yield runtime_event('done', full_response=text, token_stats={'prompt_tokens': 0, 'completion_tokens': 0, 'total': 0})
-            return
-
-        if self._is_simple_next_template_request(initial_message) and not self.is_read_only_intent(self.current_intent):
-            for event in self._run_simple_next_template(workspace_path, replace_existing=self._wants_template_replacement(initial_message)):
-                yield event
-            _end_resource_lease()
-            return
-
-        if self._is_simple_react_template_request(initial_message) and not self.is_read_only_intent(self.current_intent):
-            for event in self._run_simple_react_template(workspace_path):
-                yield event
-            _end_resource_lease()
             return
 
         # System prompt par défaut
@@ -2133,51 +2145,6 @@ class TerminalBrain:
         folder_words = ("dossier", "folder", "workspace", "projet", "répertoire", "repertoire")
         return any(word in msg for word in open_words) and any(word in msg for word in folder_words)
 
-    def _is_simple_react_template_request(self, message: str) -> bool:
-        msg = self._folded_single_line(message)
-        if any(word in msg for word in ("analyse", "audit", "explique", "compare", "review")):
-            return False
-        if self._mentions_next_template(message):
-            return False
-        wants_react = "react" in msg
-        wants_template = any(word in msg for word in ("template", "starter", "boilerplate", "projet", "app"))
-        wants_create = (
-            any(word in msg for word in ("cree", "creer", "create", "mets", "mettre", "genere", "make", "code", "coder", "fais", "fait"))
-            or re.search(r"\bcr\s*er\b", msg) is not None
-        )
-        simple_scope = (
-            any(word in msg for word in ("simple", "minimal", "basique", "vite", "dedans", "dans", "ici", "propre", "clean"))
-            or "template" in msg
-            or len(msg.split()) <= 16
-        )
-        return wants_react and wants_template and wants_create and simple_scope
-
-    def _mentions_next_template(self, message: str) -> bool:
-        msg = self._folded_single_line(message)
-        return bool(re.search(r"\bnext\s*js\b|\bnextjs\b|\bnext\b", msg))
-
-    def _wants_template_replacement(self, message: str) -> bool:
-        msg = self._folded_single_line(message)
-        return any(word in msg for word in ("delete", "remove", "supprime", "efface", "remplace", "replace", "convert", "convertis"))
-
-    def _is_simple_next_template_request(self, message: str) -> bool:
-        msg = self._folded_single_line(message)
-        if any(word in msg for word in ("analyse", "audit", "explique", "compare", "review")):
-            return False
-        wants_next = self._mentions_next_template(message)
-        wants_template = any(word in msg for word in ("template", "starter", "boilerplate", "projet", "app"))
-        wants_create = (
-            any(word in msg for word in ("cree", "creer", "create", "mets", "mettre", "genere", "make", "code", "coder", "fais", "fait", "veux"))
-            or self._wants_template_replacement(message)
-            or re.search(r"\bcr\s*er\b", msg) is not None
-        )
-        simple_scope = (
-            any(word in msg for word in ("simple", "minimal", "basique", "dedans", "dans", "ici", "propre", "clean"))
-            or "template" in msg
-            or len(msg.split()) <= 18
-        )
-        return wants_next and wants_template and wants_create and simple_scope
-
     def _is_casual_greeting_request(self, message: str) -> bool:
         text = self._folded_single_line(message)
         if not text or len(text) > 90:
@@ -2233,764 +2200,6 @@ class TerminalBrain:
         if any(marker in msg for marker in complex_markers):
             return True
         return len([part for part in re.split(r"\s+", msg) if part]) >= 18
-
-    def _react_template_files(
-        self,
-        workspace_path: str,
-        variant: str = "vite",
-        include_package: bool = True,
-    ) -> Dict[str, str]:
-        package_name = re.sub(r"[^a-z0-9-]+", "-", os.path.basename(os.path.abspath(workspace_path)).lower()).strip("-")
-        package_name = package_name or "joyboy-react-app"
-        files: Dict[str, str] = {}
-
-        if include_package:
-            files["package.json"] = json.dumps({
-                "name": package_name,
-                "private": True,
-                "version": "0.1.0",
-                "type": "module",
-                "scripts": {
-                    "dev": "vite",
-                    "build": "vite build",
-                    "preview": "vite preview",
-                },
-                "dependencies": {
-                    "react": "^18.3.1",
-                    "react-dom": "^18.3.1",
-                },
-                "devDependencies": {
-                    "@vitejs/plugin-react": "^4.3.4",
-                    "vite": "^6.0.0",
-                },
-            }, indent=2, ensure_ascii=False) + "\n"
-
-        if variant == "cra":
-            files.update({
-                "public/index.html": """<!DOCTYPE html>
-<html lang="fr">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#111827" />
-    <title>JoyBoy React Template</title>
-  </head>
-  <body>
-    <noscript>Tu dois activer JavaScript pour utiliser cette application.</noscript>
-    <div id="root"></div>
-  </body>
-</html>
-""",
-                "src/index.js": """import React from 'react';
-import ReactDOM from 'react-dom/client';
-import App from './App';
-import './index.css';
-
-const root = ReactDOM.createRoot(document.getElementById('root'));
-
-root.render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);
-""",
-                "src/App.js": """function App() {
-  return (
-    <main className="app-shell">
-      <section className="hero">
-        <p className="eyebrow">JoyBoy React</p>
-        <h1>Template React propre</h1>
-        <p>
-          Modifie <code>src/App.js</code>, puis lance le serveur pour commencer.
-        </p>
-      </section>
-    </main>
-  );
-}
-
-export default App;
-""",
-                "src/index.css": """* {
-  box-sizing: border-box;
-}
-
-body {
-  margin: 0;
-  min-width: 320px;
-  min-height: 100vh;
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  color: #f7f7fb;
-  background: #08090d;
-}
-
-.app-shell {
-  min-height: 100vh;
-  display: grid;
-  place-items: center;
-  padding: 32px;
-}
-
-.hero {
-  width: min(680px, 100%);
-}
-
-.eyebrow {
-  margin: 0 0 12px;
-  color: #8ab4ff;
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0;
-  text-transform: uppercase;
-}
-
-h1 {
-  margin: 0;
-  font-size: 48px;
-  line-height: 1.05;
-}
-
-p {
-  color: #b8c0d4;
-  font-size: 18px;
-  line-height: 1.6;
-}
-
-code {
-  color: #7dd3fc;
-}
-
-@media (max-width: 520px) {
-  .app-shell {
-    padding: 22px;
-  }
-
-  h1 {
-    font-size: 36px;
-  }
-
-  p {
-    font-size: 16px;
-  }
-}
-""",
-                ".gitignore": """node_modules
-build
-.env
-.env.local
-""",
-                "README.md": """# JoyBoy React Template
-
-Template React compatible Create React App.
-
-## Lancer le projet
-
-```bash
-npm install
-npm start
-```
-
-Les fichiers principaux sont dans `src/`.
-""",
-            })
-            return files
-
-        files.update({
-            "index.html": """<!doctype html>
-<html lang="fr">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>JoyBoy React Template</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
-  </body>
-</html>
-""",
-            "src/main.jsx": """import React from 'react';
-import { createRoot } from 'react-dom/client';
-import App from './App.jsx';
-import './App.css';
-
-createRoot(document.getElementById('root')).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);
-""",
-            "src/App.jsx": """export default function App() {
-  return (
-    <main className="app-shell">
-      <section className="hero">
-        <p className="eyebrow">JoyBoy React</p>
-        <h1>Template React simple</h1>
-        <p>
-          Modifie <code>src/App.jsx</code> et lance le serveur Vite pour commencer.
-        </p>
-        <div className="actions">
-          <a href="https://react.dev" target="_blank" rel="noreferrer">Docs React</a>
-          <a href="https://vite.dev" target="_blank" rel="noreferrer">Docs Vite</a>
-        </div>
-      </section>
-    </main>
-  );
-}
-""",
-            "src/App.css": """* {
-  box-sizing: border-box;
-}
-
-body {
-  margin: 0;
-  min-width: 320px;
-  min-height: 100vh;
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  color: #f7f7fb;
-  background: #08090d;
-}
-
-a {
-  color: inherit;
-}
-
-.app-shell {
-  min-height: 100vh;
-  display: grid;
-  place-items: center;
-  padding: 32px;
-}
-
-.hero {
-  width: min(680px, 100%);
-}
-
-.eyebrow {
-  margin: 0 0 12px;
-  color: #8ab4ff;
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0;
-  text-transform: uppercase;
-}
-
-h1 {
-  margin: 0;
-  font-size: 48px;
-  line-height: 1.05;
-}
-
-p {
-  color: #b8c0d4;
-  font-size: 18px;
-  line-height: 1.6;
-}
-
-code {
-  color: #7dd3fc;
-}
-
-.actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 24px;
-}
-
-.actions a {
-  display: inline-flex;
-  align-items: center;
-  min-height: 40px;
-  padding: 0 14px;
-  border: 1px solid #2b3550;
-  border-radius: 8px;
-  background: #121722;
-  text-decoration: none;
-}
-
-.actions a:hover {
-  border-color: #5b8dff;
-}
-
-@media (max-width: 520px) {
-  .app-shell {
-    padding: 22px;
-  }
-
-  h1 {
-    font-size: 36px;
-  }
-
-  p {
-    font-size: 16px;
-  }
-}
-""",
-            ".gitignore": """node_modules
-dist
-.env
-.env.local
-""",
-            "README.md": """# JoyBoy React Template
-
-Template React minimal avec Vite.
-
-## Lancer le projet
-
-```bash
-npm install
-npm run dev
-```
-
-Les fichiers principaux sont dans `src/`.
-""",
-        })
-        return files
-
-    def _next_template_files(self, workspace_path: str) -> Dict[str, str]:
-        package_name = re.sub(r"[^a-z0-9-]+", "-", os.path.basename(os.path.abspath(workspace_path)).lower()).strip("-")
-        package_name = package_name or "joyboy-next-app"
-        return {
-            "package.json": json.dumps({
-                "name": package_name,
-                "private": True,
-                "version": "0.1.0",
-                "scripts": {
-                    "dev": "next dev",
-                    "build": "next build",
-                    "start": "next start",
-                },
-                "dependencies": {
-                    "next": "^15.1.6",
-                    "react": "^19.0.0",
-                    "react-dom": "^19.0.0",
-                },
-                "devDependencies": {},
-            }, indent=2, ensure_ascii=False) + "\n",
-            "next.config.mjs": """/** @type {import('next').NextConfig} */
-const nextConfig = {};
-
-export default nextConfig;
-""",
-            "jsconfig.json": """{
-  "compilerOptions": {
-    "paths": {
-      "@/*": ["./src/*"]
-    }
-  }
-}
-""",
-            "src/app/layout.jsx": """import './globals.css';
-
-export const metadata = {
-  title: 'JoyBoy Next Template',
-  description: 'Template Next.js minimal cree par JoyBoy.',
-};
-
-export default function RootLayout({ children }) {
-  return (
-    <html lang="fr">
-      <body>{children}</body>
-    </html>
-  );
-}
-""",
-            "src/app/page.jsx": """export default function Home() {
-  return (
-    <main className="page-shell">
-      <section className="hero">
-        <p className="eyebrow">JoyBoy Next</p>
-        <h1>Template Next.js simple</h1>
-        <p>
-          Modifie <code>src/app/page.jsx</code>, puis lance le serveur Next pour commencer.
-        </p>
-        <div className="actions">
-          <a href="https://nextjs.org/docs" target="_blank" rel="noreferrer">Docs Next</a>
-          <a href="https://react.dev" target="_blank" rel="noreferrer">Docs React</a>
-        </div>
-      </section>
-    </main>
-  );
-}
-""",
-            "src/app/globals.css": """* {
-  box-sizing: border-box;
-}
-
-html,
-body {
-  margin: 0;
-  min-width: 320px;
-  min-height: 100vh;
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  color: #f7f7fb;
-  background: #08090d;
-}
-
-a {
-  color: inherit;
-}
-
-.page-shell {
-  min-height: 100vh;
-  display: grid;
-  place-items: center;
-  padding: 32px;
-}
-
-.hero {
-  width: min(720px, 100%);
-}
-
-.eyebrow {
-  margin: 0 0 12px;
-  color: #8ab4ff;
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0;
-  text-transform: uppercase;
-}
-
-h1 {
-  margin: 0;
-  font-size: 48px;
-  line-height: 1.05;
-}
-
-p {
-  color: #b8c0d4;
-  font-size: 18px;
-  line-height: 1.6;
-}
-
-code {
-  color: #7dd3fc;
-}
-
-.actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 24px;
-}
-
-.actions a {
-  display: inline-flex;
-  align-items: center;
-  min-height: 40px;
-  padding: 0 14px;
-  border: 1px solid #2b3550;
-  border-radius: 8px;
-  background: #121722;
-  text-decoration: none;
-}
-
-.actions a:hover {
-  border-color: #5b8dff;
-}
-
-@media (max-width: 520px) {
-  .page-shell {
-    padding: 22px;
-  }
-
-  h1 {
-    font-size: 36px;
-  }
-
-  p {
-    font-size: 16px;
-  }
-}
-""",
-            ".gitignore": """node_modules
-.next
-out
-.env
-.env.local
-""",
-            "README.md": """# JoyBoy Next Template
-
-Template Next.js minimal avec App Router.
-
-## Lancer le projet
-
-```bash
-npm install
-npm run dev
-```
-
-Les fichiers principaux sont dans `src/app/`.
-""",
-        }
-
-    def _known_frontend_template_paths(self) -> List[str]:
-        return [
-            "package.json",
-            "index.html",
-            "next.config.mjs",
-            "jsconfig.json",
-            "public/index.html",
-            "src/main.jsx",
-            "src/App.jsx",
-            "src/App.css",
-            "src/index.js",
-            "src/App.js",
-            "src/index.css",
-            "src/app/layout.jsx",
-            "src/app/page.jsx",
-            "src/app/globals.css",
-            ".gitignore",
-            "README.md",
-        ]
-
-    def _existing_known_template_files(self, workspace_path: str) -> List[str]:
-        from core.workspace_tools import _resolve_workspace_path
-
-        existing: List[str] = []
-        for path in self._known_frontend_template_paths():
-            full_path = _resolve_workspace_path(workspace_path, path)
-            if not full_path or not os.path.isfile(full_path):
-                continue
-            existing.append(path)
-        return existing
-
-    def _delete_template_file_direct(self, workspace_path: str, relative_path: str) -> ToolResult:
-        from core.workspace_tools import _resolve_workspace_path
-
-        full_path = _resolve_workspace_path(workspace_path, relative_path)
-        if not full_path:
-            return ToolResult(success=False, tool_name="delete_file", error="Path escapes the workspace")
-        if not os.path.isfile(full_path):
-            return ToolResult(success=False, tool_name="delete_file", error=f"File not found: {relative_path}")
-
-        self._create_snapshot(full_path, relative_path)
-        try:
-            os.remove(full_path)
-        except OSError as exc:
-            return ToolResult(success=False, tool_name="delete_file", error=str(exc))
-
-        verified = self._verify_file_deleted(workspace_path, relative_path)
-        data = {
-            "path": relative_path,
-            "deleted": bool(verified.get("verified")),
-            "verified": bool(verified.get("verified")),
-        }
-        if not verified.get("verified"):
-            return ToolResult(
-                success=False,
-                tool_name="delete_file",
-                data=data,
-                error=verified.get("error", f"Verification failed for {relative_path}"),
-            )
-        self._log_action("delete_file", relative_path, True)
-        print(f"[WORKSPACE] Deleted: {relative_path}")
-        return ToolResult(success=True, tool_name="delete_file", data=data)
-
-    def _run_simple_react_template(self, workspace_path: str) -> Generator[Dict, None, None]:
-        from core.workspace_tools import _resolve_workspace_path
-
-        total_token_stats = {
-            'prompt_tokens': 0,
-            'completion_tokens': 0,
-            'total': 0,
-            'context_size': self._active_context_size,
-        }
-        list_args = {'path': '.'}
-        yield runtime_event('tool_call', name='list_files', args=list_args)
-        listing = self.execute_tool('list_files', list_args, workspace_path)
-        yield runtime_event('tool_result', result={
-            'success': listing.success,
-            'tool_name': listing.tool_name,
-            'data': listing.data,
-            'error': listing.error,
-            'write_blocked': False,
-        })
-
-        package_path = _resolve_workspace_path(workspace_path, "package.json")
-        package_exists = bool(package_path and os.path.exists(package_path))
-        variant = "vite"
-
-        if package_exists:
-            try:
-                with open(package_path, "r", encoding="utf-8", errors="replace") as handle:
-                    package_data = json.load(handle)
-                deps = {}
-                for key in ("dependencies", "devDependencies"):
-                    value = package_data.get(key, {}) if isinstance(package_data, dict) else {}
-                    if isinstance(value, dict):
-                        deps.update(value)
-                if "react-scripts" in deps:
-                    variant = "cra"
-                elif not any(name in deps for name in ("react", "react-dom", "vite", "@vitejs/plugin-react")):
-                    text = (
-                        "Je n'ai pas créé le template React automatiquement parce que `package.json` existe "
-                        "mais ne ressemble pas à un projet React.\n\n"
-                        "Demande explicitement une mise à jour/écrasement si tu veux que JoyBoy le convertisse."
-                    )
-                    yield runtime_event('content', text=text, token_stats=total_token_stats)
-                    yield runtime_event('done', full_response=text, token_stats=total_token_stats)
-                    return
-            except Exception as exc:
-                text = f"Je n'ai pas créé le template React: impossible de lire `package.json` ({exc})."
-                yield runtime_event('content', text=text, token_stats=total_token_stats)
-                yield runtime_event('done', full_response=text, token_stats=total_token_stats)
-                return
-
-        files = self._react_template_files(
-            workspace_path,
-            variant=variant,
-            include_package=not package_exists,
-        )
-        existing = []
-        pending_files: Dict[str, str] = {}
-        for path in files:
-            full_path = _resolve_workspace_path(workspace_path, path)
-            if full_path and os.path.exists(full_path):
-                existing.append(path)
-            else:
-                pending_files[path] = files[path]
-
-        if not pending_files:
-            text = (
-                "Le template React est déjà présent, je n'ai rien écrasé.\n\n"
-                "Fichiers trouvés:\n"
-                + "\n".join(f"- {path}" for path in existing)
-            )
-            yield runtime_event('content', text=text, token_stats=total_token_stats)
-            yield runtime_event('done', full_response=text, token_stats=total_token_stats)
-            return
-
-        args = {
-            'files': [{'path': path, 'content': content} for path, content in pending_files.items()],
-            'overwrite_existing': False,
-        }
-        yield runtime_event('tool_call', name='write_files', args=args)
-        result = self.execute_tool('write_files', args, workspace_path)
-        yield runtime_event('tool_result', result={
-            'success': result.success,
-            'tool_name': result.tool_name,
-            'data': result.data,
-            'error': result.error,
-            'write_blocked': self.write_blocked,
-        })
-        if self.write_blocked:
-            self.write_blocked = False
-        if not result.success:
-            text = f"Template React interrompu: {result.error or 'erreur inconnue'}."
-            yield runtime_event('content', text=text, token_stats=total_token_stats)
-            yield runtime_event('done', full_response=text, token_stats=total_token_stats)
-            return
-
-        created = [item.get('path') for item in result.data.get('files', []) if item.get('path')]
-        command = "npm start" if variant == "cra" else "npm run dev"
-        variant_label = "compatible Create React App" if variant == "cra" else "Vite"
-        preserved = ("\n\nFichiers déjà présents, laissés intacts:\n" + "\n".join(f"- {path}" for path in existing)) if existing else ""
-
-        text = (
-            f"Template React {variant_label} prêt sans appel LLM.\n\n"
-            "Fichiers ajoutés:\n"
-            + "\n".join(f"- {path}" for path in created)
-            + preserved
-            + "\n\nCommandes:\n"
-            f"```bash\nnpm install\n{command}\n```"
-        )
-        yield runtime_event('content', text=text, token_stats=total_token_stats)
-        yield runtime_event('done', full_response=text, token_stats=total_token_stats)
-
-    def _run_simple_next_template(self, workspace_path: str, replace_existing: bool = False) -> Generator[Dict, None, None]:
-        from core.workspace_tools import _resolve_workspace_path
-
-        total_token_stats = {
-            'prompt_tokens': 0,
-            'completion_tokens': 0,
-            'total': 0,
-            'context_size': self._active_context_size,
-        }
-        list_args = {'path': '.'}
-        yield runtime_event('tool_call', name='list_files', args=list_args)
-        listing = self.execute_tool('list_files', list_args, workspace_path)
-        yield runtime_event('tool_result', result={
-            'success': listing.success,
-            'tool_name': listing.tool_name,
-            'data': listing.data,
-            'error': listing.error,
-            'write_blocked': False,
-        })
-
-        deleted = []
-        if replace_existing:
-            for path in self._existing_known_template_files(workspace_path):
-                yield runtime_event('tool_call', name='delete_file', args={'path': path})
-                result = self._delete_template_file_direct(workspace_path, path)
-                deleted.append({
-                    "path": path,
-                    "success": result.success,
-                    "error": result.error,
-                })
-                yield runtime_event('tool_result', result={
-                    'success': result.success,
-                    'tool_name': 'delete_file',
-                    'data': result.data,
-                    'error': result.error,
-                    'write_blocked': False,
-                })
-
-        files = self._next_template_files(workspace_path)
-        existing = []
-        pending_files: Dict[str, str] = {}
-        for path, content in files.items():
-            full_path = _resolve_workspace_path(workspace_path, path)
-            if full_path and os.path.exists(full_path):
-                existing.append(path)
-            else:
-                pending_files[path] = content
-
-        if existing and not replace_existing:
-            text = (
-                "Je n'ai pas écrasé les fichiers existants.\n\n"
-                "Demande explicitement de remplacer le template si tu veux convertir ce dossier en Next.js.\n\n"
-                "Conflits:\n"
-                + "\n".join(f"- {path}" for path in existing)
-            )
-            yield runtime_event('content', text=text, token_stats=total_token_stats)
-            yield runtime_event('done', full_response=text, token_stats=total_token_stats)
-            return
-
-        args = {
-            'files': [{'path': path, 'content': content} for path, content in pending_files.items()],
-            'overwrite_existing': False,
-        }
-        yield runtime_event('tool_call', name='write_files', args=args)
-        result = self.execute_tool('write_files', args, workspace_path)
-        yield runtime_event('tool_result', result={
-            'success': result.success,
-            'tool_name': result.tool_name,
-            'data': result.data,
-            'error': result.error,
-            'write_blocked': self.write_blocked,
-        })
-        if self.write_blocked:
-            self.write_blocked = False
-        if not result.success:
-            text = f"Template Next.js interrompu: {result.error or 'erreur inconnue'}."
-            yield runtime_event('content', text=text, token_stats=total_token_stats)
-            yield runtime_event('done', full_response=text, token_stats=total_token_stats)
-            return
-
-        created = [item.get('path') for item in result.data.get('files', []) if item.get('path')]
-        deleted_ok = [item['path'] for item in deleted if item.get('success')]
-        deleted_text = ("\n\nFichiers de template retirés:\n" + "\n".join(f"- {path}" for path in deleted_ok)) if deleted_ok else ""
-        text = (
-            "Template Next.js prêt sans appel LLM.\n\n"
-            "Fichiers ajoutés:\n"
-            + "\n".join(f"- {path}" for path in created)
-            + deleted_text
-            + "\n\nCommandes:\n"
-            "```bash\nnpm install\nnpm run dev\n```"
-        )
-        yield runtime_event('content', text=text, token_stats=total_token_stats)
-        yield runtime_event('done', full_response=text, token_stats=total_token_stats)
 
     def _build_repo_brief(self, workspace_path: str) -> tuple[str, List[Dict]]:
         """Build a bounded repo brief and emit normal tool events for the UI."""
@@ -3335,11 +2544,13 @@ Les fichiers principaux sont dans `src/app/`.
         )
         skill_index = self._build_skill_index_prompt()
         deferred_tools = self._build_deferred_tools_prompt()
+        host_os = platform.system() or os.name
         return f"""You are JoyBoy Terminal, an expert coding agent working inside a local project folder.
 
 Workspace name: {project_name}
 Workspace path visible to you: /workspace
 Host workspace path: hidden by JoyBoy runtime; do not mention local absolute paths unless the user asks.
+Host OS: {host_os}. The bash tool runs through the host default shell in the workspace; on Windows, use PowerShell/cmd-compatible commands unless a POSIX tool is confirmed available.
 {language_rule}
 Core contract:
 1. Use tools for real work. Do not pretend that files were created, edited, installed, or tested.

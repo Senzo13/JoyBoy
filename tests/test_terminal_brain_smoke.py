@@ -69,62 +69,6 @@ class TerminalBrainSmokeTests(unittest.TestCase):
         self.assertIn("coupé avant de relancer", text)
         self.assertIn("list_files", text)
 
-    def test_simple_react_template_fast_path_avoids_model_tokens(self):
-        brain = TerminalBrain()
-
-        with tempfile.TemporaryDirectory() as tmp:
-            events = list(brain.run_agentic_loop(
-                "Ok créer un template react simple dedans",
-                tmp,
-                model="openai:gpt-4o-mini",
-            ))
-
-            self.assertTrue((Path(tmp) / "package.json").exists())
-            self.assertTrue((Path(tmp) / "src" / "App.jsx").exists())
-            self.assertTrue((Path(tmp) / "src" / "main.jsx").exists())
-            self.assertFalse(any(event.get("type") == "thinking" for event in events))
-            done = [event for event in events if event.get("type") == "done"][-1]
-            self.assertEqual(done.get("token_stats", {}).get("total"), 0)
-            self.assertIn("sans appel LLM", done.get("full_response", ""))
-
-    def test_simple_react_template_fast_path_accepts_coder_phrase(self):
-        brain = TerminalBrain()
-
-        with tempfile.TemporaryDirectory() as tmp:
-            events = list(brain.run_agentic_loop(
-                "nan tkt tu vas juste me coder un template react simple propre",
-                tmp,
-                model="openai:gpt-5.4",
-            ))
-
-            self.assertTrue((Path(tmp) / "package.json").exists())
-            self.assertTrue((Path(tmp) / "src" / "App.jsx").exists())
-            self.assertFalse(any(event.get("type") == "thinking" for event in events))
-
-    def test_next_template_replace_fast_path_avoids_model_tokens(self):
-        brain = TerminalBrain()
-
-        with tempfile.TemporaryDirectory() as tmp:
-            list(brain.run_agentic_loop(
-                "ok bref créer moi un putain de template react",
-                tmp,
-                model="qwen3.5:2b",
-            ))
-            events = list(brain.run_agentic_loop(
-                "delete le template react, je veux un template next js",
-                tmp,
-                model="qwen3.5:2b",
-            ))
-
-            self.assertTrue((Path(tmp) / "package.json").exists())
-            self.assertTrue((Path(tmp) / "src" / "app" / "page.jsx").exists())
-            self.assertTrue((Path(tmp) / "src" / "app" / "layout.jsx").exists())
-            self.assertFalse((Path(tmp) / "src" / "App.jsx").exists())
-            self.assertFalse(any(event.get("type") == "thinking" for event in events))
-            done = [event for event in events if event.get("type") == "done"][-1]
-            self.assertEqual(done.get("token_stats", {}).get("total"), 0)
-            self.assertIn("Template Next.js prêt sans appel LLM", done.get("full_response", ""))
-
     def test_dangling_tool_calls_are_patched_before_cloud_model_call(self):
         brain = TerminalBrain()
         messages = [
@@ -184,6 +128,24 @@ class TerminalBrainSmokeTests(unittest.TestCase):
         ]
 
         self.assertEqual(patched_tool_ids.count("call_stale"), 2)
+
+    def test_terminal_brain_full_access_allows_delete_file_tool(self):
+        brain = TerminalBrain()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "notes.txt"
+            target.write_text("delete me\n", encoding="utf-8")
+            brain.current_intent = "write"
+
+            blocked = brain.execute_tool("delete_file", {"path": "notes.txt"}, tmp)
+            self.assertFalse(blocked.success)
+            self.assertIn("full access", blocked.error)
+
+            brain.permission_mode = "full_access"
+            deleted = brain.execute_tool("delete_file", {"path": "notes.txt"}, tmp)
+
+            self.assertTrue(deleted.success)
+            self.assertFalse(target.exists())
 
     def test_casual_greeting_fast_path_avoids_agentic_tool_loop(self):
         brain = TerminalBrain()

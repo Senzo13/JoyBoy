@@ -834,6 +834,84 @@ function getTerminalTextModelForRequest() {
     return terminalToolModel || userSettings?.terminalModel || userSettings?.chatModel || 'qwen3.5:2b';
 }
 
+const TERMINAL_PERMISSION_MODES = new Set(['default', 'full_access']);
+
+function normalizeTerminalPermissionMode(mode) {
+    const normalized = String(mode || 'default').trim().toLowerCase().replace('-', '_');
+    return TERMINAL_PERMISSION_MODES.has(normalized) ? normalized : 'default';
+}
+
+function getTerminalPermissionMode() {
+    return normalizeTerminalPermissionMode(userSettings?.terminalPermissionMode);
+}
+
+function getTerminalPermissionLabel(mode = getTerminalPermissionMode()) {
+    return normalizeTerminalPermissionMode(mode) === 'full_access'
+        ? terminalT('terminal.permissions.fullAccess', 'Accès complet')
+        : terminalT('terminal.permissions.default', 'Autorisations par défaut');
+}
+
+function updateTerminalPermissionButton() {
+    const mode = getTerminalPermissionMode();
+    const picker = document.getElementById('terminal-permission-picker');
+    const button = document.getElementById('terminal-permission-btn');
+    const label = document.getElementById('terminal-permission-label');
+    const defaultLabel = document.getElementById('terminal-permission-default-label');
+    const fullLabel = document.getElementById('terminal-permission-full-label');
+
+    if (picker) picker.dataset.mode = mode;
+    if (button) {
+        button.setAttribute('aria-expanded', picker?.classList.contains('open') ? 'true' : 'false');
+        button.setAttribute('title', getTerminalPermissionLabel(mode));
+        button.setAttribute('aria-label', terminalT('terminal.permissions.label', 'Autorisations'));
+    }
+    if (label) label.textContent = getTerminalPermissionLabel(mode);
+    if (defaultLabel) defaultLabel.textContent = terminalT('terminal.permissions.default', 'Autorisations par défaut');
+    if (fullLabel) fullLabel.textContent = terminalT('terminal.permissions.fullAccess', 'Accès complet');
+
+    document.querySelectorAll('.terminal-permission-option').forEach(option => {
+        const optionMode = normalizeTerminalPermissionMode(option.dataset.permissionMode);
+        option.setAttribute('aria-checked', optionMode === mode ? 'true' : 'false');
+    });
+}
+
+function closeTerminalPermissionMenu() {
+    const picker = document.getElementById('terminal-permission-picker');
+    const button = document.getElementById('terminal-permission-btn');
+    if (picker) picker.classList.remove('open');
+    if (button) button.setAttribute('aria-expanded', 'false');
+    document.removeEventListener('click', closeTerminalPermissionMenuOnOutsideClick);
+}
+
+function closeTerminalPermissionMenuOnOutsideClick(event) {
+    const picker = document.getElementById('terminal-permission-picker');
+    if (!picker || picker.contains(event.target)) return;
+    closeTerminalPermissionMenu();
+}
+
+function toggleTerminalPermissionMenu(event) {
+    if (event?.stopPropagation) event.stopPropagation();
+    const picker = document.getElementById('terminal-permission-picker');
+    if (!picker) return;
+
+    const isOpen = picker.classList.toggle('open');
+    const button = document.getElementById('terminal-permission-btn');
+    if (button) button.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+    if (isOpen) {
+        setTimeout(() => document.addEventListener('click', closeTerminalPermissionMenuOnOutsideClick), 0);
+    } else {
+        document.removeEventListener('click', closeTerminalPermissionMenuOnOutsideClick);
+    }
+}
+
+function selectTerminalPermissionMode(mode, event) {
+    if (event?.stopPropagation) event.stopPropagation();
+    userSettings.terminalPermissionMode = normalizeTerminalPermissionMode(mode);
+    if (typeof saveSettings === 'function') saveSettings();
+    updateTerminalPermissionButton();
+    closeTerminalPermissionMenu();
+}
+
 // ===== TERMINAL INPUT LOCK =====
 
 /**
@@ -1056,10 +1134,17 @@ function setTerminalBodyState(active, workspace = null) {
     if (typeof updateModelPickerDisplay === 'function') {
         updateModelPickerDisplay();
     }
+
+    updateTerminalPermissionButton();
 }
 
 window.addEventListener('joyboy:locale-changed', () => {
     setTerminalBodyState(terminalMode, terminalWorkspace);
+    updateTerminalPermissionButton();
+});
+
+document.addEventListener('DOMContentLoaded', () => {
+    updateTerminalPermissionButton();
 });
 
 function applyTerminalChatState(record = null) {
@@ -1707,7 +1792,8 @@ async function streamTerminalChat(message, isAutoContinue = false) {
                 workspace: terminalWorkspace,
                 chatModel: modelToUse,
                 contextSize: effectiveContextSize,
-                reasoningEffort
+                reasoningEffort,
+                permissionMode: getTerminalPermissionMode()
             }),
             signal: controller.signal
         });

@@ -77,6 +77,7 @@ def terminal_chat():
     chat_model = data.get('chatModel', 'qwen3.5:2b')
     context_size = data.get('contextSize', 8192)  # Plus grand pour le code
     reasoning_effort = data.get('reasoningEffort')
+    permission_mode = data.get('permissionMode') or data.get('permission_mode') or 'default'
     chat_id = data.get('chatId') or data.get('conversation_id')
 
     if not message:
@@ -148,6 +149,7 @@ def terminal_chat():
 
     print(f"\n{'='*60}")
     print(f"[TERMINAL] Mode: {workspace_name} | Model: {chat_model}")
+    print(f"[TERMINAL] Permissions: {permission_mode}")
     print(f"[TERMINAL] Message: {message[:100]}..." + (" [+IMAGE]" if has_image else ""))
     print(f"{'='*60}\n")
 
@@ -196,6 +198,7 @@ def terminal_chat():
             history=brain_history,
             context_size=context_size,
             reasoning_effort=reasoning_effort,
+            permission_mode=permission_mode,
             job_id=terminal_job_id,
         ):
             if job_manager and terminal_job_id and job_manager.is_cancel_requested(terminal_job_id):
@@ -207,7 +210,7 @@ def terminal_chat():
 
             # Mapper les events vers le format attendu par le frontend
             if event_type == 'intent':
-                yield f"data: {json.dumps({'intent': event['intent'], 'read_only': event['read_only'], 'autonomous': event.get('autonomous', False)})}\n\n"
+                yield f"data: {json.dumps({'intent': event['intent'], 'read_only': event['read_only'], 'autonomous': event.get('autonomous', False), 'permission_mode': event.get('permission_mode')})}\n\n"
 
             elif event_type == 'warning':
                 print(f"[TERMINAL] Warning: {event.get('message', '')}")

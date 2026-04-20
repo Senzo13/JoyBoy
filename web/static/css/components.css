@@ -708,6 +708,127 @@
   transform: rotate(180deg);
 }
 
+.terminal-permission-picker {
+  display: none;
+  position: relative;
+  flex-shrink: 0;
+  z-index: 12;
+}
+
+body.terminal-mode .terminal-permission-picker {
+  display: flex;
+}
+
+.terminal-permission-btn {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  color: #d6d9e3;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.terminal-permission-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.14);
+  color: #fff;
+}
+
+.terminal-permission-btn svg {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+}
+
+.terminal-permission-btn .arrow {
+  width: 12px;
+  height: 12px;
+  transition: transform 0.15s ease;
+}
+
+.terminal-permission-picker.open .terminal-permission-btn .arrow {
+  transform: rotate(180deg);
+}
+
+.terminal-permission-menu {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  min-width: 230px;
+  padding: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background: #101014;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.42);
+  display: none;
+}
+
+.terminal-permission-picker.open .terminal-permission-menu {
+  display: block;
+}
+
+.terminal-permission-option {
+  width: 100%;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #d6d9e3;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+}
+
+.terminal-permission-option:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+}
+
+.terminal-permission-option[aria-checked="true"] {
+  background: rgba(59, 130, 246, 0.14);
+  color: #dbeafe;
+}
+
+.terminal-permission-option svg {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+}
+
+.terminal-permission-picker[data-mode="full_access"] .terminal-permission-btn {
+  border-color: rgba(248, 113, 113, 0.28);
+  color: #fecaca;
+}
+
+@media (max-width: 640px) {
+  .terminal-permission-btn {
+    width: 38px;
+    padding: 0;
+    justify-content: center;
+  }
+
+  .terminal-permission-btn span {
+    display: none;
+  }
+
+  .terminal-permission-menu {
+    right: -44px;
+  }
+}
+
 .model-picker-popup {
   position: absolute;
   bottom: calc(100% + 8px);

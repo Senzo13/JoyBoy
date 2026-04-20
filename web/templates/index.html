@@ -2126,6 +2126,23 @@
                         {% endfor %}
                     </div>
                 </div>
+                <div class="terminal-permission-picker" id="terminal-permission-picker">
+                    <button type="button" class="terminal-permission-btn" id="terminal-permission-btn" onclick="toggleTerminalPermissionMenu(event)" aria-haspopup="menu" aria-expanded="false">
+                        <i data-lucide="shield"></i>
+                        <span id="terminal-permission-label">Autorisations par défaut</span>
+                        <i data-lucide="chevron-down" class="arrow"></i>
+                    </button>
+                    <div class="terminal-permission-menu" role="menu" aria-labelledby="terminal-permission-btn">
+                        <button type="button" class="terminal-permission-option" data-permission-mode="default" onclick="selectTerminalPermissionMode('default', event)" role="menuitemradio" aria-checked="true">
+                            <i data-lucide="shield"></i>
+                            <span id="terminal-permission-default-label">Autorisations par défaut</span>
+                        </button>
+                        <button type="button" class="terminal-permission-option" data-permission-mode="full_access" onclick="selectTerminalPermissionMode('full_access', event)" role="menuitemradio" aria-checked="false">
+                            <i data-lucide="shield-alert"></i>
+                            <span id="terminal-permission-full-label">Accès complet</span>
+                        </button>
+                    </div>
+                </div>
                 <button class="video-btn" id="chat-video-btn" onclick="handleVideoClick()" data-i18n-tooltip="composer.tooltips.video">
                     <i data-lucide="clapperboard"></i>
                     <span class="video-btn-label">Vidéo</span>

@@ -108,6 +108,21 @@ class TerminalToolRegistryTests(unittest.TestCase):
         self.assertFalse(decision.allowed)
         self.assertTrue(decision.requires_confirmation)
 
+    def test_permission_full_access_allows_workspace_destructive_shell_command(self):
+        registry = build_default_terminal_tool_registry(LEGACY_TOOLS)
+        engine = PermissionEngine(registry)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            decision = engine.check(
+                "bash",
+                {"command": "git reset --hard HEAD"},
+                tmp,
+                permission_mode="full_access",
+            )
+
+        self.assertTrue(decision.allowed)
+        self.assertEqual(decision.mode, "full_access")
+
     def test_permission_blocks_recursive_delete(self):
         registry = build_default_terminal_tool_registry(LEGACY_TOOLS)
         engine = PermissionEngine(registry)
@@ -128,6 +143,36 @@ class TerminalToolRegistryTests(unittest.TestCase):
 
         self.assertFalse(decision.allowed)
         self.assertEqual(decision.risk, ToolRisk.DESTRUCTIVE)
+        self.assertTrue(decision.requires_confirmation)
+
+    def test_permission_full_access_allows_destructive_tool(self):
+        registry = build_default_terminal_tool_registry(LEGACY_TOOLS)
+        engine = PermissionEngine(registry)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            decision = engine.check(
+                "delete_file",
+                {"path": "notes.txt"},
+                tmp,
+                permission_mode="full_access",
+            )
+
+        self.assertTrue(decision.allowed)
+        self.assertEqual(decision.risk, ToolRisk.DESTRUCTIVE)
+
+    def test_permission_full_access_still_blocks_critical_system_command(self):
+        registry = build_default_terminal_tool_registry(LEGACY_TOOLS)
+        engine = PermissionEngine(registry)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            decision = engine.check(
+                "bash",
+                {"command": "shutdown /s /t 0"},
+                tmp,
+                permission_mode="full_access",
+            )
+
+        self.assertFalse(decision.allowed)
         self.assertTrue(decision.requires_confirmation)
 
     def test_permission_blocks_unknown_tool(self):
