@@ -1082,6 +1082,7 @@ class TerminalBrain:
                 tools_for_model = [] if force_final else self.tool_registry.ollama_tools(tool_names_for_turn)
                 messages = self._compact_loop_messages(messages, context_size=self._active_context_size)
                 messages = self._inject_todo_reminder(messages)
+                messages = self._patch_dangling_tool_messages(messages)
 
                 if not autonomous and not force_final and iteration > 1:
                     estimated_prompt_tokens = self._estimate_prompt_tokens(messages, tools_for_model)
@@ -1147,10 +1148,19 @@ class TerminalBrain:
                     # Convertir en dict pour l'historique
                     message_dict = {'role': 'assistant', 'content': content}
                     if tool_calls:
-                        message_dict['tool_calls'] = [
-                            {'type': 'function', 'function': {'name': tc.function.name, 'arguments': tc.function.arguments}}
-                            for tc in tool_calls
-                        ]
+                        normalised_tool_calls = []
+                        for index, tc in enumerate(tool_calls):
+                            call = {
+                                'type': 'function',
+                                'function': {'name': tc.function.name, 'arguments': tc.function.arguments},
+                            }
+                            tool_call_id = getattr(tc, "id", None)
+                            if tool_call_id:
+                                call['id'] = tool_call_id
+                            elif use_cloud_model:
+                                call['id'] = f"call_{index}"
+                            normalised_tool_calls.append(call)
+                        message_dict['tool_calls'] = normalised_tool_calls
                 else:
                     # Dict response
                     msg = response.get('message', {})
@@ -1331,7 +1341,10 @@ class TerminalBrain:
                             f"[TERMINAL GUARDRAIL] {guard_reason}. "
                             "Stop repetitive tools and produce the final synthesis now."
                         )
-                        messages.append({"role": "tool", "tool_name": tool_name, "content": guard_text})
+                        guard_message = {"role": "tool", "tool_name": tool_name, "content": guard_text}
+                        if tool_call_id:
+                            guard_message["tool_call_id"] = tool_call_id
+                        messages.append(guard_message)
                         if guard_hits >= 2:
                             final_text = self._guardrail_fallback_answer(initial_message, executed_tools)
                             full_response += final_text
@@ -1538,6 +1551,59 @@ class TerminalBrain:
             compact_calls.append(call_dict)
         return compact_calls
 
+    def _patch_dangling_tool_messages(self, messages: List[Dict]) -> List[Dict]:
+        """Insert synthetic tool outputs for assistant tool calls missing results.
+
+        Cloud providers reject histories where an assistant function_call has no
+        matching function_call_output/tool message. DeerFlow solves this with a
+        dangling-tool middleware; JoyBoy keeps the same invariant in its simple
+        dict-based loop.
+        """
+        if not messages:
+            return messages
+
+        if not any(isinstance(message, dict) and message.get("role") == "assistant" and message.get("tool_calls") for message in messages):
+            return messages
+
+        patched: List[Dict] = []
+        patched_ids = set()
+        patch_count = 0
+        for index, message in enumerate(messages):
+            patched.append(message)
+            if not isinstance(message, dict) or message.get("role") != "assistant":
+                continue
+            following_tool_ids = set()
+            for later in messages[index + 1:]:
+                if not isinstance(later, dict):
+                    continue
+                later_role = later.get("role")
+                if later_role == "tool" and later.get("tool_call_id"):
+                    following_tool_ids.add(str(later.get("tool_call_id") or ""))
+                    continue
+                if later_role in {"assistant", "user", "system"}:
+                    break
+            for call in message.get("tool_calls") or []:
+                call_id = self._tool_call_id(call)
+                if not call_id or call_id in following_tool_ids or call_id in patched_ids:
+                    continue
+                tool_name = self._tool_call_name(call) or "tool"
+                patched.append({
+                    "role": "tool",
+                    "tool_name": tool_name,
+                    "tool_call_id": call_id,
+                    "content": (
+                        "[TERMINAL GUARDRAIL] Tool call did not return an output "
+                        "before the next model call. Treat it as failed and continue "
+                        "from the available context."
+                    ),
+                })
+                patched_ids.add(call_id)
+                patch_count += 1
+
+        if patch_count:
+            print(f"[BRAIN] Patched {patch_count} dangling tool call output(s)")
+        return patched
+
     def _limit_delegate_subagent_calls(self, tool_calls: Any) -> tuple[List[Any], int]:
         kept: List[Any] = []
         delegate_count = 0
@@ -1561,6 +1627,14 @@ class TerminalBrain:
             if isinstance(function, dict):
                 return str(function.get("name") or "")
             return str(call.get("name") or "")
+        return ""
+
+    @staticmethod
+    def _tool_call_id(call: Any) -> str:
+        if hasattr(call, "id"):
+            return str(getattr(call, "id", "") or "")
+        if isinstance(call, dict):
+            return str(call.get("id") or "")
         return ""
 
     @staticmethod
@@ -2060,7 +2134,7 @@ class TerminalBrain:
         wants_react = "react" in msg
         wants_template = any(word in msg for word in ("template", "starter", "boilerplate", "projet", "app"))
         wants_create = (
-            any(word in msg for word in ("cree", "creer", "create", "mets", "mettre", "genere", "make"))
+            any(word in msg for word in ("cree", "creer", "create", "mets", "mettre", "genere", "make", "code", "coder", "fais", "fait"))
             or re.search(r"\bcr\s*er\b", msg) is not None
         )
         simple_scope = (
@@ -2540,7 +2614,7 @@ Les fichiers principaux sont dans `src/`.
         preserved = ("\n\nFichiers déjà présents, laissés intacts:\n" + "\n".join(f"- {path}" for path in existing)) if existing else ""
 
         text = (
-            f"Template React {variant_label} prêt sans boucle LLM.\n\n"
+            f"Template React {variant_label} prêt sans appel LLM.\n\n"
             "Fichiers ajoutés:\n"
             + "\n".join(f"- {path}" for path in created)
             + preserved
@@ -3515,7 +3589,8 @@ You have access to filesystem, search, shell, and workspace tools. Use them to c
         # WRITE
         write_kw = ['modifie', 'modifier', 'change', 'ajoute', 'supprime', 'crée', 'créer',
                     'cree', 'creer', 'cr?er', 'écris', 'ecris', 'fix', 'corrige',
-                    'refactor', 'implémente', 'implemente', 'update', 'create', 'make']
+                    'refactor', 'implémente', 'implemente', 'update', 'create', 'make',
+                    'code', 'coder', 'fais', 'fait']
         if any(kw in msg for kw in write_kw):
             return 'write'
 

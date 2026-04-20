@@ -87,6 +87,80 @@ class TerminalBrainSmokeTests(unittest.TestCase):
             self.assertEqual(done.get("token_stats", {}).get("total"), 0)
             self.assertIn("sans appel LLM", done.get("full_response", ""))
 
+    def test_simple_react_template_fast_path_accepts_coder_phrase(self):
+        brain = TerminalBrain()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            events = list(brain.run_agentic_loop(
+                "nan tkt tu vas juste me coder un template react simple propre",
+                tmp,
+                model="openai:gpt-5.4",
+            ))
+
+            self.assertTrue((Path(tmp) / "package.json").exists())
+            self.assertTrue((Path(tmp) / "src" / "App.jsx").exists())
+            self.assertFalse(any(event.get("type") == "thinking" for event in events))
+
+    def test_dangling_tool_calls_are_patched_before_cloud_model_call(self):
+        brain = TerminalBrain()
+        messages = [
+            {"role": "system", "content": "system"},
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                    {
+                        "id": "call_missing",
+                        "type": "function",
+                        "function": {"name": "glob", "arguments": '{"pattern":"**/*"}'},
+                    },
+                    {
+                        "id": "call_done",
+                        "type": "function",
+                        "function": {"name": "search", "arguments": '{"pattern":"react"}'},
+                    },
+                ],
+            },
+            {"role": "tool", "tool_name": "search", "tool_call_id": "call_done", "content": "[RESULT search] 0"},
+        ]
+
+        patched = brain._patch_dangling_tool_messages(messages)
+        patched_tool_ids = [
+            item.get("tool_call_id")
+            for item in patched
+            if item.get("role") == "tool"
+        ]
+
+        self.assertIn("call_missing", patched_tool_ids)
+        self.assertIn("call_done", patched_tool_ids)
+
+    def test_stale_tool_message_before_assistant_does_not_close_tool_call(self):
+        brain = TerminalBrain()
+        messages = [
+            {"role": "system", "content": "system"},
+            {"role": "tool", "tool_name": "glob", "tool_call_id": "call_stale", "content": "old"},
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                    {
+                        "id": "call_stale",
+                        "type": "function",
+                        "function": {"name": "glob", "arguments": '{"pattern":"**/*"}'},
+                    },
+                ],
+            },
+        ]
+
+        patched = brain._patch_dangling_tool_messages(messages)
+        patched_tool_ids = [
+            item.get("tool_call_id")
+            for item in patched
+            if item.get("role") == "tool"
+        ]
+
+        self.assertEqual(patched_tool_ids.count("call_stale"), 2)
+
     def test_casual_greeting_fast_path_avoids_agentic_tool_loop(self):
         brain = TerminalBrain()
 
