@@ -590,13 +590,17 @@ function openAddonsHub() {
     const chatView = document.getElementById('chat-view');
     const modalView = document.getElementById('modal-view');
     const modelsView = document.getElementById('models-view');
+    const projectsView = document.getElementById('projects-view');
     if (homeView) homeView.style.display = 'none';
     if (chatView) chatView.style.display = 'none';
     if (modalView) modalView.style.display = 'none';
     if (modelsView) modelsView.style.display = 'none';
+    if (typeof hideProjectView === 'function') hideProjectView();
+    else if (projectsView) projectsView.style.display = 'none';
     addonsView.style.display = 'flex';
     document.body.classList.add('addons-mode');
     document.body.classList.remove('models-mode');
+    document.body.classList.remove('projects-mode');
     document.querySelectorAll('.sidebar-hub-btn').forEach(btn => btn.classList.remove('active'));
     document.getElementById('sidebar-addons-btn')?.classList.add('active');
 
@@ -649,13 +653,17 @@ function openModelsHub() {
     const chatView = document.getElementById('chat-view');
     const modalView = document.getElementById('modal-view');
     const addonsView = document.getElementById('addons-view');
+    const projectsView = document.getElementById('projects-view');
     if (homeView) homeView.style.display = 'none';
     if (chatView) chatView.style.display = 'none';
     if (modalView) modalView.style.display = 'none';
     if (addonsView) addonsView.style.display = 'none';
+    if (typeof hideProjectView === 'function') hideProjectView();
+    else if (projectsView) projectsView.style.display = 'none';
     modelsView.style.display = 'flex';
     document.body.classList.add('models-mode');
     document.body.classList.remove('addons-mode');
+    document.body.classList.remove('projects-mode');
     document.querySelectorAll('.sidebar-hub-btn').forEach(btn => btn.classList.remove('active'));
     document.getElementById('sidebar-models-btn')?.classList.add('active');
 

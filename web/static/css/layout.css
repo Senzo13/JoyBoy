@@ -39,7 +39,8 @@
 
 /* ===== HUB VIEWS ===== */
 #addons-view,
-#models-view {
+#models-view,
+#projects-view {
     min-height: 100vh;
     min-height: 100dvh;
     flex-direction: column;
@@ -51,7 +52,8 @@
 }
 
 #addons-view-content,
-#models-view-content {
+#models-view-content,
+#projects-view-content {
     width: min(100%, 980px);
     margin: 0 auto;
 }
@@ -61,17 +63,19 @@
 }
 
 body.addons-mode,
-body.models-mode {
+body.models-mode,
+body.projects-mode {
     background: #000;
 }
 
 body.addons-mode #stars,
-body.models-mode #stars {
+body.models-mode #stars,
+body.projects-mode #stars {
     display: none;
 }
 
 /* Decaler le contenu principal */
-#home-view, #chat-view, #addons-view, #models-view {
+#home-view, #chat-view, #addons-view, #models-view, #projects-view {
     margin-left: 260px;
     transition: margin-left 0.3s ease;
 }
@@ -79,7 +83,8 @@ body.models-mode #stars {
 body.sidebar-collapsed #home-view,
 body.sidebar-collapsed #chat-view,
 body.sidebar-collapsed #addons-view,
-body.sidebar-collapsed #models-view {
+body.sidebar-collapsed #models-view,
+body.sidebar-collapsed #projects-view {
     margin-left: 50px;
 }
 
@@ -970,14 +975,15 @@ body.cursor-active .chat-messages::-webkit-scrollbar-thumb:hover {
     }
 
     /* === VIEWS: full width === */
-    #home-view, #chat-view, #addons-view, #models-view {
+    #home-view, #chat-view, #addons-view, #models-view, #projects-view {
         margin-left: 0;
     }
 
     body.sidebar-collapsed #home-view,
     body.sidebar-collapsed #chat-view,
     body.sidebar-collapsed #addons-view,
-    body.sidebar-collapsed #models-view {
+    body.sidebar-collapsed #models-view,
+    body.sidebar-collapsed #projects-view {
         margin-left: 0;
     }
 
@@ -1013,7 +1019,8 @@ body.cursor-active .chat-messages::-webkit-scrollbar-thumb:hover {
     }
 
     #addons-view,
-    #models-view {
+    #models-view,
+    #projects-view {
         padding: 54px 16px 24px;
     }
 

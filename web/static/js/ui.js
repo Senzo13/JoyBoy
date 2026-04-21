@@ -716,6 +716,7 @@ function showHome(options = {}) {
     if (addonsView) addonsView.style.display = 'none';
     const modelsView = document.getElementById('models-view');
     if (modelsView) modelsView.style.display = 'none';
+    if (typeof hideProjectView === 'function') hideProjectView();
     document.body.classList.remove('addons-mode');
     document.body.classList.remove('models-mode');
     document.querySelectorAll('.sidebar-hub-btn').forEach(btn => btn.classList.remove('active'));
@@ -729,6 +730,7 @@ function showChat() {
     if (addonsView) addonsView.style.display = 'none';
     const modelsView = document.getElementById('models-view');
     if (modelsView) modelsView.style.display = 'none';
+    if (typeof hideProjectView === 'function') hideProjectView();
     document.body.classList.remove('addons-mode');
     document.body.classList.remove('models-mode');
     document.querySelectorAll('.sidebar-hub-btn').forEach(btn => btn.classList.remove('active'));
