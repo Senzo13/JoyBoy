@@ -1042,6 +1042,58 @@ class TerminalBrainSmokeTests(unittest.TestCase):
             "code_explorer:explore mcp:",
         )
 
+    def test_tool_call_batch_type_limit_drops_excess_repeated_tools(self):
+        brain = TerminalBrain()
+        calls = [
+            {"type": "function", "function": {"name": "read_file", "arguments": {"path": f"file_{index}.py"}}}
+            for index in range(10)
+        ]
+        calls.append({"type": "function", "function": {"name": "search", "arguments": {"pattern": "JoyBoy"}}})
+
+        kept, dropped = brain._limit_tool_calls_by_type(calls)
+
+        self.assertEqual(dropped, {"read_file": 2})
+        self.assertEqual(len(kept), 9)
+        self.assertEqual(sum(1 for call in kept if call["function"]["name"] == "read_file"), 8)
+        self.assertEqual(kept[-1]["function"]["name"], "search")
+
+    @patch("core.backends.terminal_brain.chat_with_cloud_model")
+    def test_run_loop_warns_and_executes_only_limited_tool_batch(self, mock_chat):
+        tool_calls = [
+            {
+                "id": f"call_{index}",
+                "type": "function",
+                "function": {"name": "read_file", "arguments": {"path": f"file_{index}.txt"}},
+            }
+            for index in range(10)
+        ]
+        mock_chat.side_effect = [
+            {
+                "message": {"role": "assistant", "content": "", "tool_calls": tool_calls},
+                "prompt_eval_count": 20,
+                "eval_count": 5,
+            },
+            {
+                "message": {"role": "assistant", "content": "limited and done"},
+                "prompt_eval_count": 20,
+                "eval_count": 5,
+            },
+        ]
+        brain = TerminalBrain()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            for index in range(10):
+                Path(tmp, f"file_{index}.txt").write_text(f"{index}\n", encoding="utf-8")
+            events = list(brain.run_agentic_loop("lis ces fichiers", tmp, model="openai:gpt-5.4"))
+
+        warnings = [event for event in events if event.get("type") == "loop_warning"]
+        tool_results = [event for event in events if event.get("type") == "tool_result"]
+        done = [event for event in events if event.get("type") == "done"][-1]
+
+        self.assertTrue(any(event.get("action") == "tool_batch_frequency" for event in warnings))
+        self.assertEqual(len(tool_results), 8)
+        self.assertIn("limited and done", done.get("full_response", ""))
+
     def test_terminal_memory_tools_save_and_retrieve_local_facts(self):
         old_home = os.environ.get("JOYBOY_HOME")
         with tempfile.TemporaryDirectory() as tmp:

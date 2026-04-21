@@ -512,6 +512,27 @@ DEFERRED_TOOL_NAMES = (
 DEFERRED_TOOL_MAX_RESULTS = 5
 DEFERRED_PROMPT_MAX_MCP_NAMES = 40
 MAX_DELEGATE_SUBAGENT_CALLS_PER_RESPONSE = 3
+DEFAULT_TOOL_CALL_BATCH_TYPE_LIMIT = 10
+TOOL_CALL_BATCH_TYPE_LIMITS = {
+    "list_files": 2,
+    "glob": 4,
+    "search": 4,
+    "read_file": 8,
+    "bash": 3,
+    "tool_search": 2,
+    "write_todos": 2,
+    "think": 2,
+    "web_search": 2,
+    "web_fetch": 3,
+    "load_skill": 2,
+    "remember_fact": 2,
+    "list_memory": 2,
+    "open_workspace": 1,
+    "write_files": 2,
+    "write_file": 8,
+    "edit_file": 8,
+    "delete_file": 8,
+}
 CORE_TOOL_NAMES = tuple(
     item.get("function", {}).get("name", "")
     for item in TOOLS
@@ -1313,6 +1334,20 @@ class TerminalBrain:
                             reason=(
                                 f"Dropped {dropped_subagents} excess delegate_subagent call(s); "
                                 f"limit is {MAX_DELEGATE_SUBAGENT_CALLS_PER_RESPONSE} per model response."
+                            ),
+                        )
+
+                    tool_calls, dropped_by_type = self._limit_tool_calls_by_type(tool_calls)
+                    if dropped_by_type:
+                        if isinstance(message_dict, dict) and message_dict.get('tool_calls'):
+                            message_dict['tool_calls'], _ = self._limit_tool_calls_by_type(message_dict.get('tool_calls', []))
+                        summary = ", ".join(f"{name}={count}" for name, count in sorted(dropped_by_type.items()))
+                        yield runtime_event(
+                            'loop_warning',
+                            action='tool_batch_frequency',
+                            reason=(
+                                f"Dropped excess tool calls in one model response: {summary}. "
+                                "Batch frequency limits protect the turn from no-progress loops."
                             ),
                         )
 
@@ -2261,6 +2296,23 @@ class TerminalBrain:
                     continue
             kept.append(call)
         return kept, dropped
+
+    def _limit_tool_calls_by_type(self, tool_calls: Any) -> tuple[List[Any], Dict[str, int]]:
+        kept: List[Any] = []
+        counts: Dict[str, int] = defaultdict(int)
+        dropped: Dict[str, int] = defaultdict(int)
+        for call in tool_calls or []:
+            name = self._tool_call_name(call)
+            if not name or name == "delegate_subagent":
+                kept.append(call)
+                continue
+            counts[name] += 1
+            limit = TOOL_CALL_BATCH_TYPE_LIMITS.get(name, DEFAULT_TOOL_CALL_BATCH_TYPE_LIMIT)
+            if counts[name] > limit:
+                dropped[name] += 1
+                continue
+            kept.append(call)
+        return kept, dict(dropped)
 
     def _delegate_subagent_call_key(self, call: Any) -> str:
         args = self._tool_call_args(call)
