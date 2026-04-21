@@ -18,6 +18,12 @@ from core.generation.state import (
     _prompt_embed_cache, _PROMPT_CACHE_MAX,
 )
 from core.generation.preview import make_preview_callback, _get_taesd, _get_taef1
+from core.generation.pose_prompts import (
+    POSE_PROMPTS as _POSE_PROMPTS,
+    append_negative_prompt,
+    build_human_pose_safety_additions,
+    get_pose_prompts,
+)
 from core.infra.gallery_metadata import save_gallery_metadata
 
 # Import des fonctions du module utility_ai
@@ -29,7 +35,7 @@ from core.utility_ai import enhance_prompt as enhance_prompt_with_ai, build_full
 # style_prefix remplace le "RAW photo, photorealistic" par défaut
 # style_suffix s'ajoute après le prompt utilisateur
 _TXT2IMG_STYLES = {
-    # Phone / Snapchat — nude selfie amateur, qualité téléphone, corps entier visible
+    # Phone / Snapchat — social phone-photo framing, grain, full-body visibility.
     "snapchat": (768, 1344,
         "amateur phone photo, smartphone camera, full body visible in frame",
         "casual snapshot, slightly grainy, phone camera quality, low light, natural imperfections, real amateur photo, not professional"),
@@ -139,41 +145,6 @@ _VIEW_PROMPTS = {
     'low_angle': 'low angle view, looking up, shot from below',
     'high_angle': 'high angle view, looking down, shot from above',
     'from_behind': 'rear view, back-facing viewpoint',
-}
-
-_POSE_PROMPTS = {
-    'standing_spread': (
-        'standing wide stance, feet apart, arms at sides, full body front view, balanced standing pose',
-        'sitting, lying down, kneeling, crouching, legs together, legs crossed',
-    ),
-    'legs_up': (
-        'reclined seated pose leaning back with both legs raised, knees bent outward, low angle foreshortened perspective, feet closer to viewer, looking toward the viewer, full body visible',
-        'standing, kneeling, lying flat, overhead view, top-down view, bird eye view, upside down, head at bottom, legs together, legs closed, legs down, side view',
-    ),
-    'on_all_fours': (
-        'hands and knees on the ground, quadruped support pose, neutral tabletop posture, looking toward the viewer, front view',
-        'standing, sitting, lying flat, raised legs, kneeling upright',
-    ),
-    'lying_face_up': (
-        'lying on back face up, supine position, arms spread to the sides, legs straight, full body top-down view, laying down',
-        'standing, sitting, kneeling, face down, prone, quadruped support pose',
-    ),
-    'lying_down': (
-        'lying on back face up, supine position, arms spread, full body view, laying down',
-        'standing, sitting, kneeling, face down, quadruped support pose',
-    ),
-    'lying_on_stomach': (
-        'lying face down on stomach, prone position, arms spread, head turned to side, full body view from above',
-        'standing, sitting, kneeling, face up, supine, quadruped support pose',
-    ),
-    'sitting': (
-        'sitting down, relaxed seated position, full body front view',
-        'standing, lying down, kneeling, quadruped support pose, walking',
-    ),
-    'kneeling': (
-        'kneeling on both knees, upright torso, arms at sides, full body front view, kneeling position',
-        'standing, sitting, lying down, quadruped support pose, walking',
-    ),
 }
 
 _CAPTURE_DEVICE_NEGATIVE = "camera, photo camera, camera lens, DSLR, camcorder, smartphone, phone, selfie stick, tripod, photographer"
@@ -376,13 +347,18 @@ def generate_from_text(prompt: str, model_name: str = "Automatique", enhance: bo
     if view != 'auto' and view in _VIEW_PROMPTS:
         inject_parts.append(_VIEW_PROMPTS[view])
     pose_neg = None
-    if pose != 'none' and pose in _POSE_PROMPTS:
-        pose_data = _POSE_PROMPTS[pose]
-        if isinstance(pose_data, tuple):
-            inject_parts.append(pose_data[0])
-            pose_neg = pose_data[1]
-        else:
-            inject_parts.append(pose_data)
+    pose_safety_neg = None
+    pose_positive, pose_negative = get_pose_prompts(pose)
+    if pose != 'none' and pose_positive:
+        pose_safety_prompt, pose_safety_neg = build_human_pose_safety_additions(
+            " ".join(part for part in (prompt_before_export_injections, extra) if part),
+            pose,
+        )
+        if pose_safety_prompt:
+            inject_parts.append(pose_safety_prompt)
+            print("[TEXT2IMG] Human pose safety: clothed neutral default")
+        inject_parts.append(pose_positive)
+        pose_neg = pose_negative
     if extra:
         inject_parts.append(extra)
     if inject_parts:
@@ -428,10 +404,9 @@ def generate_from_text(prompt: str, model_name: str = "Automatique", enhance: bo
                 print(f"[TEXT2IMG] Style par défaut → RAW photo neutre")
 
     # Append pose-specific negative prompt (SDXL only)
-    if pose_neg and neg:
-        neg = f"{neg}, {pose_neg}"
-    elif pose_neg and not neg and not is_flux:
-        neg = pose_neg
+    if not is_flux:
+        neg = append_negative_prompt(neg, pose_neg)
+        neg = append_negative_prompt(neg, pose_safety_neg)
 
     # The word "camera" in pose/view helpers can make diffusion models draw a
     # literal device. Default text2img should describe viewpoint, not props.

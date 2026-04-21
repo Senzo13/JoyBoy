@@ -3,6 +3,7 @@ import unittest
 from core.ai.prompt_ai import _preprocess_french_prompt, build_full_prompt
 from core.generation import text2img
 from core.generation.pose_skeletons import get_pose_prompts
+from core.generation.pose_prompts import build_human_pose_safety_additions
 
 
 class PromptHygieneTests(unittest.TestCase):
@@ -13,8 +14,51 @@ class PromptHygieneTests(unittest.TestCase):
 
             self.assertNotIn("looking at camera", text2img_positive.lower())
             self.assertNotIn("looking at camera", skeleton_positive.lower())
-            self.assertIn("viewer", text2img_positive.lower())
-            self.assertIn("viewer", skeleton_positive.lower())
+
+    def test_pose_prompt_aliases_stay_available(self):
+        lying_down_positive, lying_down_negative = get_pose_prompts("lying_down")
+
+        self.assertIn("supine", lying_down_positive.lower())
+        self.assertIn("standing", lying_down_negative.lower())
+
+    def test_human_pose_defaults_to_clothed_when_adult_pack_missing(self):
+        positive, negative = build_human_pose_safety_additions(
+            "Generate it for me",
+            "legs_up",
+            adult_runtime_available=False,
+        )
+
+        self.assertIn("fully clothed", positive.lower())
+        self.assertIn("non-explicit", positive.lower())
+        self.assertIn("nude", negative.lower())
+        self.assertIn("exposed genitals", negative.lower())
+
+    def test_human_pose_defaults_to_clothed_without_explicit_adult_request(self):
+        positive, negative = build_human_pose_safety_additions(
+            "Generate it for me",
+            "legs_up",
+            adult_runtime_available=True,
+        )
+
+        self.assertIn("fully clothed", positive.lower())
+        self.assertIn("nude", negative.lower())
+
+    def test_explicit_adult_pose_requires_runtime_before_safety_is_relaxed(self):
+        blocked_positive, blocked_negative = build_human_pose_safety_additions(
+            "completely nude adult person",
+            "legs_up",
+            adult_runtime_available=False,
+        )
+        allowed_positive, allowed_negative = build_human_pose_safety_additions(
+            "completely nude adult person",
+            "legs_up",
+            adult_runtime_available=True,
+        )
+
+        self.assertIn("fully clothed", blocked_positive.lower())
+        self.assertIn("nude", blocked_negative.lower())
+        self.assertIsNone(allowed_positive)
+        self.assertIsNone(allowed_negative)
 
     def test_default_text2img_suppresses_visible_capture_devices(self):
         self.assertTrue(

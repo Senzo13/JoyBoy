@@ -11,6 +11,11 @@ from pathlib import Path
 from PIL import Image
 import numpy as np
 
+from core.generation.pose_prompts import (
+    POSE_ALIASES as _POSE_ALIASES,
+    POSE_PROMPTS as _POSE_PROMPTS,
+)
+
 # Directory containing reference photos and cached skeletons
 _SKELETONS_DIR = Path("output/skeletons")
 
@@ -25,43 +30,6 @@ def _publish_pose_progress(phase: str, step: int = 0, message: str = ""):
         set_progress_phase(phase, step=step, total=100, message=message)
     except Exception:
         pass
-
-# ── Prompt fallback per pose (positive, negative) ──
-_POSE_PROMPTS = {
-    'standing_spread': (
-        "standing wide stance, feet apart, arms at sides, full body front view, balanced standing pose",
-        "sitting, lying down, kneeling, crouching, legs together, legs crossed",
-    ),
-    'legs_up': (
-        "reclined seated pose leaning back with both legs raised, knees bent outward, low angle foreshortened perspective, feet closer to viewer, looking toward the viewer, full body visible",
-        "standing, kneeling, lying flat, overhead view, top-down view, bird eye view, upside down, head at bottom, legs together, legs closed, legs down, side view",
-    ),
-    'on_all_fours': (
-        "hands and knees on the ground, quadruped support pose, neutral tabletop posture, looking toward the viewer, front view",
-        "standing, sitting, lying flat, raised legs, kneeling upright",
-    ),
-    'lying_face_up': (
-        "lying on back face up, supine position, arms spread to the sides, legs straight, full body top-down view, laying down",
-        "standing, sitting, kneeling, face down, prone, quadruped support pose",
-    ),
-    'lying_on_stomach': (
-        "lying face down on stomach, prone position, arms spread, head turned to side, full body view from above",
-        "standing, sitting, kneeling, face up, supine, quadruped support pose",
-    ),
-    'sitting': (
-        "sitting down, relaxed seated position, full body front view",
-        "standing, lying down, kneeling, quadruped support pose, walking",
-    ),
-    'kneeling': (
-        "kneeling on both knees, upright torso, arms at sides, full body front view, kneeling position",
-        "standing, sitting, lying down, quadruped support pose, walking",
-    ),
-}
-
-_POSE_ALIASES = {
-    'lying_down': 'lying_face_up',
-}
-
 
 def generate_pose_skeleton(pose_name, width, height):
     """Get an OpenPose skeleton image for the given pose.
