@@ -6,6 +6,7 @@ import re
 import unicodedata
 from typing import Dict, List, Optional
 
+from core.backends.terminal_request_router import should_clear_workspace
 from core.backends.terminal_tool_schemas import READ_CORE_TOOL_ORDER, SCAFFOLD_CORE_TOOL_ORDER
 
 
@@ -399,30 +400,7 @@ class TerminalIntentMixin:
 
     @staticmethod
     def _is_clear_workspace_request(message: str) -> bool:
-        msg = TerminalIntentMixin._intent_text(message)
-        clear_markers = (
-            "supprime tout", "efface tout", "delete all", "delete tout",
-            "remove all", "clear workspace", "vide le dossier", "vide tout",
-            "repart de zero", "repart de zéro", "from scratch", "remplace tout",
-            "remplacer tout", "supprime le projet", "reset le projet",
-            "supprime ce qu'il y a dans le dossier", "supprime ce qu il y a dans le dossier",
-            "supprime le contenu du dossier", "efface le contenu du dossier",
-            "delete folder contents", "delete workspace contents",
-        )
-        if any(marker in msg for marker in clear_markers):
-            return True
-
-        destructive = ("supprime", "efface", "delete", "remove", "clear", "vide")
-        contents = (
-            "contenu", "ce qu'il y a", "ce qu il y a", "ce qui est dedans",
-            "everything inside", "contents",
-        )
-        containers = ("dossier", "folder", "workspace", "repertoire", "répertoire")
-        return (
-            any(word in msg for word in destructive)
-            and any(word in msg for word in contents)
-            and any(word in msg for word in containers)
-        )
+        return should_clear_workspace(message)
 
     @staticmethod
     def _is_scaffold_write_request(message: str) -> bool:
