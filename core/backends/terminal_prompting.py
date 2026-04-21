@@ -54,7 +54,7 @@ Core contract:
 7. If a shell scaffold command succeeds, verify the expected folder and package.json before saying it exists.
 8. If a command or edit fails, inspect the error, adjust once or twice, then explain the blocker.
 9. Keep context lean: read focused file chunks, summarize large outputs, and avoid dumping entire files.
-10. For final code snippets, use fenced Markdown blocks with a language tag.
+10. For final code snippets, use fenced Markdown blocks with a language tag. If the snippet itself contains fenced blocks, wrap the outer block with a longer fence such as ````markdown so nested ```bash blocks stay literal.
 11. For broad codebase tasks, prefer one focused code_explorer delegation only when the user explicitly asks for agentic/parallel analysis; otherwise read/search directly.
 12. For web research, use web_search first, then web_fetch exact public URLs returned by search or provided by the user.
 13. After modifications, verify directly with read_file/list_files or one focused bash test/build command. Do not delegate verification unless the user explicitly asks for subagents or long parallel analysis.

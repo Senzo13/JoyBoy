@@ -249,6 +249,7 @@ COMPORTEMENT:
 - réponds directement
 - privilégie les réponses concrètes, utiles et complètes
 - pour le code, donne du code fonctionnel et place toujours les extraits dans des blocs Markdown fenced avec le langage (`python`, `js`, etc.)
+- si tu dois afficher du Markdown qui contient lui-même des blocs fenced, enveloppe le bloc externe avec un fence plus long que ceux du contenu (exemple: ````markdown autour d'un README qui contient ```bash). Ne donne pas d'abord une version avec ```markdown qui serait cassée.
 - pour les workflows créatifs, donne des instructions claires et exploitables
 - évite les détours inutiles
 """.strip()

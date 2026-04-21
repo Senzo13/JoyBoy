@@ -142,6 +142,56 @@ function buildMarkdownCodeBlock(lang, code, incomplete = false) {
     return `<div class="code-block${incomplete ? ' incomplete' : ''}"><div class="code-header"><span class="code-lang">${langLabel}</span>${copyButton}</div><pre><code>${String(code || '').trim()}</code></pre></div>`;
 }
 
+function extractFencedCodeBlocks(formatted, codeBlocks, allowIncomplete = false) {
+    const lines = String(formatted || '').split('\n');
+    const output = [];
+    let index = 0;
+
+    while (index < lines.length) {
+        const opener = lines[index].match(/^ {0,3}([`~]{3,})(.*)$/);
+        if (!opener) {
+            output.push(lines[index]);
+            index += 1;
+            continue;
+        }
+
+        const fence = opener[1];
+        const marker = fence[0];
+        const fenceLength = fence.length;
+        const info = (opener[2] || '').trim();
+        let closeIndex = -1;
+
+        for (let cursor = index + 1; cursor < lines.length; cursor += 1) {
+            const closer = lines[cursor].match(/^ {0,3}([`~]{3,})\s*$/);
+            if (closer && closer[1][0] === marker && closer[1].length >= fenceLength) {
+                closeIndex = cursor;
+                break;
+            }
+        }
+
+        if (closeIndex === -1) {
+            if (!allowIncomplete) {
+                output.push(lines[index]);
+                index += 1;
+                continue;
+            }
+            const token = `@@JOYBOYCODEBLOCK${codeBlocks.length}@@`;
+            const lang = info.split(/\s+/)[0] || '';
+            codeBlocks.push(buildMarkdownCodeBlock(lang, lines.slice(index + 1).join('\n'), true));
+            output.push(token);
+            break;
+        }
+
+        const token = `@@JOYBOYCODEBLOCK${codeBlocks.length}@@`;
+        const lang = info.split(/\s+/)[0] || '';
+        codeBlocks.push(buildMarkdownCodeBlock(lang, lines.slice(index + 1, closeIndex).join('\n')));
+        output.push(token);
+        index = closeIndex + 1;
+    }
+
+    return output.join('\n');
+}
+
 function addSkeletonMessage(prompt, userImage, hasImage, maskImage = null, chatId = (typeof currentChatId !== 'undefined' ? currentChatId : '')) {
     const messagesDiv = getChatMessages();
     const startedAt = Date.now();
@@ -514,19 +564,7 @@ function formatMarkdownPartial(text) {
 
     const codeBlocks = [];
 
-    // Code blocks complets ```lang\ncode```
-    formatted = formatted.replace(/```(\w*)\n([\s\S]*?)```/g, (match, lang, code) => {
-        const token = `@@JOYBOYCODEBLOCK${codeBlocks.length}@@`;
-        codeBlocks.push(buildMarkdownCodeBlock(lang, code));
-        return token;
-    });
-
-    // Code block en cours (pas encore fermé) - afficher en gris
-    formatted = formatted.replace(/```(\w*)\n([\s\S]*)$/g, (match, lang, code) => {
-        const token = `@@JOYBOYCODEBLOCK${codeBlocks.length}@@`;
-        codeBlocks.push(buildMarkdownCodeBlock(lang, code, true));
-        return token;
-    });
+    formatted = extractFencedCodeBlocks(formatted, codeBlocks, true);
 
     // Code inline `code`
     formatted = formatted.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
@@ -572,12 +610,7 @@ function formatMarkdown(text) {
 
     const codeBlocks = [];
 
-    // Code blocks avec langage ```lang\ncode```
-    formatted = formatted.replace(/```(\w*)\n([\s\S]*?)```/g, (match, lang, code) => {
-        const token = `@@JOYBOYCODEBLOCK${codeBlocks.length}@@`;
-        codeBlocks.push(buildMarkdownCodeBlock(lang, code));
-        return token;
-    });
+    formatted = extractFencedCodeBlocks(formatted, codeBlocks);
 
     // Code inline `code`
     formatted = formatted.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
