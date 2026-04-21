@@ -5,6 +5,7 @@
     border-radius: 8px;
     margin: 10px 0;
     overflow: hidden;
+    white-space: normal;
 }
 
 .code-header {
@@ -46,6 +47,7 @@
     overflow-x: auto;
     overflow-y: auto;
     max-height: 380px;
+    white-space: pre;
 }
 
 .code-block code {

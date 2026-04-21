@@ -398,6 +398,7 @@ function hideThinkingAnimation() {
 
 let terminalTasks = [];
 let terminalTasksElement = null;
+let terminalToolTaskSeq = 0;
 
 /**
  * Crée/affiche la barre de tâches terminal
@@ -421,34 +422,114 @@ function showTerminalTasks() {
     return terminalTasksElement;
 }
 
+function normalizeTerminalTaskStatus(status) {
+    const value = String(status || 'pending').toLowerCase();
+    if (['completed', 'complete', 'done', 'success'].includes(value)) return 'done';
+    if (['in_progress', 'running', 'active'].includes(value)) return 'running';
+    if (['blocked', 'error', 'failed'].includes(value)) return 'error';
+    return 'pending';
+}
+
+function summarizeTerminalPaths(paths, max = 4) {
+    if (!Array.isArray(paths) || paths.length === 0) return '';
+    const labels = paths
+        .map(item => (typeof item === 'string' ? item : item?.path))
+        .filter(Boolean)
+        .slice(0, max);
+    const suffix = paths.length > labels.length ? `, +${paths.length - labels.length}` : '';
+    return `${labels.join(', ')}${suffix}`;
+}
+
+function describeTerminalToolCall(action, target = '', args = {}) {
+    const normalizedArgs = args && typeof args === 'object' ? args : {};
+    const displayTarget = target || normalizedArgs.path || normalizedArgs.pattern || normalizedArgs.command || '';
+    const files = Array.isArray(normalizedArgs.files) ? normalizedArgs.files : [];
+
+    if (action === 'write_files') {
+        const fileSummary = summarizeTerminalPaths(files, 3);
+        const count = files.length ? `${files.length} ` : '';
+        return `${terminalT('terminal.taskWriteFiles', 'Écriture de fichiers')} ${count}${fileSummary ? `- ${fileSummary}` : ''}`.trim();
+    }
+    if (action === 'write_file') return `${terminalT('terminal.taskWriteFile', 'Écriture')} ${displayTarget}`.trim();
+    if (action === 'edit_file') return `${terminalT('terminal.taskEditFile', 'Modification')} ${displayTarget}`.trim();
+    if (action === 'delete_file') return `${terminalT('terminal.taskDeleteFile', 'Suppression')} ${displayTarget}`.trim();
+    if (action === 'clear_workspace') return terminalT('terminal.taskClearWorkspace', 'Nettoyage du workspace');
+    if (action === 'bash') return `${terminalT('terminal.taskRunCommand', 'Commande')} ${displayTarget}`.trim();
+    if (action === 'read_file') return `${terminalT('terminal.taskReadFile', 'Lecture')} ${displayTarget}`.trim();
+    if (action === 'list_files') return `${terminalT('terminal.taskListFiles', 'Exploration')} ${displayTarget || '.'}`.trim();
+    if (action === 'search' || action === 'glob') return `${terminalT('terminal.taskSearchFiles', 'Recherche')} ${displayTarget}`.trim();
+    if (action === 'write_todos') return terminalT('terminal.taskPlan', 'Planification');
+    if (action === 'delegate_subagent') return terminalT('terminal.taskSubagent', 'Vérification déléguée');
+    return `${action}${displayTarget ? ` ${displayTarget}` : ''}`;
+}
+
+function shouldShowTerminalToolAsTask(action) {
+    return [
+        'write_todos',
+        'list_files',
+        'read_file',
+        'search',
+        'glob',
+        'write_file',
+        'write_files',
+        'edit_file',
+        'delete_file',
+        'clear_workspace',
+        'bash',
+        'delegate_subagent'
+    ].includes(action);
+}
+
+function applyTerminalTodos(todos = []) {
+    if (!Array.isArray(todos) || todos.length === 0) return;
+
+    const todoTasks = todos
+        .map((todo, index) => ({
+            id: `todo-${todo?.id || index + 1}`,
+            label: String(todo?.content || todo?.title || '').trim(),
+            status: normalizeTerminalTaskStatus(todo?.status),
+            note: String(todo?.note || todo?.result || '').trim()
+        }))
+        .filter(task => task.label);
+
+    if (todoTasks.length === 0) return;
+
+    const toolTasks = terminalTasks.filter(task => !String(task.id).startsWith('todo-'));
+    terminalTasks = [...todoTasks, ...toolTasks];
+    showTerminalTasks();
+    renderTerminalTasks();
+}
+
 /**
  * Ajoute une tâche à la liste
  * @param {string} id - ID unique de la tâche
  * @param {string} label - Description courte
  * @param {string} status - 'pending', 'running', 'done', 'error'
  */
-function addTerminalTask(id, label, status = 'pending') {
+function addTerminalTask(id, label, status = 'pending', note = '') {
     // Créer la barre si elle n'existe pas
     showTerminalTasks();
 
     // Vérifier si la tâche existe déjà
     const existing = terminalTasks.find(t => t.id === id);
     if (existing) {
-        updateTerminalTask(id, status);
+        updateTerminalTask(id, status, note, label);
         return;
     }
 
-    terminalTasks.push({ id, label, status });
+    terminalTasks.push({ id, label, status: normalizeTerminalTaskStatus(status), note });
     renderTerminalTasks();
 }
 
 /**
  * Met à jour le status d'une tâche
  */
-function updateTerminalTask(id, status) {
+function updateTerminalTask(id, status, note, label) {
     const task = terminalTasks.find(t => t.id === id);
     if (task) {
-        task.status = status;
+        task.status = normalizeTerminalTaskStatus(status);
+        if (typeof note === 'string' && note.trim()) task.note = note.trim();
+        if (typeof label === 'string' && label.trim()) task.label = label.trim();
         renderTerminalTasks();
     }
 }
@@ -479,7 +560,16 @@ function renderTerminalTasks() {
             iconName = 'x';
             className = 'task-error';
         }
-        return `<div class="terminal-task ${className}"><i data-lucide="${iconName}" class="task-icon ${task.status === 'running' ? 'spin' : ''}"></i> ${task.label}</div>`;
+        const note = task.note ? `<div class="terminal-task-note">${escapeHtml(task.note)}</div>` : '';
+        return `
+            <div class="terminal-task ${className}">
+                <i data-lucide="${iconName}" class="task-icon ${task.status === 'running' ? 'spin' : ''}"></i>
+                <div class="terminal-task-body">
+                    <span>${escapeHtml(task.label)}</span>
+                    ${note}
+                </div>
+            </div>
+        `;
     }).join('');
     if (window.lucide) lucide.createIcons();
 
@@ -812,6 +902,7 @@ function findInstalledToolCapableModel() {
 // Variable pour le modèle terminal actif
 let terminalToolModel = null;
 let terminalInputLocked = false;
+let terminalApprovalRequest = null;
 
 function terminalUsesCloudModel(modelId) {
     return typeof isTerminalCloudModelId === 'function' && isTerminalCloudModelId(modelId);
@@ -910,6 +1001,135 @@ function selectTerminalPermissionMode(mode, event) {
     if (typeof saveSettings === 'function') saveSettings();
     updateTerminalPermissionButton();
     closeTerminalPermissionMenu();
+}
+
+function formatTerminalApprovalAction(action) {
+    const map = {
+        clear_workspace: 'ClearWorkspace',
+        delete_file: 'Delete',
+        bash: 'Bash',
+        write_file: 'Write',
+        write_files: 'WriteFiles',
+        edit_file: 'Edit',
+    };
+    return map[action] || String(action || 'Tool');
+}
+
+function summarizeTerminalApprovalArgs(args = {}) {
+    const safeArgs = {};
+    Object.entries(args || {}).forEach(([key, value]) => {
+        if (key === 'content') {
+            safeArgs[key] = terminalT('terminal.approvalLargeContent', '[contenu]');
+        } else if (key === 'files' && Array.isArray(value)) {
+            safeArgs[key] = terminalT('terminal.approvalFileCount', '{count} fichiers', { count: value.length });
+        } else if (typeof value === 'string' && value.length > 140) {
+            safeArgs[key] = `${value.slice(0, 137)}...`;
+        } else {
+            safeArgs[key] = value;
+        }
+    });
+
+    try {
+        return JSON.stringify(safeArgs);
+    } catch (_err) {
+        return '';
+    }
+}
+
+function formatTerminalApprovalCommand(request = {}) {
+    const action = request.action || request.tool_name || 'tool';
+    if (action === 'clear_workspace') {
+        return 'clear_workspace({ keep: [] })';
+    }
+    if (action === 'bash' && request.args?.command) {
+        return request.args.command;
+    }
+    const target = request.path || request.args?.path || summarizeTerminalApprovalArgs(request.args);
+    return `${action}(${target || ''})`;
+}
+
+function closeTerminalApprovalCard() {
+    document.querySelectorAll('.terminal-approval-card').forEach(card => card.remove());
+}
+
+function showTerminalApprovalCard(request = {}) {
+    closeTerminalApprovalCard();
+    terminalApprovalRequest = { ...request };
+
+    const messagesDiv = document.getElementById('chat-messages');
+    if (!messagesDiv) return;
+
+    const actionLabel = formatTerminalApprovalAction(terminalApprovalRequest.action);
+    const commandText = formatTerminalApprovalCommand(terminalApprovalRequest);
+    const reason = terminalApprovalRequest.reason || terminalApprovalRequest.permission?.reason || '';
+
+    const card = document.createElement('div');
+    card.className = 'terminal-approval-card';
+    card.innerHTML = `
+        <div class="terminal-approval-head">
+            <span class="terminal-approval-icon"><i data-lucide="shield-alert"></i></span>
+            <div>
+                <div class="terminal-approval-title">${escapeHtml(terminalT('terminal.approvalTitle', 'Autorisation requise'))}</div>
+                <div class="terminal-approval-question">${escapeHtml(terminalT('terminal.approvalQuestion', 'Autoriser JoyBoy à exécuter cette action avec accès complet ?'))}</div>
+            </div>
+        </div>
+        <div class="terminal-approval-command-label">${escapeHtml(terminalT('terminal.approvalCommandLabel', 'Action'))}</div>
+        <div class="terminal-approval-command"><span>${escapeHtml(actionLabel)}</span>${escapeHtml(commandText)}</div>
+        ${reason ? `<div class="terminal-approval-reason">${escapeHtml(reason)}</div>` : ''}
+        <div class="terminal-approval-options">
+            <button type="button" class="terminal-approval-option" data-approval-action="once">
+                <span>1.</span>
+                <strong>${escapeHtml(terminalT('terminal.approvalAllowOnce', 'Oui, cette fois'))}</strong>
+            </button>
+            <button type="button" class="terminal-approval-option terminal-approval-danger" data-approval-action="remember">
+                <span>2.</span>
+                <strong>${escapeHtml(terminalT('terminal.approvalAllowRemember', 'Oui, passer en accès complet'))}</strong>
+            </button>
+            <button type="button" class="terminal-approval-option terminal-approval-muted" data-approval-action="deny">
+                <span>3.</span>
+                <strong>${escapeHtml(terminalT('terminal.approvalDeny', 'Non, annuler'))}</strong>
+            </button>
+        </div>
+    `;
+
+    card.querySelector('[data-approval-action="once"]')?.addEventListener('click', () => approveTerminalPermission(false));
+    card.querySelector('[data-approval-action="remember"]')?.addEventListener('click', () => approveTerminalPermission(true));
+    card.querySelector('[data-approval-action="deny"]')?.addEventListener('click', denyTerminalPermission);
+
+    messagesDiv.appendChild(card);
+    if (window.lucide) lucide.createIcons();
+    scrollToBottom(true);
+}
+
+function approveTerminalPermission(remember = false) {
+    const request = terminalApprovalRequest;
+    if (!request?.message) return;
+
+    terminalApprovalRequest = null;
+    closeTerminalApprovalCard();
+
+    if (remember) {
+        userSettings.terminalPermissionMode = 'full_access';
+        if (typeof saveSettings === 'function') saveSettings();
+        updateTerminalPermissionButton();
+    }
+
+    const rerunApprovedRequest = () => {
+        if (terminalWorking || isGenerating) {
+            setTimeout(rerunApprovedRequest, 80);
+            return;
+        }
+        streamTerminalChat(request.message, true, { permissionMode: 'full_access' });
+    };
+
+    rerunApprovedRequest();
+}
+
+function denyTerminalPermission() {
+    terminalApprovalRequest = null;
+    closeTerminalApprovalCard();
+    addTerminalLine(terminalT('terminal.approvalDeniedLine', 'Action annulée.'), 'warning');
+    refocusChatInput();
 }
 
 // ===== TERMINAL INPUT LOCK =====
@@ -1731,13 +1951,18 @@ async function sendTerminalMessage(message) {
  * @param {string} message - Message à envoyer
  * @param {boolean} isAutoContinue - Si c'est un auto-continue après action workspace
  */
-async function streamTerminalChat(message, isAutoContinue = false) {
+async function streamTerminalChat(message, isAutoContinue = false, options = {}) {
     if (isGenerating && !isAutoContinue) return;
 
     isGenerating = true;
     terminalWorking = true;
     terminalInterrupted = false;
     setSendButtonsMode(true);
+
+    const permissionModeOverride = options.permissionMode
+        ? normalizeTerminalPermissionMode(options.permissionMode)
+        : null;
+    const permissionModeForRequest = permissionModeOverride || getTerminalPermissionMode();
 
     // Ajouter le message utilisateur dans le rendu chat normal (pas de skeleton).
     if (!isAutoContinue) {
@@ -1749,6 +1974,7 @@ async function streamTerminalChat(message, isAutoContinue = false) {
     let fullResponse = '';
     let outputElement = null;
     let firstContentReceived = false;
+    let approvalRequiredThisTurn = false;
 
     try {
         const controller = new AbortController();
@@ -1793,7 +2019,7 @@ async function streamTerminalChat(message, isAutoContinue = false) {
                 chatModel: modelToUse,
                 contextSize: effectiveContextSize,
                 reasoningEffort,
-                permissionMode: getTerminalPermissionMode()
+                permissionMode: permissionModeForRequest
             }),
             signal: controller.signal
         });
@@ -1906,9 +2132,12 @@ async function streamTerminalChat(message, isAutoContinue = false) {
                         taskCounter++;
                         const action = data.tool_call.action;
                         const path = data.tool_call.path || '';
+                        const args = data.tool_call.args || {};
+                        const toolTaskId = `tool-${++terminalToolTaskSeq}`;
+                        const taskLabel = describeTerminalToolCall(action, path, args);
 
                         // Stocker pour référence quand le résultat arrive (Ctrl+O)
-                        window.lastToolCall = data.tool_call;
+                        window.lastToolCall = { ...data.tool_call, taskId: toolTaskId };
 
                         console.log(`%c[TERMINAL] ● Tool call reçu: ${action} → ${path}`, 'color: #3b82f6; font-weight: bold;');
                         hideThinkingAnimation();
@@ -1920,7 +2149,10 @@ async function streamTerminalChat(message, isAutoContinue = false) {
                             console.error('[TERMINAL] addToolCall function not found!');
                         }
 
-                        showThinkingAnimation(`${action}`);
+                        if (shouldShowTerminalToolAsTask(action)) {
+                            addTerminalTask(toolTaskId, taskLabel, 'running');
+                        }
+                        showThinkingAnimation(taskLabel || action);
                         continue;
                     }
 
@@ -1943,32 +2175,66 @@ async function streamTerminalChat(message, isAutoContinue = false) {
 
                         // Erreur
                         if (!result.success) {
-                            let errorText = result.error || 'Error';
                             if (result.permission?.requires_confirmation) {
-                                errorText = `${errorText} ${apiT('terminal.permissionConfirmationRequired', '(confirmation requise)')}`;
+                                addToolResult(terminalT('terminal.approvalRequiredLine', 'Autorisation requise'), 'warning');
+                                if (window.lastToolCall?.taskId) {
+                                    updateTerminalTask(window.lastToolCall.taskId, 'error', terminalT('terminal.approvalRequiredLine', 'Autorisation requise'));
+                                }
+                                showThinkingAnimation(terminalT('terminal.approvalWaiting', 'En attente d’autorisation'));
+                                continue;
                             }
+                            const errorText = result.error || 'Error';
                             addToolResult(errorText, 'error');
+                            if (window.lastToolCall?.taskId) {
+                                updateTerminalTask(window.lastToolCall.taskId, 'error', errorText);
+                            }
                             showThinkingAnimation('Retrying');
                             continue;
                         }
 
                         // Succès - afficher un résumé compact style Claude Code
+                        if (result.action === 'write_todos' && Array.isArray(result.todos)) {
+                            applyTerminalTodos(result.todos);
+                        }
+
+                        let resultSummary = '';
                         if (result.summary) {
-                            addToolResult(result.summary, 'info');
+                            resultSummary = result.summary;
+                            addToolResult(result.summary, result.action === 'write_files' || result.action === 'clear_workspace' ? 'success' : 'info');
                         } else if (result.lines_added !== undefined || result.lines_removed !== undefined) {
                             // Format diff: "Added X lines, removed Y lines"
                             const parts = [];
                             if (result.lines_added > 0) parts.push(`Added ${result.lines_added} lines`);
                             if (result.lines_removed > 0) parts.push(`removed ${result.lines_removed} lines`);
                             if (parts.length > 0) {
-                                addToolResult(parts.join(', '), 'success');
+                                resultSummary = parts.join(', ');
+                                addToolResult(resultSummary, 'success');
                             }
                         } else if (result.lines) {
-                            addToolResult(`${result.lines} lines`, 'info');
+                            resultSummary = `${result.lines} lines`;
+                            addToolResult(resultSummary, 'info');
+                        }
+                        if (!resultSummary && Array.isArray(result.files) && result.files.length > 0) {
+                            resultSummary = summarizeTerminalPaths(result.files, 5);
+                        }
+                        if (window.lastToolCall?.taskId) {
+                            updateTerminalTask(window.lastToolCall.taskId, 'done', resultSummary);
                         }
                         // Sinon pas d'affichage (l'IA donnera la réponse à la fin)
 
                         showThinkingAnimation('Analyzing');
+                        continue;
+                    }
+
+                    // Approval required - show a JoyBoy-native card and pause.
+                    if (data.approval_required) {
+                        approvalRequiredThisTurn = true;
+                        hideThinkingAnimation();
+                        hideTerminalTasks();
+                        showTerminalApprovalCard({
+                            ...data.approval_required,
+                            message
+                        });
                         continue;
                     }
 
@@ -1995,9 +2261,12 @@ async function streamTerminalChat(message, isAutoContinue = false) {
                     // Done - Réponse finale
                     if (data.done) {
                         hideThinkingAnimation();
-                        hideTerminalTasks();  // Nettoyer les tâches
+                        if (terminalTasks.length === 0) {
+                            hideTerminalTasks();
+                        }
                         const responseTime = Date.now() - startTime;
                         const serverFinalText = (data.full_response || '').trim();
+                        const isWaitingForApproval = approvalRequiredThisTurn || Boolean(data.approval_required);
 
                         // Hide autonomous indicator
                         const autoIndicator = document.getElementById('autonomous-indicator');
@@ -2022,7 +2291,7 @@ async function streamTerminalChat(message, isAutoContinue = false) {
                         // Ollama peuvent finir avec `content=null` malgré des
                         // tokens consommés. Le backend renvoie alors un fallback
                         // durable; sinon on crée quand même une vraie bulle.
-                        if (!fullResponse.trim()) {
+                        if (!fullResponse.trim() && !isWaitingForApproval) {
                             const fallbackText = serverFinalText || terminalT('terminal.noReadableResponse', 'Le modèle local a terminé sans produire de réponse lisible. Relance avec une demande plus ciblée ou choisis un modèle terminal plus robuste.');
                             firstContentReceived = true;
                             createTerminalOutput();
@@ -2030,15 +2299,17 @@ async function streamTerminalChat(message, isAutoContinue = false) {
                             appendTerminalOutput(fallbackText);
                         }
 
-                        finalizeTerminalOutput(responseTime, data.token_stats);
+                        if (!isWaitingForApproval) {
+                            finalizeTerminalOutput(responseTime, data.token_stats);
 
-                        if (fullResponse) {
-                            chatHistory.push({ role: 'assistant', content: fullResponse });
+                            if (fullResponse) {
+                                chatHistory.push({ role: 'assistant', content: fullResponse });
+                            }
+
+                            // Sauvegarder le chat
+                            const finalHtml = getChatHtmlWithoutSkeleton();
+                            saveCurrentChatHtml('', finalHtml);
                         }
-
-                        // Sauvegarder le chat
-                        const finalHtml = getChatHtmlWithoutSkeleton();
-                        saveCurrentChatHtml('', finalHtml);
                         continue;
                     }
 

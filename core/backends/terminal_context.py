@@ -320,6 +320,30 @@ class TerminalContextMixin:
             compact_calls.append(call_dict)
         return compact_calls
 
+    def _normalise_tool_calls_for_history(self, tool_calls: Any, prefix: str = "call") -> List[Dict[str, Any]]:
+        """Return provider-neutral tool calls with stable IDs and JSON arguments."""
+        normalised: List[Dict[str, Any]] = []
+        for index, call in enumerate(tool_calls or []):
+            name = self._tool_call_name(call).strip()
+            if not name:
+                continue
+
+            args = self._tool_call_args(call)
+            call_id = self._tool_call_id(call).strip()
+            if not call_id:
+                safe_name = re.sub(r"[^a-zA-Z0-9_:-]+", "_", name).strip("_") or "tool"
+                call_id = f"{prefix}_{index}_{safe_name}"
+
+            normalised.append({
+                "id": call_id,
+                "type": "function",
+                "function": {
+                    "name": name,
+                    "arguments": json.dumps(args, ensure_ascii=False),
+                },
+            })
+        return normalised
+
     def _patch_dangling_tool_messages(self, messages: List[Dict]) -> List[Dict]:
         """Normalize assistant/tool pairs before the next model call."""
         if not messages:
@@ -387,12 +411,18 @@ class TerminalContextMixin:
             if role in {"assistant", "user", "system"}:
                 append_missing_outputs(role)
 
-            patched.append(message)
             if role == "assistant":
+                if message.get("tool_calls"):
+                    message = dict(message)
+                    message["tool_calls"] = self._normalise_tool_calls_for_history(message.get("tool_calls"))
+                patched.append(message)
                 for call in message.get("tool_calls") or []:
                     call_id = self._tool_call_id(call)
                     if call_id:
                         pending_tool_ids.add(call_id)
+                continue
+
+            patched.append(message)
 
         append_missing_outputs("the next model call")
 
@@ -468,7 +498,7 @@ class TerminalContextMixin:
         if hasattr(call, "id"):
             return str(getattr(call, "id", "") or "")
         if isinstance(call, dict):
-            return str(call.get("id") or "")
+            return str(call.get("id") or call.get("call_id") or "")
         return ""
 
     def _tool_call_args(self, call: Any) -> Dict:

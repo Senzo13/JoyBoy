@@ -127,6 +127,21 @@ function removeSkeletonMessage(chatId = (typeof currentChatId !== 'undefined' ? 
     }
 }
 
+function formatUserPromptForChat(prompt) {
+    const text = String(prompt || '').trim();
+    if (!text) return '';
+    if (typeof formatMarkdown === 'function') return formatMarkdown(text);
+    return escapeHtml(text).replace(/\n/g, '<br>');
+}
+
+function buildMarkdownCodeBlock(lang, code, incomplete = false) {
+    const langLabel = String(lang || 'code').replace(/[^\w#+.-]/g, '').toLowerCase() || 'code';
+    const copyButton = incomplete
+        ? ''
+        : '<button class="code-copy-btn" onclick="copyCodeBlock(this)">Copier</button>';
+    return `<div class="code-block${incomplete ? ' incomplete' : ''}"><div class="code-header"><span class="code-lang">${langLabel}</span>${copyButton}</div><pre><code>${String(code || '').trim()}</code></pre></div>`;
+}
+
 function addSkeletonMessage(prompt, userImage, hasImage, maskImage = null, chatId = (typeof currentChatId !== 'undefined' ? currentChatId : '')) {
     const messagesDiv = getChatMessages();
     const startedAt = Date.now();
@@ -150,7 +165,7 @@ function addSkeletonMessage(prompt, userImage, hasImage, maskImage = null, chatI
     const skeletonHtml = `
         <div class="message image-skeleton-message" data-chat-id="${chatId}" data-started-at="${startedAt}">
             <div class="user-message">
-                <div class="user-bubble">${prompt}</div>
+                <div class="user-bubble">${formatUserPromptForChat(prompt)}</div>
                 ${hasImage && userImage ? `<img src="${userImage}" class="user-thumb">` : ''}
             </div>
             <div class="ai-response loading">
@@ -300,7 +315,7 @@ function addChatSkeletonMessage(prompt, attachedImage = null) {
     const userMsgHtml = `
         <div class="message user-pending-msg" data-chat-id="${chatId}">
             <div class="user-message">
-                <div class="user-bubble">${prompt}</div>
+                <div class="user-bubble">${formatUserPromptForChat(prompt)}</div>
                 ${attachedImageHtml}
             </div>
         </div>
@@ -407,7 +422,7 @@ function createStreamingMessage(prompt) {
         const messageHtml = `
             <div class="message" id="${msgId}-container">
                 <div class="user-message">
-                    <div class="user-bubble">${prompt}</div>
+                    <div class="user-bubble">${formatUserPromptForChat(prompt)}</div>
                 </div>
                 <div class="ai-response">
                     <div class="chat-bubble streaming" id="${msgId}"><span class="cursor">|</span></div>
@@ -497,27 +512,20 @@ function formatMarkdownPartial(text) {
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;');
 
+    const codeBlocks = [];
+
     // Code blocks complets ```lang\ncode```
     formatted = formatted.replace(/```(\w*)\n([\s\S]*?)```/g, (match, lang, code) => {
-        const langLabel = lang || 'code';
-        return `<div class="code-block">
-            <div class="code-header">
-                <span class="code-lang">${langLabel}</span>
-                <button class="code-copy-btn" onclick="copyCodeBlock(this)">Copier</button>
-            </div>
-            <pre><code>${code.trim()}</code></pre>
-        </div>`;
+        const token = `@@JOYBOYCODEBLOCK${codeBlocks.length}@@`;
+        codeBlocks.push(buildMarkdownCodeBlock(lang, code));
+        return token;
     });
 
     // Code block en cours (pas encore fermé) - afficher en gris
     formatted = formatted.replace(/```(\w*)\n([\s\S]*)$/g, (match, lang, code) => {
-        const langLabel = lang || 'code';
-        return `<div class="code-block incomplete">
-            <div class="code-header">
-                <span class="code-lang">${langLabel}</span>
-            </div>
-            <pre><code>${code}</code></pre>
-        </div>`;
+        const token = `@@JOYBOYCODEBLOCK${codeBlocks.length}@@`;
+        codeBlocks.push(buildMarkdownCodeBlock(lang, code, true));
+        return token;
     });
 
     // Code inline `code`
@@ -546,6 +554,8 @@ function formatMarkdownPartial(text) {
     // Sauts de ligne
     formatted = formatted.replace(/\n/g, '<br>');
 
+    formatted = formatted.replace(/@@JOYBOYCODEBLOCK(\d+)@@/g, (_match, index) => codeBlocks[Number(index)] || '');
+
     return formatted;
 }
 
@@ -560,16 +570,13 @@ function formatMarkdown(text) {
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;');
 
+    const codeBlocks = [];
+
     // Code blocks avec langage ```lang\ncode```
     formatted = formatted.replace(/```(\w*)\n([\s\S]*?)```/g, (match, lang, code) => {
-        const langLabel = lang || 'code';
-        return `<div class="code-block">
-            <div class="code-header">
-                <span class="code-lang">${langLabel}</span>
-                <button class="code-copy-btn" onclick="copyCodeBlock(this)">Copier</button>
-            </div>
-            <pre><code>${code.trim()}</code></pre>
-        </div>`;
+        const token = `@@JOYBOYCODEBLOCK${codeBlocks.length}@@`;
+        codeBlocks.push(buildMarkdownCodeBlock(lang, code));
+        return token;
     });
 
     // Code inline `code`
@@ -620,6 +627,8 @@ function formatMarkdown(text) {
     formatted = formatted.replace(/<\/h[234]><br>/g, m => m.replace('<br>', ''));
     formatted = formatted.replace(/<\/blockquote><br>/g, '</blockquote>');
     formatted = formatted.replace(/<hr class="md-hr"><br>/g, '<hr class="md-hr">');
+
+    formatted = formatted.replace(/@@JOYBOYCODEBLOCK(\d+)@@/g, (_match, index) => codeBlocks[Number(index)] || '');
 
     return formatted;
 }
@@ -715,7 +724,7 @@ function addImageAnalysisMessage(prompt, attachedImage, response, responseTime =
 
     const messagesDiv = getChatMessages();
     const msgId = 'analysis-' + Date.now();
-    const safePrompt = escapeHtml(prompt || '');
+    const safePrompt = formatUserPromptForChat(prompt || '');
     const imageHtml = attachedImage
         ? `<img src="${attachedImage}" class="user-thumb" onclick="openModalSingle(this.src)">`
         : '';
@@ -767,7 +776,7 @@ function addMessage(prompt, userImage, original, modified, generationTime = null
     const messageHtml = `
         <div class="message">
             <div class="user-message">
-                <div class="user-bubble">${prompt}</div>
+                <div class="user-bubble">${formatUserPromptForChat(prompt)}</div>
                 <img src="${userImage}" class="user-thumb">
             </div>
             <div class="ai-response">
@@ -879,7 +888,7 @@ function addMessageEdit(prompt, original, modified, mask = null, generationTime 
     const messageHtml = `
         <div class="message">
             <div class="user-message">
-                <div class="user-bubble">${prompt}</div>
+                    <div class="user-bubble">${formatUserPromptForChat(prompt)}</div>
                 <img src="${original}" class="user-thumb">
             </div>
             <div class="ai-response">
@@ -912,7 +921,7 @@ function addMessageTxt2Img(prompt, generated, generationTime = null, seed = null
     const messageHtml = `
         <div class="message">
             <div class="user-message">
-                <div class="user-bubble">${prompt}</div>
+                <div class="user-bubble">${formatUserPromptForChat(prompt)}</div>
             </div>
             <div class="ai-response">
                 <div class="result-images">
@@ -1087,7 +1096,7 @@ function addChatMessageWithGenerated(prompt, response, generated, responseTime =
     const messageHtml = `
         <div class="message">
             <div class="user-message">
-                <div class="user-bubble">${prompt}</div>
+                <div class="user-bubble">${formatUserPromptForChat(prompt)}</div>
             </div>
             <div class="ai-response">
                 <div class="chat-bubble" id="chat-${msgId}">${response}</div>
@@ -1149,7 +1158,7 @@ function addChatMessageWithPendingImage(prompt, response, genPrompt) {
     const messageHtml = `
         <div class="message" id="pending-msg-${msgId}" data-chat-id="${currentChatId}" data-started-at="${Date.now()}">
             <div class="user-message">
-                <div class="user-bubble">${prompt}</div>
+                <div class="user-bubble">${formatUserPromptForChat(prompt)}</div>
             </div>
             <div class="ai-response">
                 <div class="chat-bubble" id="chat-${msgId}">${response}</div>
@@ -1531,6 +1540,11 @@ function addToolCall(action, target) {
             'write_file': 'Write',
             'edit_file': 'Edit',
             'delete_file': 'Delete',
+            'write_files': 'WriteFiles',
+            'clear_workspace': 'ClearWorkspace',
+            'write_todos': 'Plan',
+            'delegate_subagent': 'Subagent',
+            'tool_search': 'ToolSearch',
             'list_files': 'List',
             'search': 'Search',
             'glob': 'Glob',
@@ -1689,7 +1703,7 @@ function addTerminalUserLine(text) {
     messageEl.className = 'message terminal-chat-message';
     messageEl.innerHTML = `
         <div class="user-message">
-            <div class="user-bubble">${escapeHtml(text)}</div>
+            <div class="user-bubble">${formatUserPromptForChat(text)}</div>
         </div>
     `;
     messagesDiv.appendChild(messageEl);
@@ -1715,12 +1729,10 @@ function addChatSkeletonMessageSmart(prompt) {
  */
 function addUserMessageToChat(text) {
     const messagesDiv = getChatMessages();
-    const escapedText = text.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-
     const msgHtml = `
         <div class="message">
             <div class="user-message">
-                <div class="user-bubble">${escapedText}</div>
+                <div class="user-bubble">${formatUserPromptForChat(text)}</div>
             </div>
         </div>
     `;

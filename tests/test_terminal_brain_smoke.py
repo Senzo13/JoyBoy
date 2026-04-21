@@ -1,4 +1,5 @@
 import os
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -219,7 +220,14 @@ class TerminalBrainSmokeTests(unittest.TestCase):
                         {
                             "id": "call_1",
                             "type": "function",
-                            "function": {"name": "bash", "arguments": {"command": "rm -rf ."}},
+                            "function": {
+                                "name": "write_files",
+                                "arguments": {
+                                    "files": [
+                                        {"path": "README.md", "content": "updated\n"}
+                                    ]
+                                },
+                            },
                         }
                     ],
                 },
@@ -234,7 +242,14 @@ class TerminalBrainSmokeTests(unittest.TestCase):
                         {
                             "id": "call_2",
                             "type": "function",
-                            "function": {"name": "bash", "arguments": {"command": "rm -rf ."}},
+                            "function": {
+                                "name": "write_files",
+                                "arguments": {
+                                    "files": [
+                                        {"path": "README.md", "content": "updated\n"}
+                                    ]
+                                },
+                            },
                         }
                     ],
                 },
@@ -246,6 +261,7 @@ class TerminalBrainSmokeTests(unittest.TestCase):
         brain.current_intent = "write"
 
         with tempfile.TemporaryDirectory() as tmp:
+            Path(tmp, "README.md").write_text("original\n", encoding="utf-8")
             events = list(brain.run_agentic_loop("supprime tout", tmp, model="openai:gpt-5.4"))
 
         loop_warnings = [event for event in events if event.get("type") == "loop_warning"]
@@ -350,6 +366,67 @@ class TerminalBrainSmokeTests(unittest.TestCase):
         self.assertIn("call_missing", patched_tool_ids)
         self.assertIn("call_done", patched_tool_ids)
 
+    def test_missing_tool_call_ids_are_normalized_before_protocol_patch(self):
+        brain = TerminalBrain()
+        messages = [
+            {"role": "system", "content": "system"},
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                    {
+                        "type": "function",
+                        "function": {"name": "list_files", "arguments": {"path": "."}},
+                    }
+                ],
+            },
+        ]
+
+        patched = brain._patch_dangling_tool_messages(messages)
+        assistant = next(item for item in patched if item.get("role") == "assistant")
+        tool = next(item for item in patched if item.get("role") == "tool")
+        call_id = assistant["tool_calls"][0]["id"]
+
+        self.assertTrue(call_id)
+        self.assertEqual(tool["tool_call_id"], call_id)
+
+    @patch("core.backends.terminal_brain.chat_with_cloud_model")
+    def test_cloud_dict_tool_call_without_id_gets_matching_tool_output(self, mock_chat):
+        mock_chat.side_effect = [
+            {
+                "message": {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [
+                        {
+                            "type": "function",
+                            "function": {"name": "list_files", "arguments": {"path": "."}},
+                        }
+                    ],
+                },
+                "prompt_eval_count": 20,
+                "eval_count": 5,
+            },
+            {
+                "message": {"role": "assistant", "content": "done"},
+                "prompt_eval_count": 10,
+                "eval_count": 2,
+            },
+        ]
+        brain = TerminalBrain()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            Path(tmp, "README.md").write_text("hello\n", encoding="utf-8")
+            events = list(brain.run_agentic_loop("liste les fichiers", tmp, model="openai:gpt-5.4"))
+
+        self.assertEqual([event for event in events if event.get("type") == "done"][-1].get("full_response"), "done")
+        second_call_messages = mock_chat.call_args_list[1].kwargs["messages"]
+        assistant = [item for item in second_call_messages if item.get("role") == "assistant" and item.get("tool_calls")][-1]
+        tool = [item for item in second_call_messages if item.get("role") == "tool"][-1]
+
+        self.assertTrue(assistant["tool_calls"][0]["id"])
+        self.assertEqual(tool["tool_call_id"], assistant["tool_calls"][0]["id"])
+
     def test_orphan_tool_message_is_converted_before_cloud_model_call(self):
         brain = TerminalBrain()
         messages = [
@@ -423,6 +500,47 @@ class TerminalBrainSmokeTests(unittest.TestCase):
             self.assertFalse(Path(tmp, "src").exists())
             self.assertFalse(Path(tmp, "README.md").exists())
             self.assertIn(".git", result.data.get("kept", []))
+
+    @patch("core.backends.terminal_brain.chat_with_cloud_model")
+    def test_default_destructive_tool_pauses_for_approval_without_retry(self, mock_chat):
+        mock_chat.return_value = {
+            "message": {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                    {
+                        "id": "call_clear",
+                        "type": "function",
+                        "function": {"name": "clear_workspace", "arguments": {"keep": []}},
+                    }
+                ],
+            },
+            "prompt_eval_count": 20,
+            "eval_count": 5,
+        }
+        brain = TerminalBrain()
+
+        workspace_tmp_root = Path(__file__).resolve().parents[1]
+        tmp_path = workspace_tmp_root / "_terminal_approval_tmp"
+        shutil.rmtree(tmp_path, ignore_errors=True)
+        tmp_path.mkdir()
+        try:
+            target = tmp_path / "README.md"
+            target.write_text("keep until approved\n", encoding="utf-8")
+            events = list(brain.run_agentic_loop("delete tout", str(tmp_path), model="openai:gpt-5.4"))
+
+            self.assertTrue(target.exists())
+        finally:
+            shutil.rmtree(tmp_path, ignore_errors=True)
+
+        approvals = [event for event in events if event.get("type") == "approval_required"]
+        done = [event for event in events if event.get("type") == "done"][-1]
+
+        self.assertEqual(len(approvals), 1)
+        self.assertEqual(approvals[0].get("tool_name"), "clear_workspace")
+        self.assertTrue(approvals[0].get("permission", {}).get("requires_confirmation"))
+        self.assertTrue(done.get("approval_required"))
+        self.assertEqual(mock_chat.call_count, 1)
 
     def test_casual_greeting_fast_path_avoids_agentic_tool_loop(self):
         brain = TerminalBrain()

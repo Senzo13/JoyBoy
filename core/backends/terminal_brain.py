@@ -8,9 +8,6 @@ Fonctionnement:
 3. On exécute les tools et on renvoie les résultats
 4. Loop jusqu'à ce que le LLM réponde sans tool_call
 
-Sources:
-- https://github.com/ollama/ollama/blob/main/docs/api.md#chat-request-with-tools
-- https://ollama.com/blog/tool-support
 """
 
 import os
@@ -49,6 +46,7 @@ from core.backends.terminal_guardrails import TerminalGuardrailsMixin
 from core.backends.terminal_intent import TerminalIntentMixin
 from core.backends.terminal_plan import ExecutionPlan, PlanStatus, PlanTask, TerminalPlanMixin
 from core.backends.terminal_prompting import TerminalPromptingMixin
+from core.backends.terminal_read_guard import TerminalReadGuardMixin
 from core.backends.terminal_types import FileSnapshot, ToolResult
 
 # Ollama client - auto-install si manquant
@@ -91,6 +89,7 @@ class TerminalBrain(
     TerminalDeferredToolMixin,
     TerminalGuardrailsMixin,
     TerminalPromptingMixin,
+    TerminalReadGuardMixin,
     TerminalPlanMixin,
 ):
     """
@@ -145,61 +144,6 @@ class TerminalBrain(
         self.tool_registry = build_default_terminal_tool_registry(TOOLS)
         self.permission_engine = PermissionEngine(self.tool_registry)
         self._refresh_dynamic_tool_registry()
-
-    def _workspace_key(self, workspace_path: str) -> str:
-        return os.path.normcase(os.path.realpath(os.path.abspath(workspace_path or "")))
-
-    def _canonical_file_key(self, full_path: str) -> str:
-        return os.path.normcase(os.path.realpath(os.path.abspath(full_path)))
-
-    def _track_read_file(self, workspace_path: str, relative_path: str):
-        full_path = self._resolve_for_snapshot(workspace_path, relative_path)
-        if full_path and os.path.isfile(full_path):
-            stat = os.stat(full_path)
-            self._read_files_by_workspace[self._workspace_key(workspace_path)][
-                self._canonical_file_key(full_path)
-            ] = (stat.st_mtime_ns, stat.st_size)
-
-    def _has_read_file(self, workspace_path: str, relative_path: str) -> bool:
-        full_path = self._resolve_for_snapshot(workspace_path, relative_path)
-        if not full_path:
-            return False
-        return self._canonical_file_key(full_path) in self._read_files_by_workspace.get(self._workspace_key(workspace_path), {})
-
-    def _read_guard_error(self, workspace_path: str, relative_path: str, full_path: str) -> Optional[str]:
-        workspace_reads = self._read_files_by_workspace.get(self._workspace_key(workspace_path), {})
-        file_key = self._canonical_file_key(full_path)
-        read_marker = workspace_reads.get(file_key)
-        if not read_marker:
-            return (
-                "BLOCKED: existing file was not read first. Call read_file on this file "
-                "before editing or replacing it, then retry the edit."
-            )
-
-        try:
-            stat = os.stat(full_path)
-        except OSError as exc:
-            return f"BLOCKED: cannot verify the file state before writing: {exc}"
-
-        current_marker = (stat.st_mtime_ns, stat.st_size)
-        if current_marker != read_marker:
-            return (
-                "BLOCKED: the file changed since the last read_file call. Read it again "
-                "with read_file before editing or replacing it."
-            )
-        return None
-
-    def _require_read_before_existing_write(self, workspace_path: str, relative_path: str, full_path: str, tool_name: str) -> Optional[ToolResult]:
-        if os.path.exists(full_path):
-            error = self._read_guard_error(workspace_path, relative_path, full_path)
-            if not error:
-                return None
-            return ToolResult(
-                success=False,
-                tool_name=tool_name,
-                error=error,
-            )
-        return None
 
     # ===== TOOL EXECUTION =====
 
@@ -755,25 +699,17 @@ class TerminalBrain(
                     # Convertir en dict pour l'historique
                     message_dict = {'role': 'assistant', 'content': content}
                     if tool_calls:
-                        normalised_tool_calls = []
-                        for index, tc in enumerate(tool_calls):
-                            call = {
-                                'type': 'function',
-                                'function': {'name': tc.function.name, 'arguments': tc.function.arguments},
-                            }
-                            tool_call_id = getattr(tc, "id", None)
-                            if tool_call_id:
-                                call['id'] = tool_call_id
-                            elif use_cloud_model:
-                                call['id'] = f"call_{index}"
-                            normalised_tool_calls.append(call)
-                        message_dict['tool_calls'] = normalised_tool_calls
+                        tool_calls = self._normalise_tool_calls_for_history(tool_calls)
+                        message_dict['tool_calls'] = tool_calls
                 else:
                     # Dict response
-                    msg = response.get('message', {})
+                    msg = response.get('message', {}) if isinstance(response, dict) else {}
+                    msg = msg if isinstance(msg, dict) else {}
                     content = msg.get('content', '') or ''
-                    tool_calls = msg.get('tool_calls', [])
-                    message_dict = msg
+                    tool_calls = self._normalise_tool_calls_for_history(msg.get('tool_calls', []))
+                    message_dict = {'role': 'assistant', 'content': content}
+                    if tool_calls:
+                        message_dict['tool_calls'] = tool_calls
 
                 # Extraire les stats de tokens
                 token_stats = {}
@@ -1060,6 +996,29 @@ class TerminalBrain(
                     if tool_call_id:
                         tool_message["tool_call_id"] = tool_call_id
                     messages.append(tool_message)
+
+                    permission = result.data.get("permission") if isinstance(result.data, dict) else None
+                    if (
+                        not result.success
+                        and permission
+                        and permission.get("requires_confirmation")
+                        and permission.get("mode") == DEFAULT_PERMISSION_MODE
+                    ):
+                        yield runtime_event(
+                            "approval_required",
+                            tool_name=tool_name,
+                            args=args,
+                            permission=permission,
+                            reason=result.error or permission.get("reason", ""),
+                        )
+                        _end_resource_lease()
+                        yield runtime_event(
+                            "done",
+                            full_response=full_response,
+                            token_stats=total_token_stats,
+                            approval_required=True,
+                        )
+                        return
 
                     if not result.success and not autonomous:
                         failure_reason = self._classify_tool_error(result)

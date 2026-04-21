@@ -158,6 +158,31 @@ def terminal_chat():
     if not is_capable:
         print(f"[TERMINAL] ⚠️ Modèle {chat_model} non optimal pour le tool calling")
 
+    def tool_display_target(tool_name, args):
+        args = args if isinstance(args, dict) else {}
+        if tool_name == 'write_files':
+            files = args.get('files', [])
+            if isinstance(files, list):
+                paths = [
+                    str(item.get('path', '')).strip()
+                    for item in files[:3]
+                    if isinstance(item, dict) and item.get('path')
+                ]
+                suffix = f", +{len(files) - len(paths)}" if len(files) > len(paths) else ""
+                return f"{len(files)} files" + (f": {', '.join(paths)}{suffix}" if paths else "")
+            return "files"
+        if tool_name == 'write_todos':
+            todos = args.get('todos', [])
+            return f"{len(todos)} steps" if isinstance(todos, list) else "steps"
+        if tool_name == 'clear_workspace':
+            keep = args.get('keep', [])
+            return f"keep: {', '.join(keep)}" if isinstance(keep, list) and keep else "workspace"
+        for key in ('path', 'pattern', 'command', 'query', 'url', 'skill_id', 'task'):
+            value = args.get(key)
+            if value:
+                return value
+        return ''
+
     def generate():
         """
         Boucle agentique avec Native Tool Calling (comme Cursor/Claude Code).
@@ -257,7 +282,7 @@ def terminal_chat():
                 tool_name = event.get('name', '')
                 args = event.get('args', {})
                 # Extraire path des args pour compatibilité frontend
-                path = workspace_path if tool_name == 'open_workspace' else args.get('path', args.get('pattern', args.get('command', args.get('query', args.get('url', args.get('skill_id', args.get('task', '')))))))
+                path = workspace_path if tool_name == 'open_workspace' else tool_display_target(tool_name, args)
                 if job_manager and terminal_job_id:
                     job_manager.update(
                         terminal_job_id,
@@ -271,6 +296,8 @@ def terminal_chat():
 
             elif event_type == 'tool_result':
                 result = event.get('result', {})
+                data = result.get('data', {})
+                permission_info = data.get('permission') if isinstance(data, dict) else None
                 if job_manager and terminal_job_id:
                     status_text = "Tool completed" if result.get('success') else "Tool error"
                     job_manager.update(
@@ -290,10 +317,9 @@ def terminal_chat():
                     }
                 }
                 # Inclure les données selon le type
-                data = result.get('data', {})
                 tool_name = result.get('tool_name', '')
-                if data.get('permission'):
-                    result_data['tool_result']['permission'] = data.get('permission')
+                if permission_info:
+                    result_data['tool_result']['permission'] = permission_info
 
                 if result.get('success'):
                     if tool_name == 'list_files':
@@ -308,9 +334,29 @@ def terminal_chat():
                         result_data['tool_result']['size'] = data.get('size')
                         result_data['tool_result']['created'] = data.get('created')
                         result_data['tool_result']['replacements'] = data.get('replacements')
+                    elif tool_name == 'write_files':
+                        files = data.get('files', []) if isinstance(data.get('files', []), list) else []
+                        created = data.get('created', []) if isinstance(data.get('created', []), list) else []
+                        updated = data.get('updated', []) if isinstance(data.get('updated', []), list) else []
+                        result_data['tool_result']['count'] = data.get('count', len(files))
+                        result_data['tool_result']['files'] = files[:30]
+                        result_data['tool_result']['created'] = created[:30]
+                        result_data['tool_result']['updated'] = updated[:30]
+                        result_data['tool_result']['summary'] = (
+                            f"{len(created)} créé(s), {len(updated)} modifié(s)"
+                            if created or updated
+                            else f"{data.get('count', len(files))} fichier(s) écrit(s)"
+                        )
                     elif tool_name == 'delete_file':
                         result_data['tool_result']['path'] = data.get('path', '')
                         result_data['tool_result']['verified'] = data.get('verified', False)
+                    elif tool_name == 'clear_workspace':
+                        deleted = data.get('deleted', []) if isinstance(data.get('deleted', []), list) else []
+                        kept = data.get('kept', []) if isinstance(data.get('kept', []), list) else []
+                        result_data['tool_result']['deleted'] = deleted[:30]
+                        result_data['tool_result']['kept'] = kept[:30]
+                        result_data['tool_result']['count'] = data.get('count', len(deleted))
+                        result_data['tool_result']['summary'] = f"{data.get('count', len(deleted))} élément(s) supprimé(s)"
                     elif tool_name == 'bash':
                         result_data['tool_result']['output'] = data.get('output', '')[:2000]
                         result_data['tool_result']['return_code'] = data.get('return_code', -1)
@@ -335,13 +381,46 @@ def terminal_chat():
                         result_data['tool_result']['summary'] = f"Skill chargé: {skill.get('id', '')}"
                     elif tool_name == 'open_workspace':
                         result_data['tool_result']['summary'] = f"Dossier ouvert: {data.get('path', workspace_path)}"
+                    elif tool_name == 'write_todos':
+                        todos = data.get('todos', []) if isinstance(data.get('todos', []), list) else []
+                        result_data['tool_result']['todos'] = todos[:8]
+                        result_data['tool_result']['counts'] = data.get('counts', {})
+                        result_data['tool_result']['summary'] = data.get('summary') or f"{len(todos)} étape(s)"
 
                 yield f"data: {json.dumps(result_data)}\n\n"
 
                 # Log erreur si échec
-                if not result.get('success') and result.get('error'):
+                if (
+                    not result.get('success')
+                    and result.get('error')
+                    and not (permission_info and permission_info.get('requires_confirmation'))
+                ):
                     print(f"[TERMINAL] Erreur: {result.get('error')} → IA va auto-corriger")
                     yield f"data: {json.dumps({'auto_correction': True, 'error': result.get('error')})}\n\n"
+
+            elif event_type == 'approval_required':
+                tool_name = event.get('tool_name', '')
+                args = event.get('args', {}) or {}
+                path = workspace_path if tool_name == 'open_workspace' else args.get(
+                    'path',
+                    args.get(
+                        'pattern',
+                        args.get(
+                            'command',
+                            args.get('query', args.get('url', args.get('skill_id', args.get('task', '')))),
+                        ),
+                    ),
+                )
+                if job_manager and terminal_job_id:
+                    job_manager.update(
+                        terminal_job_id,
+                        status="running",
+                        phase="approval_required",
+                        progress=None,
+                        message=f"Approval required: {tool_name}"[:160],
+                    )
+                print(f"[TERMINAL] Approval required: {tool_name}({path})")
+                yield f"data: {json.dumps({'approval_required': {'action': tool_name, 'path': path, 'args': args, 'permission': event.get('permission', {}), 'reason': event.get('reason', '')}})}\n\n"
 
             elif event_type == 'done':
                 token_stats = event.get('token_stats', {})
@@ -352,7 +431,7 @@ def terminal_chat():
                         message="Terminal request complete",
                         artifact={"token_stats": token_stats},
                     )
-                yield f"data: {json.dumps({'done': True, 'token_stats': token_stats, 'full_response': event.get('full_response', '')})}\n\n"
+                yield f"data: {json.dumps({'done': True, 'token_stats': token_stats, 'full_response': event.get('full_response', ''), 'approval_required': event.get('approval_required', False)})}\n\n"
                 return
 
             elif event_type == 'error':

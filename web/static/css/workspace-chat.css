@@ -256,7 +256,7 @@ body.terminal-mode .terminal-ai-output {
     line-height: 1.6 !important;
     max-width: 90% !important;
     padding: 14px 0 !important;
-    white-space: pre-wrap !important;
+    white-space: normal !important;
 }
 
 body.terminal-mode .chat-bubble p,

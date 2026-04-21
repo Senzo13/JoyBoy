@@ -216,6 +216,16 @@ class PermissionEngine:
         re.compile(r"\b(curl|wget|irm|iwr)\b.*\|\s*(bash|sh|pwsh|powershell)\b", re.I),
     ]
 
+    _SHELL_DELETE_PATTERNS = [
+        re.compile(r"\brm\s+-[a-zA-Z]*r[a-zA-Z]*f?[a-zA-Z]*\b", re.I),
+        re.compile(r"\brm\s+-[a-zA-Z]*f[a-zA-Z]*r[a-zA-Z]*\b", re.I),
+        re.compile(r"\bfind\b.*\b-exec\b\s+rm\b.*-[a-zA-Z]*r[a-zA-Z]*f?[a-zA-Z]*\b", re.I),
+        re.compile(r"\bremove-item\b.*(?:^|\s)-recurse\b", re.I),
+        re.compile(r"\bdel(?:ete)?\b.*\s/[sq]\b", re.I),
+        re.compile(r"\brd\b.*\s/[sq]\b", re.I),
+        re.compile(r"\brmdir\b.*\s/[sq]\b", re.I),
+    ]
+
     def __init__(self, registry: ToolRegistry):
         self.registry = registry
 
@@ -290,6 +300,16 @@ class PermissionEngine:
                 return PermissionDecision(
                     False,
                     "Command blocked: critical system or privilege action.",
+                    risk=ToolRisk.SHELL,
+                    requires_confirmation=True,
+                    mode=mode,
+                )
+
+        for pattern in self._SHELL_DELETE_PATTERNS:
+            if pattern.search(lowered):
+                return PermissionDecision(
+                    False,
+                    "Command blocked: recursive shell deletion is not allowed; use clear_workspace or delete_file instead.",
                     risk=ToolRisk.SHELL,
                     requires_confirmation=True,
                     mode=mode,

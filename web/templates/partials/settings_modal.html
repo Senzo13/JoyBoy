@@ -1,0 +1,975 @@
+    <!-- SETTINGS MODAL -->
+    <div class="settings-modal" id="settings-modal" onclick="if(event.target === this) closeSettings()">
+        <div class="settings-modal-content">
+            <div class="settings-header">
+                <button class="settings-close-btn" onclick="closeSettings()">
+                    <i data-lucide="x"></i>
+                </button>
+                <div class="settings-title">Paramètres</div>
+            </div>
+            <div class="settings-layout">
+                <div class="settings-tabs">
+                    <button class="settings-tab active" id="settings-tab-general" onclick="switchSettingsTab('general', this)">Général</button>
+                    <button class="settings-tab" id="settings-tab-profile" onclick="switchSettingsTab('profile', this)">Profil</button>
+                    <button class="settings-tab" id="settings-tab-generation" onclick="switchSettingsTab('generation', this)">Génération</button>
+                    <button class="settings-tab" id="settings-tab-memory" onclick="switchSettingsTab('memory', this)">Mémoire</button>
+                    <button class="settings-tab" id="settings-tab-storage" onclick="switchSettingsTab('storage', this)">Galerie</button>
+                    <button class="settings-tab" id="settings-tab-prompt-lab" onclick="switchSettingsTab('promptLab', this)">Prompt Lab</button>
+                    <button class="settings-tab" id="settings-tab-terminal" onclick="switchSettingsTab('terminal', this)">Terminal</button>
+                    <button class="settings-tab" id="settings-tab-training" onclick="switchSettingsTab('training', this)">Entraînement</button>
+                </div>
+                <div class="settings-body">
+                <!-- ONGLET GÉNÉRAL -->
+                <div class="settings-panel active" id="settings-general">
+                    <div class="settings-section">
+                        <div class="settings-section-title" id="general-core-title">Mode du core</div>
+                        <div class="settings-row">
+                            <div>
+                                <div class="settings-label" id="general-public-mode-label">Mode repo public</div>
+                                <div class="settings-label-desc" id="general-public-mode-desc">Verrouille les surfaces qui demandent un pack local et aligne JoyBoy sur un core public plus neutre.</div>
+                            </div>
+                            <div class="settings-toggle" id="toggle-public-repo-mode" onclick="togglePublicRepoMode()"></div>
+                        </div>
+                        <div class="settings-label-desc" id="public-repo-mode-note">
+                            Désactivé: le bridge privé local reste autorisé sur cette machine.
+                        </div>
+                    </div>
+
+                    <div class="settings-section" id="app-version-section">
+                        <div class="settings-section-title" id="app-version-title">Version</div>
+                        <div class="settings-version-panel">
+                            <div class="settings-version-main">
+                                <div>
+                                    <div class="settings-label" id="app-version-current-label">Installed version</div>
+                                    <div class="settings-label-desc">
+                                        JoyBoy <span id="app-version-current">--</span>
+                                    </div>
+                                </div>
+                                <div class="settings-version-badge is-muted" id="app-version-status-badge">Checking...</div>
+                            </div>
+                            <div class="settings-info settings-version-detail" id="app-version-detail">
+                                Checking GitHub for a newer JoyBoy version...
+                            </div>
+                            <div class="settings-inline-actions settings-version-actions">
+                                <button class="settings-action-btn compact" id="app-version-check-btn" onclick="refreshAppVersionStatus()">
+                                    <i data-lucide="refresh-cw" aria-hidden="true"></i>
+                                    <span id="app-version-check-label">Check</span>
+                                </button>
+                                <a class="settings-action-btn compact subtle hidden" id="app-version-release-link" href="#" target="_blank" rel="noopener noreferrer">
+                                    <i data-lucide="external-link" aria-hidden="true"></i>
+                                    <span id="app-version-release-label">Open GitHub</span>
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="settings-section">
+                        <div class="settings-section-title" id="general-chat-title">Modèle de conversation (Ollama)</div>
+                        <div class="settings-row">
+                            <div>
+                                <div class="settings-label" id="general-chat-model-label">Modèle IA texte</div>
+                                <div class="settings-label-desc" id="general-chat-model-desc">Modèle Ollama pour les conversations</div>
+                            </div>
+                            <select class="settings-select" id="settings-chat-model" onchange="saveSetting('chatModel', this.value)">
+                                <option value="qwen2.5vl:3b">qwen2.5vl:3b</option>
+                            </select>
+                        </div>
+                        <div id="ollama-status" class="settings-info">Vérification Ollama...</div>
+                    </div>
+                    <div class="settings-section">
+                        <div class="settings-section-title" id="general-interface-title">Interface</div>
+                        <div class="settings-row">
+                            <div>
+                                <div class="settings-label" id="general-action-bar-label">Barre d'action rapide</div>
+                                <div class="settings-label-desc" id="general-action-bar-desc">Afficher la barre de paramètres à droite</div>
+                            </div>
+                            <div class="settings-toggle" id="toggle-show-action-bar" onclick="toggleSetting('showActionBar')"></div>
+                        </div>
+                        <div class="settings-row">
+                            <div>
+                                <div class="settings-label" id="general-privacy-label">Mode privé par défaut</div>
+                                <div class="settings-label-desc" id="general-privacy-desc">Mode éphémère : chaque nouveau message efface le précédent, rien n'est conservé</div>
+                            </div>
+                            <div class="settings-toggle" id="toggle-privacy-default" onclick="togglePrivacy()"></div>
+                        </div>
+                    </div>
+
+                    <div class="settings-section">
+                        <div class="settings-section-title" id="general-danger-title" style="color: #ef4444;">Zone Danger</div>
+                        <div class="settings-row">
+                            <div>
+                                <div class="settings-label" id="general-reset-label">Reset complet</div>
+                                <div class="settings-label-desc" id="general-reset-desc">Efface tout: conversations, mémoires, settings, cache. Repart à zéro.</div>
+                            </div>
+                            <button class="settings-danger-btn" id="general-reset-button" onclick="confirmFullReset()">
+                                Tout effacer
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ONGLET PROFIL -->
+                <div class="settings-panel" id="settings-profile">
+                    <div class="settings-section">
+                        <div class="settings-section-title" id="profile-type-title">Focus par défaut</div>
+                        <div class="settings-info" id="profile-type-note">Ajuste le ton par défaut de JoyBoy et le focus recommandé pendant l’onboarding. Tu pourras le changer à tout moment.</div>
+                        <div class="settings-profile-grid">
+                            <div class="settings-profile-option" data-type="developer" onclick="changeProfileType('developer')">
+                                <div class="profile-option-icon">
+                                    <i data-lucide="code"></i>
+                                </div>
+                                <div class="profile-option-text">
+                                    <div class="profile-option-label" id="settings-profile-developer-label">Coder</div>
+                                    <div class="profile-option-desc" id="settings-profile-developer-desc">Code, debug, automatisation</div>
+                                </div>
+                            </div>
+                            <div class="settings-profile-option" data-type="designer" onclick="changeProfileType('designer')">
+                                <div class="profile-option-icon">
+                                    <i data-lucide="palette"></i>
+                                </div>
+                                <div class="profile-option-text">
+                                    <div class="profile-option-label" id="settings-profile-designer-label">Créer</div>
+                                    <div class="profile-option-desc" id="settings-profile-designer-desc">Image, vidéo, prompts créatifs</div>
+                                </div>
+                            </div>
+                            <div class="settings-profile-option" data-type="student" onclick="changeProfileType('student')">
+                                <div class="profile-option-icon">
+                                    <i data-lucide="graduation-cap"></i>
+                                </div>
+                                <div class="profile-option-text">
+                                    <div class="profile-option-label" id="settings-profile-student-label">Apprendre</div>
+                                    <div class="profile-option-desc" id="settings-profile-student-desc">Explications claires et guidées</div>
+                                </div>
+                            </div>
+                            <div class="settings-profile-option" data-type="casual" onclick="changeProfileType('casual')">
+                                <div class="profile-option-icon">
+                                    <i data-lucide="smile"></i>
+                                </div>
+                                <div class="profile-option-text">
+                                    <div class="profile-option-label" id="settings-profile-casual-label">Général</div>
+                                    <div class="profile-option-desc" id="settings-profile-casual-desc">Usage polyvalent au quotidien</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="settings-section">
+                        <div class="settings-section-title" id="profile-personalization-title">Personnalisation</div>
+                        <div class="settings-row">
+                            <div>
+                                <div class="settings-label" id="profile-first-name-label">Ton prénom</div>
+                                <div class="settings-label-desc" id="profile-first-name-desc">L'IA personnalisera ses réponses</div>
+                            </div>
+                            <input type="text" class="settings-input" id="settings-profile-name" placeholder="Optionnel" onchange="changeProfileName(this.value)">
+                        </div>
+                    </div>
+                    <div class="settings-section">
+                        <div class="settings-section-title" id="profile-language-title">Langue</div>
+                        <div class="settings-row settings-row-compact">
+                            <div>
+                                <div class="settings-label" id="profile-language-label">Langue de l'interface</div>
+                                <div class="settings-label-desc" id="profile-language-desc">Applique JoyBoy en français, anglais, espagnol ou italien.</div>
+                            </div>
+                            <select class="settings-select" id="settings-locale-select" data-locale-select onchange="changeLocale(this.value)"></select>
+                        </div>
+                    </div>
+                    <div class="settings-section">
+                        <div class="settings-section-title" id="profile-onboarding-title">Relancer l'onboarding</div>
+                        <div class="settings-row">
+                            <div>
+                                <div class="settings-label" id="profile-onboarding-label">Recommencer la configuration</div>
+                                <div class="settings-label-desc" id="profile-onboarding-desc">Relance le guide de bienvenue</div>
+                            </div>
+                            <button class="settings-action-btn" id="profile-onboarding-button" onclick="restartOnboarding()">Relancer</button>
+                        </div>
+                    </div>
+                </div>
+
+                {% include 'partials/settings_generation_panel.html' %}
+
+                <!-- ONGLET ADDONS -->
+                <div class="settings-panel" id="settings-addons">
+                    <div class="addons-explorer">
+                        <div class="addons-hero">
+                            <div class="addons-hero-copy">
+                                <div class="settings-section-title" id="addons-hero-kicker">Addons locaux</div>
+                                <h2 id="addons-hero-title">Modules locaux JoyBoy</h2>
+                                <p id="addons-hero-desc">Découvre, importe et active des extensions locales qui ajoutent routing, prompts, modèles ou surfaces UI sans polluer le core public.</p>
+                            </div>
+                            <div class="addons-hero-actions">
+                                <button class="settings-action-btn compact" id="addons-refresh-btn" onclick="loadPackSettings()">
+                                    <i data-lucide="refresh-cw" aria-hidden="true"></i>
+                                    <span id="addons-refresh-btn-label">Rafraîchir</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="addons-hub-nav" role="tablist" aria-label="Navigation addons">
+                            <button class="addons-hub-tab active" id="addons-hub-tab-library" data-addons-tab="library" aria-selected="true" onclick="setAddonsHubSection('library', this)">
+                                <i data-lucide="layout-grid" aria-hidden="true"></i>
+                                <span id="addons-tab-library-label">Bibliothèque</span>
+                            </button>
+                            <button class="addons-hub-tab" id="addons-hub-tab-runtime" data-addons-tab="runtime" aria-selected="false" onclick="setAddonsHubSection('runtime', this)">
+                                <i data-lucide="sliders-horizontal" aria-hidden="true"></i>
+                                <span id="addons-tab-runtime-label">Runtime local</span>
+                            </button>
+                            <button class="addons-hub-tab" id="addons-hub-tab-help" data-addons-tab="help" aria-selected="false" onclick="setAddonsHubSection('help', this)">
+                                <i data-lucide="book-open-text" aria-hidden="true"></i>
+                                <span id="addons-tab-help-label">Aide</span>
+                            </button>
+                        </div>
+
+                        <div class="addons-searchbar">
+                            <i data-lucide="search" aria-hidden="true"></i>
+                            <input id="addons-search-input" type="search" placeholder="Rechercher un addon local..." oninput="renderPackSettingsList()">
+                        </div>
+
+                        <div class="addons-filter-row" aria-label="Filtres addons">
+                            <button class="addons-filter active" id="addons-filter-all" data-addon-filter="all" onclick="setAddonFilter('all', this)">Tous</button>
+                            <button class="addons-filter" id="addons-filter-active" data-addon-filter="active" onclick="setAddonFilter('active', this)">Actifs</button>
+                            <button class="addons-filter" id="addons-filter-installed" data-addon-filter="installed" onclick="setAddonFilter('installed', this)">Installés</button>
+                            <button class="addons-filter" id="addons-filter-invalid" data-addon-filter="invalid" onclick="setAddonFilter('invalid', this)">À corriger</button>
+                        </div>
+
+                        <div class="settings-section addons-control-section" id="adult-mode-section">
+                            <div class="settings-section-title" id="adult-mode-title">Extensions locales avancées</div>
+                            <div class="settings-row">
+                                <div>
+                                    <div class="settings-label" id="adult-mode-label">Fonctions sensibles</div>
+                                    <div class="settings-label-desc" id="adult-mode-desc">Contrôle local des routes spécialisées, des LoRA dédiées et des surfaces optionnelles.</div>
+                                </div>
+                                <div class="settings-toggle active" id="toggle-adult-mode" onclick="toggleAdultMode()"></div>
+                            </div>
+                            <div class="settings-label-desc" id="adult-mode-note">
+                                Actif: les routes spécialisées et contrôles optionnels restent disponibles uniquement sur cette machine.
+                            </div>
+                            <div class="settings-callout settings-pack-summary-card" id="adult-pack-summary-card">
+                                <div class="settings-pack-summary-top">
+                                    <div class="settings-pack-summary-heading">
+                                        <div class="settings-callout-title" id="adult-pack-summary-title">Pack local actif</div>
+                                        <div class="settings-pack-summary-meta" id="adult-pack-summary-meta">Raccourci vers la gestion des addons locaux</div>
+                                    </div>
+                                    <button class="settings-action-btn compact subtle" id="adult-pack-summary-manage-btn" onclick="openModelsPacksSettings()">Voir les addons</button>
+                                </div>
+                                <div class="settings-callout-body" id="adult-pack-summary-body">
+                                    Aucun pack local avancé actif. Active un pack pour enrichir le routeur, les prompts et l'interface locale.
+                                </div>
+                                <div class="settings-pack-chip-row" id="adult-pack-summary-chips"></div>
+                            </div>
+                        </div>
+
+                        <div class="settings-section" id="addons-packs-section">
+                            <div class="addons-section-heading">
+                                <div>
+                                    <div class="settings-section-title" id="addons-library-title">Bibliothèque locale</div>
+                                    <div class="settings-label-desc" id="pack-settings-note">
+                                        Les packs étendent le core public sans embarquer leurs règles ni assets dans le repo.
+                                    </div>
+                                </div>
+                                <div class="settings-inline-actions">
+                                    <button
+                                        class="settings-action-btn compact icon-only"
+                                        id="pack-import-zip-btn"
+                                        onclick="triggerPackArchiveImport()"
+                                        aria-label="Importer un zip"
+                                        data-i18n-tooltip="packs.importZipTooltip"
+                                    >
+                                        <i data-lucide="package-plus" aria-hidden="true"></i>
+                                        <span class="sr-only" id="pack-import-zip-label">Importer un zip</span>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="settings-row settings-row-compact addons-import-row">
+                                <div style="flex: 1;">
+                                    <div class="settings-label" id="pack-import-path-label">Importer depuis un dossier local</div>
+                                    <div class="settings-label-desc" id="pack-import-path-desc">Colle le chemin d’un pack déjà présent sur la machine.</div>
+                                </div>
+                                <div class="settings-inline-form">
+                                    <input type="text" class="settings-input" id="pack-source-path" placeholder="C:\Users\...\pack-local">
+                                    <button
+                                        class="settings-action-btn compact icon-only"
+                                        id="pack-import-path-btn"
+                                        onclick="importPackFromPath()"
+                                        aria-label="Importer"
+                                        data-i18n-tooltip="packs.importPathTooltip"
+                                    >
+                                        <i data-lucide="import" aria-hidden="true"></i>
+                                        <span class="sr-only" id="pack-import-path-btn-label">Importer</span>
+                                    </button>
+                                </div>
+                            </div>
+                            <div id="pack-settings-list" class="addons-grid">Chargement...</div>
+                        </div>
+
+                        <div id="gen-nsfw" class="addons-local-runtime">
+                            <div id="gen-nsfw-locked-banner" class="settings-info" style="display:none; margin-bottom: 12px;"></div>
+                            <div id="gen-nsfw-content">
+                                <div class="settings-section">
+                                    <div class="settings-section-title" id="gen-local-surface-title">Réglages addon avancé</div>
+                                    <div class="settings-info" id="gen-local-surface-info">Ces réglages restent visibles pour expliquer les extensions locales, mais ils ne deviennent actifs que si la machine locale autorise cette surface et charge un pack valide.</div>
+
+                                    <div class="settings-slider-row">
+                                        <div class="settings-slider-header">
+                                            <div class="settings-label" id="gen-local-strength-label">Force sensible</div>
+                                            <div class="settings-slider-value" id="settings-nsfw-strength-value">90%</div>
+                                        </div>
+                                        <input type="range" class="settings-slider" id="settings-nsfw-strength" min="70" max="100" value="90" oninput="updateSettingSlider('nsfwStrength', this.value)">
+                                    </div>
+
+                                    <div class="settings-row" style="margin-top: 15px;">
+                                        <div>
+                                            <div class="settings-label" id="lora-nsfw-label">LoRA Local XL</div>
+                                            <div class="settings-label-desc" id="lora-nsfw-desc">Améliore le réalisme des workflows locaux avancés</div>
+                                        </div>
+                                        <div class="settings-toggle active" id="toggle-lora-nsfw" onclick="toggleLora('nsfw')"></div>
+                                    </div>
+                                    <div class="settings-slider-row" id="lora-nsfw-slider-row">
+                                        <div class="settings-slider-header">
+                                            <div class="settings-label" id="lora-nsfw-slider-label" style="font-size: 12px; color: #888;">Force LoRA Local</div>
+                                            <div class="settings-slider-value" id="settings-lora-nsfw-value">50%</div>
+                                        </div>
+                                        <input type="range" class="settings-slider" id="settings-lora-nsfw" min="0" max="100" value="50" oninput="updateLoraSlider('nsfw', this.value)">
+                                    </div>
+
+                                    <div class="settings-row" style="margin-top: 10px;">
+                                        <div>
+                                            <div class="settings-label" id="lora-skin-label">LoRA Skin Realism</div>
+                                            <div class="settings-label-desc" id="lora-skin-desc">Texture de peau réaliste avec imperfections</div>
+                                        </div>
+                                        <div class="settings-toggle active" id="toggle-lora-skin" onclick="toggleLora('skin')"></div>
+                                    </div>
+                                    <div class="settings-slider-row" id="lora-skin-slider-row">
+                                        <div class="settings-slider-header">
+                                            <div class="settings-label" id="lora-skin-slider-label" style="font-size: 12px; color: #888;">Force LoRA Skin</div>
+                                            <div class="settings-slider-value" id="settings-lora-skin-value">30%</div>
+                                        </div>
+                                        <input type="range" class="settings-slider" id="settings-lora-skin" min="0" max="100" value="30" oninput="updateLoraSlider('skin', this.value)">
+                                    </div>
+
+                                    <div class="settings-row" style="margin-top: 10px;">
+                                        <div>
+                                            <div class="settings-label" id="lora-breasts-label">LoRA Anatomy Detail</div>
+                                            <div class="settings-label-desc" id="lora-breasts-desc">Détails anatomiques réalistes, sans artefacts</div>
+                                        </div>
+                                        <div class="settings-toggle" id="toggle-lora-breasts" onclick="toggleLora('breasts')"></div>
+                                    </div>
+                                    <div class="settings-slider-row" id="lora-breasts-slider-row" style="opacity: 0.4;">
+                                        <div class="settings-slider-header">
+                                            <div class="settings-label" id="lora-breasts-slider-label" style="font-size: 12px; color: #888;">Force LoRA Anatomy</div>
+                                            <div class="settings-slider-value" id="settings-lora-breasts-value">70%</div>
+                                        </div>
+                                        <input type="range" class="settings-slider" id="settings-lora-breasts" min="0" max="100" value="70" oninput="updateLoraSlider('breasts', this.value)">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ONGLET MÉMOIRE -->
+                <div class="settings-panel" id="settings-memory">
+                    <div class="settings-section">
+                        <div class="settings-section-heading">
+                            <div class="settings-section-title" id="memory-section-title">Mémoire locale</div>
+                            <span class="settings-status-badge is-warning" id="memory-section-badge">Expérimental</span>
+                        </div>
+                        <div class="settings-callout">
+                            <div class="settings-callout-body" id="memory-section-info">
+                                JoyBoy garde ici les faits locaux déjà extraits sur cette machine. La surface reste expérimentale et n’alimente pas encore toutes les routes.
+                            </div>
+                        </div>
+                        <div class="settings-info" id="memory-info">
+                            Faits mémorisés localement: <span id="memory-count">0</span>
+                        </div>
+                        <div class="settings-row">
+                            <div>
+                                <div class="settings-label" id="memory-clear-label">Vider la mémoire locale</div>
+                                <div class="settings-label-desc" id="memory-clear-desc">Supprime les faits enregistrés sur cette machine</div>
+                            </div>
+                            <button class="settings-danger-btn" id="memory-clear-btn" onclick="confirmClearMemory()">Vider</button>
+                        </div>
+                    </div>
+                    <div class="settings-section">
+                        <div class="settings-section-title" id="memory-chats-title">Conversations locales</div>
+                        <div class="settings-info" id="chats-info">
+                            Conversations locales actives: <span id="chats-count">0</span>
+                        </div>
+                        <div class="settings-row">
+                            <div>
+                                <div class="settings-label" id="memory-chats-clear-label">Supprimer les conversations locales</div>
+                                <div class="settings-label-desc" id="memory-chats-clear-desc">Efface l’historique local actuel et repart d’une vue vide</div>
+                            </div>
+                            <button class="settings-danger-btn" id="memory-chats-clear-btn" onclick="confirmClearChats()">Supprimer</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ONGLET GALERIE / STORAGE -->
+                <div class="settings-panel" id="settings-storage">
+                    <div class="settings-section gallery-shell">
+                        <div class="gallery-header">
+                            <div class="gallery-header-copy">
+                                <div class="settings-section-title" id="gallery-section-title">Galerie de générations</div>
+                                <div class="settings-info gallery-section-subtitle" id="gallery-section-subtitle">Retrouve, filtre et prévisualise toutes les images et vidéos générées localement.</div>
+                            </div>
+                            <div class="gallery-header-actions">
+                                <button class="gallery-toolbar-btn" id="gallery-refresh-btn" onclick="refreshGallery()" aria-label="Rafraîchir" title="Rafraîchir" data-i18n-tooltip="settings.storage.refresh">
+                                    <i data-lucide="refresh-cw"></i>
+                                </button>
+                                <button class="gallery-toolbar-btn danger" id="gallery-clear-btn" onclick="clearAllGallery()" aria-label="Tout supprimer" title="Tout supprimer" data-i18n-tooltip="settings.storage.clearAll">
+                                    <i data-lucide="trash-2"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div id="gallery-stats" class="gallery-stats" aria-live="polite"></div>
+                        <div id="gallery-filters" class="gallery-filters" role="tablist" aria-label="Gallery filters">
+                            <button class="filter-chip active" id="gallery-filter-all" onclick="filterGallery('all', this)">
+                                <i data-lucide="layout-grid"></i>
+                                <span>Tous</span>
+                            </button>
+                            <button class="filter-chip" id="gallery-filter-imagine" onclick="filterGallery('imagine', this)">
+                                <i data-lucide="sparkles"></i>
+                                <span>Générées</span>
+                            </button>
+                            <button class="filter-chip" id="gallery-filter-modified" onclick="filterGallery('modified', this)">
+                                <i data-lucide="wand-sparkles"></i>
+                                <span>Modifiées</span>
+                            </button>
+                            <button class="filter-chip" id="gallery-filter-video" onclick="filterGallery('video', this)">
+                                <i data-lucide="clapperboard"></i>
+                                <span>Vidéos</span>
+                            </button>
+                        </div>
+                        <div id="gallery-grid" class="gallery-grid">
+                            <!-- Cartes générées dynamiquement -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ONGLET PROMPT LAB -->
+                <div class="settings-panel" id="settings-prompt-lab">
+                    <div class="settings-section">
+                        <div class="settings-section-title" id="prompt-lab-title">Prompt Helper</div>
+                        <div class="settings-info" id="prompt-lab-info">
+                            Reformule une idée de visuel ou de vidéo pour différentes plateformes créatives, avec un wording plus propre et plus portable.
+                        </div>
+                    </div>
+                    <div class="settings-section">
+                        <div class="settings-row">
+                            <div>
+                                <div class="settings-label" id="prompt-lab-platform-label">Plateforme</div>
+                                <div class="settings-label-desc" id="prompt-lab-platform-desc">Adapte le niveau de reformulation selon la destination</div>
+                            </div>
+                            <select class="settings-select" id="jailbreak-platform">
+                                <option value="grok" selected>Grok</option>
+                                <option value="sora">Sora</option>
+                                <option value="midjourney">Midjourney</option>
+                                <option value="dalle">DALL-E</option>
+                                <option value="stable_diffusion">Stable Diffusion</option>
+                                <option value="ideogram">Ideogram</option>
+                            </select>
+                        </div>
+                        <div class="settings-row">
+                            <div class="settings-label" id="prompt-lab-type-label">Type</div>
+                            <div class="model-filters">
+                                <button class="filter-chip active" id="prompt-lab-type-image" onclick="toggleJailbreakMediaType('image')">Image</button>
+                                <button class="filter-chip" id="prompt-lab-type-video" onclick="toggleJailbreakMediaType('video')">Vidéo</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="settings-section">
+                        <div class="settings-label" id="prompt-lab-brief-label" style="margin-bottom: 8px;">Brief</div>
+                        <textarea id="jailbreak-input" class="jailbreak-textarea" placeholder="Ex. : portrait éditorial, lumière douce, tenue élégante, cadrage serré..."></textarea>
+                        <div class="settings-row" style="justify-content: flex-end;">
+                            <button class="settings-action-btn" id="jailbreak-generate-btn" onclick="generatePromptLabPrompt()">Générer</button>
+                        </div>
+                    </div>
+                    <div class="settings-section" id="jailbreak-result-section" style="display: none;">
+                        <div class="jailbreak-badges">
+                            <span class="jailbreak-badge jailbreak-badge-platform" id="jailbreak-badge-platform"></span>
+                            <span class="jailbreak-badge jailbreak-badge-type" id="jailbreak-badge-type"></span>
+                        </div>
+                        <div class="jailbreak-output" id="jailbreak-output"></div>
+                        <div class="jailbreak-output jailbreak-output-fr" id="jailbreak-output-fr" style="display: none;"></div>
+                        <div class="jailbreak-tips" id="jailbreak-tips"></div>
+                        <div class="jailbreak-actions">
+                            <button class="settings-action-btn" id="jailbreak-copy-btn" onclick="copyJailbreakPrompt()">Copier</button>
+                            <button class="settings-action-btn" id="jailbreak-regenerate-btn" onclick="generatePromptLabPrompt()">Regénérer</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ONGLET TERMINAL -->
+                <div class="settings-panel" id="settings-terminal">
+                    <div class="settings-section">
+                        <div class="settings-section-title" id="terminal-model-title">Modèle Terminal</div>
+                        <div class="settings-info" id="terminal-model-desc">
+                            Le mode terminal (<code>joyboy run</code>) utilise un modèle capable d'exécuter des outils (lecture/écriture fichiers).
+                        </div>
+                        <div class="settings-row">
+                            <div>
+                                <div class="settings-label" id="terminal-model-label">Modèle pour le terminal</div>
+                                <div class="settings-label-desc" id="terminal-model-hint">Modèles rapides recommandés, pas les modèles "thinking"</div>
+                            </div>
+                            <select class="settings-select" id="terminal-model-select" onchange="updateTerminalModel(this.value)">
+                                <option value="auto" id="terminal-model-auto-option">Auto (premier compatible)</option>
+                            </select>
+                        </div>
+                        <div class="settings-row">
+                            <div>
+                                <div class="settings-label" id="terminal-reasoning-label">Raisonnement cloud</div>
+                                <div class="settings-label-desc" id="terminal-reasoning-hint">Utilisé par les connecteurs compatibles, comme Codex CLI.</div>
+                            </div>
+                            <select class="settings-select" id="terminal-reasoning-select" onchange="updateTerminalReasoningEffort(this.value)">
+                                <option value="low" id="terminal-reasoning-low">Bas</option>
+                                <option value="medium" id="terminal-reasoning-medium">Moyen</option>
+                                <option value="high" id="terminal-reasoning-high">Élevé</option>
+                                <option value="xhigh" id="terminal-reasoning-xhigh">Très approfondi</option>
+                            </select>
+                        </div>
+                        <div class="settings-info" id="terminal-model-info">
+                            💡 Recommandés: <strong>qwen2.5:7b</strong>, <strong>llama3.1:8b</strong><br>
+                            ⚠️ Éviter: deepseek-r1 (trop lent, modèle "thinking")
+                        </div>
+                    </div>
+                    <div class="settings-section">
+                        <div class="settings-section-title" id="terminal-context-title">Taille du contexte</div>
+                        <div class="settings-slider-row">
+                            <div class="settings-slider-header">
+                                <div class="settings-label" id="terminal-context-label">Tokens de contexte</div>
+                                <div class="settings-slider-value" id="settings-context-size-value">4096</div>
+                            </div>
+                            <input type="range" class="settings-slider" id="settings-context-size" min="2048" max="262144" value="4096" step="2048" oninput="updateContextSize(this.value)">
+                        </div>
+                        <div class="settings-info" id="context-size-info">
+                            Ollama local peut monter jusqu'à 256K, si le modèle et ta VRAM/RAM suivent.
+                        </div>
+                    </div>
+                    <div class="settings-section">
+                        <div class="settings-section-title" id="terminal-workspaces-title">Workspaces (dossiers projet)</div>
+                        <div class="settings-info" id="terminal-workspaces-desc">
+                            Permet à l'IA d'explorer tes projets locaux (lecture seule)
+                        </div>
+                        <div class="workspace-add-container">
+                            <input type="text" id="workspace-path-input" class="settings-input" placeholder="C:\Users\...\mon-projet">
+                            <button class="settings-action-btn" id="workspace-add-btn" onclick="addWorkspace()">Ajouter</button>
+                        </div>
+                        <div id="workspaces-list" class="workspaces-list">
+                            <!-- Liste des workspaces -->
+                        </div>
+                    </div>
+                    <div class="settings-section">
+                        <div class="settings-section-title" id="terminal-active-workspace-title">Workspace actif</div>
+                        <div class="settings-row">
+                            <div>
+                                <div class="settings-label" id="active-workspace-name">Aucun</div>
+                                <div class="settings-label-desc" id="active-workspace-path">Sélectionne un workspace pour l'activer</div>
+                            </div>
+                            <button class="settings-action-btn secondary" onclick="clearActiveWorkspace()" id="clear-workspace-btn" style="display:none">Désactiver</button>
+                        </div>
+                        <div id="workspace-model-warning" class="settings-warning" style="display:none">
+                            <i data-lucide="alert-triangle"></i>
+                            <span id="workspace-model-warning-text">Ton modèle ne supporte pas les outils workspace. L'IA utilisera un mode dégradé.</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ONGLET MODÈLES -->
+                <div class="settings-panel" id="settings-models">
+                    <div class="settings-section models-hero-section">
+                        <div class="settings-section-title" id="models-setup-title">Setup local</div>
+                        <div class="settings-callout models-hero-callout">
+                            <div class="settings-callout-title models-hero-title" id="models-setup-headline">Providers, modèles et diagnostics</div>
+                            <div class="settings-callout-body models-hero-desc" id="models-setup-body">
+                                Commence ici pour brancher tes clés de téléchargement, gérer les modèles et vérifier que la machine est prête.
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="settings-section models-summary-card">
+                        <div class="models-card-head">
+                            <div class="models-card-icon"><i data-lucide="key-round" aria-hidden="true"></i></div>
+                            <div>
+                                <div class="settings-section-title" id="models-providers-title">Providers et LLM</div>
+                                <div class="settings-label-desc" id="provider-settings-note">
+                                    Clés stockées localement hors git. Les variables d'environnement gardent la priorité.
+                                </div>
+                            </div>
+                        </div>
+                        <div id="provider-settings-list" class="provider-settings-list">Chargement...</div>
+                    </div>
+
+                    <div class="settings-section models-summary-card">
+                        <div class="models-card-head">
+                            <div class="models-card-icon"><i data-lucide="stethoscope" aria-hidden="true"></i></div>
+                            <div>
+                                <div class="settings-section-title" id="models-doctor-title">Doctor</div>
+                                <div class="settings-label-desc" id="models-doctor-desc">Python, GPU, Ollama, providers, stockage, modèles et packs.</div>
+                            </div>
+                        </div>
+                        <div class="settings-row">
+                            <div>
+                                <div class="settings-label" id="models-doctor-label">Diagnostic machine</div>
+                                <div class="settings-label-desc" id="models-doctor-action-desc">Relance un check complet quand tu changes de setup.</div>
+                            </div>
+                            <button class="settings-action-btn" id="models-doctor-btn" onclick="loadDoctorReport()">Relancer le doctor</button>
+                        </div>
+                        <div id="doctor-report-output" class="settings-info">Chargement du doctor...</div>
+                    </div>
+
+                    <div class="settings-section models-summary-card">
+                        <div class="models-card-head">
+                            <div class="models-card-icon"><i data-lucide="shield-check" aria-hidden="true"></i></div>
+                            <div>
+                                <div class="settings-section-title" id="models-audit-title">Audit du harness</div>
+                                <div class="settings-label-desc" id="models-audit-desc">
+                                    Vérifie install, packaging, secrets et points à revoir avant publication publique.
+                                </div>
+                            </div>
+                        </div>
+                        <div class="settings-row">
+                            <div>
+                                <div class="settings-label" id="models-audit-label">Readiness open source</div>
+                                <div class="settings-label-desc" id="models-audit-action-desc">Garde le repo propre avant de publier ou mirror.</div>
+                            </div>
+                            <button class="settings-action-btn" id="models-audit-btn" onclick="runHarnessAudit()">Relancer l'audit</button>
+                        </div>
+                        <div id="harness-audit-output" class="settings-info">Chargement de l'audit...</div>
+                    </div>
+
+                    <!-- Sub-tabs pour Texte/Image -->
+                    <div class="models-subtabs">
+                        <button class="models-subtab active" id="models-subtab-text" onclick="switchModelsSubtab('text', this)">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                            </svg>
+                            Texte (Ollama)
+                        </button>
+                        <button class="models-subtab" id="models-subtab-image" onclick="switchModelsSubtab('image', this)">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="3" y="3" width="18" height="18" rx="2"/>
+                                <circle cx="8.5" cy="8.5" r="1.5"/>
+                                <path d="M21 15l-5-5L5 21"/>
+                            </svg>
+                            Image (Providers)
+                        </button>
+                    </div>
+
+                    <!-- Panel Texte (Ollama) -->
+                    <div class="models-subpanel active" id="models-text-panel">
+                        <div class="models-inner-tabs" aria-label="Modèles texte">
+                            <button class="models-inner-tab active" id="models-text-tab-available" type="button" onclick="switchModelsInnerTab('models-text-panel', 'install', this)">Local</button>
+                            <button class="models-inner-tab" id="models-text-tab-local" type="button" onclick="switchModelsInnerTab('models-text-panel', 'installed', this)">Installés</button>
+                        </div>
+
+                        <div class="models-inner-panel active" data-inner-panel="install">
+                            <div class="settings-section">
+                                <div class="settings-section-title" id="models-text-install-title">Modèles locaux</div>
+                                <div class="ollama-search-container">
+                                    <input type="text" id="ollama-search-input" class="settings-input" placeholder="Rechercher..." onkeyup="if(event.key==='Enter') searchOllamaModels()">
+                                    <button class="settings-action-btn" id="models-ollama-search-btn" onclick="searchOllamaModels()">Rechercher</button>
+                                </div>
+                                <div class="model-filters">
+                                    <button class="filter-chip active" id="models-filter-all" data-filter="all" onclick="toggleModelFilter('all')">Tous</button>
+                                    <button class="filter-chip" id="models-filter-vision" data-filter="vision" onclick="toggleModelFilter('vision')">👁️ Vision</button>
+                                    <button class="filter-chip" id="models-filter-open" data-filter="uncensored" onclick="toggleModelFilter('uncensored')">Open</button>
+                                    <button class="filter-chip" id="models-filter-fast" data-filter="fast" onclick="toggleModelFilter('fast')">Rapide</button>
+                                    <button class="filter-chip" id="models-filter-powerful" data-filter="powerful" onclick="toggleModelFilter('powerful')">Puissant</button>
+                                </div>
+                                <div id="ollama-search-results" class="ollama-models-list">
+                                    <div class="settings-info">Modèles populaires</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="models-inner-panel" data-inner-panel="installed">
+                            <div class="settings-section">
+                                <div class="settings-section-title" id="models-text-installed-title">Modèles installés</div>
+                                <div id="ollama-installed-models" class="ollama-models-list">
+                                    <div class="settings-info">Chargement...</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Panel Image (HuggingFace) -->
+                    <div class="models-subpanel" id="models-image-panel">
+                        <div class="models-inner-tabs" aria-label="Modèles image">
+                            <button class="models-inner-tab active" id="models-image-tab-import" type="button" onclick="switchModelsInnerTab('models-image-panel', 'import', this)">Importer</button>
+                            <button class="models-inner-tab" id="models-image-tab-catalog" type="button" onclick="switchModelsInnerTab('models-image-panel', 'catalog', this)">Catalogue</button>
+                            <button class="models-inner-tab" id="models-image-tab-local" type="button" onclick="switchModelsInnerTab('models-image-panel', 'installed', this)">Installés</button>
+                        </div>
+
+                        <div class="models-inner-panel active" data-inner-panel="import">
+                            <div class="settings-section">
+                                <div class="settings-section-title" id="models-provider-import-title">Importer depuis une source provider</div>
+                                <div class="settings-row">
+                                    <div>
+                                        <div class="settings-label" id="models-provider-source-label">Source Hugging Face / CivitAI</div>
+                                        <div class="settings-label-desc" id="models-provider-source-desc">Colle un repo id, une URL de modèle ou un lien CivitAI. JoyBoy résout ensuite la bonne source.</div>
+                                    </div>
+                                </div>
+                                <div class="settings-row">
+                                    <div style="display:flex; gap:8px; width:100%; flex-wrap:wrap;">
+                                        <input type="text" id="model-source-input" class="settings-input" placeholder="Ex: org/model, https://huggingface.co/org/model, https://civitai.com/models/12345" style="flex:1; min-width: 320px;">
+                                        <select class="settings-select" id="model-source-family" style="max-width: 180px;">
+                                            <option value="image" selected>Image</option>
+                                            <option value="generic">Generic</option>
+                                            <option value="video">Video</option>
+                                            <option value="utility">Utility</option>
+                                        </select>
+                                        <button class="settings-action-btn" id="models-provider-analyze-btn" onclick="resolveModelImportSource()">Analyser</button>
+                                    </div>
+                                </div>
+                                <div id="models-provider-output"><div id="model-source-output" class="settings-info">Aucune source analysée.</div></div>
+                            </div>
+                        </div>
+
+                        <div class="models-inner-panel" data-inner-panel="catalog">
+                            <div class="settings-section">
+                                <div class="settings-section-title" id="models-image-install-title">Modèles locaux</div>
+                                <div class="model-filters">
+                                    <button class="filter-chip active" id="models-image-filter-all" data-filter="all" onclick="toggleImageModelFilter('all')">Tous</button>
+                                    <button class="filter-chip" id="models-image-filter-inpaint" data-filter="inpaint" onclick="toggleImageModelFilter('inpaint')">Inpaint</button>
+                                    <button class="filter-chip" id="models-image-filter-txt2img" data-filter="txt2img" onclick="toggleImageModelFilter('txt2img')">Text2Img</button>
+                                    <button class="filter-chip" id="models-image-filter-nsfw" data-filter="nsfw" onclick="toggleImageModelFilter('nsfw')">Local+</button>
+                                </div>
+                                <div id="image-available-models" class="ollama-models-list">
+                                    <div class="settings-info">Chargement...</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="models-inner-panel" data-inner-panel="installed">
+                            <div class="settings-section">
+                                <div class="settings-section-title" id="models-image-installed-title">Modèles installés</div>
+                                <div id="image-installed-models" class="ollama-models-list">
+                                    <div class="settings-info">Chargement...</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ONGLET ENTRAÎNEMENT -->
+                <div class="settings-panel" id="settings-training">
+                    <div class="settings-section">
+                        <div class="settings-section-title" id="training-lora-title">Entraînement LoRA</div>
+                        <div class="settings-label-desc" id="training-lora-desc">Crée un LoRA personnalisé à partir de 10-20 images</div>
+                    </div>
+
+                    <!-- Section 1: Dossier images -->
+                    <div class="settings-section">
+                        <div class="settings-section-title" id="training-images-title">Images d'entraînement</div>
+                        <div class="settings-row">
+                            <div>
+                                <div class="settings-label" id="training-folder-label">Dossier</div>
+                                <div class="settings-label-desc" id="training-folder-desc">Chemin du dossier contenant les images</div>
+                            </div>
+                            <div class="training-folder-input">
+                                <input type="text" class="settings-input" id="training-folder" placeholder="training_data/mon_lora">
+                                <button class="settings-action-btn" id="training-load-images-btn" onclick="loadTrainingImages()">Charger</button>
+                            </div>
+                        </div>
+                        <div id="training-images-grid" class="training-images-grid"></div>
+                    </div>
+
+                    <!-- Section 2: Captioning -->
+                    <div class="settings-section">
+                        <div class="settings-section-title" id="training-captioning-title">Captioning</div>
+                        <div class="settings-row">
+                            <div>
+                                <div class="settings-label" id="training-common-caption-label">Caption commune</div>
+                                <div class="settings-label-desc" id="training-common-caption-desc">Applique le même texte à toutes les images</div>
+                            </div>
+                            <div class="settings-input-group">
+                                <input type="text" class="settings-input" id="training-common-caption" placeholder="portrait éditorial, lumière douce, fond intérieur...">
+                                <button class="settings-action-btn" id="training-common-caption-apply-btn" onclick="applyCommonCaption()">Appliquer à toutes</button>
+                            </div>
+                        </div>
+                        <div class="settings-row">
+                            <div>
+                                <div class="settings-label" id="training-florence-label">Florence-2</div>
+                                <div class="settings-label-desc" id="training-florence-desc">Ou décrit chaque image automatiquement (éditable)</div>
+                            </div>
+                            <button class="settings-action-btn" id="btn-autocaption" onclick="autoCaptionImages()">Auto-caption</button>
+                        </div>
+                        <div id="training-captions-list" class="training-captions-list"></div>
+                    </div>
+
+                    <!-- Section 3: Configuration -->
+                    <div class="settings-section">
+                        <div class="settings-section-title" id="training-config-title">Configuration</div>
+                        <div class="settings-row">
+                            <div>
+                                <div class="settings-label" id="training-base-model-label">Modèle de base</div>
+                                <div class="settings-label-desc" id="training-base-model-desc">SDXL (8GB+) ou Flux (20GB+)</div>
+                            </div>
+                            <select class="settings-select" id="training-base-model">
+                                <option value="sdxl">SDXL</option>
+                                <option value="flux">Flux Dev</option>
+                            </select>
+                        </div>
+                        <div class="settings-row">
+                            <div>
+                                <div class="settings-label" id="training-lora-name-label">Nom du LoRA</div>
+                                <div class="settings-label-desc" id="training-lora-name-desc">Nom du fichier de sortie</div>
+                            </div>
+                            <input type="text" class="settings-input" id="training-lora-name" placeholder="mon_style">
+                        </div>
+                        <div class="settings-row">
+                            <div>
+                                <div class="settings-label" id="training-steps-label">Étapes</div>
+                                <div class="settings-label-desc" id="training-steps-desc">Plus = meilleur mais plus long</div>
+                            </div>
+                            <div class="slider-group">
+                                <input type="range" class="settings-slider" id="training-steps" min="200" max="3000" value="1000" step="100" oninput="document.getElementById('training-steps-val').textContent=this.value">
+                                <span id="training-steps-val">1000</span>
+                            </div>
+                        </div>
+                        <div class="settings-row">
+                            <div>
+                                <div class="settings-label" id="training-rank-label">Rang</div>
+                                <div class="settings-label-desc" id="training-rank-desc">Taille du LoRA (16=standard, 32=plus expressif)</div>
+                            </div>
+                            <select class="settings-select" id="training-rank">
+                                <option value="8" id="training-rank-option-8">8 (léger)</option>
+                                <option value="16" id="training-rank-option-16" selected>16 (standard)</option>
+                                <option value="32" id="training-rank-option-32">32 (expressif)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Section 4: Mes LoRAs -->
+                    <div class="settings-section">
+                        <div class="settings-section-title" id="training-my-loras-title">Mes LoRAs</div>
+                        <div class="settings-label-desc" id="training-my-loras-desc">LoRAs entraînés disponibles dans trained_loras/</div>
+                        <div id="custom-loras-list" class="custom-loras-list">
+                            <div class="settings-info" id="training-no-loras">Aucun LoRA entraîné</div>
+                        </div>
+                    </div>
+
+                    <!-- Section 5: Lancement -->
+                    <div class="settings-section">
+                        <div class="training-actions">
+                            <button class="settings-action-btn training-start-btn" id="btn-start-training" onclick="startLoraTraining()">Lancer l'entraînement</button>
+                            <button class="settings-action-btn training-stop-btn" id="btn-stop-training" onclick="stopLoraTraining()">Arrêter</button>
+                        </div>
+                        <div id="training-progress" class="training-progress">
+                            <div class="training-progress-bar"><div class="training-progress-fill" id="training-progress-fill"></div></div>
+                            <div id="training-status" class="training-status">En attente...</div>
+                            <div id="training-log" class="training-log"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ONGLET AIDE -->
+                <div class="settings-panel" id="settings-help">
+                    <div class="settings-section">
+                        <div class="settings-section-title" id="help-overview-title">JoyBoy en bref</div>
+                        <div class="help-item">
+                            <div class="help-title" id="help-overview-subtitle">Un harness IA local</div>
+                            <div class="help-desc" id="help-overview-desc">
+                                JoyBoy réunit chat LLM, recherche web, génération d’images, inpainting intelligent et vidéo dans un seul cockpit local. Il adapte ses modèles et réglages à ta machine.
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="settings-section">
+                        <div class="settings-section-title" id="help-workflows-title">Flux principaux</div>
+
+                        <div class="help-item">
+                            <div class="help-title" id="help-chat-title">Chat, web et terminal</div>
+                            <div class="help-desc" id="help-chat-desc">
+                                Utilise le modèle Ollama choisi pour discuter, raisonner, chercher sur le web si nécessaire et travailler avec le contexte local.
+                            </div>
+                        </div>
+
+                        <div class="help-item">
+                            <div class="help-title" id="help-image-title">Image et inpainting</div>
+                            <div class="help-desc" id="help-image-desc">
+                                Décris ton intention en langage naturel. Le Smart Router choisit le masque, la force, les modèles de segmentation, ControlNet Depth et les références visage/style quand elles sont utiles.
+                            </div>
+                        </div>
+
+                        <div class="help-item">
+                            <div class="help-title" id="help-video-title">Vidéo</div>
+                            <div class="help-desc" id="help-video-desc">
+                                Génère une vidéo depuis du texte ou anime une image avec un prompt. Les presets s’adaptent au modèle vidéo et à la VRAM disponible.
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="settings-section">
+                        <div class="settings-section-title" id="help-setup-title">Configuration et extensions</div>
+
+                        <div class="help-item">
+                            <div class="help-title" id="help-doctor-title">Doctor et accès modèles</div>
+                            <div class="help-desc" id="help-doctor-desc">
+                                Va dans Modèles pour vérifier Python/GPU/Ollama, brancher Hugging Face ou CivitAI, importer des modèles et voir les actions à corriger.
+                            </div>
+                        </div>
+
+                        <div class="help-item">
+                            <div class="help-title" id="help-packs-title">Packs locaux</div>
+                            <div class="help-desc" id="help-packs-desc">
+                                Le core public reste neutre. Les packs locaux ajoutent des règles de routing, prompts, sources de modèles ou surfaces UI sur ta machine sans les embarquer dans le repo public.
+                            </div>
+                        </div>
+
+                        <div class="help-item">
+                            <div class="help-title" id="help-performance-title">Performance</div>
+                            <div class="help-desc" id="help-performance-desc">
+                                Si un résultat est lent ou instable, commence par le Doctor, puis ajuste le modèle, les steps, la qualité vidéo et le mode de génération. Les gros modèles demandent plus de VRAM et d’espace disque.
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="settings-section" id="help-addons-section">
+                        <div class="settings-section-title" id="help-addons-title">Créer un addon</div>
+                        <div class="settings-callout">
+                            <div class="settings-callout-title" id="help-addons-headline">Un addon JoyBoy est un pack local importable</div>
+                            <div class="settings-callout-body" id="help-addons-body">
+                                Un addon peut ajouter des règles de routing, des prompts, des sources de modèles ou des surfaces UI sans modifier le core public.
+                            </div>
+                        </div>
+
+                        <div class="help-addon-grid">
+                            <div class="help-item">
+                                <div class="help-title" id="help-addons-contract-title">Contrat</div>
+                                <div class="help-desc" id="help-addons-contract-desc">
+                                    Chaque addon expose un pack.json versionné, validé avant import et copié dans le dossier local des packs.
+                                </div>
+                            </div>
+                            <div class="help-item">
+                                <div class="help-title" id="help-addons-assets-title">Assets</div>
+                                <div class="help-desc" id="help-addons-assets-desc">
+                                    Les fichiers assets peuvent rester vides au départ, puis alimenter le routeur, les prompts, les modèles ou l’UI.
+                                </div>
+                            </div>
+                            <div class="help-item">
+                                <div class="help-title" id="help-addons-import-title">Import</div>
+                                <div class="help-desc" id="help-addons-import-desc">
+                                    Zippe le dossier de l’addon ou colle son chemin local dans Paramètres > Modèles > Packs locaux.
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="help-addon-template">
+                            <div class="help-title" id="help-addons-template-title">Structure minimale</div>
+                            <pre class="help-code-block"><code>my-addon/
+  pack.json
+  assets/
+    router_rules.json
+    prompt_assets.json
+    model_sources.json
+    ui_overrides.json</code></pre>
+                            <div class="help-desc" id="help-addons-template-desc">
+                                Des templates vides et un exemple neutre sont fournis dans docs/addons/.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            </div>
+        </div>
+    </div>

@@ -69,7 +69,7 @@
     color: #e0e0e0;
     word-wrap: break-word;
     overflow-wrap: break-word;
-    white-space: pre-wrap;
+    white-space: normal;
 }
 
 .chat-bubble .cursor {

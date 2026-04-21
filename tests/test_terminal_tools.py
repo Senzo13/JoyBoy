@@ -174,6 +174,29 @@ class TerminalToolRegistryTests(unittest.TestCase):
         self.assertTrue(decision.allowed)
         self.assertEqual(decision.mode, "full_access")
 
+    def test_permission_full_access_blocks_recursive_shell_delete_use_clear_workspace(self):
+        registry = build_default_terminal_tool_registry(LEGACY_TOOLS)
+        engine = PermissionEngine(registry)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            rm_decision = engine.check(
+                "bash",
+                {"command": "find . -mindepth 1 -maxdepth 1 -exec rm -rf {} +"},
+                tmp,
+                permission_mode="full_access",
+            )
+            ps_decision = engine.check(
+                "bash",
+                {"command": "Remove-Item -Recurse ."},
+                tmp,
+                permission_mode="full_access",
+            )
+
+        self.assertFalse(rm_decision.allowed)
+        self.assertFalse(ps_decision.allowed)
+        self.assertIn("clear_workspace", rm_decision.reason)
+        self.assertIn("delete_file", ps_decision.reason)
+
     def test_permission_blocks_recursive_delete(self):
         registry = build_default_terminal_tool_registry(LEGACY_TOOLS)
         engine = PermissionEngine(registry)

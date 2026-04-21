@@ -1,0 +1,165 @@
+    <!-- ONBOARDING MODAL -->
+    <div class="onboarding-modal" id="onboarding-modal">
+        <div class="onboarding-content">
+            <div class="onboarding-header">
+                <img class="onboarding-logo" src="/static/images/logo.png" alt="{{ ai_name }}">
+                <div class="onboarding-dots" id="onboarding-dots">
+                    <span class="onboarding-dot active" data-step="1"></span>
+                    <span class="onboarding-dot" data-step="2"></span>
+                    <span class="onboarding-dot" data-step="3"></span>
+                </div>
+                <select class="onboarding-locale-select" id="onboarding-locale-select" data-locale-select onchange="changeLocale(this.value)"></select>
+            </div>
+
+            <div class="onboarding-scroll">
+                <div class="onboarding-step" id="onboarding-step-1">
+                    <div class="onboarding-hero">
+                        <div class="onboarding-kicker" id="onboarding-hero-kicker">Harness IA local</div>
+                        <div class="onboarding-hero-title" id="onboarding-hero-title">Un seul cockpit pour chat, web, image et vidéo</div>
+                        <div class="onboarding-hero-body" id="onboarding-hero-body">Parle à un LLM, cherche sur le web, génère des images, modifie-les avec un inpainting intelligent et crée des vidéos. JoyBoy adapte aussi ses modèles et réglages à ta machine.</div>
+                    </div>
+
+                    <div class="onboarding-capability-grid">
+                        <div class="onboarding-capability-card">
+                            <div class="onboarding-capability-icon"><i data-lucide="messages-square"></i></div>
+                            <div class="onboarding-capability-title" id="onboarding-cap-chat-title">Parler à un LLM</div>
+                            <div class="onboarding-capability-desc" id="onboarding-cap-chat-desc">Conversation locale, outils, terminal et contexte.</div>
+                        </div>
+                        <div class="onboarding-capability-card">
+                            <div class="onboarding-capability-icon"><i data-lucide="globe"></i></div>
+                            <div class="onboarding-capability-title" id="onboarding-cap-web-title">Chercher sur le web</div>
+                            <div class="onboarding-capability-desc" id="onboarding-cap-web-desc">Recherche internet et réponses enrichies quand il le faut.</div>
+                        </div>
+                        <div class="onboarding-capability-card">
+                            <div class="onboarding-capability-icon"><i data-lucide="wand-sparkles"></i></div>
+                            <div class="onboarding-capability-title" id="onboarding-cap-image-title">Générer et modifier</div>
+                            <div class="onboarding-capability-desc" id="onboarding-cap-image-desc">Images, inpainting intelligent et références visage/style.</div>
+                        </div>
+                        <div class="onboarding-capability-card">
+                            <div class="onboarding-capability-icon"><i data-lucide="clapperboard"></i></div>
+                            <div class="onboarding-capability-title" id="onboarding-cap-video-title">Créer des vidéos</div>
+                            <div class="onboarding-capability-desc" id="onboarding-cap-video-desc">Texte vers vidéo ou animation à partir d’une image.</div>
+                        </div>
+                        <div class="onboarding-capability-card">
+                            <div class="onboarding-capability-icon"><i data-lucide="gauge"></i></div>
+                            <div class="onboarding-capability-title" id="onboarding-cap-adaptive-title">S’adapte à ton setup</div>
+                            <div class="onboarding-capability-desc" id="onboarding-cap-adaptive-desc">Choisit modèles, qualité et réglages selon GPU, VRAM et RAM.</div>
+                        </div>
+                    </div>
+
+                    <div class="onboarding-focus-block">
+                        <div class="onboarding-question" id="onboarding-question-usage">Choisis un focus de départ</div>
+                        <div class="onboarding-focus-hint" id="onboarding-focus-hint">Ça ajuste le ton par défaut de JoyBoy et les recommandations de modèle. Tu pourras le changer plus tard.</div>
+                    </div>
+                    <div class="profile-options">
+                        <div class="profile-option" data-type="developer" onclick="selectProfileType('developer')">
+                            <div class="profile-icon">
+                                <i data-lucide="code"></i>
+                            </div>
+                            <div class="profile-label" id="onboarding-profile-developer-label">Coder</div>
+                            <div class="profile-desc" id="onboarding-profile-developer-desc">Code, debug, automatisation</div>
+                        </div>
+                        <div class="profile-option" data-type="designer" onclick="selectProfileType('designer')">
+                            <div class="profile-icon">
+                                <i data-lucide="palette"></i>
+                            </div>
+                            <div class="profile-label" id="onboarding-profile-designer-label">Créer</div>
+                            <div class="profile-desc" id="onboarding-profile-designer-desc">Image, vidéo, prompts créatifs</div>
+                        </div>
+                        <div class="profile-option" data-type="student" onclick="selectProfileType('student')">
+                            <div class="profile-icon">
+                                <i data-lucide="graduation-cap"></i>
+                            </div>
+                            <div class="profile-label" id="onboarding-profile-student-label">Apprendre</div>
+                            <div class="profile-desc" id="onboarding-profile-student-desc">Explications claires et guidées</div>
+                        </div>
+                        <div class="profile-option" data-type="casual" onclick="selectProfileType('casual')">
+                            <div class="profile-icon">
+                                <i data-lucide="smile"></i>
+                            </div>
+                            <div class="profile-label" id="onboarding-profile-casual-label">Général</div>
+                            <div class="profile-desc" id="onboarding-profile-casual-desc">Usage polyvalent au quotidien</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="onboarding-step hidden" id="onboarding-step-2">
+                    <div class="onboarding-step2-icon">
+                        <i data-lucide="user-circle"></i>
+                    </div>
+                    <div class="onboarding-question" id="onboarding-question-name">Comment JoyBoy peut s’adresser à toi ?</div>
+                    <div class="onboarding-body-copy" id="onboarding-name-body">Optionnel. Sert uniquement à personnaliser les réponses sur cette machine.</div>
+                    <input type="text" class="onboarding-input" id="onboarding-name" placeholder="Ton prénom (optionnel)" autocomplete="off">
+                    <div class="onboarding-hint" id="onboarding-name-hint">L'IA pourra personnaliser ses réponses</div>
+                </div>
+
+                <!-- STEP 3: Hardware Benchmark & Setup -->
+                <div class="onboarding-step hidden" id="onboarding-step-3">
+                    <div class="setup-container">
+                        <div class="onboarding-setup-copy">
+                            <div class="onboarding-question" id="onboarding-setup-title">JoyBoy prépare ton setup</div>
+                            <div class="onboarding-body-copy" id="onboarding-setup-body">Détection GPU/VRAM, recommandation du modèle texte, réglages image/vidéo et vérification des briques locales.</div>
+                        </div>
+                        <div class="circular-progress" id="setup-progress">
+                            <svg class="progress-ring" viewBox="0 0 120 120">
+                                <circle class="progress-ring-bg" cx="60" cy="60" r="52"/>
+                                <circle class="progress-ring-fill" cx="60" cy="60" r="52" id="progress-circle"/>
+                            </svg>
+                            <div class="progress-content">
+                                <span class="progress-percent" id="setup-percent">0%</span>
+                                <span class="progress-label" id="setup-label">Analyse...</span>
+                            </div>
+                        </div>
+
+                        <div class="setup-status" id="setup-status">Détection du matériel...</div>
+
+                        <div class="hardware-grid hidden" id="hardware-info">
+                            <div class="hw-cell">
+                                <span class="hw-key" id="onboarding-hw-gpu-key">GPU</span>
+                                <span class="hw-val" id="hw-gpu">-</span>
+                            </div>
+                            <div class="hw-cell">
+                                <span class="hw-key" id="onboarding-hw-vram-key">VRAM</span>
+                                <span class="hw-val" id="hw-vram">-</span>
+                            </div>
+                            <div class="hw-cell">
+                                <span class="hw-key" id="onboarding-hw-ram-key">RAM</span>
+                                <span class="hw-val" id="hw-ram">-</span>
+                            </div>
+                            <div class="hw-cell">
+                                <span class="hw-key" id="onboarding-hw-quality-key">Qualité</span>
+                                <span class="hw-val" id="hw-quality">-</span>
+                            </div>
+                            <div class="hw-cell highlight">
+                                <span class="hw-key" id="onboarding-hw-chat-key">Chat</span>
+                                <span class="hw-val" id="hw-model">-</span>
+                            </div>
+                            <div class="hw-cell highlight">
+                                <span class="hw-key" id="onboarding-hw-image-key">Image</span>
+                                <span class="hw-val" id="hw-image-model">-</span>
+                            </div>
+                            <div class="hw-cell full">
+                                <span class="hw-key" id="onboarding-hw-gen-key">Génération estimée</span>
+                                <span class="hw-val" id="hw-gen-time">-</span>
+                            </div>
+                        </div>
+
+                        <div class="setup-eta hidden" id="setup-eta">Temps estimé : --</div>
+
+                        <div class="onboarding-readiness hidden" id="onboarding-readiness">
+                            <div class="onboarding-readiness-title" id="onboarding-readiness-title">État du setup</div>
+                            <div class="onboarding-readiness-grid" id="onboarding-readiness-grid"></div>
+                            <div class="onboarding-readiness-note" id="onboarding-readiness-note">
+                                Les providers, packs locaux et imports de modèles se finalisent ensuite dans Paramètres &gt; Modèles.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="onboarding-actions">
+                <button class="onboarding-skip" id="onboarding-skip-btn" onclick="skipOnboarding()">Passer</button>
+                <button class="onboarding-next" id="onboarding-next-btn" onclick="nextOnboardingStep()" disabled>Continuer</button>
+            </div>
+        </div>
+    </div>

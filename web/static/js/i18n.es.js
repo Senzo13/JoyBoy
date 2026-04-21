@@ -1223,6 +1223,28 @@ Object.assign(MESSAGES.es.settings.generation, {
 
 Object.assign(MESSAGES.es.terminal, {
         interruptedContinue: 'Interrumpido (Ctrl+C) - escribe "continue" para reanudar',
+        approvalTitle: 'Autorización requerida',
+        approvalQuestion: '¿Permitir que JoyBoy ejecute esta acción con acceso completo?',
+        approvalCommandLabel: 'Acción',
+        approvalAllowOnce: 'Sí, esta vez',
+        approvalAllowRemember: 'Sí, cambiar a acceso completo',
+        approvalDeny: 'No, cancelar',
+        approvalWaiting: 'Esperando autorización',
+        approvalRequiredLine: 'Autorización requerida',
+        approvalDeniedLine: 'Acción cancelada.',
+        taskWriteFiles: 'Escribiendo archivos',
+        taskWriteFile: 'Escribiendo',
+        taskEditFile: 'Editando',
+        taskDeleteFile: 'Eliminando',
+        taskClearWorkspace: 'Limpiando workspace',
+        taskRunCommand: 'Comando',
+        taskReadFile: 'Leyendo',
+        taskListFiles: 'Explorando',
+        taskSearchFiles: 'Buscando',
+        taskPlan: 'Planificación',
+        taskSubagent: 'Verificación delegada',
+        approvalLargeContent: '[contenido]',
+        approvalFileCount: '{count} archivos',
     });
 
 Object.assign(MESSAGES.es.settings, {

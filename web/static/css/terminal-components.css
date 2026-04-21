@@ -226,6 +226,137 @@
   height: 15px;
 }
 
+/* Approval card shown when default terminal permissions block a destructive tool. */
+.terminal-approval-card {
+  width: min(760px, calc(100% - 32px));
+  margin: 14px auto 18px;
+  padding: 14px;
+  border: 1px solid rgba(248, 113, 113, 0.26);
+  border-radius: 8px;
+  background: rgba(18, 18, 20, 0.96);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.34);
+  color: #f4f4f5;
+}
+
+.terminal-approval-head {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.terminal-approval-icon {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 8px;
+  background: rgba(239, 68, 68, 0.13);
+  color: #f87171;
+}
+
+.terminal-approval-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.terminal-approval-title {
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0;
+  color: #fecaca;
+}
+
+.terminal-approval-question {
+  margin-top: 3px;
+  color: #f5f5f5;
+  font-size: 14px;
+  line-height: 1.42;
+}
+
+.terminal-approval-command-label {
+  margin-top: 14px;
+  color: #8b8b91;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0;
+}
+
+.terminal-approval-command {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  margin-top: 6px;
+  padding: 9px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.28);
+  color: #d4d4d8;
+  font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.terminal-approval-command span {
+  flex: 0 0 auto;
+  color: #fca5a5;
+  font-weight: 700;
+}
+
+.terminal-approval-reason {
+  margin-top: 8px;
+  color: #a1a1aa;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.terminal-approval-options {
+  display: grid;
+  gap: 7px;
+  margin-top: 14px;
+}
+
+.terminal-approval-option {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 10px 11px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.045);
+  color: #f4f4f5;
+  cursor: pointer;
+  text-align: left;
+}
+
+.terminal-approval-option:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+.terminal-approval-option span {
+  color: #8b8b91;
+  font-size: 12px;
+}
+
+.terminal-approval-danger {
+  border-color: rgba(248, 113, 113, 0.24);
+  color: #fecaca;
+}
+
+.terminal-approval-danger:hover {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(248, 113, 113, 0.42);
+}
+
+.terminal-approval-muted {
+  color: #a1a1aa;
+}
+
 /* Résultat d'outil - très compact */
 .terminal-line.terminal-tool-result {
   color: #555;
@@ -452,16 +583,36 @@
 }
 
 .terminal-task {
-  padding: 4px 12px;
+  padding: 6px 12px;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
   color: #aaa;
 }
 
 .terminal-task .task-icon {
   width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  margin-top: 1px;
   text-align: center;
+}
+
+.terminal-task-body {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.terminal-task-body > span {
+  overflow-wrap: anywhere;
+}
+
+.terminal-task-note {
+  color: #747474;
+  font-size: 11px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .terminal-task.task-pending {

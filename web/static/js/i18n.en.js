@@ -1497,6 +1497,28 @@ Object.assign(MESSAGES.en.settings.generation, {
 
 Object.assign(MESSAGES.en.terminal, {
         interruptedContinue: 'Interrupted (Ctrl+C) - type "continue" to resume',
+        approvalTitle: 'Authorization required',
+        approvalQuestion: 'Allow JoyBoy to run this action with full access?',
+        approvalCommandLabel: 'Action',
+        approvalAllowOnce: 'Yes, this time',
+        approvalAllowRemember: 'Yes, switch to full access',
+        approvalDeny: 'No, cancel',
+        approvalWaiting: 'Waiting for approval',
+        approvalRequiredLine: 'Approval required',
+        approvalDeniedLine: 'Action cancelled.',
+        taskWriteFiles: 'Writing files',
+        taskWriteFile: 'Writing',
+        taskEditFile: 'Editing',
+        taskDeleteFile: 'Deleting',
+        taskClearWorkspace: 'Clearing workspace',
+        taskRunCommand: 'Command',
+        taskReadFile: 'Reading',
+        taskListFiles: 'Exploring',
+        taskSearchFiles: 'Searching',
+        taskPlan: 'Planning',
+        taskSubagent: 'Delegated verification',
+        approvalLargeContent: '[content]',
+        approvalFileCount: '{count} files',
     });
 
 Object.assign(MESSAGES.en.settings, {

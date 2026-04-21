@@ -1,0 +1,338 @@
+                <!-- ONGLET GÉNÉRATION (Images) -->
+                <div class="settings-panel" id="settings-generation">
+                    <div class="settings-subtabs">
+                        <button class="settings-subtab active" id="settings-gen-tab-image" onclick="switchGenSubtab('image', this)">Image</button>
+                        <button class="settings-subtab" id="settings-gen-tab-txt2img" onclick="switchGenSubtab('txt2img', this)">Text2Img</button>
+                        <button class="settings-subtab" id="settings-gen-tab-video" onclick="switchGenSubtab('video', this)">Vidéo</button>
+                        <button class="settings-subtab" id="settings-gen-tab-export" onclick="switchGenSubtab('export', this)">Export</button>
+                    </div>
+
+                    <div class="settings-subpanel active" id="gen-image">
+                    <div class="settings-section">
+                        <div class="settings-section-title" id="gen-image-section-title">Inpainting (modifier une image)</div>
+                        <div class="settings-slider-row">
+                            <div class="settings-slider-header">
+                                <div class="settings-label" id="gen-image-steps-label">Steps inpainting</div>
+                                <div class="settings-slider-value" id="settings-steps-value">60</div>
+                            </div>
+                            <input type="range" class="settings-slider" id="settings-steps" min="10" max="100" value="60" oninput="updateSettingSlider('steps', this.value)">
+                        </div>
+                        <div class="settings-slider-row">
+                            <div class="settings-slider-header">
+                                <div class="settings-label" id="gen-image-dilation-label">Dilation masque (px)</div>
+                                <div class="settings-slider-value" id="settings-dilation-value">15</div>
+                            </div>
+                            <input type="range" class="settings-slider" id="settings-dilation" min="0" max="50" value="15" oninput="updateSettingSlider('dilation', this.value)">
+                        </div>
+                        <div class="settings-slider-row">
+                            <div class="settings-slider-header">
+                                <div class="settings-label">ControlNet Depth</div>
+                                <div class="settings-slider-value" id="settings-controlnet-depth-value">0.54</div>
+                            </div>
+                            <input type="range" class="settings-slider" id="settings-controlnet-depth" min="0" max="100" value="54" oninput="updateControlnetDepth(this.value)">
+                        </div>
+                        <div class="settings-slider-row">
+                            <div class="settings-slider-header">
+                                <div class="settings-label" id="gen-image-composite-label">Composite Blur Radius</div>
+                                <div class="settings-slider-value" id="settings-composite-radius-value">Auto</div>
+                            </div>
+                            <input type="range" class="settings-slider" id="settings-composite-radius" min="0" max="64" value="0" oninput="updateCompositeRadius(this.value)">
+                        </div>
+                    </div>
+
+                    <div class="settings-section">
+                        <div class="settings-section-title" id="gen-image-seg-title">Segmentation</div>
+                        <div class="settings-row">
+                            <div>
+                                <div class="settings-label" id="gen-image-seg-model-label">Modèle de segmentation</div>
+                                <div class="settings-label-desc" id="gen-image-seg-model-desc">Fusion B2+B4+SCHP — combine 3 modèles en parallèle pour la meilleure précision</div>
+                            </div>
+                            <span class="settings-label" id="gen-image-seg-fusion-note" style="opacity:0.6; font-size:13px;">Fusion (B2+B4+SCHP)</span>
+                        </div>
+                        <div class="settings-row" style="gap:8px; justify-content:flex-start; flex-wrap:wrap;">
+                            <button class="settings-action-btn" onclick="reinstallSegModel()" id="btn-reinstall-seg" style="font-size:12px;">
+                                Réinstaller le modèle
+                            </button>
+                            <button class="settings-action-btn" onclick="deleteSegModel()" id="btn-delete-seg" style="font-size:12px; background:rgba(239,68,68,0.15); color:#ef4444;">
+                                Supprimer du cache
+                            </button>
+                            <button class="settings-action-btn" onclick="verifySegModel()" id="btn-verify-seg" style="font-size:12px; background:rgba(34,197,94,0.15); color:#22c55e;">
+                                Vérifier l'intégrité
+                            </button>
+                        </div>
+                        <div id="seg-model-status" class="settings-label-desc" style="display:none; margin-top:4px;"></div>
+                    </div>
+
+                    <div class="settings-section">
+                        <div class="settings-section-title" id="gen-image-backend-title">Backend IA</div>
+                        <div class="settings-row">
+                            <div>
+                                <div class="settings-label" id="gen-image-backend-label">Moteur d'inférence</div>
+                                <div class="settings-label-desc" id="gen-image-backend-desc">GGUF = moins de VRAM, modèles quantizés</div>
+                            </div>
+                            <select class="settings-select" id="settings-backend" onchange="changeBackend(this.value)">
+                                <option value="diffusers">Diffusers (standard)</option>
+                                <option value="gguf">GGUF (optimisé VRAM)</option>
+                            </select>
+                        </div>
+                        <div class="settings-row" id="gguf-quant-row" style="display:none;">
+                            <div>
+                                <div class="settings-label" id="gen-image-quant-label">Quantization</div>
+                                <div class="settings-label-desc" id="gen-image-quant-desc">Plus bas = moins de VRAM mais légère perte de qualité</div>
+                            </div>
+                            <select class="settings-select" id="settings-gguf-quant" onchange="changeGGUFQuant(this.value)">
+                                <option value="Q8_0">Q8_0 (~50% taille, qualité max)</option>
+                                <option value="Q6_K" selected>Q6_K (~40% taille, recommandé)</option>
+                                <option value="Q5_K">Q5_K (~35% taille, bon compromis)</option>
+                                <option value="Q4_K">Q4_K (~30% taille, VRAM limité)</option>
+                            </select>
+                        </div>
+                        <div id="gguf-status" class="settings-label-desc" style="display:none; margin-top:4px; padding:8px; background:rgba(255,255,255,0.05); border-radius:6px;"></div>
+                    </div>
+                    </div><!-- /gen-image -->
+
+                    <div class="settings-subpanel" id="gen-txt2img">
+                    <div class="settings-section">
+                        <div class="settings-section-title" id="gen-txt2img-title">Text-to-Image (créer une image)</div>
+                        <div class="settings-slider-row">
+                            <div class="settings-slider-header">
+                                <div class="settings-label" id="gen-txt2img-steps-label">Steps text2img</div>
+                                <div class="settings-slider-value" id="settings-text2img-steps-value">30</div>
+                            </div>
+                            <input type="range" class="settings-slider" id="settings-text2img-steps" min="1" max="100" value="30" oninput="updateSettingSlider('text2imgSteps', this.value)">
+                            <div class="settings-slider-hint" id="gen-txt2img-steps-hint">Plus de steps = plus de détails mais plus lent. 25-35 optimal.</div>
+                        </div>
+                        <div class="settings-slider-row">
+                            <div class="settings-slider-header">
+                                <div class="settings-label" id="gen-txt2img-guidance-label">Guidance scale</div>
+                                <div class="settings-slider-value" id="settings-text2img-guidance-value">7.5</div>
+                            </div>
+                            <input type="range" class="settings-slider" id="settings-text2img-guidance" min="1" max="20" step="0.5" value="7.5" oninput="updateSettingSlider('text2imgGuidance', this.value)">
+                            <div class="settings-slider-hint" id="gen-txt2img-guidance-hint">Bas (3-5) = créatif, flou. Moyen (7-8) = photoréaliste. Haut (>10) = saturé, plastique.</div>
+                        </div>
+                        <div class="settings-slider-row">
+                            <div class="settings-slider-header">
+                                <div class="settings-label" id="gen-txt2img-face-ref-label">Face ref scale (auto-plafonné)</div>
+                                <div class="settings-slider-value" id="settings-face-ref-scale-value">0.35</div>
+                            </div>
+                            <input type="range" class="settings-slider" id="settings-face-ref-scale" min="0" max="1" step="0.05" value="0.35" oninput="updateSettingSlider('faceRefScale', this.value)">
+                            <div class="settings-slider-hint" id="gen-txt2img-face-ref-hint">Ressemblance au visage. 0.35 pour portrait; JoyBoy baisse automatiquement pour corps entier, pose, style ref ou ControlNet. 2-5 photos nettes aident.</div>
+                        </div>
+                        <div class="settings-slider-row">
+                            <div class="settings-slider-header">
+                                <div class="settings-label" id="gen-txt2img-style-ref-label">Style ref scale</div>
+                                <div class="settings-slider-value" id="settings-style-ref-scale-value">0.55</div>
+                            </div>
+                            <input type="range" class="settings-slider" id="settings-style-ref-scale" min="0.0" max="0.95" step="0.05" value="0.55" oninput="updateSettingSlider('styleRefScale', this.value)">
+                            <div class="settings-slider-hint" id="gen-txt2img-style-ref-hint">Fidélité à la photo. 0.7+ = garde la pose, modifie peu. 0.4 = change pas mal. 0.2 = juste l'ambiance.</div>
+                        </div>
+                        <div class="settings-slider-row">
+                            <div class="settings-slider-header">
+                                <div class="settings-label" id="gen-txt2img-pose-strength-label">Force pose ControlNet</div>
+                                <div class="settings-slider-value" id="settings-pose-strength-value">0.8</div>
+                            </div>
+                            <input type="range" class="settings-slider" id="settings-pose-strength" min="0" max="1.5" step="0.05" value="0.8" oninput="updateSettingSlider('poseStrength', this.value)">
+                            <div class="settings-slider-hint" id="gen-txt2img-pose-strength-hint">Force du squelette ControlNet. 0.5 = léger guide. 0.8 = suit bien la pose. 1.0+ = force max (peut dégrader la qualité).</div>
+                        </div>
+                    </div>
+                    </div><!-- /gen-txt2img -->
+
+                    <div class="settings-subpanel" id="gen-video">
+                    <div class="settings-section">
+                        <div class="settings-section-title" id="gen-video-title">Génération Vidéo</div>
+                        <div class="settings-row">
+                            <div>
+                                <div class="settings-label" id="gen-video-model-label">Modèle vidéo</div>
+                                <div class="settings-label-desc" id="gen-video-model-desc">Sur 8GB, JoyBoy recommande SVD. Les autres modèles vidéo sont séparés entre test manuel et non disponible.</div>
+                            </div>
+                            <select class="settings-select" id="settings-video-model" onchange="saveSetting('videoModel', this.value); if(typeof updateVideoQualityVisibility==='function') updateVideoQualityVisibility(); if(typeof updateEditVideoPromptVisibility==='function') updateEditVideoPromptVisibility()">
+                                <option value="ltx">⚡ LTX-Video 2B FP8/offload - recommandé 8GB, I2V + prompt (~3GB)</option>
+                                <option value="svd">SVD 1.1 - Image→Vidéo rapide, mouvement subtil (~8GB)</option>
+                            </select>
+                        </div>
+
+                        <div class="settings-row">
+                            <div>
+                                <div class="settings-label" id="gen-video-advanced-label">Afficher les modèles de test</div>
+                                <div class="settings-label-desc" id="gen-video-advanced-desc">Affiche les modèles non recommandés ou expérimentaux déjà branchés. Sur 8GB, ils peuvent être lents ou instables.</div>
+                            </div>
+                            <div class="settings-toggle" id="toggle-show-advanced-video-models" onclick="toggleSetting('showAdvancedVideoModels')"></div>
+                        </div>
+
+                        <div class="settings-row" id="video-quality-row" style="display:none">
+                            <div>
+                                <div class="settings-label" id="gen-video-quality-label">Qualité vidéo</div>
+                                <div class="settings-label-desc" id="gen-video-quality-desc">720p = meilleure qualité (plus lent), 480p = plus rapide</div>
+                            </div>
+                            <select class="settings-select" id="settings-video-quality" onchange="saveSetting('videoQuality', this.value)">
+                                <option value="720p">720p - Haute qualité (1280×704)</option>
+                                <option value="480p">480p - Rapide (832×480)</option>
+                            </select>
+                        </div>
+
+                        <div class="settings-slider-row">
+                            <div class="settings-slider-header">
+                                <div class="settings-label" id="gen-video-duration-label">Durée (secondes)</div>
+                                <div class="settings-slider-value" id="settings-video-duration-value">5s</div>
+                            </div>
+                            <input type="range" class="settings-slider" id="settings-video-duration" min="2" max="15" value="5" oninput="updateSettingSlider('videoDuration', this.value)">
+                        </div>
+
+                        <div class="settings-slider-row">
+                            <div class="settings-slider-header">
+                                <div class="settings-label" id="gen-video-fps-label">FPS</div>
+                                <div class="settings-slider-value" id="settings-video-fps-value">24</div>
+                            </div>
+                            <input type="range" class="settings-slider" id="settings-video-fps" min="8" max="30" step="1" value="24" oninput="updateSettingSlider('videoFps', this.value)">
+                        </div>
+
+                        <div class="settings-slider-row">
+                            <div class="settings-slider-header">
+                                <div class="settings-label" id="gen-video-steps-label">Steps vidéo</div>
+                                <div class="settings-slider-value" id="settings-video-steps-value">30</div>
+                            </div>
+                            <input type="range" class="settings-slider" id="settings-video-steps" min="10" max="80" value="30" oninput="updateSettingSlider('videoSteps', this.value)">
+                        </div>
+
+                        <div class="settings-row" id="video-refine-row" style="display:none">
+                            <div>
+                                <div class="settings-label" id="gen-video-refine-label">Passes de raffinement (LTX)</div>
+                                <div class="settings-label-desc" id="gen-video-refine-desc">Micro-raffinement subtil (0 = off)</div>
+                                <div class="settings-slider-value" id="settings-video-refine-value">0</div>
+                            </div>
+                            <input type="range" class="settings-slider" id="settings-video-refine" min="0" max="5" value="0" oninput="updateSettingSlider('videoRefine', this.value)">
+                        </div>
+
+                        <div class="settings-row">
+                            <div>
+                                <div class="settings-label" id="gen-video-audio-label">Son automatique (MMAudio)</div>
+                                <div class="settings-label-desc" id="gen-video-audio-desc">Option lourde, désactivée par défaut. Ignorée sur petite VRAM sauf override.</div>
+                            </div>
+                            <div class="settings-toggle" id="toggle-video-audio" onclick="toggleSetting('videoAudio')">
+                            </div>
+                        </div>
+
+                        <div class="settings-row">
+                            <div>
+                                <div class="settings-label" id="gen-video-face-restore-label">Restauration faciale</div>
+                                <div class="settings-label-desc" id="gen-video-face-restore-desc">GFPGAN = meilleur pour les yeux IA, CodeFormer = dégradations fortes</div>
+                            </div>
+                            <select class="settings-select" id="settings-face-restore" onchange="saveSetting('faceRestore', this.value)">
+                                <option value="off">Désactivé</option>
+                                <option value="gfpgan">GFPGAN (recommandé)</option>
+                                <option value="codeformer">CodeFormer</option>
+                            </select>
+                        </div>
+                    </div>
+                    </div><!-- /gen-video -->
+
+                    <div class="settings-subpanel" id="gen-export">
+                    <div class="settings-section">
+                        <div class="settings-section-title" id="gen-export-title">Format d'export par défaut</div>
+                        <div class="settings-info" id="gen-export-info">Pour les images générées avec <strong>/imagine</strong> (text2img). Appliqué seulement si le prompt ne contient pas de format explicite (ex: "snapchat", "16:9")</div>
+                        <div class="settings-row">
+                            <div>
+                                <div class="settings-label" id="gen-export-format-label">Format</div>
+                                <div class="settings-label-desc" id="gen-export-format-desc">Ratio d'aspect par défaut pour text2img</div>
+                            </div>
+                            <select class="settings-select" id="settings-export-format" onchange="updateExportFormat(this.value)">
+                                <option value="auto">Auto (prompt décide)</option>
+                                <option value="9:16">9:16 Portrait (768×1344)</option>
+                                <option value="16:9">16:9 Paysage (1344×768)</option>
+                                <option value="1:1">1:1 Carré (1024×1024)</option>
+                                <option value="3:4">3:4 Portrait (896×1152)</option>
+                                <option value="4:3">4:3 Paysage (1152×896)</option>
+                                <option value="custom">Custom (W×H)</option>
+                            </select>
+                        </div>
+                        <div class="settings-row" id="export-custom-size-row" style="display:none">
+                            <div class="settings-label" id="gen-export-custom-label">Dimensions (auto-snap multiples de 64)</div>
+                            <div style="display:flex; gap:8px; align-items:center;">
+                                <input type="number" class="settings-input" id="settings-export-width" value="768" min="64" step="64" style="width:80px" onchange="updateExportCustomSize('width', this.value)">
+                                <span style="color:#666">×</span>
+                                <input type="number" class="settings-input" id="settings-export-height" value="1344" min="64" step="64" style="width:80px" onchange="updateExportCustomSize('height', this.value)">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="settings-section export-guidance-section" id="gen-export-guidance-section">
+                        <div class="settings-section-title" id="gen-export-guidance-title">Guidage image</div>
+                        <div class="settings-info" id="gen-export-guidance-desc">Choisis si ce réglage pilote une pose humaine ou le cadrage caméra.</div>
+                        <div class="settings-row">
+                            <div>
+                                <div class="settings-label" id="gen-export-guidance-label">Type de guidage</div>
+                                <div class="settings-label-desc" id="gen-export-guidance-help">Choisis le guidage actif. L'autre réglage est ignoré pendant la génération.</div>
+                            </div>
+                            <select class="settings-select" id="settings-export-guidance-type" onchange="updateExportGuidanceType(this.value)">
+                                <option value="human">Pose humaine</option>
+                                <option value="camera">Cadrage / caméra</option>
+                            </select>
+                        </div>
+                        <div class="settings-row" id="export-camera-guide-row">
+                            <div>
+                                <div class="settings-label" id="gen-export-view-label">Vue par défaut</div>
+                                <div class="settings-label-desc" id="gen-export-view-desc">Injecté dans le prompt si différent de Auto</div>
+                            </div>
+                            <select class="settings-select" id="settings-export-view" onchange="saveSetting('exportView', this.value)">
+                                <option value="auto">Auto</option>
+                                <option value="full_body">Plan large</option>
+                                <option value="upper_body">Plan moyen</option>
+                                <option value="portrait_close">Gros plan</option>
+                                <option value="low_angle">Contre-plongée</option>
+                                <option value="high_angle">Plongée</option>
+                                <option value="from_behind">Vue arrière</option>
+                            </select>
+                        </div>
+                        <div class="settings-row" id="export-human-pose-row">
+                            <div>
+                                <div class="settings-label" id="gen-export-pose-label">Pose humaine par défaut</div>
+                                <div class="settings-label-desc" id="gen-export-pose-desc">Pour personnages humains. Pour animaux, objets ou caméras, décris la pose dans le prompt ou crée un preset.</div>
+                            </div>
+                            <select class="settings-select" id="settings-export-pose" onchange="saveSetting('exportPose', this.value)">
+                                <option value="none">Aucune</option>
+                                <option value="legs_up">Recliné, jambes relevées</option>
+                                <option value="on_all_fours">Appui mains/genoux</option>
+                                <option value="lying_down">Allongé</option>
+                                <option value="lying_face_up">Allongé sur le dos</option>
+                                <option value="lying_on_stomach">Allongé sur le ventre</option>
+                                <option value="sitting">Assis</option>
+                                <option value="kneeling">Posture basse</option>
+                                <option value="standing_spread">Debout, appui large</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="settings-section export-presets-section">
+                        <div class="settings-section-title" id="gen-export-presets-title">Presets personnalisés</div>
+                        <div class="settings-info" id="gen-export-presets-desc">Mot-clé dans le prompt → applique format/vue/pose + extra prompt. Le mot-clé est retiré du prompt final.</div>
+                        <div id="export-presets-list"></div>
+                        <button class="settings-action-btn compact settings-add-preset-btn" id="gen-export-add-preset-btn" onclick="addExportPreset()">
+                            <i data-lucide="plus" aria-hidden="true"></i>
+                            <span id="gen-export-add-preset-label">Ajouter un preset</span>
+                        </button>
+                    </div>
+                    </div><!-- /gen-export -->
+
+                    <!-- === Always visible sections (outside subtabs) === -->
+
+                    <div class="settings-section">
+                        <div class="settings-section-title">Accès Internet</div>
+                        <div class="settings-row">
+                            <div>
+                                <div class="settings-label">Tunnel Cloudflare</div>
+                                <div class="settings-label-desc">Rend JoyBoy accessible depuis Internet via un lien public</div>
+                            </div>
+                            <div class="settings-toggle" id="toggle-tunnel" onclick="toggleTunnel()">
+                            </div>
+                        </div>
+                        <div id="tunnel-status-row" style="display:none;">
+                            <div class="settings-row" style="flex-direction:column; align-items:flex-start; gap:6px;">
+                                <div id="tunnel-status-text" class="settings-label-desc" style="color:#f59e0b;">Démarrage du tunnel...</div>
+                                <div id="tunnel-url-row" style="display:none; width:100%; align-items:center; gap:8px;">
+                                    <input type="text" id="tunnel-url" readonly class="settings-input" style="flex:1; font-size:13px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:8px; padding:8px 12px; color:#22c55e; cursor:text;">
+                                    <button class="btn-small" onclick="copyTunnelUrl()" style="white-space:nowrap; padding:8px 12px; border-radius:8px; background:rgba(255,255,255,0.1); border:none; color:#fff; cursor:pointer;">Copier</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>

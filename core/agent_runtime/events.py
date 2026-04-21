@@ -13,6 +13,7 @@ TERMINAL_EVENT_TYPES = {
     "thinking",
     "tool_call",
     "tool_result",
+    "approval_required",
     "loop_warning",
     "content",
     "done",

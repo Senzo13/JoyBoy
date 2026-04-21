@@ -1497,6 +1497,28 @@ Object.assign(MESSAGES.fr.settings.generation, {
 
 Object.assign(MESSAGES.fr.terminal, {
         interruptedContinue: 'Interrompu (Ctrl+C) - écris "continue" pour reprendre',
+        approvalTitle: 'Autorisation requise',
+        approvalQuestion: 'Autoriser JoyBoy à exécuter cette action avec accès complet ?',
+        approvalCommandLabel: 'Action',
+        approvalAllowOnce: 'Oui, cette fois',
+        approvalAllowRemember: 'Oui, passer en accès complet',
+        approvalDeny: 'Non, annuler',
+        approvalWaiting: 'En attente d’autorisation',
+        approvalRequiredLine: 'Autorisation requise',
+        approvalDeniedLine: 'Action annulée.',
+        taskWriteFiles: 'Écriture de fichiers',
+        taskWriteFile: 'Écriture',
+        taskEditFile: 'Modification',
+        taskDeleteFile: 'Suppression',
+        taskClearWorkspace: 'Nettoyage du workspace',
+        taskRunCommand: 'Commande',
+        taskReadFile: 'Lecture',
+        taskListFiles: 'Exploration',
+        taskSearchFiles: 'Recherche',
+        taskPlan: 'Planification',
+        taskSubagent: 'Vérification déléguée',
+        approvalLargeContent: '[contenu]',
+        approvalFileCount: '{count} fichiers',
     });
 
 Object.assign(MESSAGES.fr.settings, {
