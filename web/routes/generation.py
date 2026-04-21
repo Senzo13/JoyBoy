@@ -476,6 +476,7 @@ def _background_fill_cv2(image, mask):
 @generation_bp.route('/generate-edit', methods=['POST'])
 def unified_generate():
     """Endpoint unifie pour toutes les generations (text2img, inpaint, edit avec brush)."""
+    global _preload_gen_id
     _set_generation_cancelled(False)  # Reset au debut de chaque generation
 
     state = _get_state()
@@ -572,7 +573,22 @@ def unified_generate():
 
         is_inpainting = bool(image_b64)
         has_brush = bool(brush_mask_b64)
-        mode_str = "edit+brush" if has_brush else ("inpainting" if is_inpainting else "text2img")
+        read_only_image_preflight = False
+        if is_inpainting:
+            try:
+                from core.food_vision import is_image_analysis_request
+
+                read_only_image_preflight = is_image_analysis_request(prompt)
+            except Exception:
+                read_only_image_preflight = False
+        if read_only_image_preflight:
+            mode_str = "image-analysis"
+        elif has_brush:
+            mode_str = "edit+brush"
+        elif is_inpainting:
+            mode_str = "inpainting"
+        else:
+            mode_str = "text2img"
         print(f"[MODEL] Frontend sent: '{model}'")
 
         # Enregistrer cette generation IMMEDIATEMENT (avant router/enhance)
@@ -583,7 +599,7 @@ def unified_generate():
         from core.runtime import get_job_manager, get_conversation_store
         runtime_jobs = get_job_manager()
         runtime_conversations = get_conversation_store()
-        job_kind = 'inpaint' if is_inpainting else 'text2img'
+        job_kind = 'image_analysis' if read_only_image_preflight else ('inpaint' if is_inpainting else 'text2img')
         runtime_jobs.create(
             job_id=generation_id,
             kind=job_kind,
@@ -599,7 +615,12 @@ def unified_generate():
                 "enhance_mode": enhance_mode,
             },
         )
-        runtime_jobs.update(generation_id, phase='preload', progress=2, message='Préparation du moteur image')
+        runtime_jobs.update(
+            generation_id,
+            phase='routing' if read_only_image_preflight else 'preload',
+            progress=2,
+            message='Analyse de la demande' if read_only_image_preflight else 'Préparation du moteur image',
+        )
         if chat_id:
             runtime_conversations.ensure(chat_id)
             runtime_conversations.attach_job(chat_id, generation_id)
@@ -620,128 +641,13 @@ def unified_generate():
         def mark_job_cancelled(message='Génération annulée'):
             runtime_jobs.cancel(generation_id, message)
 
-        # ========== PRELOAD PIPELINE + LoRAs IMMÉDIAT (avant router/segmentation) ==========
-        # Lire le model_behaviors.json pour savoir si ControlNet/LoRAs sont supportés
-        # (lecture JSON rapide, pas d'attente sur le router)
-        from core.router_rules import get_model_behavior
-        _early_behavior = get_model_behavior(model)
-        _early_pipeline = _early_behavior.get('pipeline', {}) if _early_behavior else {}
-        _preload_controlnet = _early_pipeline.get('uses_controlnet', True)
-        _preload_loras = _early_pipeline.get('uses_loras', True)
-
+        # Do not load diffusion before the router has confirmed a generative
+        # route. The old eager preload was fast for edits, but it also loaded
+        # SDXL for read-only questions such as "what food is in this image?".
+        # generation_pipeline() still loads the model on demand once the route
+        # reaches an actual edit/repose/inpaint branch.
         _preload_future = None
         _preload_executor = None
-        if is_inpainting:
-            from concurrent.futures import ThreadPoolExecutor
-            from core.model_manager import ModelManager
-            _preload_is_single_file = False
-            try:
-                from core.models import SINGLE_FILE_MODELS, _refresh_imported_model_registries
-                _refresh_imported_model_registries()
-                _preload_is_single_file = model in SINGLE_FILE_MODELS
-            except Exception as _preload_registry_error:
-                print(f"[PRELOAD] Registry check skipped: {_preload_registry_error}")
-
-            _lora_nsfw = lora_nsfw_enabled and _preload_loras
-            _lora_skin = lora_skin_enabled and _preload_loras
-            _lora_breasts = lora_breasts_enabled and _preload_loras
-            _cn = _preload_controlnet
-            _preload_skip_reason = None
-            try:
-                from core.models import VRAM_GB
-                from core.models.runtime_env import get_parallel_image_preload_skip_reason
-
-                _preload_skip_reason = get_parallel_image_preload_skip_reason(VRAM_GB)
-            except Exception as _preload_policy_error:
-                print(f"[PRELOAD] Policy check skipped: {_preload_policy_error}")
-
-            # Register this generation as the active preload target.
-            # Any older preload still running will detect it's stale and bail out.
-            _my_gen_id = generation_id
-            with _preload_lock:
-                global _preload_gen_id
-                _preload_gen_id = _my_gen_id
-
-            def _preload_pipeline_and_loras():
-                import time as _t
-                _t0 = _t.time()
-                mgr = None
-                try:
-                    # Check if still the active preload before heavy work
-                    with _preload_lock:
-                        if _preload_gen_id != _my_gen_id:
-                            print(f"[PRELOAD] Stale (new gen started), skipping")
-                            return
-                    # Also check global cancellation (user hit cancel-all)
-                    if _is_generation_cancelled():
-                        print(f"[PRELOAD] Cancelled before load, skipping")
-                        return
-
-                    mgr = ModelManager.get()
-                    print(f"[PRELOAD] load_for_task start...")
-                    # The smart router may still be using Ollama while this
-                    # background preload starts. Do not unload the text model
-                    # from the preload thread; the main generation path unloads
-                    # it explicitly after routing/enhance.
-                    mgr.load_for_task(
-                        'inpaint',
-                        model_name=model,
-                        needs_controlnet=_cn,
-                        preserve_ollama=True,
-                    )
-
-                    # Check staleness + cancellation after model load
-                    with _preload_lock:
-                        if _preload_gen_id != _my_gen_id:
-                            print(f"[PRELOAD] Stale after model load, skipping LoRAs")
-                            return
-                    if _is_generation_cancelled():
-                        print(f"[PRELOAD] Cancelled after model load, skipping LoRAs")
-                        return
-
-                    print(f"[PRELOAD] Model ready ({_t.time() - _t0:.1f}s)")
-                    # Charger les LoRAs dans le pipeline (besoin que le pipe soit prêt)
-                    if _lora_nsfw:
-                        mgr.ensure_lora_loaded("nsfw")
-                    if _lora_skin:
-                        mgr.ensure_lora_loaded("skin")
-                    if _lora_breasts:
-                        mgr.ensure_lora_loaded("breasts")
-                    print(f"[PRELOAD] Done ({_t.time() - _t0:.1f}s)")
-                except Exception as e:
-                    print(f"[PRELOAD] ERROR: {type(e).__name__}: {e}")
-                    import traceback
-                    traceback.print_exc()
-                    if mgr is not None:
-                        try:
-                            print("[PRELOAD] Cleaning partial image pipeline after error...")
-                            mgr._unload_diffusers()
-                            mgr._clear_memory(aggressive=True)
-                        except Exception as cleanup_error:
-                            print(f"[PRELOAD] Cleanup after error failed: {cleanup_error}")
-                    raise
-
-            if _preload_is_single_file:
-                with _preload_lock:
-                    if _preload_gen_id == _my_gen_id:
-                        _preload_gen_id = None
-                print(f"[PRELOAD] Skipped for imported single-file model ({model}); direct load after segmentation")
-            elif _preload_skip_reason:
-                with _preload_lock:
-                    if _preload_gen_id == _my_gen_id:
-                        _preload_gen_id = None
-                print(f"[PRELOAD] Skipped parallel preload ({_preload_skip_reason}); direct load after segmentation")
-            else:
-                _preload_executor = ThreadPoolExecutor(max_workers=1)
-                _preload_future = _preload_executor.submit(_preload_pipeline_and_loras)
-                parts = [model]
-                if _cn: parts.append("ControlNet")
-                loras_str = []
-                if _lora_nsfw: loras_str.append("nsfw")
-                if _lora_skin: loras_str.append("skin")
-                if _lora_breasts: loras_str.append("breasts")
-                if loras_str: parts.append(f"LoRAs({','.join(loras_str)})")
-                print(f"[PRELOAD] {' + '.join(parts)} lancé IMMÉDIATEMENT")
 
         _cancel_logged = False
 
@@ -827,6 +733,55 @@ def unified_generate():
             with generations_lock:
                 active_generations.pop(generation_id, None)
             return _adult_mode_locked_response(error_response)
+
+        # ========== READ-ONLY IMAGE ANALYSIS ==========
+        # This is a hard boundary between "answer about the image" and
+        # "generate/edit an image". The router may use the selected cloud/local
+        # chat model to decide, but once this intent is returned we must not
+        # enter segmentation, enhance, or diffusion.
+        if analysis.get('intent') == 'image_analysis' and image_b64:
+            import time as _time
+
+            print("[ROUTER->IMAGE_ANALYSIS] Read-only visual answer, diffusion skipped")
+            with _preload_lock:
+                if _preload_gen_id == generation_id:
+                    _preload_gen_id = None
+            if _preload_executor is not None:
+                try:
+                    _preload_executor.shutdown(wait=False, cancel_futures=True)
+                except Exception:
+                    pass
+
+            mark_job_update(phase='vision_analysis', progress=30, message='Analyse de l’image')
+            start_time = _time.time()
+            img = base64_to_pil(image_b64)
+            from core.image_context import answer_image_question
+
+            answer_payload = answer_image_question(
+                img,
+                prompt,
+                chat_model=chat_model or None,
+                locale=data.get('locale') or request.headers.get('Accept-Language', 'fr'),
+            )
+            generation_time = _time.time() - start_time
+
+            with generations_lock:
+                active_generations.pop(generation_id, None)
+            mark_job_done(
+                result_type='text',
+                mode='image_analysis',
+                generation_time=generation_time,
+                response_length=len(answer_payload.get('response') or ''),
+            )
+            return success_response(
+                mode='image_analysis',
+                response=answer_payload.get('response') or '',
+                generation_time=generation_time,
+                generation_id=generation_id,
+                prompt=prompt,
+                router_intent=analysis.get('intent'),
+                router_reason=analysis.get('reason'),
+            )
 
         # ========== REFRAME REDIRECT ==========
         # Si le router detecte un intent "reframe" (reculer, zoom out, full body, etc.)

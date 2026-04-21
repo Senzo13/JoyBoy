@@ -209,7 +209,9 @@ const IMAGE_ANALYSIS_TERMS = [
     'détecter', 'detecter', 'reconnais', 'reconnaître', 'reconnaitre',
     'identify', 'identifie', 'identifier', 'caption', 'légende', 'legende',
     'c\'est quoi', 'c est quoi', 'what is this', 'what\'s this',
-    'quoi dans', 'contient', 'contains', 'comida', 'bebida', 'analiza',
+    'what do you see', 'quoi dans', 'quel', 'quelle', 'tu vois', 'voir',
+    'visible', 'contient', 'contains', 'nourriture', 'boisson',
+    'comida', 'bebida', 'analiza',
     'descrivi', 'analizza'
 ];
 
@@ -986,6 +988,7 @@ async function generate() {
             export_pose: getActiveExportPose(),
             pose_strength: userSettings.poseStrength ?? 0.5,
             export_presets: JSON.stringify(userSettings.exportPresets || {}),
+            locale: window.JoyBoyI18n?.getLocale?.() || document.documentElement.lang || 'fr',
             chatId: currentGenerationChatId,
             generationId: currentGenerationId,
         }, abortSignal);
@@ -999,7 +1002,6 @@ async function generate() {
         } else if (result.ok && result.data?.success) {
             const data = result.data;
             const totalGenerationTime = (Date.now() - imageRequestStartTime) / 1000;
-            modifiedImage = 'data:image/png;base64,' + data.modified;
 
             // IMPORTANT: Si l'user a changé de chat pendant la génération, revenir au bon chat
             if (currentChatId !== currentGenerationChatId && currentGenerationChatId) {
@@ -1007,10 +1009,21 @@ async function generate() {
                 await loadChat(currentGenerationChatId);
             }
 
-            if (data.mode === 'txt2img') {
+            if (data.mode === 'image_analysis') {
+                addImageAnalysisMessage(
+                    prompt,
+                    pendingImage || currentImage,
+                    data.response || '',
+                    Math.round(totalGenerationTime * 1000),
+                    data.token_stats || null,
+                    currentGenerationChatId
+                );
+            } else if (data.mode === 'txt2img') {
+                modifiedImage = 'data:image/png;base64,' + data.modified;
                 originalImage = null;
                 addMessageTxt2Img(prompt, modifiedImage, data.generationTime, data.seed || null, currentGenerationChatId, totalGenerationTime);
             } else {
+                modifiedImage = 'data:image/png;base64,' + data.modified;
                 originalImage = 'data:image/png;base64,' + data.original;
                 addMessage(prompt, pendingImage, originalImage, modifiedImage, data.generationTime, currentGenerationChatId, totalGenerationTime);
             }
@@ -1165,6 +1178,7 @@ async function continueChat() {
                 export_view: getActiveExportView(),
                 export_pose: getActiveExportPose(),
                 export_presets: JSON.stringify(userSettings.exportPresets || {}),
+                locale: window.JoyBoyI18n?.getLocale?.() || document.documentElement.lang || 'fr',
                 chatId: currentGenerationChatId,
                 generationId: currentGenerationId,
             }, chatAbortSignal);
@@ -1182,12 +1196,22 @@ async function continueChat() {
                 removeSkeletonMessage(currentGenerationChatId);
                 const data = result.data;
                 const totalGenerationTime = (Date.now() - imageRequestStartTime) / 1000;
-                modifiedImage = 'data:image/png;base64,' + data.modified;
 
-                if (data.mode === 'txt2img') {
+                if (data.mode === 'image_analysis') {
+                    addImageAnalysisMessage(
+                        prompt,
+                        pendingImage || currentImage,
+                        data.response || '',
+                        Math.round(totalGenerationTime * 1000),
+                        data.token_stats || null,
+                        currentGenerationChatId
+                    );
+                } else if (data.mode === 'txt2img') {
+                    modifiedImage = 'data:image/png;base64,' + data.modified;
                     originalImage = null;
                     addMessageTxt2Img(prompt, modifiedImage, data.generationTime, data.seed || null, currentGenerationChatId, totalGenerationTime);
                 } else {
+                    modifiedImage = 'data:image/png;base64,' + data.modified;
                     originalImage = 'data:image/png;base64,' + data.original;
                     addMessage(prompt, pendingImage, originalImage, modifiedImage, data.generationTime, currentGenerationChatId, totalGenerationTime);
                 }

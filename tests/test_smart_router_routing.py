@@ -228,6 +228,60 @@ class SmartRouterRoutingTests(unittest.TestCase):
         self.assertEqual(result["mask_strategy"], "full")
         self.assertFalse(result["needs_ip_adapter"])
 
+    def test_llm_can_route_read_only_image_analysis(self):
+        llm_response = "\n".join(
+            [
+                "INTENT: image_analysis",
+                "MASK: none",
+                "STRENGTH: 0.0",
+                "CONTROLNET: no",
+                "IPADAPTER: no",
+                "PROMPT: identify visible food and drink items",
+                "NEGATIVE: none",
+            ]
+        )
+
+        with patch("core.ai.edit_directives._llm_extract_prompt", return_value={}):
+            with patch("core.ai.smart_router._find_text_model", return_value="fake-router"):
+                with patch("core.ai.smart_router._call_llm", return_value=llm_response):
+                    result = analyze_request(
+                        "quel nourriture tu vois sur l'image ?",
+                        image_b64="data:image/png;base64,abc",
+                        has_brush_mask=False,
+                    )
+
+        self.assertEqual(result["intent"], "image_analysis")
+        self.assertEqual(result["mask_strategy"], "none")
+        self.assertEqual(result["strength"], 0.0)
+        self.assertFalse(result["needs_controlnet"])
+        self.assertFalse(result["needs_ip_adapter"])
+
+    def test_zero_strength_general_edit_is_not_sent_to_diffusion(self):
+        llm_response = "\n".join(
+            [
+                "INTENT: general_edit",
+                "MASK: full",
+                "STRENGTH: 0.0",
+                "CONTROLNET: no",
+                "IPADAPTER: no",
+                "PROMPT: analyze the image and identify visible food items",
+                "NEGATIVE: none",
+            ]
+        )
+
+        with patch("core.ai.edit_directives._llm_extract_prompt", return_value={}):
+            with patch("core.ai.smart_router._find_text_model", return_value="fake-router"):
+                with patch("core.ai.smart_router._call_llm", return_value=llm_response):
+                    result = analyze_request(
+                        "quel nourriture tu vois sur l'image ?",
+                        image_b64="data:image/png;base64,abc",
+                        has_brush_mask=False,
+                    )
+
+        self.assertEqual(result["intent"], "image_analysis")
+        self.assertEqual(result["mask_strategy"], "none")
+        self.assertEqual(result["strength"], 0.0)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -56,7 +56,8 @@ IMAGE_ANALYSIS_WORDS = {
     "analyse", "analyser", "analyses", "analyze", "analysez", "analysee",
     "describe", "decris", "decrire", "decrivez", "detect", "detecte", "detecter",
     "recognize", "reconnaitre", "reconnais", "identify", "identifie", "identifier",
-    "quoi", "cest", "contenu", "contains", "contain",
+    "quoi", "quel", "quelle", "quels", "quelles", "vois", "voir", "visible",
+    "cest", "contenu", "contains", "contain", "see",
     "contient", "caption", "legende", "legender", "explica", "analiza",
     "descrivi", "analizza",
 }

@@ -710,6 +710,53 @@ function finalizeStreamingMessage(msgId, responseTime, tokenStatsData = null) {
     scrollToBottom();
 }
 
+function addImageAnalysisMessage(prompt, attachedImage, response, responseTime = null, tokenStatsData = null, chatId = (typeof currentChatId !== 'undefined' ? currentChatId : null)) {
+    removeSkeletonMessage(chatId);
+
+    const messagesDiv = getChatMessages();
+    const msgId = 'analysis-' + Date.now();
+    const safePrompt = escapeHtml(prompt || '');
+    const imageHtml = attachedImage
+        ? `<img src="${attachedImage}" class="user-thumb" onclick="openModalSingle(this.src)">`
+        : '';
+    const tokenDisplay = tokenStatsData && tokenStatsData.total_tokens
+        ? `<span class="token-count" title="Prompt: ${tokenStatsData.prompt_tokens} | ${chatT('chat.responseLabel', 'Réponse')}: ${tokenStatsData.completion_tokens}">${tokenStatsData.total_tokens} tok</span>`
+        : '';
+    const timeDisplay = responseTime != null ? formatTimeDisplay(responseTime, 3000, 8000) : '';
+    const actionsHtml = `
+        <div class="chat-actions">
+            <button class="chat-action-btn" onclick="copyText('${msgId}')" title="${chatT('common.copy', 'Copier')}">
+                ${ICON_COPY}
+            </button>
+            <button class="chat-action-btn" onclick="speakText('${msgId}')" title="${chatT('common.readAloud', 'Lire')}">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+                    <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
+                </svg>
+            </button>
+            <div class="chat-actions-divider"></div>
+            ${tokenDisplay}
+            <div class="response-time">${timeDisplay}</div>
+        </div>
+    `;
+    const messageHtml = `
+        <div class="message" data-chat-id="${chatId || ''}">
+            <div class="user-message">
+                <div class="user-bubble">${safePrompt}</div>
+                ${imageHtml}
+            </div>
+            <div class="ai-response">
+                <div class="chat-bubble" id="${msgId}">${formatMarkdown(response || '')}</div>
+                ${actionsHtml}
+            </div>
+        </div>
+    `;
+
+    messagesDiv.insertAdjacentHTML('beforeend', messageHtml);
+    scrollToBottom(true);
+    saveCurrentChat(prompt, response || '', messageHtml, chatId);
+}
+
 function addMessage(prompt, userImage, original, modified, generationTime = null, chatId = (typeof currentChatId !== 'undefined' ? currentChatId : null), totalTime = null) {
     removeSkeletonMessage(chatId);
 

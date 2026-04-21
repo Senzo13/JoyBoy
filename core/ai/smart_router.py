@@ -56,6 +56,7 @@ Possible intents:
 - add_element: add an element (tattoo, piercing, object, etc.)
 - background_change: change the background
 - object_modify: modify a specific object
+- image_analysis: answer a question about the current image, describe it, count or identify visible items. This is read-only and must not generate or edit.
 - general_edit: other edits
 
 Mask strategies (how to mask the area):
@@ -68,6 +69,7 @@ Mask strategies (how to mask the area):
 - target:OBJECT → GroundingDINO text targeting (for specific objects)
 - full → 100% white mask (img2img)
 - brush_only → use the brush mask only
+- none → no diffusion mask because this is a read-only image analysis
 
 Strength guide: 0.50-0.95 depending on change intensity
 - Light edits (color, texture, makeup, eyes): 0.50-0.55
@@ -80,6 +82,7 @@ Strength guide: 0.50-0.95 depending on change intensity
 - Clothing replacement: 0.75-0.85
 - Nudity: 0.85-0.90
 - Pose changes: 0.80-0.90
+- Image analysis: 0.0
 
 ControlNet Depth: for clothing changes, pose changes, and optional local-pack workflows (preserves body structure)
 IP-Adapter: for preserving face identity during high-strength edits
@@ -88,6 +91,7 @@ CRITICAL PROMPT RULES:
 - For sensitive body workflows, describe what should APPEAR instead of only describing what to remove.
 - For clothing: describe the NEW clothes in detail
 - Always write prompts that DESCRIBE what should APPEAR in the image, not what to remove
+- If the user is asking what is visible in the existing image, use INTENT image_analysis, MASK none, STRENGTH 0.0, CONTROLNET no, IPADAPTER no.
 - Keep prompts SHORT and focused. No need for 10 synonyms.
 
 Reply ONLY in this exact format (one field per line):
@@ -188,12 +192,12 @@ def _parse_llm_response(response: str, original_prompt: str) -> dict | None:
         'expression_change', 'makeup_change', 'eye_change', 'accessory_change',
         'body_modify', 'skin_change', 'age_change', 'lighting_change', 'style_transfer',
         'scene_modify', 'text_edit', 'add_element', 'background_change',
-        'object_modify', 'general_edit', 'reframe', 'repose'
+        'object_modify', 'image_analysis', 'general_edit', 'reframe', 'repose'
     ]
 
     valid_masks = [
         'clothes', 'hair', 'shoes', 'hat', 'background', 'person',
-        'body', 'full', 'brush_only'
+        'body', 'full', 'brush_only', 'none'
     ]
 
     parsed_fields = 0
@@ -270,6 +274,31 @@ def _parse_llm_response(response: str, original_prompt: str) -> dict | None:
 
     # Need at least 3 parsed fields to consider it valid
     if parsed_fields >= 3:
+        if result['intent'] == 'image_analysis':
+            result = _make_image_analysis_result(
+                original_prompt,
+                f"LLM analysis ({parsed_fields} fields parsed) → read-only image analysis",
+                prompt_rewrite=result.get('prompt_rewrite') or original_prompt,
+            )
+            return result
+
+        # A route with strength 0 and no conditioning is not an edit. Older
+        # prompts could produce general_edit/full/0.0 for "analyze the image";
+        # stopping here prevents the diffusion pipeline from loading for a
+        # no-op generation.
+        if (
+            result.get('intent') == 'general_edit'
+            and float(result.get('strength') or 0.0) <= 0.05
+            and not result.get('needs_controlnet')
+            and not result.get('needs_ip_adapter')
+        ):
+            result = _make_image_analysis_result(
+                original_prompt,
+                f"LLM analysis ({parsed_fields} fields parsed) → no-op route treated as image analysis",
+                prompt_rewrite=result.get('prompt_rewrite') or original_prompt,
+            )
+            return result
+
         # Post-process nudity: mask correction + prompt cleanup
         if result['intent'] == 'nudity':
             result['adjacent_classes'] = [16]
@@ -344,6 +373,24 @@ def _make_repose_result(prompt: str, reason: str, edit_directives: dict | None =
         'edit_directives': edit_directives,
         'reason': reason,
     }
+
+
+def _make_image_analysis_result(prompt: str, reason: str, prompt_rewrite: str | None = None) -> dict:
+    """Construit une route read-only: répondre sur l'image sans diffusion."""
+    return {
+        'intent': 'image_analysis',
+        'mask_strategy': 'none',
+        'segformer_classes': None,
+        'strength': 0.0,
+        'needs_controlnet': False,
+        'needs_ip_adapter': False,
+        'prompt_rewrite': prompt_rewrite or prompt,
+        'negative_prompt': 'none',
+        'adjacent_classes': None,
+        'controlnet_scale': 0.0,
+        'reason': reason,
+    }
+
 
 def _apply_adult_mode_guard(result: dict, prompt: str, parsed_request: dict | None = None) -> dict:
     """Bloque proprement les intents adultes si le mode adulte local est désactivé."""
@@ -611,6 +658,17 @@ def analyze_request(prompt: str, image_b64: str = None, has_brush_mask: bool = F
         llm_result = _correct_pose_preservation_route(llm_result, prompt, has_brush_mask)
         llm_result = _prefer_keyword_route_when_llm_is_vague(llm_result, prompt, has_brush_mask)
 
+        if llm_result.get('intent') == 'image_analysis':
+            sep()
+            row("Intent", llm_result['intent'])
+            row("Mask", llm_result['mask_strategy'])
+            row("Strength", llm_result['strength'])
+            row2("CtrlNet", "no", "IPAdapter", "no")
+            row_full("Prompt", llm_result['prompt_rewrite'])
+            row_full("Negative", llm_result['negative_prompt'])
+            footer()
+            return llm_result
+
         if has_brush_mask:
             strategy = llm_result['mask_strategy']
             if strategy not in ('brush_only', 'full'):
@@ -663,6 +721,23 @@ def analyze_request(prompt: str, image_b64: str = None, has_brush_mask: bool = F
     # Fallback to keywords
     sep()
     text("LLM failed -> keyword fallback")
+    if image_b64:
+        try:
+            from core.food_vision import is_image_analysis_request
+
+            if is_image_analysis_request(prompt):
+                fallback = _make_image_analysis_result(
+                    prompt,
+                    'LLM failed + read-only image analysis request',
+                )
+                row("Intent", fallback['intent'])
+                row("Mask", fallback['mask_strategy'])
+                row("Strength", fallback['strength'])
+                footer()
+                return fallback
+        except Exception:
+            pass
+
     fallback = keyword_fallback(prompt, has_brush_mask)
     if image_b64 and not has_brush_mask and fallback['intent'] == 'pose_change':
         fallback = _make_repose_result(

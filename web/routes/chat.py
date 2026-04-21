@@ -50,44 +50,13 @@ def _base64_to_pil(b64_string):
 
 def _build_image_context(image, message=""):
     """Return a compact text context for image-aware chat turns."""
-    if image is None:
-        return ""
-
-    description = ""
     try:
-        from core.florence import describe_image
-        description = describe_image(image, task="<CAPTION>")
-        if description:
-            print(f"[IMAGE-CONTEXT] Florence: {description[:120]}")
+        from core.image_context import build_image_context
+
+        return build_image_context(image, message)
     except Exception as exc:
-        print(f"[IMAGE-CONTEXT] Florence unavailable: {exc}")
-
-    food_result = None
-    try:
-        from core.food_vision import analyze_food_image, format_food_context, should_run_foodextract
-
-        if should_run_foodextract(description, user_message=message):
-            print("[FOODEXTRACT] Food/drink context requested")
-            food_result = analyze_food_image(image)
-            if food_result.success:
-                print(
-                    f"[FOODEXTRACT] is_food={food_result.is_food} "
-                    f"foods={len(food_result.food_items)} drinks={len(food_result.drink_items)}"
-                )
-            else:
-                print(f"[FOODEXTRACT] unavailable: {food_result.error}")
-            return "\n\n" + format_food_context(description, food_result)
-    except Exception as exc:
-        print(f"[FOODEXTRACT] skipped: {exc}")
-
-    if not description:
+        print(f"[IMAGE-CONTEXT] unavailable: {exc}")
         return ""
-
-    return (
-        "\n\n=== IMAGE CONTEXT ===\n"
-        f"Florence caption: {description}\n"
-        "Use this image context to answer the user. Do not claim certainty beyond what is visible."
-    )
 
 
 def _set_chat_stream_cancelled(value):

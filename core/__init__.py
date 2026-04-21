@@ -29,6 +29,7 @@ _ALIASES = {
     'core.face_restore': 'core.generation.face_restore',
     'core.florence': 'core.generation.florence',
     'core.food_vision': 'core.generation.food_vision',
+    'core.image_context': 'core.generation.image_context',
     'core.video_optimizations': 'core.generation.video_optimizations',
     # AI
     'core.detection_ai': 'core.ai.detection_ai',
