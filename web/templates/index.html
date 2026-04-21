@@ -161,9 +161,12 @@
         </div>
     </div>
 
-    <!-- Mobile menu button -->
-    <button class="mobile-menu-btn" id="mobile-menu-btn" onclick="toggleMobileSidebar()">
+    <!-- Mobile shell controls -->
+    <button class="mobile-menu-btn" id="mobile-menu-btn" type="button" onclick="toggleMobileSidebar()" aria-label="Menu">
         <i data-lucide="menu"></i>
+    </button>
+    <button class="mobile-brand-btn" type="button" onclick="showHome()" aria-label="JoyBoy">
+        <img src="/static/images/monogramme.png" alt="" width="28" height="28" draggable="false">
     </button>
 
     <!-- Fond étoilé -->

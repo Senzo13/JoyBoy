@@ -919,7 +919,8 @@ body.cursor-active .chat-messages::-webkit-scrollbar-thumb:hover {
 }
 
 /* Mobile menu button - hidden on desktop */
-.mobile-menu-btn {
+.mobile-menu-btn,
+.mobile-brand-btn {
     display: none;
 }
 
@@ -967,6 +968,7 @@ body.cursor-active .chat-messages::-webkit-scrollbar-thumb:hover {
         transform: translateX(-100%);
         transition: transform 0.3s ease;
         width: 280px;
+        z-index: 1100;
     }
 
     .conversations-sidebar.mobile-open {
@@ -976,7 +978,8 @@ body.cursor-active .chat-messages::-webkit-scrollbar-thumb:hover {
 
     /* === VIEWS: full width === */
     #home-view, #chat-view, #addons-view, #models-view, #projects-view {
-        margin-left: 0;
+        margin-left: 0 !important;
+        width: 100%;
     }
 
     body.sidebar-collapsed #home-view,
@@ -984,7 +987,7 @@ body.cursor-active .chat-messages::-webkit-scrollbar-thumb:hover {
     body.sidebar-collapsed #addons-view,
     body.sidebar-collapsed #models-view,
     body.sidebar-collapsed #projects-view {
-        margin-left: 0;
+        margin-left: 0 !important;
     }
 
     /* === ACTION SIDEBAR: hidden on mobile === */
@@ -997,19 +1000,42 @@ body.cursor-active .chat-messages::-webkit-scrollbar-thumb:hover {
         position: fixed;
         top: 12px;
         left: 12px;
-        z-index: 101;
+        z-index: 1080;
         display: flex;
         align-items: center;
         justify-content: center;
         width: 44px;
         height: 44px;
         background: rgba(10, 10, 10, 0.9);
-        border: 1px solid #333;
+        border: none;
         border-radius: 12px;
         color: white;
         cursor: pointer;
         backdrop-filter: blur(10px);
         -webkit-backdrop-filter: blur(10px);
+    }
+
+    .mobile-brand-btn {
+        position: fixed;
+        top: 15px;
+        left: 66px;
+        z-index: 1080;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 38px;
+        height: 38px;
+        padding: 0;
+        background: transparent;
+        border: none;
+        border-radius: 10px;
+        cursor: pointer;
+    }
+
+    .mobile-brand-btn img {
+        width: 28px;
+        height: 28px;
+        display: block;
     }
 
     /* === HOME VIEW === */
@@ -1085,8 +1111,9 @@ body.cursor-active .chat-messages::-webkit-scrollbar-thumb:hover {
     }
 
     body.terminal-mode #chat-view,
+    body.sidebar-collapsed.terminal-mode #chat-view,
     body:not(.sidebar-collapsed).terminal-mode #chat-view {
-        margin-left: 0;
+        margin-left: 0 !important;
     }
 
     body.terminal-mode .chat-messages {
@@ -1116,6 +1143,18 @@ body.cursor-active .chat-messages::-webkit-scrollbar-thumb:hover {
         top: 8px;
         left: 8px;
         border-radius: 10px;
+    }
+
+    .mobile-brand-btn {
+        top: 11px;
+        left: 56px;
+        width: 34px;
+        height: 34px;
+    }
+
+    .mobile-brand-btn img {
+        width: 24px;
+        height: 24px;
     }
 
     .chat-header {

@@ -487,6 +487,17 @@ body.sidebar-collapsed .chat-input-bar {
   left: calc(50px + (100% - 50px) / 2);
 }
 
+@media (max-width: 768px) {
+  .chat-input-bar,
+  body.sidebar-collapsed .chat-input-bar {
+    left: 50%;
+    right: auto;
+    width: min(850px, calc(100vw - 24px));
+    max-width: calc(100vw - 24px);
+    transform: translateX(-50%);
+  }
+}
+
 .chat-input-bar::before {
   content: '';
   position: absolute;
