@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from core.backends.terminal_brain import TerminalBrain, ToolResult
+from core.backends.terminal_brain import ExecutionPlan, PlanStatus, PlanTask, TerminalBrain, ToolResult
 from core.agent_runtime import CloudModelError, McpToolAdapter
 
 
@@ -287,6 +287,42 @@ class TerminalBrainSmokeTests(unittest.TestCase):
         self.assertTrue(brain._is_casual_greeting_request("Yo j'ai dis"))
         self.assertFalse(brain._is_casual_greeting_request("yo analyse le projet"))
         self.assertFalse(brain._is_casual_greeting_request("salut corrige ce fichier"))
+
+    def test_vague_followup_without_context_uses_clarification_fast_path(self):
+        brain = TerminalBrain()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            events = list(brain.run_agentic_loop("fais le", tmp, model="openai:gpt-5.4"))
+
+        self.assertFalse(any(event.get("type") == "thinking" for event in events))
+        self.assertFalse(any(event.get("type") == "tool_call" for event in events))
+        done = [event for event in events if event.get("type") == "done"][-1]
+        self.assertEqual(done.get("token_stats", {}).get("total"), 0)
+        self.assertIn("trop vague", done.get("full_response", ""))
+
+    def test_clarification_detector_uses_context_and_specific_targets(self):
+        brain = TerminalBrain()
+
+        self.assertTrue(brain._should_clarify_request("continue", history=[]))
+        self.assertFalse(
+            brain._should_clarify_request(
+                "corrige le scroll dans web/static/js/settings.js",
+                history=[],
+            )
+        )
+        self.assertFalse(
+            brain._should_clarify_request(
+                "continue",
+                history=[{"role": "user", "content": "Crée un template React propre dans le dossier caca"}],
+            )
+        )
+
+        brain.current_plan = ExecutionPlan(
+            title="Plan",
+            goal="Finish terminal task",
+            tasks=[PlanTask(id="1", title="Implement", status=PlanStatus.IN_PROGRESS)],
+        )
+        self.assertFalse(brain._should_clarify_request("continue", history=[]))
 
     def test_loop_message_compaction_omits_large_write_arguments(self):
         brain = TerminalBrain()

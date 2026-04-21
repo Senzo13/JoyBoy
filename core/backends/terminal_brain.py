@@ -1077,6 +1077,13 @@ class TerminalBrain:
             yield runtime_event('done', full_response=text, token_stats={'prompt_tokens': 0, 'completion_tokens': 0, 'total': 0})
             return
 
+        if self._should_clarify_request(initial_message, history=history):
+            text = self._clarification_answer(initial_message)
+            yield runtime_event('content', text=text, token_stats={})
+            _end_resource_lease()
+            yield runtime_event('done', full_response=text, token_stats={'prompt_tokens': 0, 'completion_tokens': 0, 'total': 0})
+            return
+
         # System prompt par défaut
         if not system_prompt:
             system_prompt = self._get_default_system_prompt(workspace_path)
@@ -2975,6 +2982,168 @@ class TerminalBrain:
             return True
 
         return any(phrase in text for phrase in ("ca va", "ça va", "t es la", "tu es la", "t'es la"))
+
+    def _should_clarify_request(self, message: str, history: Optional[List[Dict]] = None) -> bool:
+        if self._is_repo_overview_request(message) or self._is_open_workspace_request(message):
+            return False
+        if self._is_casual_greeting_request(message):
+            return False
+        if self.current_plan and self._has_incomplete_todos():
+            return False
+        if self._has_actionable_history(history):
+            return False
+
+        text = self._folded_single_line(message)
+        if not text or len(text) > 120:
+            return False
+
+        exact_followups = {
+            "continue",
+            "continue stp",
+            "continue encore",
+            "vas y",
+            "go",
+            "ok",
+            "ok vas y",
+            "ok go",
+            "fais le",
+            "fait le",
+            "fais ca",
+            "fait ca",
+            "fais ça",
+            "fait ça",
+            "ok fais le",
+            "ok fait le",
+            "fais le stp",
+            "fait le stp",
+        }
+        if text in exact_followups:
+            return True
+
+        tokens = text.split()
+        destructive_verbs = {"supprime", "delete", "remove", "efface"}
+        global_targets = {"tout", "tous", "toute", "toutes", "all", "everything"}
+        if any(token in destructive_verbs for token in tokens) and any(token in global_targets for token in tokens):
+            return False
+
+        if len(tokens) > 7:
+            return False
+
+        action_verbs = {
+            "continue", "corrige", "fix", "debug", "ameliore", "améliore", "modifie",
+            "supprime", "delete", "remove", "cree", "crée", "creer", "créer",
+            "ajoute", "fait", "fais", "code", "regle", "règle", "refactor",
+            "execute", "lance", "run",
+        }
+        if not any(token in action_verbs for token in tokens):
+            return False
+        if self._has_specific_request_target(message):
+            return False
+
+        filler_tokens = {
+            "le", "la", "les", "ca", "ça", "ce", "cet", "cette", "ceci", "cela",
+            "stp", "please", "moi", "un", "une", "du", "de", "des", "tout",
+            "y", "vas", "ok", "go",
+        }
+        meaningful_tokens = [
+            token for token in tokens
+            if token not in action_verbs and token not in filler_tokens
+        ]
+        return len(meaningful_tokens) <= 1
+
+    def _has_actionable_history(self, history: Optional[List[Dict]]) -> bool:
+        if not history:
+            return False
+
+        for msg in reversed(history[-8:]):
+            content = str(msg.get("content", "") or "").strip()
+            if not content:
+                continue
+            if self._is_compaction_summary_message(msg):
+                return True
+
+            role = str(msg.get("role", ""))
+            folded = self._folded_single_line(content)
+            if role == "user" and (
+                self._has_specific_request_target(content)
+                or len(folded) >= 24
+            ):
+                return True
+            if role == "assistant" and len(folded) >= 40:
+                return True
+        return False
+
+    def _has_specific_request_target(self, message: str) -> bool:
+        raw = str(message or "")
+        text = self._folded_single_line(raw)
+        if not text:
+            return False
+
+        if re.search(r"[\w./\\-]+\.(py|js|jsx|ts|tsx|css|html|md|json|yaml|yml|toml|txt|go|rs|java|cs|php|rb)\b", raw, re.IGNORECASE):
+            return True
+
+        target_terms = (
+            "fichier", "file", "ligne", "page", "component", "composant", "scroll",
+            "input", "button", "bouton", "modal", "picker", "readme", "mcp",
+            "provider", "settings", "chat", "terminal", "api", "route", "css",
+            "javascript", "typescript", "react", "next", "vite", "python", "test",
+            "doctor", "image", "video", "prompt", "ui", "ux", "seo", "bug", "erreur",
+            "feature", "fonction", "projet", "repo", "workspace", "dossier", "template",
+            "joyboy", "deerflow", "deer flow", "permission", "permissions", "auth",
+        )
+        if any(term in text for term in target_terms):
+            return True
+
+        stop_tokens = {
+            "je", "tu", "il", "elle", "on", "nous", "vous", "ils", "elles",
+            "le", "la", "les", "de", "du", "des", "un", "une", "et", "ou",
+            "a", "au", "aux", "en", "sur", "pour", "avec", "sans", "ca", "ça",
+            "ce", "cet", "cette", "tout", "tous", "toute", "toutes", "stp",
+            "please", "fais", "fait", "continue", "corrige", "modifie", "ameliore",
+            "améliore", "supprime", "cree", "crée", "creer", "créer", "ajoute",
+            "code", "fix", "debug", "go", "ok",
+        }
+        meaningful = [token for token in text.split() if len(token) >= 4 and token not in stop_tokens]
+        return len(meaningful) >= 3
+
+    def _clarification_answer(self, message: str) -> str:
+        text = self._folded_single_line(message)
+        if text in {"continue", "continue stp", "continue encore", "vas y", "go", "ok vas y", "ok go"}:
+            intro = "Je peux continuer, mais j’ai besoin de savoir quoi reprendre exactement."
+        elif self.current_intent in {"write", "execute"}:
+            intro = "Je peux le faire, mais ta demande est encore trop vague pour que j’agisse proprement."
+        else:
+            intro = "J’ai besoin d’un peu plus de contexte pour te répondre utilement."
+
+        if self.current_intent in {"write", "execute"}:
+            prompts = [
+                "le fichier, l’écran ou la feature à toucher",
+                "le résultat attendu au final",
+                "si tu veux que je continue la tâche précédente ou repartir d’un point précis",
+            ]
+            examples = [
+                "corrige le scroll du modal projet",
+                "continue sur le MCP settings",
+                "crée un template React dans le dossier caca",
+            ]
+        else:
+            prompts = [
+                "le fichier, dossier ou écran que tu veux que j’analyse",
+                "ce que tu veux comprendre ou vérifier",
+                "si tu veux un audit global ou un point précis",
+            ]
+            examples = [
+                "analyse tout le repo",
+                "regarde core/backends/terminal_brain.py",
+                "explique le picker cloud/local",
+            ]
+
+        lines = [intro, "", "Dis-moi juste l’un de ces formats :"]
+        for index, prompt in enumerate(prompts, start=1):
+            lines.append(f"{index}. {prompt}")
+        lines.append("")
+        lines.append("Exemples : " + " | ".join(f'"{item}"' for item in examples))
+        return "\n".join(lines)
 
     @staticmethod
     def _folded_single_line(message: str) -> str:
