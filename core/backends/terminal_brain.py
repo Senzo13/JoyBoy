@@ -510,6 +510,7 @@ DEFERRED_TOOL_NAMES = (
     "think",
 )
 DEFERRED_TOOL_MAX_RESULTS = 5
+DEFERRED_PROMPT_MAX_MCP_NAMES = 40
 MAX_DELEGATE_SUBAGENT_CALLS_PER_RESPONSE = 3
 CORE_TOOL_NAMES = tuple(
     item.get("function", {}).get("name", "")
@@ -2491,7 +2492,7 @@ class TerminalBrain:
         if query.startswith("+"):
             parts = query[1:].split(None, 1)
             required = parts[0].lower() if parts else ""
-            narrowed = [name for name in candidates if required and required in name.lower()]
+            narrowed = [name for name in candidates if required and required in self._deferred_tool_searchable_text(name).lower()]
             if len(parts) > 1:
                 pattern = parts[1]
                 narrowed.sort(
@@ -2510,8 +2511,7 @@ class TerminalBrain:
 
         scored = []
         for name in candidates:
-            tool = self.tool_registry.get(name)
-            searchable = f"{name} {tool.description if tool else ''}"
+            searchable = self._deferred_tool_searchable_text(name)
             if regex.search(searchable):
                 score = 2 if regex.search(name) else 1
                 scored.append((score, name))
@@ -2519,14 +2519,20 @@ class TerminalBrain:
         if not scored:
             tokens = [token for token in re.split(r"\W+", query.lower()) if len(token) > 2]
             for name in candidates:
-                tool = self.tool_registry.get(name)
-                searchable = f"{name} {tool.description if tool else ''}".lower()
+                searchable = self._deferred_tool_searchable_text(name).lower()
                 score = sum(1 for token in tokens if token in searchable)
                 if score:
                     scored.append((score, name))
 
         scored.sort(key=lambda item: item[0], reverse=True)
         return [name for _, name in scored[:DEFERRED_TOOL_MAX_RESULTS]]
+
+    def _deferred_tool_searchable_text(self, name: str) -> str:
+        tool = self.tool_registry.get(name)
+        if not tool:
+            return name
+        tags = " ".join(str(tag) for tag in (tool.tags or []))
+        return f"{name} {tool.description or ''} {tags}"
 
     @staticmethod
     def _tool_search_requested_names(query: str) -> List[str]:
@@ -2543,8 +2549,7 @@ class TerminalBrain:
         return ordered
 
     def _deferred_tool_regex_score(self, pattern: str, name: str) -> int:
-        tool = self.tool_registry.get(name)
-        searchable = f"{name} {tool.description if tool else ''}"
+        searchable = self._deferred_tool_searchable_text(name)
         try:
             regex = re.compile(pattern, re.IGNORECASE)
         except re.error:
@@ -4108,6 +4113,17 @@ You have access to filesystem, search, shell, and workspace tools. Use them to c
         if not remaining:
             return ""
 
+        core_deferred: List[str] = []
+        mcp_by_server: Dict[str, List[str]] = defaultdict(list)
+        for name in remaining:
+            tool = self.tool_registry.get(name)
+            tags = set(tool.tags or []) if tool else set()
+            if "mcp" in tags:
+                server_name = next((tag for tag in (tool.tags or []) if tag != "mcp"), "external")
+                mcp_by_server[str(server_name or "external")].append(name)
+            else:
+                core_deferred.append(name)
+
         lines = [
             "",
             "Available deferred tools:",
@@ -4115,9 +4131,27 @@ You have access to filesystem, search, shell, and workspace tools. Use them to c
             "- Call tool_search with select:<tool_name> or keywords only when one is actually needed.",
             "- Core file tools are already active when the task needs them; never fetch write_files/write_file/edit_file/bash through tool_search.",
         ]
-        for name in remaining:
+        for name in core_deferred:
             tool = self.tool_registry.get(name)
             lines.append(f"- {name}: {tool.description if tool else ''}")
+        if mcp_by_server:
+            lines.append("- MCP tools are grouped by server below. Search them by server, name, tag, or intent; schemas are only returned by tool_search.")
+            shown_mcp = 0
+            total_mcp = sum(len(names) for names in mcp_by_server.values())
+            for server_name in sorted(mcp_by_server):
+                names = mcp_by_server[server_name]
+                available_slots = max(0, DEFERRED_PROMPT_MAX_MCP_NAMES - shown_mcp)
+                if available_slots <= 0:
+                    break
+                visible_names = names[:available_slots]
+                shown_mcp += len(visible_names)
+                hidden = len(names) - len(visible_names)
+                suffix = f" (+{hidden} more)" if hidden > 0 else ""
+                lines.append(f"- mcp:{server_name}: {', '.join(visible_names)}{suffix}")
+            if shown_mcp < total_mcp:
+                lines.append(
+                    f"- {total_mcp - shown_mcp} additional MCP tool(s) hidden from the prompt; use tool_search with keywords to discover them."
+                )
         return "\n".join(lines)
 
     def _format_result_for_llm(self, result: ToolResult) -> str:

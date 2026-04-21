@@ -1167,7 +1167,32 @@ class TerminalBrainSmokeTests(unittest.TestCase):
         prompt = brain._build_deferred_tools_prompt()
 
         self.assertIn("github__search_repositories", prompt)
-        self.assertIn("GitHub MCP", prompt)
+        self.assertIn("mcp:github", prompt)
+        self.assertNotIn("Search repositories through GitHub MCP", prompt)
+
+    @patch("core.backends.terminal_brain.get_cached_mcp_tools")
+    def test_deferred_tool_search_matches_mcp_server_tags(self, mock_get_mcp_tools):
+        mock_get_mcp_tools.return_value = [
+            McpToolAdapter(
+                name="search_repositories",
+                description="Search repositories.",
+                schema={
+                    "type": "object",
+                    "properties": {"query": {"type": "string"}},
+                    "required": ["query"],
+                },
+                invoke=lambda args: {"ok": True},
+                server_name="github",
+                tags=("mcp", "github"),
+            )
+        ]
+        brain = TerminalBrain()
+        brain._reset_deferred_tools()
+
+        result = brain.execute_tool("tool_search", {"query": "github repos"}, os.getcwd())
+
+        self.assertTrue(result.success)
+        self.assertEqual(result.data.get("promoted"), ["search_repositories"])
 
     @patch("core.backends.terminal_brain.get_cached_mcp_tools")
     def test_autonomous_tool_selection_keeps_mcp_deferred(self, mock_get_mcp_tools):
