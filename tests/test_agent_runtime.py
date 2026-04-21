@@ -12,6 +12,7 @@ from core.agent_runtime import (
     mask_workspace_paths,
     runtime_event,
     run_subagent,
+    tool_signature,
     truncate_middle,
 )
 
@@ -56,6 +57,26 @@ class AgentRuntimeTests(unittest.TestCase):
         reason = guard.check("read_file", args, [])
 
         self.assertIn("repeated call 3 times", reason)
+
+    def test_tool_loop_guard_normalizes_noisy_read_defaults(self):
+        guard = ToolLoopGuard()
+
+        self.assertIsNone(guard.check("read_file", {"path": "./README.md"}, []))
+        self.assertIsNone(guard.check("read_file", {"path": "README.md", "max_lines": 220}, []))
+        reason = guard.check("read_file", '{"path":"README.md"}', [])
+
+        self.assertIn("repeated call 3 times", reason)
+        self.assertEqual(guard.seen_count("read_file", {"path": "README.md"}), 3)
+
+    def test_tool_signature_keeps_write_payloads_content_sensitive(self):
+        self.assertNotEqual(
+            tool_signature("write_file", {"path": "src/App.jsx", "content": "v1"}),
+            tool_signature("write_file", {"path": "src/App.jsx", "content": "v2"}),
+        )
+        self.assertEqual(
+            tool_signature("bash", {"command": "npm   test"}),
+            tool_signature("bash", {"command": "npm test"}),
+        )
 
     def test_tool_loop_guard_blocks_noisy_broad_glob_after_context(self):
         guard = ToolLoopGuard()
