@@ -63,9 +63,9 @@ Supported `kind` values are currently:
 
 - `creative`
 - `experimental`
-- `adult`
+- `adult` (legacy local-only classification for restricted/private addons)
 
-Use `adult` only for local-only packs that should not be marketed as part of the public core.
+Use `adult` only as a local-only classification for restricted/private addons that should stay outside the public core positioning.
 
 ## Asset Files
 
@@ -185,9 +185,9 @@ Valeurs `kind` supportées:
 
 - `creative`
 - `experimental`
-- `adult`
+- `adult` (classification locale historique pour des addons restreints/privés)
 
-Utilise `adult` uniquement pour des packs locaux qui ne doivent pas être marketés comme surface du core public.
+Utilise `adult` uniquement comme classification locale pour des addons restreints/privés qui doivent rester hors du positionnement du core public.
 
 ## Skills Agent
 

@@ -35,9 +35,9 @@ Each pack must expose a `pack.json` manifest with the following fields:
 
 Supported `kind` values currently include:
 
-- `adult`
 - `creative`
 - `experimental`
+- `adult` (legacy local-only classification for restricted/private addons, not part of the public core narrative)
 
 ## Installing a pack
 

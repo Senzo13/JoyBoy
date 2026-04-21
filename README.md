@@ -150,7 +150,9 @@ Local packs live in:
 ~/.joyboy/packs/<pack_id>/
 ```
 
-Some optional local packs may target mature or adult workflows where legal, consensual, and compliant with platform policies. These packs are not part of the public core.
+Some addons may target more specialized or private workflows. Those extensions stay optional, local, and outside the public core so the main repository remains neutral and maintainable.
+
+Third-party packs are external addons distributed separately from JoyBoy. They are not included in the public repository, are not part of the official JoyBoy release, and may expand specific workflow areas such as human-image pipelines beyond the default public core. JoyBoy is not responsible for the content, packaging, legality, safety, or downstream use of external addons.
 
 See [Local Packs](docs/LOCAL_PACKS.md), [Addons](docs/ADDONS.md), and [Third-Party Packs](docs/THIRD_PARTY_PACKS.md) for the pack contract.
 
