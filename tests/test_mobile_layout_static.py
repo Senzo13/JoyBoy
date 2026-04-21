@@ -27,13 +27,13 @@ class MobileLayoutStaticTests(unittest.TestCase):
         self.assertIn("width: min(850px, calc(100vw - 24px));", controls)
         self.assertIn("transform: translateX(-50%);", controls)
 
-    def test_mobile_shell_has_separate_brand_control(self):
+    def test_mobile_menu_stays_single_control_without_extra_logo(self):
         html = self.read("web/templates/index.html")
         layout = self.read("web/static/css/layout.css")
 
         self.assertIn('class="mobile-menu-btn"', html)
-        self.assertIn('class="mobile-brand-btn"', html)
-        self.assertIn("mobile-brand-btn", layout)
+        self.assertNotIn('class="mobile-brand-btn"', html)
+        self.assertNotIn("mobile-brand-btn", layout)
         self.assertIn("border: none;", layout)
 
 
