@@ -64,6 +64,15 @@ class ProjectsStaticTests(unittest.TestCase):
         self.assertIn('data-i18n-tooltip="shell.ramDetails"', html)
         self.assertIn('data-i18n="shell.generationInProgress"', html)
 
+    def test_legacy_settings_chat_model_picker_is_removed(self):
+        settings = self.read("web/templates/partials/settings_modal.html")
+        bindings = self.read("web/static/js/i18n.bindings.js")
+
+        self.assertNotIn("settings-chat-model", settings)
+        self.assertNotIn("ollama-status", settings)
+        self.assertNotIn("general-chat-title", settings)
+        self.assertNotIn("general-chat-title", bindings)
+
     def test_project_view_rerenders_on_locale_change(self):
         projects = self.read("web/static/js/projects.js")
 
