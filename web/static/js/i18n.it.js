@@ -853,6 +853,7 @@ Object.assign(MESSAGES.it, {
         terminal: {
             contextSizeToast: 'Contesto: {size} token',
             permissionConfirmationRequired: '(conferma richiesta)',
+            projectModeLocked: 'La modalità dev progetto resta collegata a questa chat.',
             permissions: {
                 label: 'Autorizzazioni',
                 default: 'Autorizzazioni predefinite',

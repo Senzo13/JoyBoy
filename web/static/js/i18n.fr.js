@@ -1127,6 +1127,7 @@ Object.assign(MESSAGES.fr, {
         terminal: {
             contextSizeToast: 'Contexte : {size} tokens',
             permissionConfirmationRequired: '(confirmation requise)',
+            projectModeLocked: 'Le mode dev projet reste attaché à ce chat.',
             permissions: {
                 label: 'Autorisations',
                 default: 'Autorisations par défaut',

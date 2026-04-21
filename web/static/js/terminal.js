@@ -1846,6 +1846,17 @@ async function enterTerminalMode(workspace = null, pendingMessage = '') {
  * Quitte le mode terminal
  */
 function exitTerminalMode() {
+    const activeRecord = (typeof chatRecordsCache !== 'undefined' && currentChatId)
+        ? chatRecordsCache.find(record => record.id === currentChatId)
+        : null;
+    if (terminalWorkspace?.path || isTerminalWorkspaceRecord(activeRecord)) {
+        console.warn('[TERMINAL] Exit ignored: project terminal chats stay bound to their workspace.');
+        if (typeof Toast !== 'undefined') {
+            Toast.error(terminalT('terminal.projectModeLocked', 'Le mode dev projet reste attaché à ce chat.'));
+        }
+        return;
+    }
+
     const wasTerminalChat = terminalMode && currentChatId;
     setTerminalBodyState(false, null);
     terminalVisionModel = null;

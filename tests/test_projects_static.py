@@ -16,6 +16,13 @@ class ProjectsStaticTests(unittest.TestCase):
         self.assertIn('id="projects-view"', html)
         self.assertIn('/static/js/projects.js', html)
 
+    def test_project_terminal_header_has_no_exit_button(self):
+        html = self.read("web/templates/index.html")
+        terminal = self.read("web/static/js/terminal.js")
+
+        self.assertNotIn("terminal-close", html)
+        self.assertIn("Exit ignored: project terminal chats stay bound", terminal)
+
     def test_indexeddb_schema_has_projects_and_project_id(self):
         state = self.read("web/static/js/state.js")
         db = self.read("web/static/js/db.js")

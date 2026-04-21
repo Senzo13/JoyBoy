@@ -1127,6 +1127,7 @@ Object.assign(MESSAGES.en, {
         terminal: {
             contextSizeToast: 'Context: {size} tokens',
             permissionConfirmationRequired: '(confirmation required)',
+            projectModeLocked: 'Project dev mode stays attached to this chat.',
             permissions: {
                 label: 'Permissions',
                 default: 'Default permissions',
