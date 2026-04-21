@@ -583,3 +583,8 @@ window.toggleSidebarProjectsSection = toggleSidebarProjectsSection;
 window.toggleSidebarRecentsSection = toggleSidebarRecentsSection;
 window.setProjectTab = setProjectTab;
 window.openChatListActionMenu = openChatListActionMenu;
+
+window.addEventListener('joyboy:locale-changed', () => {
+    renderSidebarSections();
+    refreshProjectView();
+});

@@ -405,16 +405,16 @@
                 <i data-lucide="download-cloud" aria-hidden="true"></i>
                 <span class="app-update-pill-label">Update</span>
             </button>
-            <button class="restart-btn" onclick="restartBackend()" title="Redémarrer le backend">
+            <button class="restart-btn" onclick="restartBackend()" title="Redémarrer le backend" data-i18n-tooltip="shell.restartBackend">
                 <i data-lucide="rotate-ccw"></i>
             </button>
-            <div class="vram-display" onclick="showVramPanel()" title="Cliquez pour les détails VRAM">
+            <div class="vram-display" onclick="showVramPanel()" title="Cliquez pour les détails VRAM" data-i18n-tooltip="shell.vramDetails">
                 <div class="vram-bar">
                     <div class="vram-fill" id="home-vram-fill"></div>
                 </div>
                 <span class="vram-text" id="home-vram-text">--</span>
             </div>
-            <div class="ram-display" onclick="showRamPanel()" title="Cliquez pour les détails RAM">
+            <div class="ram-display" onclick="showRamPanel()" title="Cliquez pour les détails RAM" data-i18n-tooltip="shell.ramDetails">
                 <div class="ram-bar">
                     <div class="ram-fill" id="home-ram-fill"></div>
                 </div>
@@ -490,7 +490,7 @@
                 <div class="stop-icon" style="display: none;"></div>
             </button>
         </div>
-        <div class="loading-text hidden" id="loading">Generation en cours...</div>
+        <div class="loading-text hidden" id="loading" data-i18n="shell.generationInProgress">Génération en cours...</div>
     </div>
 
     <!-- ADDONS VIEW -->
@@ -535,11 +535,11 @@
         <div class="runtime-job-list" id="runtime-job-list"></div>
         <div class="chat-list" id="chat-list"></div>
         <div class="sidebar-footer">
-            <button class="settings-btn" onclick="openSettings()" title="Paramètres">
+            <button class="settings-btn" onclick="openSettings()" title="Paramètres" data-i18n-tooltip="openSettings">
                 <i data-lucide="settings"></i>
-                <span class="settings-btn-text">Paramètres</span>
+                <span class="settings-btn-text" data-i18n="settings.title">Paramètres</span>
             </button>
-            <button class="sidebar-toggle-btn" onclick="toggleSidebarCollapse()" title="Réduire/Agrandir">
+            <button class="sidebar-toggle-btn" onclick="toggleSidebarCollapse()" title="Réduire/Agrandir" data-i18n-tooltip="shell.sidebarToggle">
                 <i data-lucide="chevrons-left"></i>
             </button>
         </div>
@@ -554,19 +554,19 @@
                 <span class="app-update-pill-label">Update</span>
             </button>
             <!-- Restart Backend Button -->
-            <button class="restart-btn" id="restart-btn" onclick="restartBackend()" title="Redémarrer le backend">
+            <button class="restart-btn" id="restart-btn" onclick="restartBackend()" title="Redémarrer le backend" data-i18n-tooltip="shell.restartBackend">
                 <i data-lucide="rotate-ccw"></i>
             </button>
             <!-- Token Display (removed - using real stats in terminal header) -->
             <!-- VRAM Display -->
-            <div class="vram-display" id="vram-display" onclick="showVramPanel()" title="Cliquez pour les détails VRAM">
+            <div class="vram-display" id="vram-display" onclick="showVramPanel()" title="Cliquez pour les détails VRAM" data-i18n-tooltip="shell.vramDetails">
                 <div class="vram-bar">
                     <div class="vram-fill" id="vram-fill"></div>
                 </div>
                 <span class="vram-text" id="vram-text">--</span>
             </div>
             <!-- RAM Display -->
-            <div class="ram-display" onclick="showRamPanel()" title="Cliquez pour les détails RAM">
+            <div class="ram-display" onclick="showRamPanel()" title="Cliquez pour les détails RAM" data-i18n-tooltip="shell.ramDetails">
                 <div class="ram-bar">
                     <div class="ram-fill" id="ram-fill"></div>
                 </div>
@@ -850,7 +850,7 @@
     <div class="vram-panel" id="vram-panel">
         <div class="vram-panel-header">
             <button class="vram-panel-close" onclick="hideVramPanel()">×</button>
-            <span>État VRAM GPU</span>
+            <span data-i18n="shell.vramPanelTitle">État VRAM GPU</span>
         </div>
         <div class="vram-panel-content">
             <div class="vram-gauge">
@@ -860,17 +860,17 @@
                 </div>
             </div>
             <div class="vram-models" id="vram-models">
-                <div class="vram-models-title">Modèles chargés:</div>
-                <div class="vram-models-list" id="vram-models-list">Aucun</div>
+                <div class="vram-models-title" data-i18n="shell.loadedModels">Modèles chargés:</div>
+                <div class="vram-models-list" id="vram-models-list" data-i18n="shell.none">Aucun</div>
             </div>
             <div class="vram-tips" id="vram-tips"></div>
             <div class="runtime-resource-list" id="runtime-resource-list"></div>
             <div class="vram-actions">
                 <button class="vram-action-btn" onclick="unloadUnusedModels()">
-                    <i data-lucide="trash-2"></i> Libérer VRAM
+                    <i data-lucide="trash-2"></i> <span data-i18n="shell.freeVram">Libérer VRAM</span>
                 </button>
                 <button class="vram-action-btn secondary" onclick="refreshVramStatus()">
-                    <i data-lucide="refresh-cw"></i> Rafraîchir
+                    <i data-lucide="refresh-cw"></i> <span data-i18n="common.refresh">Rafraîchir</span>
                 </button>
             </div>
         </div>
@@ -880,7 +880,7 @@
     <div class="ram-panel" id="ram-panel">
         <div class="ram-panel-header">
             <button class="ram-panel-close" onclick="hideRamPanel()">×</button>
-            <span>État RAM Système</span>
+            <span data-i18n="shell.ramPanelTitle">État RAM système</span>
         </div>
         <div class="ram-panel-content">
             <div class="ram-gauge">
@@ -890,26 +890,26 @@
                 </div>
             </div>
             <div class="ram-models" id="ram-models">
-                <div class="ram-models-title">Modèles en RAM:</div>
-                <div class="ram-models-list" id="ram-models-list">Aucun</div>
+                <div class="ram-models-title" data-i18n="shell.ramModels">Modèles en RAM:</div>
+                <div class="ram-models-list" id="ram-models-list" data-i18n="shell.none">Aucun</div>
             </div>
             <div class="ram-separator"></div>
             <div class="ram-details" id="ram-details">
                 <div class="ram-detail-row">
-                    <span class="ram-detail-label">Disponible</span>
+                    <span class="ram-detail-label" data-i18n="shell.available">Disponible</span>
                     <span class="ram-detail-value" id="ram-free-text">--</span>
                 </div>
                 <div class="ram-detail-row">
-                    <span class="ram-detail-label">Processus Python</span>
+                    <span class="ram-detail-label" data-i18n="shell.pythonProcess">Processus Python</span>
                     <span class="ram-detail-value" id="ram-python-text">--</span>
                 </div>
             </div>
             <div class="ram-actions">
                 <button class="ram-action-btn" onclick="freeRam()">
-                    <i data-lucide="zap"></i> Libérer RAM
+                    <i data-lucide="zap"></i> <span data-i18n="shell.freeRam">Libérer RAM</span>
                 </button>
                 <button class="ram-action-btn secondary" onclick="refreshRamStatus()">
-                    <i data-lucide="refresh-cw"></i> Rafraîchir
+                    <i data-lucide="refresh-cw"></i> <span data-i18n="common.refresh">Rafraîchir</span>
                 </button>
             </div>
         </div>

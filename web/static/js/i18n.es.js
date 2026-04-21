@@ -3,7 +3,23 @@
     const MESSAGES = window.JoyBoyI18nData.messages;
 
 Object.assign(MESSAGES.es, {
-        common: { loading: 'Cargando...', save: 'Guardar', clear: 'Borrar', import: 'Importar', activate: 'Activar', deactivate: 'Desactivar', ready: 'LISTO', action: 'ACCIÓN', copy: 'Copiar', ok: 'OK', cancel: 'Cancelar', confirm: 'Confirmar', delete: 'Eliminar', stop: 'Detener', notice: 'Información', warning: 'Atención', error: 'Error' },
+        common: { loading: 'Cargando...', save: 'Guardar', clear: 'Borrar', refresh: 'Actualizar', import: 'Importar', activate: 'Activar', deactivate: 'Desactivar', ready: 'LISTO', action: 'ACCIÓN', copy: 'Copiar', ok: 'OK', cancel: 'Cancelar', confirm: 'Confirmar', delete: 'Eliminar', stop: 'Detener', notice: 'Información', warning: 'Atención', error: 'Error' },
+        shell: {
+            restartBackend: 'Reiniciar backend',
+            vramDetails: 'Mostrar detalles de VRAM',
+            ramDetails: 'Mostrar detalles de RAM',
+            sidebarToggle: 'Contraer o expandir la navegación',
+            generationInProgress: 'Generación en curso...',
+            vramPanelTitle: 'Estado de VRAM de GPU',
+            ramPanelTitle: 'Estado de RAM del sistema',
+            loadedModels: 'Modelos cargados:',
+            ramModels: 'Modelos en RAM:',
+            none: 'Ninguno',
+            available: 'Disponible',
+            pythonProcess: 'Proceso Python',
+            freeVram: 'Liberar VRAM',
+            freeRam: 'Liberar RAM',
+        },
         loading: {
             subtitle: 'Preparando modelos de IA...',
             connecting: 'Conectando con el servidor...',

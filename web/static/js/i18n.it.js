@@ -3,7 +3,23 @@
     const MESSAGES = window.JoyBoyI18nData.messages;
 
 Object.assign(MESSAGES.it, {
-        common: { loading: 'Caricamento...', save: 'Salva', clear: 'Cancella', import: 'Importa', activate: 'Attiva', deactivate: 'Disattiva', ready: 'PRONTO', action: 'AZIONE', copy: 'Copia', ok: 'OK', cancel: 'Annulla', confirm: 'Conferma', delete: 'Elimina', stop: 'Ferma', notice: 'Informazione', warning: 'Attenzione', error: 'Errore' },
+        common: { loading: 'Caricamento...', save: 'Salva', clear: 'Cancella', refresh: 'Aggiorna', import: 'Importa', activate: 'Attiva', deactivate: 'Disattiva', ready: 'PRONTO', action: 'AZIONE', copy: 'Copia', ok: 'OK', cancel: 'Annulla', confirm: 'Conferma', delete: 'Elimina', stop: 'Ferma', notice: 'Informazione', warning: 'Attenzione', error: 'Errore' },
+        shell: {
+            restartBackend: 'Riavvia backend',
+            vramDetails: 'Mostra dettagli VRAM',
+            ramDetails: 'Mostra dettagli RAM',
+            sidebarToggle: 'Comprimi o espandi la navigazione',
+            generationInProgress: 'Generazione in corso...',
+            vramPanelTitle: 'Stato VRAM GPU',
+            ramPanelTitle: 'Stato RAM sistema',
+            loadedModels: 'Modelli caricati:',
+            ramModels: 'Modelli in RAM:',
+            none: 'Nessuno',
+            available: 'Disponibile',
+            pythonProcess: 'Processo Python',
+            freeVram: 'Libera VRAM',
+            freeRam: 'Libera RAM',
+        },
         loading: {
             subtitle: 'Preparazione dei modelli AI...',
             connecting: 'Connessione al server...',

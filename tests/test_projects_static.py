@@ -49,6 +49,27 @@ class ProjectsStaticTests(unittest.TestCase):
                 self.assertIn("newProject:", data)
                 self.assertIn("moveToProject:", data)
                 self.assertIn("sources:", data)
+                self.assertIn("shell: {", data)
+                self.assertIn("sidebarToggle:", data)
+                self.assertIn("generationInProgress:", data)
+
+    def test_sidebar_shell_copy_is_bound_to_i18n(self):
+        html = self.read("web/templates/index.html")
+
+        self.assertIn('data-i18n="settings.title"', html)
+        self.assertIn('data-i18n-tooltip="openSettings"', html)
+        self.assertIn('data-i18n-tooltip="shell.sidebarToggle"', html)
+        self.assertIn('data-i18n-tooltip="shell.restartBackend"', html)
+        self.assertIn('data-i18n-tooltip="shell.vramDetails"', html)
+        self.assertIn('data-i18n-tooltip="shell.ramDetails"', html)
+        self.assertIn('data-i18n="shell.generationInProgress"', html)
+
+    def test_project_view_rerenders_on_locale_change(self):
+        projects = self.read("web/static/js/projects.js")
+
+        self.assertIn("joyboy:locale-changed", projects)
+        self.assertIn("renderSidebarSections();", projects)
+        self.assertIn("refreshProjectView();", projects)
 
 
 if __name__ == "__main__":
