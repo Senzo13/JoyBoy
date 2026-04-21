@@ -1,6 +1,46 @@
 #!/bin/bash
 cd "$(dirname "$0")"
 
+MIN_PY_MAJOR=3
+MIN_PY_MINOR=10
+
+python_version_ok() {
+    "$1" - <<'PY'
+import sys
+raise SystemExit(0 if sys.version_info >= (3, 10) else 1)
+PY
+}
+
+python_version_label() {
+    "$1" - <<'PY' 2>/dev/null
+import sys
+print(f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}")
+PY
+}
+
+find_compatible_python() {
+    for candidate in python3.12 python3.11 python3.10 python3; do
+        if command -v "$candidate" >/dev/null 2>&1 && python_version_ok "$candidate"; then
+            command -v "$candidate"
+            return 0
+        fi
+    done
+    return 1
+}
+
+venv_python_ok() {
+    [ -x "venv/bin/python" ] && python_version_ok "venv/bin/python"
+}
+
+show_python_install_help() {
+    echo "   [ERROR] Python ${MIN_PY_MAJOR}.${MIN_PY_MINOR}+ was not found."
+    echo "           Install a recent Python, then run setup again."
+    echo ""
+    echo "           Recommended on macOS:"
+    echo "             brew install python@3.12"
+    echo ""
+}
+
 show_menu() {
     clear
     echo ""
@@ -84,17 +124,27 @@ setup() {
     echo "   ================================================================"
     echo ""
 
-    # Create venv if missing
+    PYTHON_BIN="$(find_compatible_python)"
+    if [ -z "$PYTHON_BIN" ]; then
+        show_python_install_help
+        read -p "   Press Enter..."
+        show_menu
+        return
+    fi
+
+    echo "   Python base: $("$PYTHON_BIN" --version 2>&1)"
+
+    # Create venv if missing or too old
+    if [ -d "venv" ] && ! venv_python_ok; then
+        OLD_VERSION="$(python_version_label "venv/bin/python")"
+        echo "   [1/4] Existing virtual environment uses Python ${OLD_VERSION:-unknown}"
+        echo "         Recreating it with $("$PYTHON_BIN" --version 2>&1)..."
+        rm -rf venv
+    fi
+
     if [ ! -d "venv" ]; then
         echo "   [1/4] Creating virtual environment..."
-        if ! command -v python3 >/dev/null 2>&1; then
-            echo "   [ERROR] python3 was not found."
-            echo "           Install Python 3.12+ first, then run setup again."
-            read -p "   Press Enter..."
-            show_menu
-            return
-        fi
-        if ! python3 -m venv venv; then
+        if ! "$PYTHON_BIN" -m venv venv; then
             echo "   [ERROR] Could not create the virtual environment."
             read -p "   Press Enter..."
             show_menu
@@ -145,6 +195,15 @@ start_app() {
     else
         echo "   [!] Virtual environment not found."
         echo "       Run Setup first (option 1)"
+        read -p "   Press Enter..."
+        show_menu
+        return
+    fi
+
+    if ! venv_python_ok; then
+        echo "   [ERROR] Virtual environment uses Python $(python_version_label "venv/bin/python")."
+        echo "           JoyBoy needs Python ${MIN_PY_MAJOR}.${MIN_PY_MINOR}+."
+        echo "           Run Full setup (option 1) to recreate the venv."
         read -p "   Press Enter..."
         show_menu
         return
