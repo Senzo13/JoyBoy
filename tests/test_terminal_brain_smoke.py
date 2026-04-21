@@ -501,6 +501,30 @@ class TerminalBrainSmokeTests(unittest.TestCase):
             self.assertFalse(Path(tmp, "README.md").exists())
             self.assertIn(".git", result.data.get("kept", []))
 
+    def test_full_access_workspace_clear_shell_command_uses_internal_tool(self):
+        brain = TerminalBrain()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            Path(tmp, ".git").mkdir()
+            Path(tmp, "src").mkdir()
+            Path(tmp, "src", "old.js").write_text("old", encoding="utf-8")
+            Path(tmp, "README.md").write_text("old", encoding="utf-8")
+            brain.current_intent = "write"
+            brain.permission_mode = "full_access"
+
+            result = brain.execute_tool(
+                "bash",
+                {"command": "Get-ChildItem -Force | Where-Object { $_.Name -ne '.git' } | Remove-Item -Recurse -Force"},
+                tmp,
+            )
+
+            self.assertTrue(result.success)
+            self.assertEqual(result.tool_name, "bash")
+            self.assertEqual(result.data.get("converted_action"), "clear_workspace")
+            self.assertTrue(Path(tmp, ".git").exists())
+            self.assertFalse(Path(tmp, "src").exists())
+            self.assertFalse(Path(tmp, "README.md").exists())
+
     @patch("core.backends.terminal_brain.chat_with_cloud_model")
     def test_default_destructive_tool_pauses_for_approval_without_retry(self, mock_chat):
         mock_chat.return_value = {

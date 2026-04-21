@@ -7,6 +7,7 @@ from core.backends.terminal_tools import (
     PermissionEngine,
     ToolRisk,
     build_default_terminal_tool_registry,
+    is_workspace_clear_shell_command,
     truncate_middle,
 )
 from core.backends.workspace_tools import glob_files, write_file
@@ -179,12 +180,6 @@ class TerminalToolRegistryTests(unittest.TestCase):
         engine = PermissionEngine(registry)
 
         with tempfile.TemporaryDirectory() as tmp:
-            rm_decision = engine.check(
-                "bash",
-                {"command": "find . -mindepth 1 -maxdepth 1 -exec rm -rf {} +"},
-                tmp,
-                permission_mode="full_access",
-            )
             ps_decision = engine.check(
                 "bash",
                 {"command": "Remove-Item -Recurse ."},
@@ -192,10 +187,27 @@ class TerminalToolRegistryTests(unittest.TestCase):
                 permission_mode="full_access",
             )
 
-        self.assertFalse(rm_decision.allowed)
         self.assertFalse(ps_decision.allowed)
-        self.assertIn("clear_workspace", rm_decision.reason)
         self.assertIn("delete_file", ps_decision.reason)
+        self.assertFalse(ps_decision.requires_confirmation)
+
+    def test_permission_full_access_allows_clear_workspace_shell_intent(self):
+        registry = build_default_terminal_tool_registry(LEGACY_TOOLS)
+        engine = PermissionEngine(registry)
+        commands = [
+            "find . -mindepth 1 -maxdepth 1 -exec rm -rf {} +",
+            "Get-ChildItem -Force | Where-Object { $_.Name -ne '.git' } | Remove-Item -Recurse -Force",
+        ]
+
+        with tempfile.TemporaryDirectory() as tmp:
+            decisions = [
+                engine.check("bash", {"command": command}, tmp, permission_mode="full_access")
+                for command in commands
+            ]
+
+        self.assertTrue(all(is_workspace_clear_shell_command(command) for command in commands))
+        self.assertTrue(all(decision.allowed for decision in decisions))
+        self.assertTrue(all(decision.mode == "full_access" for decision in decisions))
 
     def test_permission_blocks_recursive_delete(self):
         registry = build_default_terminal_tool_registry(LEGACY_TOOLS)

@@ -27,8 +27,10 @@ from core.agent_runtime import (
 )
 from core.backends.terminal_tools import (
     DEFAULT_PERMISSION_MODE,
+    FULL_ACCESS_PERMISSION_MODE,
     PermissionEngine,
     build_default_terminal_tool_registry,
+    is_workspace_clear_shell_command,
     normalize_permission_mode,
 )
 from core.backends.terminal_tool_schemas import (
@@ -308,6 +310,25 @@ class TerminalBrain(
             # === BASH ===
             elif tool_name == "bash":
                 command = args.get('command', '')
+                if (
+                    self.permission_mode == FULL_ACCESS_PERMISSION_MODE
+                    and is_workspace_clear_shell_command(command)
+                ):
+                    result = self._clear_workspace(workspace_path, keep=[".git"])
+                    result["converted_action"] = "clear_workspace"
+                    result["original_command"] = command
+                    result["output"] = (
+                        f"Converted broad shell deletion to internal clear_workspace. "
+                        f"Deleted {result.get('count', 0)} top-level item(s)."
+                    )
+                    result["return_code"] = 0 if result.get("success") else 1
+                    self._log_action('clear_workspace', "workspace", result.get('success', False))
+                    return ToolResult(
+                        success=result.get('success', False),
+                        tool_name=tool_name,
+                        data=result,
+                        error=result.get('error'),
+                    )
                 result = self._execute_bash(command, workspace_path)
                 self._log_action('bash', command, result.get('success', False))
                 return ToolResult(success=result.get('success', False), tool_name=tool_name, data=result)

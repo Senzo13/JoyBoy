@@ -46,6 +46,31 @@ def normalize_permission_mode(mode: str | None) -> str:
     return normalized if normalized in TERMINAL_PERMISSION_MODES else DEFAULT_PERMISSION_MODE
 
 
+def is_workspace_clear_shell_command(command: str | None) -> bool:
+    """Return True for broad shell commands that mean "empty this workspace"."""
+    lowered = " ".join(str(command or "").strip().lower().split())
+    if not lowered:
+        return False
+
+    if (
+        re.search(r"(?:^|\s)find\s+\.(?:\s|$)", lowered)
+        and "-mindepth 1" in lowered
+        and "-maxdepth 1" in lowered
+        and re.search(r"(?:^|\s)-exec\s+rm\b", lowered)
+        and re.search(r"\brm\s+-[a-z]*[rf][a-z]*[rf]?[a-z]*\b", lowered)
+    ):
+        return True
+
+    if (
+        "get-childitem" in lowered
+        and "| remove-item" in lowered
+        and "-recurse" in lowered
+    ):
+        return True
+
+    return False
+
+
 @dataclass(frozen=True)
 class ToolDefinition:
     name: str
@@ -305,13 +330,16 @@ class PermissionEngine:
                     mode=mode,
                 )
 
+        if mode == FULL_ACCESS_PERMISSION_MODE and is_workspace_clear_shell_command(command):
+            return PermissionDecision(True, risk=ToolRisk.SHELL, mode=mode)
+
         for pattern in self._SHELL_DELETE_PATTERNS:
             if pattern.search(lowered):
                 return PermissionDecision(
                     False,
                     "Command blocked: recursive shell deletion is not allowed; use clear_workspace or delete_file instead.",
                     risk=ToolRisk.SHELL,
-                    requires_confirmation=True,
+                    requires_confirmation=mode != FULL_ACCESS_PERMISSION_MODE,
                     mode=mode,
                 )
 
