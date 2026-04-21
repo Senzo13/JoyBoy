@@ -70,6 +70,7 @@ function baseChatRecord(id = makeChatId()) {
         workspace: null,
         projectId: null,
         pinned: false,
+        lastVisualReference: null,
         messages: [],
         html: '',
         createdAt: now,
@@ -353,6 +354,7 @@ async function persistCurrentChat(extra = {}) {
     if (extra.mode !== undefined) record.mode = extra.mode || 'chat';
     if (extra.workspace !== undefined) record.workspace = extra.workspace || null;
     if (extra.projectId !== undefined) record.projectId = extra.projectId || null;
+    if (extra.lastVisualReference !== undefined) record.lastVisualReference = extra.lastVisualReference || null;
     if (extra.title) record.title = cleanChatTitle(extra.title);
     if ((!record.title || record.title === apiT('chat.newConversation', 'Nouvelle conversation')) && messages.length) {
         const firstUser = messages.find(msg => msg.role === 'user');
@@ -474,6 +476,9 @@ async function loadChat(chatId) {
     if (!record) return;
     currentChatId = record.id;
     chatHistory = Array.isArray(record.messages) ? record.messages : [];
+    if (typeof cacheLastVisualReferenceForChat === 'function') {
+        cacheLastVisualReferenceForChat(record.id, record.lastVisualReference || null);
+    }
     const messagesDiv = getMessagesDiv();
     if (messagesDiv) {
         messagesDiv.innerHTML = record.html || '';

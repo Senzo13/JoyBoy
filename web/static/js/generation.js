@@ -215,6 +215,25 @@ const IMAGE_ANALYSIS_TERMS = [
     'descrivi', 'analizza'
 ];
 
+const VISUAL_REFERENCE_TERMS = [
+    'identique', 'pareil', 'même', 'meme', 'comme ça', 'comme ca',
+    'celle-ci', 'celui-ci', 'cette image', 'ce logo', 'ce visuel',
+    'l\'image', 'la photo', 'le truc', 'ça', 'ca',
+    'same', 'identical', 'like this', 'this image', 'that image',
+    'it', 'the image', 'the logo', 'similar',
+    'igual', 'idéntico', 'identico', 'como esto', 'esta imagen',
+    'stessa', 'identica', 'uguale', 'come questa', 'questa immagine'
+];
+
+const VISUAL_REFERENCE_ACTION_TERMS = [
+    ...GENERATION_ACTION_TERMS,
+    'refais', 'refaire', 'recrée', 'recree', 'recréer', 'recreer',
+    'reproduis', 'reproduire', 'copie', 'copier',
+    'recreate', 'remake', 'reproduce', 'copy', 'clone',
+    'recrear', 'reproduce', 'copiar',
+    'ricrea', 'rifai', 'riproduci', 'copiare'
+];
+
 function escapePromptTerm(term) {
     return String(term).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -248,6 +267,104 @@ function isImageAnalysisPrompt(prompt) {
     const text = (prompt || '').toLowerCase();
     if (!text.trim()) return false;
     return promptIncludesAnyTerm(text, IMAGE_ANALYSIS_TERMS);
+}
+
+function promptLooksReferenceImageRequest(prompt) {
+    const text = (prompt || '').toLowerCase();
+    if (!text.trim()) return false;
+    return promptIncludesAnyTerm(text, VISUAL_REFERENCE_TERMS)
+        && promptIncludesAnyTerm(text, VISUAL_REFERENCE_ACTION_TERMS)
+        && !promptIncludesAnyTerm(text, DEV_CONTEXT_TERMS);
+}
+
+const visualReferenceCacheByChat = {};
+
+function compactVisualReferenceText(value, maxLength = 900) {
+    const text = String(value || '').replace(/\s+/g, ' ').trim();
+    if (!text) return '';
+    return text.length > maxLength ? `${text.slice(0, maxLength).trim()}...` : text;
+}
+
+function normalizeVisualReference(reference) {
+    if (!reference || typeof reference !== 'object') return null;
+    const image = String(reference.image || '').trim();
+    if (!image.startsWith('data:image/')) return null;
+    return {
+        image,
+        prompt: compactVisualReferenceText(reference.prompt || '', 260),
+        description: compactVisualReferenceText(reference.description || '', 900),
+        source: String(reference.source || 'conversation'),
+        updatedAt: Number(reference.updatedAt || Date.now()),
+    };
+}
+
+function cacheLastVisualReferenceForChat(chatId, reference) {
+    if (!chatId) return;
+    const normalized = normalizeVisualReference(reference);
+    if (normalized) {
+        visualReferenceCacheByChat[chatId] = normalized;
+    } else {
+        delete visualReferenceCacheByChat[chatId];
+    }
+}
+
+function getLastVisualReferenceForChat(chatId = (typeof currentChatId !== 'undefined' ? currentChatId : null)) {
+    if (!chatId) return null;
+    const cached = normalizeVisualReference(visualReferenceCacheByChat[chatId]);
+    if (cached) return cached;
+    const record = Array.isArray(chatRecordsCache)
+        ? chatRecordsCache.find(item => item.id === chatId)
+        : null;
+    return normalizeVisualReference(record?.lastVisualReference);
+}
+
+function getConversationVisualReferenceForPrompt(prompt, chatId = (typeof currentChatId !== 'undefined' ? currentChatId : null)) {
+    if (!promptLooksReferenceImageRequest(prompt)) return null;
+    return getLastVisualReferenceForChat(chatId);
+}
+
+function buildPromptWithVisualReference(prompt, reference) {
+    const normalized = normalizeVisualReference(reference);
+    if (!normalized) return prompt;
+
+    const details = [
+        normalized.description ? `Reference description: ${normalized.description}` : '',
+        normalized.prompt ? `Original user request: ${normalized.prompt}` : '',
+        `New user request: ${prompt}`,
+    ].filter(Boolean).join('\n');
+
+    return [
+        'Create an image that follows the previous visual reference.',
+        'Keep the same main subject, composition, visual style, colors, and recognizable design cues unless the new request changes them.',
+        details,
+    ].join('\n');
+}
+
+async function rememberVisualReferenceForChat(chatId, reference) {
+    if (!chatId) return null;
+    const normalized = normalizeVisualReference({
+        ...reference,
+        updatedAt: reference?.updatedAt || Date.now(),
+    });
+    if (!normalized) return null;
+
+    cacheLastVisualReferenceForChat(chatId, normalized);
+    try {
+        if (typeof getChatRecord === 'function' && typeof putChatRecord === 'function') {
+            const record = await getChatRecord(chatId);
+            if (record) {
+                record.lastVisualReference = normalized;
+                await putChatRecord(record);
+                return normalized;
+            }
+        }
+        if (typeof persistCurrentChat === 'function') {
+            await persistCurrentChat({ chatId, lastVisualReference: normalized });
+        }
+    } catch (error) {
+        console.warn('[VISUAL-REF] Persist failed:', error);
+    }
+    return normalized;
 }
 
 function getExportGuidanceTypeForGeneration() {
@@ -321,6 +438,7 @@ function cleanResponseMarkers(text) {
 async function handleChatStream(prompt, startTime, targetChatId = (typeof currentChatId !== 'undefined' ? currentChatId : null)) {
     if (!currentController) return;
 
+    const streamImageReference = !!currentImage && isImageAnalysisPrompt(prompt) ? currentImage : null;
     const streamResponse = await apiChat.stream(buildChatStreamParams(prompt), currentController?.signal);
 
     const msgId = createStreamingMessage(prompt);
@@ -373,12 +491,20 @@ async function handleChatStream(prompt, startTime, targetChatId = (typeof curren
                         if (fullResponse) {
                             chatHistory.push({ role: 'assistant', content: cleanResponseMarkers(fullResponse) });
                         }
+                        if (streamImageReference) {
+                            await rememberVisualReferenceForChat(targetChatId, {
+                                image: streamImageReference,
+                                prompt,
+                                description: cleanResponseMarkers(fullResponse),
+                                source: 'image_analysis',
+                            });
+                        }
                         if (data.new_memories && data.new_memories.length > 0) {
                             await saveMemories(data.new_memories);
                         }
 
                         if (data.generate_image && data.image_prompt) {
-                            await generateImageFromChat(data.image_prompt, targetChatId);
+                            await generateImageFromChat(data.image_prompt, targetChatId, { sourcePrompt: prompt });
                         }
                     } else if (data.error) {
                         appendToStreamingMessage(msgId, `\n\n${generationT('terminal.tool.error', 'Erreur')}: ${data.error}`);
@@ -769,7 +895,10 @@ async function generate() {
 
     const prompt = document.getElementById('prompt-input').value.trim();
     const model = getCurrentImageModel();  // Utilise le modèle du picker
-    const directTextToImage = !currentImage && isDirectTextToImagePrompt(prompt);
+    const conversationVisualReference = !currentImage
+        ? getConversationVisualReferenceForPrompt(prompt, currentChatId)
+        : null;
+    const directTextToImage = !currentImage && (isDirectTextToImagePrompt(prompt) || !!conversationVisualReference);
     const imageAnalysisRequest = !!currentImage && isImageAnalysisPrompt(prompt);
 
     if (!prompt) {
@@ -958,6 +1087,8 @@ async function generate() {
     try {
         const enhanceVal = userSettings.enhancePrompt;
         const enhanceModeVal = userSettings.enhanceMode || 'light';
+        const generationPrompt = buildPromptWithVisualReference(prompt, conversationVisualReference);
+        const effectiveStyleRef = styleRefImage || conversationVisualReference?.image || null;
         const adultPayload = window.getAdultGenerationPayload ? window.getAdultGenerationPayload() : {};
         const faceRefs = typeof getFaceRefPayload === 'function'
             ? getFaceRefPayload()
@@ -965,7 +1096,7 @@ async function generate() {
         console.log(`[GEN] enhance=${enhanceVal}, enhance_mode=${enhanceModeVal}`);
         const result = await apiGeneration.generate({
             image: pendingImage,
-            prompt: prompt,
+            prompt: generationPrompt,
             model: model,
             chat_model: userSettings.chatModel || null,
             enhance: enhanceVal,
@@ -979,7 +1110,7 @@ async function generate() {
             face_refs: faceRefs,
             text2img_guidance: userSettings.text2imgGuidance ?? 7.5,
             face_ref_scale: userSettings.faceRefScale ?? 0.35,
-            style_ref: styleRefImage || null,
+            style_ref: effectiveStyleRef,
             style_ref_scale: userSettings.styleRefScale ?? 0.55,
             export_format: userSettings.exportFormat || 'auto',
             export_width: userSettings.exportWidth || 768,
@@ -1018,14 +1149,32 @@ async function generate() {
                     data.token_stats || null,
                     currentGenerationChatId
                 );
+                await rememberVisualReferenceForChat(currentGenerationChatId, {
+                    image: pendingImage || currentImage,
+                    prompt,
+                    description: data.response || '',
+                    source: 'image_analysis',
+                });
             } else if (data.mode === 'txt2img') {
                 modifiedImage = 'data:image/png;base64,' + data.modified;
                 originalImage = null;
                 addMessageTxt2Img(prompt, modifiedImage, data.generationTime, data.seed || null, currentGenerationChatId, totalGenerationTime);
+                await rememberVisualReferenceForChat(currentGenerationChatId, {
+                    image: modifiedImage,
+                    prompt,
+                    description: '',
+                    source: 'generated_image',
+                });
             } else {
                 modifiedImage = 'data:image/png;base64,' + data.modified;
                 originalImage = 'data:image/png;base64,' + data.original;
                 addMessage(prompt, pendingImage, originalImage, modifiedImage, data.generationTime, currentGenerationChatId, totalGenerationTime);
+                await rememberVisualReferenceForChat(currentGenerationChatId, {
+                    image: modifiedImage,
+                    prompt,
+                    description: '',
+                    source: 'edited_image',
+                });
             }
 
             // Garder l'image dans l'input pour enchaîner les édits
@@ -1484,7 +1633,7 @@ function updateSkeletonPreview(previewBase64, step, total, phase = 'generation',
 }
 
 // Génère une image après que l'IA a répondu (skeleton déjà affiché)
-async function generateImageFromChat(imagePrompt, targetChatId = (typeof currentChatId !== 'undefined' ? currentChatId : null)) {
+async function generateImageFromChat(imagePrompt, targetChatId = (typeof currentChatId !== 'undefined' ? currentChatId : null), options = {}) {
     console.log('[GEN] Génération d\'image après chat:', imagePrompt);
 
     // Générer un ID pour cette génération
@@ -1511,9 +1660,13 @@ async function generateImageFromChat(imagePrompt, targetChatId = (typeof current
         const faceRefs = typeof getFaceRefPayload === 'function'
             ? getFaceRefPayload()
             : (faceRefImage ? [faceRefImage] : []);
+        const sourcePrompt = options.sourcePrompt || imagePrompt;
+        const conversationVisualReference = getConversationVisualReferenceForPrompt(sourcePrompt, targetChatId);
+        const generationPrompt = buildPromptWithVisualReference(imagePrompt, conversationVisualReference);
+        const effectiveStyleRef = styleRefImage || conversationVisualReference?.image || null;
         const result = await apiGeneration.generate({
             image: null,
-            prompt: imagePrompt,
+            prompt: generationPrompt,
             model: imageModel,
             chat_model: userSettings.chatModel || null,
             enhance: false,
@@ -1525,7 +1678,7 @@ async function generateImageFromChat(imagePrompt, targetChatId = (typeof current
             face_refs: faceRefs,
             text2img_guidance: userSettings.text2imgGuidance ?? 7.5,
             face_ref_scale: userSettings.faceRefScale ?? 0.35,
-            style_ref: styleRefImage || null,
+            style_ref: effectiveStyleRef,
             style_ref_scale: userSettings.styleRefScale ?? 0.55,
             export_format: userSettings.exportFormat || 'auto',
             export_width: userSettings.exportWidth || 768,
@@ -1549,6 +1702,12 @@ async function generateImageFromChat(imagePrompt, targetChatId = (typeof current
         } else if (result.ok && result.data?.success && result.data?.modified) {
             modifiedImage = 'data:image/png;base64,' + result.data.modified;
             replaceImageSkeletonWithReal(modifiedImage, totalTimeMs, targetChatId, result.data.generationTime);
+            await rememberVisualReferenceForChat(targetChatId, {
+                image: modifiedImage,
+                prompt: imagePrompt,
+                description: '',
+                source: 'generated_image',
+            });
             currentGenerationId = null;
         } else {
             replaceImageSkeletonWithError(result.data?.error || result.error || generationT('generation.errorCard.title', 'Erreur de génération'), targetChatId);
