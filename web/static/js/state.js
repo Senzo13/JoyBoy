@@ -361,7 +361,7 @@ Object.defineProperty(window, 'privacyMode', {
 });
 let cacheDB = null;
 const DB_NAME = 'JoyBoyDB';
-const DB_VERSION = 6;  // v6: durable conversations + memories/settings
+const DB_VERSION = 7;  // v7: durable projects + conversation grouping
 const MEMORIES_STORE = 'memories';
 const SETTINGS_STORE = 'settings';
 

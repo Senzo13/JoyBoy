@@ -1,8 +1,11 @@
 // ===== DB - IndexedDB (Memories + Conversation persistence) =====
 
 const CONVERSATIONS_STORE = 'conversations';
+const PROJECTS_STORE = 'projects';
 let chatRecordsCache = [];
 let chatRecordsReady = false;
+let projectRecordsCache = [];
+let projectRecordsReady = false;
 let runtimeJobsCache = [];
 let runtimeJobsPollTimer = null;
 const runtimeJobsCancelRequests = new Set();
@@ -28,11 +31,22 @@ function makeChatId() {
     return `chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function makeProjectId() {
+    return `project-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
 function cleanChatTitle(text) {
     const fallback = apiT('chat.newConversation', 'Nouvelle conversation');
     const normalized = (text || '').replace(/\s+/g, ' ').trim();
     if (!normalized) return fallback;
     return normalized.length > 44 ? `${normalized.slice(0, 44).trim()}…` : normalized;
+}
+
+function cleanProjectName(text) {
+    const fallback = apiT('projects.untitled', 'Projet sans nom');
+    const normalized = (text || '').replace(/\s+/g, ' ').trim();
+    if (!normalized) return fallback;
+    return normalized.length > 56 ? `${normalized.slice(0, 56).trim()}…` : normalized;
 }
 
 function getCurrentChatHtml() {
@@ -54,6 +68,8 @@ function baseChatRecord(id = makeChatId()) {
         title: apiT('chat.newConversation', 'Nouvelle conversation'),
         mode: 'chat',
         workspace: null,
+        projectId: null,
+        pinned: false,
         messages: [],
         html: '',
         createdAt: now,
@@ -62,10 +78,30 @@ function baseChatRecord(id = makeChatId()) {
     };
 }
 
+function baseProjectRecord(id = makeProjectId()) {
+    const now = Date.now();
+    return {
+        id,
+        name: apiT('projects.untitled', 'Projet sans nom'),
+        description: '',
+        sourceIds: [],
+        createdAt: now,
+        updatedAt: now,
+        expanded: true,
+        archived: false
+    };
+}
+
 function updateChatCache(record) {
     chatRecordsCache = chatRecordsCache.filter(item => item.id !== record.id);
-    chatRecordsCache.unshift(record);
+    if (!record.archived) chatRecordsCache.unshift(record);
     chatRecordsCache.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+}
+
+function updateProjectCache(record) {
+    projectRecordsCache = projectRecordsCache.filter(item => item.id !== record.id);
+    if (!record.archived) projectRecordsCache.unshift(record);
+    projectRecordsCache.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
 }
 
 // Initialiser IndexedDB (memories + settings + conversations)
@@ -100,6 +136,28 @@ function initCacheDB() {
             if (!convStore.indexNames.contains('createdAt')) {
                 convStore.createIndex('createdAt', 'createdAt', { unique: false });
             }
+            if (!convStore.indexNames.contains('projectId')) {
+                convStore.createIndex('projectId', 'projectId', { unique: false });
+            }
+            if (!convStore.indexNames.contains('archived')) {
+                convStore.createIndex('archived', 'archived', { unique: false });
+            }
+
+            let projectStore;
+            if (!db.objectStoreNames.contains(PROJECTS_STORE)) {
+                projectStore = db.createObjectStore(PROJECTS_STORE, { keyPath: 'id' });
+            } else {
+                projectStore = tx.objectStore(PROJECTS_STORE);
+            }
+            if (!projectStore.indexNames.contains('updatedAt')) {
+                projectStore.createIndex('updatedAt', 'updatedAt', { unique: false });
+            }
+            if (!projectStore.indexNames.contains('createdAt')) {
+                projectStore.createIndex('createdAt', 'createdAt', { unique: false });
+            }
+            if (!projectStore.indexNames.contains('archived')) {
+                projectStore.createIndex('archived', 'archived', { unique: false });
+            }
 
             if (!db.objectStoreNames.contains(MEMORIES_STORE)) {
                 const memStore = db.createObjectStore(MEMORIES_STORE, { keyPath: 'id', autoIncrement: true });
@@ -131,6 +189,7 @@ async function putChatRecord(record) {
     await txDone(tx);
     updateChatCache(record);
     renderChatList();
+    if (typeof refreshProjectView === 'function') refreshProjectView();
     return record;
 }
 
@@ -142,6 +201,136 @@ async function getAllChatRecords() {
     return (all || [])
         .filter(record => !record.archived)
         .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+}
+
+async function getProjectRecord(projectId) {
+    if (!projectId) return null;
+    if (!cacheDB) await initCacheDB();
+    const tx = cacheDB.transaction(PROJECTS_STORE, 'readonly');
+    const store = tx.objectStore(PROJECTS_STORE);
+    return requestToPromise(store.get(projectId));
+}
+
+async function putProjectRecord(record) {
+    if (!record?.id) return null;
+    if (!cacheDB) await initCacheDB();
+    record.name = cleanProjectName(record.name);
+    record.updatedAt = record.updatedAt || Date.now();
+    const tx = cacheDB.transaction(PROJECTS_STORE, 'readwrite');
+    tx.objectStore(PROJECTS_STORE).put(record);
+    await txDone(tx);
+    updateProjectCache(record);
+    renderChatList();
+    if (typeof refreshProjectView === 'function') refreshProjectView();
+    return record;
+}
+
+async function getAllProjectRecords() {
+    if (!cacheDB) await initCacheDB();
+    const tx = cacheDB.transaction(PROJECTS_STORE, 'readonly');
+    const store = tx.objectStore(PROJECTS_STORE);
+    const all = await requestToPromise(store.getAll());
+    return (all || [])
+        .filter(record => !record.archived)
+        .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+}
+
+async function loadAllProjects() {
+    const records = await getAllProjectRecords();
+    projectRecordsCache = records;
+    projectRecordsReady = true;
+    return records;
+}
+
+async function createProject(options = {}) {
+    const record = baseProjectRecord();
+    if (options.name) record.name = cleanProjectName(options.name);
+    if (options.description) record.description = String(options.description);
+    await putProjectRecord(record);
+    return record;
+}
+
+async function renameProject(projectId, nextName) {
+    const record = await getProjectRecord(projectId);
+    if (!record) return null;
+    record.name = cleanProjectName(nextName);
+    record.updatedAt = Date.now();
+    return putProjectRecord(record);
+}
+
+async function setProjectExpanded(projectId, expanded) {
+    const record = await getProjectRecord(projectId);
+    if (!record) return null;
+    record.expanded = Boolean(expanded);
+    record.updatedAt = Date.now();
+    return putProjectRecord(record);
+}
+
+async function moveChatToProject(chatId, projectId) {
+    const record = await getChatRecord(chatId);
+    if (!record) return null;
+    record.projectId = projectId || null;
+    record.updatedAt = Date.now();
+    await putChatRecord(record);
+    if (typeof refreshProjectView === 'function') refreshProjectView();
+    return record;
+}
+
+async function archiveChat(chatId, event) {
+    if (event) event.stopPropagation();
+    const record = await getChatRecord(chatId);
+    if (!record) return;
+    record.archived = true;
+    record.updatedAt = Date.now();
+    await putChatRecord(record);
+    chatRecordsCache = chatRecordsCache.filter(item => item.id !== chatId);
+    if (currentChatId === chatId) {
+        currentChatId = null;
+        chatHistory = [];
+        const messagesDiv = getMessagesDiv();
+        if (messagesDiv) messagesDiv.innerHTML = '';
+        if (typeof showHome === 'function') showHome();
+    }
+    renderChatList();
+    if (typeof Toast !== 'undefined') {
+        Toast.success(apiT('projects.chatArchived', 'Chat archivé'));
+    }
+}
+
+async function deleteProject(projectId, options = {}) {
+    const { deleteChats = false } = options;
+    if (!projectId || !cacheDB) return;
+
+    const tx = cacheDB.transaction([PROJECTS_STORE, CONVERSATIONS_STORE], 'readwrite');
+    const projects = tx.objectStore(PROJECTS_STORE);
+    const conversations = tx.objectStore(CONVERSATIONS_STORE);
+    const allChats = await requestToPromise(conversations.getAll());
+    const activeChatBelongsToProject = (allChats || []).some(chat => chat.id === currentChatId && chat.projectId === projectId);
+
+    for (const chat of allChats || []) {
+        if (chat.projectId !== projectId) continue;
+        if (deleteChats) {
+            conversations.delete(chat.id);
+        } else {
+            chat.projectId = null;
+            chat.updatedAt = Date.now();
+            conversations.put(chat);
+        }
+    }
+    projects.delete(projectId);
+    await txDone(tx);
+
+    projectRecordsCache = projectRecordsCache.filter(item => item.id !== projectId);
+    chatRecordsCache = await getAllChatRecords();
+    if (deleteChats && activeChatBelongsToProject) {
+        currentChatId = null;
+        chatHistory = [];
+        const messagesDiv = getMessagesDiv();
+        if (messagesDiv) messagesDiv.innerHTML = '';
+        if (typeof applyTerminalChatState === 'function') applyTerminalChatState(null);
+    }
+    renderChatList();
+    if (typeof refreshProjectView === 'function') refreshProjectView();
 }
 
 async function persistCurrentChat(extra = {}) {
@@ -163,6 +352,7 @@ async function persistCurrentChat(extra = {}) {
         : (isActiveChat ? getCurrentChatHtml() : (record.html || ''));
     if (extra.mode !== undefined) record.mode = extra.mode || 'chat';
     if (extra.workspace !== undefined) record.workspace = extra.workspace || null;
+    if (extra.projectId !== undefined) record.projectId = extra.projectId || null;
     if (extra.title) record.title = cleanChatTitle(extra.title);
     if ((!record.title || record.title === apiT('chat.newConversation', 'Nouvelle conversation')) && messages.length) {
         const firstUser = messages.find(msg => msg.role === 'user');
@@ -176,6 +366,7 @@ async function createNewChat(options = {}) {
     const record = baseChatRecord();
     if (options.mode) record.mode = options.mode;
     if (options.workspace) record.workspace = options.workspace;
+    if (options.projectId) record.projectId = options.projectId;
     if (options.title) record.title = cleanChatTitle(options.title);
     currentChatId = record.id;
     chatHistory = [];
@@ -269,8 +460,8 @@ function saveCurrentChatHtml(userMessage, html, chatId = currentChatId) {
 function loadAllChats(options = {}) {
     const { showHomeOnLoad = true } = options;
     return initCacheDB().then(() => {
-        return getAllChatRecords();
-    }).then(records => {
+        return Promise.all([getAllChatRecords(), loadAllProjects()]);
+    }).then(([records]) => {
         chatRecordsCache = records;
         chatRecordsReady = true;
         renderChatList();
@@ -332,6 +523,7 @@ async function deleteChat(chatId, event) {
         if (typeof showHome === 'function') showHome();
     }
     renderChatList();
+    if (typeof refreshProjectView === 'function') refreshProjectView();
 }
 
 async function renameChat(chatId, event) {
@@ -769,6 +961,11 @@ async function cancelRuntimeJob(jobId, event) {
 }
 
 function renderChatList() {
+    if (typeof renderSidebarSections === 'function') {
+        renderSidebarSections();
+        return;
+    }
+
     const list = document.getElementById('chat-list');
     if (!list) return;
 
@@ -984,6 +1181,8 @@ async function clearCacheDB() {
             userMemories = [];
             chatRecordsCache = [];
             chatRecordsReady = false;
+            projectRecordsCache = [];
+            projectRecordsReady = false;
             currentChatId = null;
             chatHistory = [];
             resolve();
@@ -1097,6 +1296,8 @@ async function clearConversationCache() {
     const messagesDiv = document.getElementById('chat-messages');
     if (messagesDiv) messagesDiv.innerHTML = '';
     chatRecordsCache = [];
+    projectRecordsCache = [];
+    projectRecordsReady = false;
     currentChatId = null;
     chatHistory = [];
     currentImage = null;
