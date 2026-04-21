@@ -1163,11 +1163,12 @@ class TerminalBrain:
                 messages = self._inject_todo_reminder(messages, executed_tools=executed_tools)
                 messages = self._inject_step_focus_reminder(messages, initial_message, executed_tools)
                 messages = self._patch_dangling_tool_messages(messages)
+                prompt_estimate = self._estimate_prompt_tokens(messages, tools_for_model)
+                tool_schema_stats = self._tool_schema_stats(tools_for_model)
 
                 if not autonomous and not force_final and iteration > 1:
-                    estimated_prompt_tokens = self._estimate_prompt_tokens(messages, tools_for_model)
                     remaining_budget = turn_token_budget - total_token_stats['total']
-                    if remaining_budget <= 0 or estimated_prompt_tokens >= max(900, remaining_budget):
+                    if remaining_budget <= 0 or prompt_estimate >= max(900, remaining_budget):
                         yield runtime_event(
                             'loop_warning',
                             action='token_budget',
@@ -1286,12 +1287,17 @@ class TerminalBrain:
                     token_stats['completion_tokens'] = int(response.get('eval_count') or 0)
                 token_stats['total'] = token_stats.get('prompt_tokens', 0) + token_stats.get('completion_tokens', 0)
                 token_stats['context_size'] = self._active_context_size
+                token_stats['estimated_prompt_tokens'] = prompt_estimate
+                token_stats.update(tool_schema_stats)
 
                 # Accumuler les stats de tokens
                 total_token_stats['prompt_tokens'] += token_stats.get('prompt_tokens', 0)
                 total_token_stats['completion_tokens'] += token_stats.get('completion_tokens', 0)
                 total_token_stats['total'] += token_stats.get('total', 0)
                 total_token_stats['context_size'] = self._active_context_size
+                total_token_stats['tool_count'] = token_stats.get('tool_count', 0)
+                total_token_stats['tool_schema_tokens'] = token_stats.get('tool_schema_tokens', 0)
+                total_token_stats['estimated_prompt_tokens'] = token_stats.get('estimated_prompt_tokens', 0)
 
                 print(f"[BRAIN] Content: {content[:100] if content else 'None'}...")
                 print(f"[BRAIN] Tool calls: {len(tool_calls) if tool_calls else 0}")
@@ -2157,6 +2163,17 @@ class TerminalBrain:
             char_count = sum(len(str(msg.get("content", ""))) for msg in messages) + len(str(tools or []))
         return max(1, int(char_count / 4))
 
+    def _tool_schema_stats(self, tools: List[Dict]) -> Dict[str, int]:
+        """Small TokenUsageMiddleware-style telemetry for active tool schemas."""
+        try:
+            schema_chars = len(json.dumps(tools or [], ensure_ascii=False))
+        except Exception:
+            schema_chars = len(str(tools or []))
+        return {
+            "tool_count": len(tools or []),
+            "tool_schema_tokens": max(0, int(schema_chars / 4)),
+        }
+
     def _refresh_dynamic_tool_registry(self) -> None:
         """Reload optional MCP tools into the terminal registry.
 
@@ -2942,10 +2959,7 @@ class TerminalBrain:
         initial_message: str,
         executed_tools: List[Dict],
         autonomous: bool = False,
-    ) -> Optional[List[str]]:
-        if autonomous:
-            return None
-
+    ) -> List[str]:
         if self.current_intent in {"write", "execute"}:
             if self.current_plan and self._has_incomplete_todos():
                 names = self._focused_tool_order_for_active_step(initial_message, executed_tools)

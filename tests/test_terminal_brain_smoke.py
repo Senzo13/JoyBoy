@@ -538,6 +538,15 @@ class TerminalBrainSmokeTests(unittest.TestCase):
         self.assertNotIn("web_search", names)
         self.assertNotIn("load_skill", names)
 
+    def test_tool_schema_stats_report_active_schema_cost(self):
+        brain = TerminalBrain()
+        tools = brain.tool_registry.ollama_tools(["list_files", "read_file"])
+
+        stats = brain._tool_schema_stats(tools)
+
+        self.assertEqual(stats.get("tool_count"), 2)
+        self.assertGreater(stats.get("tool_schema_tokens", 0), 0)
+
     def test_template_request_is_write_and_prioritizes_batch_write(self):
         brain = TerminalBrain()
         message = "je veux un TEMPLATE COMPLET"
@@ -998,6 +1007,36 @@ class TerminalBrainSmokeTests(unittest.TestCase):
 
         self.assertIn("github__search_repositories", prompt)
         self.assertIn("GitHub MCP", prompt)
+
+    @patch("core.backends.terminal_brain.get_cached_mcp_tools")
+    def test_autonomous_tool_selection_keeps_mcp_deferred(self, mock_get_mcp_tools):
+        mock_get_mcp_tools.return_value = [
+            McpToolAdapter(
+                name="github__search_repositories",
+                description="Search repositories through GitHub MCP.",
+                schema={
+                    "type": "object",
+                    "properties": {"query": {"type": "string"}},
+                    "required": ["query"],
+                },
+                invoke=lambda args: {"ok": True},
+                server_name="github",
+                tags=("mcp", "github"),
+            )
+        ]
+        brain = TerminalBrain()
+        brain.current_intent = "write"
+        brain._reset_deferred_tools()
+
+        names = brain._select_tool_names_for_turn(
+            "utilise le mcp github si besoin /auto",
+            [],
+            autonomous=True,
+        )
+
+        self.assertIn("write_file", names)
+        self.assertIn("tool_search", names)
+        self.assertNotIn("github__search_repositories", names)
 
     @patch("core.backends.terminal_brain.get_cached_mcp_tools")
     def test_mcp_tool_search_promotes_and_executes_loaded_tool(self, mock_get_mcp_tools):
