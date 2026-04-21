@@ -20,6 +20,7 @@ import re
 import time
 import unicodedata
 from collections import defaultdict
+from email.utils import parsedate_to_datetime
 from typing import Dict, List, Optional, Any, Generator
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -1657,6 +1658,16 @@ class TerminalBrain:
 
     @staticmethod
     def _extract_cloud_error_status_code(exc: BaseException) -> Optional[int]:
+        for attr in ("status_code", "status"):
+            value = getattr(exc, attr, None)
+            if isinstance(value, int):
+                return value
+
+        response = getattr(exc, "response", None)
+        response_status = getattr(response, "status_code", None)
+        if isinstance(response_status, int):
+            return response_status
+
         detail = str(exc or "")
         match = re.search(r"\b(?:api error|error)\s+(\d{3})\b", detail, re.IGNORECASE)
         if not match:
@@ -1666,8 +1677,65 @@ class TerminalBrain:
         except ValueError:
             return None
 
+    @staticmethod
+    def _extract_cloud_error_code(exc: BaseException) -> Optional[str]:
+        for attr in ("code", "error_code"):
+            value = getattr(exc, attr, None)
+            if value not in (None, ""):
+                return str(value)
+
+        body = getattr(exc, "body", None)
+        if isinstance(body, dict):
+            error = body.get("error")
+            if isinstance(error, dict):
+                for key in ("code", "type"):
+                    value = error.get(key)
+                    if value not in (None, ""):
+                        return str(value)
+        return None
+
+    @staticmethod
+    def _extract_cloud_error_detail(exc: BaseException) -> str:
+        detail = str(exc or "").strip()
+        if detail:
+            return detail
+        message = getattr(exc, "message", None)
+        if isinstance(message, str) and message.strip():
+            return message.strip()
+        return exc.__class__.__name__
+
+    @staticmethod
+    def _extract_cloud_retry_after_ms(exc: BaseException) -> Optional[int]:
+        response = getattr(exc, "response", None)
+        headers = getattr(response, "headers", None)
+        if not headers or not hasattr(headers, "get"):
+            return None
+
+        raw_value: Any = None
+        header_name = ""
+        for key in ("retry-after-ms", "Retry-After-Ms", "retry-after", "Retry-After"):
+            value = headers.get(key)
+            if value not in (None, ""):
+                raw_value = value
+                header_name = key
+                break
+        if raw_value in (None, ""):
+            return None
+
+        try:
+            multiplier = 1 if "ms" in header_name.lower() else 1000
+            return max(0, int(float(raw_value) * multiplier))
+        except (TypeError, ValueError):
+            try:
+                target = parsedate_to_datetime(str(raw_value))
+                delta = target.timestamp() - time.time()
+                return max(0, int(delta * 1000))
+            except (TypeError, ValueError, OverflowError):
+                return None
+
     def _classify_cloud_model_error(self, exc: BaseException) -> tuple[bool, str]:
-        detail = str(exc or "").strip().lower()
+        detail = self._extract_cloud_error_detail(exc).lower()
+        error_code = (self._extract_cloud_error_code(exc) or "").lower()
         status_code = self._extract_cloud_error_status_code(exc)
 
         quota_patterns = (
@@ -1685,9 +1753,9 @@ class TerminalBrain:
         )
         retriable_statuses = {408, 409, 425, 429, 500, 502, 503, 504}
 
-        if any(pattern in detail for pattern in quota_patterns):
+        if any(pattern in detail or pattern in error_code for pattern in quota_patterns):
             return False, "quota"
-        if any(pattern in detail for pattern in auth_patterns):
+        if any(pattern in detail or pattern in error_code for pattern in auth_patterns):
             return False, "auth"
         if status_code in retriable_statuses:
             return True, "busy" if status_code == 429 else "transient"
@@ -1696,6 +1764,10 @@ class TerminalBrain:
         return False, "generic"
 
     def _cloud_retry_delay_ms(self, attempt: int, exc: BaseException) -> int:
+        retry_after_ms = self._extract_cloud_retry_after_ms(exc)
+        if retry_after_ms is not None:
+            return min(retry_after_ms, 60000)
+
         status_code = self._extract_cloud_error_status_code(exc)
         base_delay = 1500 if status_code in {429, 503} else 1000
         return min(base_delay * (2 ** max(0, attempt - 1)), 8000)

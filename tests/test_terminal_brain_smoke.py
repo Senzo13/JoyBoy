@@ -2,6 +2,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from core.backends.terminal_brain import ExecutionPlan, PlanStatus, PlanTask, TerminalBrain, ToolResult
@@ -86,6 +87,45 @@ class TerminalBrainSmokeTests(unittest.TestCase):
             brain._classify_cloud_model_error(CloudModelError("OpenAI API error 503: service unavailable")),
             (True, "transient"),
         )
+
+    def test_cloud_error_metadata_is_read_from_provider_exception_shape(self):
+        brain = TerminalBrain()
+        error = CloudModelError("")
+        error.status_code = 429
+        error.body = {"error": {"code": "insufficient_quota"}}
+
+        self.assertEqual(brain._extract_cloud_error_status_code(error), 429)
+        self.assertEqual(brain._extract_cloud_error_code(error), "insufficient_quota")
+        self.assertEqual(brain._classify_cloud_model_error(error), (False, "quota"))
+
+    def test_cloud_status_can_be_read_from_response_object(self):
+        brain = TerminalBrain()
+        error = CloudModelError("provider failed")
+        error.response = SimpleNamespace(status_code=502, headers={})
+
+        self.assertEqual(brain._extract_cloud_error_status_code(error), 502)
+        self.assertEqual(brain._classify_cloud_model_error(error), (True, "transient"))
+
+    def test_cloud_retry_delay_respects_retry_after_headers(self):
+        brain = TerminalBrain()
+        retry_after_ms = CloudModelError("rate limited")
+        retry_after_ms.response = SimpleNamespace(status_code=429, headers={"retry-after-ms": "2500"})
+        retry_after_seconds = CloudModelError("service unavailable")
+        retry_after_seconds.response = SimpleNamespace(status_code=503, headers={"Retry-After": "3"})
+
+        self.assertEqual(brain._cloud_retry_delay_ms(1, retry_after_ms), 2500)
+        self.assertEqual(brain._cloud_retry_delay_ms(1, retry_after_seconds), 3000)
+
+    @patch("core.backends.terminal_brain.time.time", return_value=1_700_000_000)
+    def test_cloud_retry_delay_accepts_http_date_retry_after(self, _time):
+        brain = TerminalBrain()
+        error = CloudModelError("provider busy")
+        error.response = SimpleNamespace(
+            status_code=503,
+            headers={"Retry-After": "Tue, 14 Nov 2023 22:13:23 GMT"},
+        )
+
+        self.assertEqual(brain._cloud_retry_delay_ms(1, error), 3000)
 
     @patch("core.backends.terminal_brain.time.sleep", return_value=None)
     @patch("core.backends.terminal_brain.chat_with_cloud_model")
