@@ -1,0 +1,290 @@
+/* ===== MOBILE RESPONSIVE ===== */
+@media (max-width: 768px) {
+    /* === SETTINGS MODAL: fullscreen === */
+    .settings-modal-content {
+        width: 100%;
+        max-width: 100%;
+        min-width: auto;
+        height: 100%;
+        max-height: 100%;
+        min-height: auto;
+        border-radius: 0;
+    }
+
+    .settings-layout {
+        flex-direction: column;
+    }
+
+    .settings-tabs {
+        flex-direction: row;
+        width: 100%;
+        min-width: auto;
+        overflow-x: auto;
+        padding: 8px 12px;
+        gap: 4px;
+        border-right: none;
+        border-bottom: 1px solid #1a1a1a;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: thin;
+        scrollbar-color: rgba(148, 163, 184, 0.38) rgba(255, 255, 255, 0.035);
+    }
+
+    .settings-tabs::-webkit-scrollbar {
+        height: 8px;
+        background: rgba(255, 255, 255, 0.035);
+    }
+
+    .settings-tabs::-webkit-scrollbar-track {
+        background: rgba(255, 255, 255, 0.035);
+        border-radius: 8px;
+    }
+
+    .settings-tabs::-webkit-scrollbar-thumb {
+        background: rgba(148, 163, 184, 0.38);
+        border: 2px solid #0d0d0d;
+        border-radius: 8px;
+    }
+
+    .settings-tabs::-webkit-scrollbar-thumb:hover {
+        background: rgba(203, 213, 225, 0.58);
+    }
+
+    .settings-tab {
+        padding: 10px 14px;
+        font-size: 13px;
+        white-space: nowrap;
+        border-radius: 6px;
+    }
+
+    .settings-body {
+        padding: 16px;
+    }
+
+    .settings-profile-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .settings-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
+
+    .settings-pack-summary-top {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .settings-pack-summary-card .settings-action-btn {
+        margin-left: 0;
+        width: 100%;
+        justify-content: center;
+    }
+
+    .settings-select {
+        width: 100%;
+    }
+
+    /* === ONBOARDING: fullscreen === */
+    .onboarding-content {
+        width: 100%;
+        min-width: auto;
+        max-width: 100%;
+        height: 100%;
+        min-height: auto;
+        max-height: 100%;
+        border-radius: 0;
+        padding: 0;
+    }
+
+    .onboarding-header {
+        min-height: 94px;
+        padding-left: 20px;
+        padding-right: 156px;
+    }
+
+    .onboarding-scroll {
+        padding: 22px 20px 28px;
+    }
+
+    .onboarding-capability-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .onboarding-capability-card:last-child {
+        grid-column: auto;
+    }
+
+    .profile-options {
+        grid-template-columns: 1fr;
+    }
+
+    .onboarding-logo {
+        width: auto;
+        height: 38px;
+    }
+
+    /* === IMAGE MODAL === */
+    .modal-body {
+        flex-direction: column;
+        gap: 16px;
+        padding: 12px;
+    }
+
+    .modal-main-image {
+        max-height: 60vh;
+        max-width: 95%;
+    }
+
+    .modal-header {
+        padding: 12px 16px;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .modal-btn.action-pill {
+        padding: 6px 12px;
+        font-size: 12px;
+    }
+
+    .video-steps-group {
+        margin-left: 0;
+    }
+
+    .modal-thumbs {
+        flex-direction: row;
+        overflow-x: auto;
+        gap: 10px;
+        padding-bottom: 8px;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .modal-thumb {
+        width: 60px;
+        height: 60px;
+        flex-shrink: 0;
+    }
+
+    /* === COMPARISON === */
+    .compare-container {
+        max-width: 95%;
+        max-height: 60vh;
+    }
+
+    .compare-handle-circle {
+        width: 36px;
+        height: 36px;
+    }
+
+    /* === X-RAY CONTROLS === */
+    .xray-controls {
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 8px 12px;
+        justify-content: center;
+    }
+
+    .xray-btn {
+        padding: 6px 12px;
+        font-size: 12px;
+    }
+
+    .xray-slider-container input[type="range"] {
+        width: 60px;
+    }
+
+    /* === PRESET MODAL === */
+    .preset-modal-content {
+        width: 95%;
+    }
+
+    /* === JAILBREAK TAB === */
+    .jailbreak-textarea {
+        min-height: 60px;
+        font-size: 13px;
+    }
+
+    .jailbreak-output {
+        font-size: 12px;
+    }
+
+    .jailbreak-actions {
+        flex-wrap: wrap;
+    }
+
+    /* === MODEL ITEMS === */
+    .ollama-model-item {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+    }
+
+    .model-actions {
+        width: 100%;
+    }
+
+    .model-actions button {
+        flex: 1;
+    }
+
+    .model-filters {
+        overflow-x: auto;
+        flex-wrap: nowrap;
+        padding-bottom: 8px;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .filter-chip {
+        flex-shrink: 0;
+    }
+
+    /* === SETTINGS SUB-TABS === */
+    .settings-subtabs {
+        overflow-x: auto;
+        flex-wrap: nowrap;
+        padding-bottom: 12px;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .settings-subtab {
+        flex-shrink: 0;
+        padding: 8px 12px;
+        font-size: 12px;
+    }
+
+    /* === MODELS SUB-TABS === */
+    .models-subtabs {
+        overflow-x: auto;
+        flex-wrap: nowrap;
+        padding-bottom: 12px;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .models-subtab {
+        flex-shrink: 0;
+        padding: 8px 12px;
+        font-size: 12px;
+    }
+}
+
+@media (max-width: 480px) {
+    .onboarding-content {
+        width: 94vw;
+        height: 90vh;
+        max-height: 90vh;
+        border-radius: 16px;
+    }
+
+    .onboarding-header {
+        align-items: flex-start;
+        padding: 16px 18px 12px;
+    }
+
+    .onboarding-locale-select {
+        position: static;
+        min-width: 118px;
+        margin-left: auto;
+        order: -1;
+    }
+}
+

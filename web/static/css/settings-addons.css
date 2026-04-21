@@ -1,0 +1,318 @@
+/* Addons explorer: local-only equivalent of a GPT directory, but wired to JoyBoy packs. */
+.addons-explorer {
+    max-width: 980px;
+    margin: 0 auto;
+    padding-bottom: 18px;
+}
+
+.addons-hero {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 20px;
+    padding: 12px 0 22px;
+}
+
+.addons-hero-copy {
+    max-width: 680px;
+}
+
+.addons-hero h2 {
+    margin: 8px 0 8px;
+    color: #f8fafc;
+    font-size: clamp(28px, 4vw, 46px);
+    line-height: 1.04;
+    letter-spacing: -0.04em;
+}
+
+.addons-hero p {
+    margin: 0;
+    color: #9aa7bd;
+    font-size: 15px;
+    line-height: 1.55;
+}
+
+.addons-hero-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.addons-hub-nav {
+    display: inline-flex;
+    gap: 6px;
+    padding: 5px;
+    margin: 2px 0 22px;
+    border: 1px solid rgba(148, 163, 184, 0.12);
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.035);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.addons-hub-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    height: 38px;
+    padding: 0 13px;
+    border: 0;
+    border-radius: 14px;
+    background: transparent;
+    color: #8fa0b8;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 700;
+    transition: color 0.18s, background 0.18s, box-shadow 0.18s;
+}
+
+.addons-hub-tab svg {
+    width: 15px;
+    height: 15px;
+}
+
+.addons-hub-tab:hover {
+    color: #dbeafe;
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.addons-hub-tab.active {
+    color: #fff;
+    background: rgba(59, 130, 246, 0.18);
+    box-shadow: inset 0 0 0 1px rgba(96, 165, 250, 0.22);
+}
+
+.addons-searchbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: min(100%, 760px);
+    margin: 0 0 22px;
+    padding: 13px 16px;
+    border: 1px solid rgba(148, 163, 184, 0.18);
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.035);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.addons-searchbar svg {
+    width: 18px;
+    height: 18px;
+    color: #8ea0ba;
+    flex: 0 0 auto;
+}
+
+.addons-searchbar input {
+    width: 100%;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: #eef4ff;
+    font: inherit;
+}
+
+.addons-searchbar input::placeholder {
+    color: #64748b;
+}
+
+.addons-filter-row {
+    display: flex;
+    gap: 8px;
+    margin: 0 0 24px;
+    overflow-x: auto;
+    padding-bottom: 3px;
+}
+
+.addons-filter {
+    border: 0;
+    border-bottom: 1px solid transparent;
+    background: transparent;
+    color: #9aa7bd;
+    cursor: pointer;
+    padding: 8px 10px;
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.addons-filter:hover {
+    color: #dbeafe;
+}
+
+.addons-filter.active {
+    color: #fff;
+    border-bottom-color: #fff;
+}
+
+.addons-control-section,
+#addons-packs-section,
+.addons-local-runtime .settings-section {
+    background: rgba(8, 10, 16, 0.42);
+    border: 1px solid rgba(148, 163, 184, 0.08);
+    border-radius: 18px;
+    padding: 18px;
+}
+
+.addons-control-section .addons-local-runtime {
+    margin-top: 14px;
+}
+
+.addons-control-section .addons-local-runtime .settings-section {
+    padding: 12px;
+    border-radius: 14px;
+    border-style: dashed;
+    background: rgba(255, 255, 255, 0.025);
+}
+
+.addons-control-section .addons-local-runtime .settings-section-title {
+    font-size: 11px;
+    letter-spacing: 0.11em;
+}
+
+.addons-control-section .addons-local-runtime .settings-info {
+    margin: 8px 0 10px;
+    padding: 9px 10px;
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+.addons-control-section .addons-local-runtime .settings-row {
+    min-height: auto;
+    padding: 10px 0;
+}
+
+.addons-control-section .addons-local-runtime .settings-slider-row {
+    margin: 9px 0 12px;
+}
+
+.addons-help-panel {
+    margin-top: 18px;
+    display: block;
+    padding: 18px;
+    border: 1px solid rgba(148, 163, 184, 0.10);
+    border-radius: 22px;
+    background:
+        radial-gradient(circle at 92% 0%, rgba(59, 130, 246, 0.10), transparent 32%),
+        rgba(8, 10, 16, 0.46);
+}
+
+.addons-help-panel .settings-section {
+    padding: 0;
+    margin-bottom: 18px;
+    border: 0;
+    background: transparent;
+}
+
+.addons-help-panel .help-item {
+    border-radius: 16px;
+    border-color: rgba(148, 163, 184, 0.10);
+    background: rgba(255, 255, 255, 0.035);
+}
+
+.addons-help-panel .help-title {
+    color: #dbeafe;
+}
+
+.addons-help-panel .help-addon-template {
+    border-radius: 18px;
+    background: rgba(2, 6, 23, 0.52);
+}
+
+.addons-section-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 14px;
+    margin-bottom: 14px;
+}
+
+.addons-import-row {
+    border: 1px dashed rgba(148, 163, 184, 0.15);
+    border-radius: 14px;
+    padding: 13px;
+    background: rgba(255, 255, 255, 0.025);
+}
+
+.addons-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    margin-top: 16px;
+}
+
+.addons-grid.is-empty {
+    display: block;
+}
+
+.addon-card {
+    margin-top: 0;
+    min-height: 188px;
+    padding: 16px;
+    border-radius: 18px;
+    background:
+        radial-gradient(circle at 18% 0%, rgba(59, 130, 246, 0.10), transparent 34%),
+        linear-gradient(180deg, rgba(22, 24, 31, 0.96), rgba(13, 14, 19, 0.98));
+    border-color: rgba(148, 163, 184, 0.13);
+}
+
+.addon-card.is-active {
+    border-color: rgba(34, 197, 94, 0.36);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), 0 12px 40px rgba(34, 197, 94, 0.07);
+}
+
+.addon-card.is-invalid {
+    border-color: rgba(239, 68, 68, 0.32);
+}
+
+.addon-card-top {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+}
+
+.addon-icon {
+    display: grid;
+    place-items: center;
+    width: 52px;
+    height: 52px;
+    border-radius: 18px;
+    color: #dbeafe;
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.22), rgba(14, 165, 233, 0.08));
+    border: 1px solid rgba(147, 197, 253, 0.18);
+    flex: 0 0 auto;
+}
+
+.addon-card-title {
+    min-width: 0;
+    flex: 1;
+}
+
+.addon-state {
+    align-self: flex-start;
+    padding: 5px 8px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.05);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.addon-card-description {
+    margin-top: 13px;
+    color: #a4b0c4;
+    font-size: 13px;
+    line-height: 1.48;
+}
+
+.addon-card-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 16px;
+    color: #68758c;
+    font-size: 12px;
+}
+

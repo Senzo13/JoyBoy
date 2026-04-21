@@ -1,0 +1,83 @@
+/* ===== HELP TAB STYLES ===== */
+.help-item {
+    background: #111;
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 12px;
+    border: 1px solid #222;
+}
+
+.help-title {
+    font-weight: 600;
+    color: #3b82f6;
+    font-size: 15px;
+    margin-bottom: 8px;
+}
+
+.help-desc {
+    font-size: 13px;
+    color: #aaa;
+    line-height: 1.6;
+}
+
+.help-desc ul {
+    margin: 10px 0;
+    padding-left: 20px;
+}
+
+.help-desc li {
+    margin-bottom: 6px;
+}
+
+.help-desc strong {
+    color: #fff;
+}
+
+.help-desc em {
+    display: block;
+    margin-top: 10px;
+    color: #888;
+    font-style: italic;
+}
+
+.help-addon-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+    margin-top: 14px;
+}
+
+.help-addon-grid .help-item {
+    margin-bottom: 0;
+}
+
+.help-addon-template {
+    margin-top: 14px;
+    padding: 16px;
+    border-radius: 12px;
+    border: 1px solid rgba(59, 130, 246, 0.18);
+    background: rgba(6, 10, 20, 0.72);
+}
+
+.help-code-block {
+    margin: 10px 0 12px;
+    padding: 14px;
+    overflow-x: auto;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(0, 0, 0, 0.28);
+    color: #dbeafe;
+    font-size: 12px;
+    line-height: 1.55;
+}
+
+.help-code-block code {
+    font-family: "JetBrains Mono", "Fira Code", Consolas, monospace;
+}
+
+@media (max-width: 860px) {
+    .help-addon-grid {
+        grid-template-columns: 1fr;
+    }
+}
+

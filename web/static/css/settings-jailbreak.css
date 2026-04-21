@@ -1,0 +1,91 @@
+/* ===== JAILBREAK TAB ===== */
+
+.jailbreak-textarea {
+    width: 100%;
+    min-height: 80px;
+    background: #111;
+    color: #e0e0e0;
+    border: 1px solid #252525;
+    border-radius: 8px;
+    padding: 12px;
+    font-size: 14px;
+    font-family: inherit;
+    resize: vertical;
+    transition: border-color 0.2s;
+    box-sizing: border-box;
+}
+
+.jailbreak-textarea:focus {
+    outline: none;
+    border-color: #3b82f6;
+}
+
+.jailbreak-output {
+    background: #111;
+    border: 1px solid #252525;
+    border-radius: 8px;
+    padding: 14px;
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    color: #e0e0e0;
+    user-select: all;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.jailbreak-output-fr {
+    margin-top: 8px;
+    border-color: #1e3a5f;
+    color: #8bb8e8;
+}
+
+.jailbreak-output-fr::before {
+    content: '🇫🇷 Français';
+    display: block;
+    font-family: inherit;
+    font-size: 11px;
+    color: #5b8cc2;
+    margin-bottom: 6px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+}
+
+.jailbreak-tips {
+    margin-top: 8px;
+    font-size: 12px;
+    color: #666;
+    line-height: 1.4;
+}
+
+.jailbreak-badges {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.jailbreak-badge {
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.jailbreak-badge-platform {
+    background: #3b82f6;
+    color: white;
+}
+
+.jailbreak-badge-type {
+    background: #252525;
+    color: #888;
+}
+
+.jailbreak-actions {
+    margin-top: 12px;
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+}
+
