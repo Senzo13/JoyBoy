@@ -27,6 +27,7 @@ from enum import Enum
 from config import TOOL_CAPABLE_MODELS, TOOL_EXCLUDED_MODELS
 from core.agent_runtime import (
     CloudModelError,
+    get_cached_mcp_tools,
     ToolLoopGuard,
     chat_with_cloud_model,
     is_cloud_model_name,
@@ -39,6 +40,8 @@ from core.agent_runtime import (
 from core.backends.terminal_tools import (
     DEFAULT_PERMISSION_MODE,
     PermissionEngine,
+    ToolDefinition,
+    ToolRisk,
     build_default_terminal_tool_registry,
     normalize_permission_mode,
 )
@@ -619,6 +622,8 @@ class TerminalBrain:
         self._active_workspace_path = ""
         self._active_deferred_tool_names = set()
         self._active_promoted_tool_names = set()
+        self._ordered_deferred_tool_names = list(DEFERRED_TOOL_NAMES)
+        self._mcp_tools_by_name: Dict[str, Any] = {}
         self.current_plan: Optional[ExecutionPlan] = None
         self._read_files_by_workspace = defaultdict(dict)
 
@@ -639,6 +644,7 @@ class TerminalBrain:
         # policy layer first so future packs/plugins do not bypass safety.
         self.tool_registry = build_default_terminal_tool_registry(TOOLS)
         self.permission_engine = PermissionEngine(self.tool_registry)
+        self._refresh_dynamic_tool_registry()
 
     def _workspace_key(self, workspace_path: str) -> str:
         return os.path.normcase(os.path.realpath(os.path.abspath(workspace_path or "")))
@@ -914,6 +920,20 @@ class TerminalBrain:
                     success=True,
                     tool_name=tool_name,
                     data={"thought": thought, "message": "Reasoning noted. Continue with a concrete tool call or final answer."}
+                )
+
+            # === MCP / EXTERNAL TOOLS ===
+            elif tool_name in self._mcp_tools_by_name:
+                tool = self._mcp_tools_by_name.get(tool_name)
+                payload = tool.invoke(args or {})
+                return ToolResult(
+                    success=True,
+                    tool_name=tool_name,
+                    data={
+                        "result": payload,
+                        "server_name": getattr(tool, "server_name", ""),
+                        "source": "mcp",
+                    },
                 )
 
             else:
@@ -1898,11 +1918,59 @@ class TerminalBrain:
             char_count = sum(len(str(msg.get("content", ""))) for msg in messages) + len(str(tools or []))
         return max(1, int(char_count / 4))
 
+    def _refresh_dynamic_tool_registry(self) -> None:
+        """Reload optional MCP tools into the terminal registry.
+
+        DeerFlow's tool search becomes truly powerful because deferred tools are
+        backed by a real runtime registry, not just hardcoded names. JoyBoy does
+        the same here: core tools stay stable, while locally configured MCP
+        tools are added on top and exposed only through deferred search.
+        """
+        registry = build_default_terminal_tool_registry(TOOLS)
+        self._mcp_tools_by_name = {}
+
+        deferred_order = list(DEFERRED_TOOL_NAMES)
+        deferred_seen = set(deferred_order)
+        try:
+            mcp_tools = get_cached_mcp_tools()
+        except Exception:
+            mcp_tools = []
+
+        for tool in mcp_tools:
+            name = str(getattr(tool, "name", "") or "").strip()
+            if not name or registry.get(name):
+                continue
+            description = str(getattr(tool, "description", "") or "MCP tool")
+            schema = getattr(tool, "schema", None) or {"type": "object", "properties": {}}
+            server_name = str(getattr(tool, "server_name", "") or "").strip()
+            tags = ["mcp"]
+            if server_name:
+                tags.append(server_name)
+            registry.register(
+                ToolDefinition(
+                    name=name,
+                    description=description,
+                    schema=schema if isinstance(schema, dict) else {"type": "object", "properties": {}},
+                    risk=ToolRisk.NETWORK,
+                    concurrent_safe=False,
+                    tags=tags,
+                )
+            )
+            self._mcp_tools_by_name[name] = tool
+            if name not in deferred_seen:
+                deferred_seen.add(name)
+                deferred_order.append(name)
+
+        self._ordered_deferred_tool_names = deferred_order
+        self.tool_registry = registry
+        self.permission_engine = PermissionEngine(self.tool_registry)
+
     def _reset_deferred_tools(self) -> None:
         """Prepare a DeerFlow-style deferred tool registry for this terminal run."""
+        self._refresh_dynamic_tool_registry()
         self._active_deferred_tool_names = {
             name
-            for name in DEFERRED_TOOL_NAMES
+            for name in self._ordered_deferred_tool_names
             if self.tool_registry.get(name)
         }
         self._active_promoted_tool_names = set()
@@ -1982,7 +2050,7 @@ class TerminalBrain:
         query = str(query or "").strip()
         candidates = [
             name
-            for name in DEFERRED_TOOL_NAMES
+            for name in self._ordered_deferred_tool_names
             if name in self._active_deferred_tool_names
             and name not in self._active_promoted_tool_names
             and self.tool_registry.get(name)
@@ -2086,7 +2154,7 @@ class TerminalBrain:
             "tools": tools,
             "remaining_deferred": [
                 name
-                for name in DEFERRED_TOOL_NAMES
+                for name in self._ordered_deferred_tool_names
                 if name in self._active_deferred_tool_names
                 and name not in self._active_promoted_tool_names
             ],
@@ -2373,7 +2441,7 @@ class TerminalBrain:
 
         self._active_promoted_tool_names.update(self._auto_promoted_deferred_tools(initial_message, executed_tools))
 
-        for name in DEFERRED_TOOL_NAMES:
+        for name in self._ordered_deferred_tool_names:
             if name in self._active_promoted_tool_names:
                 names.append(name)
 
@@ -2694,6 +2762,9 @@ class TerminalBrain:
             summary["summary"] = f"code {data.get('return_code', '?')}"
         elif tool_name == "open_workspace":
             summary["summary"] = data.get("path", "workspace opened")
+        elif tool_name in self._mcp_tools_by_name:
+            server_name = data.get("server_name", "")
+            summary["summary"] = f"mcp tool via {server_name or 'external'}"
         else:
             summary["summary"] = "ok"
         return summary
@@ -2960,7 +3031,7 @@ You have access to filesystem, search, shell, and workspace tools. Use them to c
     def _build_deferred_tools_prompt(self) -> str:
         remaining = [
             name
-            for name in DEFERRED_TOOL_NAMES
+            for name in self._ordered_deferred_tool_names
             if name in self._active_deferred_tool_names
             and name not in self._active_promoted_tool_names
             and self.tool_registry.get(name)
@@ -3162,6 +3233,24 @@ You have access to filesystem, search, shell, and workspace tools. Use them to c
 
         elif result.tool_name == 'open_workspace':
             return f"[RESULT open_workspace] Folder opened: {data.get('path', '')}"
+
+        elif result.tool_name in self._mcp_tools_by_name:
+            server_name = data.get("server_name", "")
+            raw_payload = data.get("result")
+            if isinstance(raw_payload, str):
+                content = raw_payload
+                fence = ""
+            else:
+                try:
+                    content = json.dumps(raw_payload, ensure_ascii=False, indent=2, default=str)
+                except Exception:
+                    content = str(raw_payload)
+                fence = "json"
+            content = truncate_middle(mask_workspace_paths(content, self._active_workspace_path), max(3000, min(9000, int(self._active_context_size * 1.5))))
+            server_suffix = f" via {server_name}" if server_name else ""
+            if fence:
+                return f"[RESULT {result.tool_name}]{server_suffix}\n```{fence}\n{content}\n```"
+            return f"[RESULT {result.tool_name}]{server_suffix}\n```\n{content}\n```"
 
         return f"[RESULT {result.tool_name}] OK"
 

@@ -5,7 +5,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from core.backends.terminal_brain import TerminalBrain, ToolResult
-from core.agent_runtime import CloudModelError
+from core.agent_runtime import CloudModelError, McpToolAdapter
 
 
 class TerminalBrainSmokeTests(unittest.TestCase):
@@ -565,6 +565,62 @@ class TerminalBrainSmokeTests(unittest.TestCase):
 
         self.assertFalse(result.success)
         self.assertIn("http", result.error)
+
+    @patch("core.backends.terminal_brain.get_cached_mcp_tools")
+    def test_deferred_prompt_lists_loaded_mcp_tools(self, mock_get_mcp_tools):
+        mock_get_mcp_tools.return_value = [
+            McpToolAdapter(
+                name="github__search_repositories",
+                description="Search repositories through GitHub MCP.",
+                schema={
+                    "type": "object",
+                    "properties": {"query": {"type": "string"}},
+                    "required": ["query"],
+                },
+                invoke=lambda args: {"ok": True, "query": args.get("query", "")},
+                server_name="github",
+                tags=("mcp", "github"),
+            )
+        ]
+        brain = TerminalBrain()
+        brain._reset_deferred_tools()
+
+        prompt = brain._build_deferred_tools_prompt()
+
+        self.assertIn("github__search_repositories", prompt)
+        self.assertIn("GitHub MCP", prompt)
+
+    @patch("core.backends.terminal_brain.get_cached_mcp_tools")
+    def test_mcp_tool_search_promotes_and_executes_loaded_tool(self, mock_get_mcp_tools):
+        mock_get_mcp_tools.return_value = [
+            McpToolAdapter(
+                name="github__search_repositories",
+                description="Search repositories through GitHub MCP.",
+                schema={
+                    "type": "object",
+                    "properties": {"query": {"type": "string"}},
+                    "required": ["query"],
+                },
+                invoke=lambda args: {"items": [{"full_name": f"openai/{args.get('query', '')}"}]},
+                server_name="github",
+                tags=("mcp", "github"),
+            )
+        ]
+        brain = TerminalBrain()
+        brain._reset_deferred_tools()
+
+        promoted = brain.execute_tool("tool_search", {"query": "github"}, os.getcwd())
+        executed = brain.execute_tool(
+            "github__search_repositories",
+            {"query": "joyboy"},
+            os.getcwd(),
+        )
+
+        self.assertTrue(promoted.success)
+        self.assertIn("github__search_repositories", promoted.data.get("promoted", []))
+        self.assertTrue(executed.success)
+        self.assertEqual(executed.data.get("server_name"), "github")
+        self.assertIn("openai/joyboy", brain._format_result_for_llm(executed))
 
 
 if __name__ == "__main__":

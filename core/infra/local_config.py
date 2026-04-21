@@ -42,6 +42,7 @@ DEFAULT_LOCAL_CONFIG = {
         "VLLM_API_KEY": "",
     },
     "provider_auth_modes": {},
+    "mcp_servers": {},
     "features": {
         "adult_features_enabled": True,
         "public_repo_mode": False,
@@ -551,6 +552,62 @@ def get_local_config_overview() -> dict:
     }
 
 
+def _normalise_mcp_servers(servers: Any) -> dict[str, dict[str, Any]]:
+    if not isinstance(servers, dict):
+        return {}
+
+    normalized: dict[str, dict[str, Any]] = {}
+    for raw_name, raw_config in servers.items():
+        name = str(raw_name or "").strip()
+        if not name or not isinstance(raw_config, dict):
+            continue
+
+        config = deepcopy(raw_config)
+        config["enabled"] = bool(config.get("enabled", True))
+        config["type"] = str(config.get("type") or "stdio").strip().lower() or "stdio"
+        config["command"] = str(config.get("command") or "").strip() or None
+        config["url"] = str(config.get("url") or "").strip() or None
+        config["description"] = str(config.get("description") or "").strip()
+        config["args"] = [str(item) for item in list(config.get("args") or [])]
+        config["env"] = {
+            str(key): str(value)
+            for key, value in dict(config.get("env") or {}).items()
+            if str(key).strip()
+        }
+        config["headers"] = {
+            str(key): str(value)
+            for key, value in dict(config.get("headers") or {}).items()
+            if str(key).strip()
+        }
+
+        oauth = config.get("oauth")
+        if isinstance(oauth, dict):
+            oauth_copy = deepcopy(oauth)
+            oauth_copy["enabled"] = bool(oauth_copy.get("enabled", True))
+            oauth_copy["grant_type"] = str(oauth_copy.get("grant_type") or "client_credentials").strip() or "client_credentials"
+            oauth_copy["token_url"] = str(oauth_copy.get("token_url") or "").strip()
+            oauth_copy["token_field"] = str(oauth_copy.get("token_field") or "access_token").strip() or "access_token"
+            oauth_copy["token_type_field"] = str(oauth_copy.get("token_type_field") or "token_type").strip() or "token_type"
+            oauth_copy["expires_in_field"] = str(oauth_copy.get("expires_in_field") or "expires_in").strip() or "expires_in"
+            oauth_copy["default_token_type"] = str(oauth_copy.get("default_token_type") or "Bearer").strip() or "Bearer"
+            try:
+                oauth_copy["refresh_skew_seconds"] = int(oauth_copy.get("refresh_skew_seconds") or 60)
+            except (TypeError, ValueError):
+                oauth_copy["refresh_skew_seconds"] = 60
+            oauth_copy["extra_token_params"] = {
+                str(key): str(value)
+                for key, value in dict(oauth_copy.get("extra_token_params") or {}).items()
+                if str(key).strip()
+            }
+            config["oauth"] = oauth_copy
+        else:
+            config["oauth"] = None
+
+        normalized[name] = config
+
+    return normalized
+
+
 def load_local_config() -> dict:
     source_path = get_local_config_source_path()
     if not source_path.exists():
@@ -569,9 +626,22 @@ def load_local_config() -> dict:
 def save_local_config(data: dict) -> dict:
     LOCAL_DIR.mkdir(parents=True, exist_ok=True)
     normalized = _deep_merge(DEFAULT_LOCAL_CONFIG, data if isinstance(data, dict) else {})
+    normalized["mcp_servers"] = _normalise_mcp_servers(normalized.get("mcp_servers", {}))
     with LOCAL_CONFIG_PATH.open("w", encoding="utf-8") as fh:
         json.dump(normalized, fh, indent=2, ensure_ascii=False)
     return normalized
+
+
+def get_mcp_servers() -> dict[str, dict[str, Any]]:
+    config = load_local_config()
+    return deepcopy(_normalise_mcp_servers(config.get("mcp_servers", {})))
+
+
+def set_mcp_servers(servers: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    config = load_local_config()
+    config["mcp_servers"] = _normalise_mcp_servers(servers)
+    saved = save_local_config(config)
+    return deepcopy(saved.get("mcp_servers", {}))
 
 
 def get_provider_secret(name: str, default: str = "") -> str:
