@@ -404,8 +404,8 @@ async function generateVideoFromText(prompt) {
     const modelName = videoDefaults.name;
 
     // Clear input
-    document.getElementById('prompt-input').value = '';
-    document.getElementById('chat-prompt').value = '';
+    resetComposerTextarea('prompt-input');
+    resetComposerTextarea('chat-prompt');
 
     // Add user message with video prompt
     if (typeof addUserMessageToChat === 'function') {
@@ -498,8 +498,8 @@ async function generateVideoFromImageWithPrompt(imgSrc, prompt) {
     const modelName = videoDefaults.name;
 
     // Clear input
-    document.getElementById('prompt-input').value = '';
-    document.getElementById('chat-prompt').value = '';
+    resetComposerTextarea('prompt-input');
+    resetComposerTextarea('chat-prompt');
 
     const displayPrompt = prompt ? `🎬 ${modelName}: ${prompt.substring(0, 40)}...` : `🎬 ${modelName}`;
     const usedVideoSkeleton = typeof addUserMessageWithThumb === 'function' && typeof addVideoSkeletonToChat === 'function';
@@ -701,9 +701,26 @@ document.getElementById('steps-slider')?.addEventListener('dblclick', function()
 
 // Auto-resize textareas
 function autoResizeTextarea(textarea) {
-    // Reset to 1px to get accurate scrollHeight, then set properly
-    textarea.style.height = '1px';
-    textarea.style.height = Math.max(24, Math.min(textarea.scrollHeight, 150)) + 'px';
+    if (!textarea) return;
+    const minHeight = 32;
+    const maxHeight = 150;
+    textarea.style.height = 'auto';
+    const nextHeight = Math.max(minHeight, Math.min(textarea.scrollHeight, maxHeight));
+    textarea.style.height = `${nextHeight}px`;
+    textarea.style.overflowY = textarea.scrollHeight > maxHeight ? 'auto' : 'hidden';
+
+    if (typeof updateChatPadding === 'function') {
+        requestAnimationFrame(updateChatPadding);
+    }
+}
+
+function resetComposerTextarea(textareaOrId) {
+    const textarea = typeof textareaOrId === 'string'
+        ? document.getElementById(textareaOrId)
+        : textareaOrId;
+    if (!textarea) return;
+    textarea.value = '';
+    autoResizeTextarea(textarea);
 }
 
 document.getElementById('prompt-input')?.addEventListener('input', function() {
@@ -747,6 +764,8 @@ function updateSendButtonState(mode) {
 document.addEventListener('DOMContentLoaded', function() {
     updateSendButtonState('home');
     updateSendButtonState('chat');
+    autoResizeTextarea(document.getElementById('prompt-input'));
+    autoResizeTextarea(document.getElementById('chat-prompt'));
     // Reset restart buttons state (au cas où un restart précédent les a bloqués)
     if (typeof resetRestartButtons === 'function') {
         resetRestartButtons();
@@ -758,13 +777,13 @@ function refocusChatInput() {
     const chatPrompt = document.getElementById('chat-prompt');
     const promptInput = document.getElementById('prompt-input');
 
-    // Reset la hauteur des deux inputs
+    // Resynchronise la hauteur: vide => une ligne, texte conservé => taille réelle.
     if (chatPrompt) {
-        chatPrompt.style.height = 'auto';
+        autoResizeTextarea(chatPrompt);
         setTimeout(() => chatPrompt.focus(), 100);
     }
     if (promptInput) {
-        promptInput.style.height = 'auto';
+        autoResizeTextarea(promptInput);
         setTimeout(() => promptInput.focus(), 100);
     }
 }

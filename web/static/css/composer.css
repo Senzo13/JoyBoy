@@ -208,7 +208,7 @@
   height: 32px;
   min-height: 32px;
   max-height: 150px;
-  overflow-y: auto;
+  overflow-y: hidden;
   line-height: 1.4;
   font-family: inherit;
 }

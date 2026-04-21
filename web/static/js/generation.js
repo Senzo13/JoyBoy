@@ -785,7 +785,7 @@ async function generate() {
 
     // === MODE TERMINAL ===
     if (terminalMode) {
-        document.getElementById('prompt-input').value = '';
+        resetComposerTextarea('prompt-input');
         refocusChatInput();
         await sendTerminalMessage(prompt);
         _genSubmitLock = false;
@@ -796,7 +796,7 @@ async function generate() {
     if (typeof checkTerminalTrigger === 'function') {
         const isTerminalTrigger = await checkTerminalTrigger(prompt);
         if (isTerminalTrigger) {
-            document.getElementById('prompt-input').value = '';
+            resetComposerTextarea('prompt-input');
             _genSubmitLock = false;
             return;
         }
@@ -810,7 +810,7 @@ async function generate() {
         const mode = ((currentImage && !imageAnalysisRequest) || directTextToImage) ? 'image' : 'text';
         const options = currentImage ? { image: currentImage } : {};
         await addToQueue(prompt, mode, options);
-        document.getElementById('prompt-input').value = '';
+        resetComposerTextarea('prompt-input');
         console.log(`[GEN] Prompt ajouté à la queue: ${prompt.substring(0, 30)}...`);
         return;
     }
@@ -858,7 +858,7 @@ async function generate() {
         updateChatTitleNow(prompt);
         showChat();
         addToPromptHistory(prompt);
-        document.getElementById('prompt-input').value = '';
+        resetComposerTextarea('prompt-input');
 
         // Afficher immédiatement le message + skeleton
         addChatSkeletonMessage(prompt, imageAnalysisRequest ? currentImage : null);
@@ -947,7 +947,7 @@ async function generate() {
     startPreviewPolling();
     showChat();
     addToPromptHistory(prompt);
-    document.getElementById('prompt-input').value = '';
+    resetComposerTextarea('prompt-input');
     refocusChatInput();
 
     // Backend loads the model on-demand, no need to wait for preloading
@@ -1071,17 +1071,14 @@ async function continueChat() {
         const mode = terminalMode ? 'terminal' : (((currentImage && !imageAnalysisRequest) || directTextToImage) ? 'image' : 'text');
         const options = currentImage ? { image: currentImage } : {};
         await addToQueue(prompt, mode, options);
-        document.getElementById('chat-prompt').value = '';
-        // Reset textarea height
-        const input = document.getElementById('chat-prompt');
-        if (input) input.style.height = 'auto';
+        resetComposerTextarea('chat-prompt');
         console.log('[QUEUE] Prompt ajouté à la queue:', prompt.substring(0, 30) + '...');
         return;
     }
 
     // === MODE TERMINAL ===
     if (terminalMode) {
-        document.getElementById('chat-prompt').value = '';
+        resetComposerTextarea('chat-prompt');
         await sendTerminalMessage(prompt);
         return;
     }
@@ -1090,7 +1087,7 @@ async function continueChat() {
     if (typeof checkTerminalTrigger === 'function') {
         const isTerminalTrigger = await checkTerminalTrigger(prompt);
         if (isTerminalTrigger) {
-            document.getElementById('chat-prompt').value = '';
+            resetComposerTextarea('chat-prompt');
             return;
         }
     } else {
@@ -1102,8 +1099,7 @@ async function continueChat() {
     if (directTextToImage) {
         const chatInput = document.getElementById('chat-prompt');
         if (chatInput) {
-            chatInput.value = '';
-            chatInput.style.height = 'auto';
+            resetComposerTextarea(chatInput);
         }
         const homeInput = document.getElementById('prompt-input');
         if (homeInput) homeInput.value = prompt;
@@ -1130,7 +1126,7 @@ async function continueChat() {
         const chatAbortSignal = currentController.signal;
 
         addToPromptHistory(prompt);
-        document.getElementById('chat-prompt').value = '';
+        resetComposerTextarea('chat-prompt');
 
         // Ajouter le message user + skeleton
         addSkeletonMessage(prompt, pendingImage, true, null, currentGenerationChatId);
@@ -1240,7 +1236,7 @@ async function continueChat() {
     currentController = new AbortController();
 
     addToPromptHistory(prompt);
-    document.getElementById('chat-prompt').value = '';
+    resetComposerTextarea('chat-prompt');
 
     isGenerating = true;
     currentGenerationMode = 'chat';  // Tracker le mode pour stop
