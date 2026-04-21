@@ -19,7 +19,7 @@ import json
 import logging
 import os
 import threading
-import time
+from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any, Callable
@@ -37,6 +37,49 @@ _MCP_TOOLS_CACHE: list["McpToolAdapter"] = []
 _MCP_CACHE_SIGNATURE = ""
 _MCP_LAST_ERROR = ""
 _MCP_LOCK = threading.Lock()
+_MCP_LOAD_CONDITION = threading.Condition(_MCP_LOCK)
+_MCP_LOADING = False
+_MCP_LOADING_SIGNATURE = ""
+
+MCP_SERVER_TEMPLATES: dict[str, dict[str, Any]] = {
+    "filesystem": {
+        "enabled": False,
+        "type": "stdio",
+        "command": "npx",
+        "args": [
+            "-y",
+            "@modelcontextprotocol/server-filesystem",
+            "/path/to/allowed/files",
+        ],
+        "env": {},
+        "description": "Expose un accès fichiers limité à certains dossiers autorisés.",
+    },
+    "github": {
+        "enabled": False,
+        "type": "stdio",
+        "command": "npx",
+        "args": [
+            "-y",
+            "@modelcontextprotocol/server-github",
+        ],
+        "env": {
+            "GITHUB_TOKEN": "$GITHUB_TOKEN",
+        },
+        "description": "Expose GitHub via MCP pour repos, issues et PR.",
+    },
+    "postgres": {
+        "enabled": False,
+        "type": "stdio",
+        "command": "npx",
+        "args": [
+            "-y",
+            "@modelcontextprotocol/server-postgres",
+            "postgresql://localhost/mydb",
+        ],
+        "env": {},
+        "description": "Expose PostgreSQL via MCP.",
+    },
+}
 
 
 @dataclass(frozen=True)
@@ -184,6 +227,33 @@ def _resolve_env_placeholders(value: Any) -> Any:
     return value
 
 
+def _collect_env_placeholders(value: Any) -> list[str]:
+    placeholders: list[str] = []
+
+    def walk(item: Any) -> None:
+        if isinstance(item, str):
+            if item.startswith("$") and len(item) > 1:
+                placeholders.append(item[1:])
+            return
+        if isinstance(item, dict):
+            for nested in item.values():
+                walk(nested)
+            return
+        if isinstance(item, list):
+            for nested in item:
+                walk(nested)
+
+    walk(value)
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for placeholder in placeholders:
+        if placeholder in seen:
+            continue
+        seen.add(placeholder)
+        ordered.append(placeholder)
+    return ordered
+
+
 def _package_state() -> dict[str, bool]:
     return {
         "langchain_core": bool(importlib.util.find_spec("langchain_core")),
@@ -248,6 +318,80 @@ def _build_servers_config(enabled_servers: dict[str, dict[str, Any]]) -> dict[st
         except Exception as exc:
             logger.warning("Skipping MCP server %s: %s", server_name, exc)
     return servers_config
+
+
+def _public_server_params(params: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(params, dict):
+        return None
+    summary: dict[str, Any] = {
+        "transport": str(params.get("transport") or ""),
+    }
+    command = str(params.get("command") or "").strip()
+    if command:
+        summary["command"] = command
+    args = list(params.get("args") or [])
+    if args:
+        summary["args"] = [str(item) for item in args]
+    url = str(params.get("url") or "").strip()
+    if url:
+        summary["url"] = url
+    env = dict(params.get("env") or {})
+    if env:
+        summary["env_keys"] = sorted(str(key) for key in env.keys())
+    headers = dict(params.get("headers") or {})
+    if headers:
+        summary["header_keys"] = sorted(str(key) for key in headers.keys())
+    return summary
+
+
+def _validate_server_config(server_name: str, config: dict[str, Any]) -> dict[str, Any]:
+    raw_copy = deepcopy(config if isinstance(config, dict) else {})
+    resolved = _resolve_env_placeholders(deepcopy(raw_copy))
+    placeholders = _collect_env_placeholders(raw_copy)
+    missing_env = [name for name in placeholders if not os.getenv(name)]
+    issues: list[str] = []
+    warnings: list[str] = []
+
+    try:
+        params = _build_server_params(server_name, resolved)
+    except Exception as exc:
+        params = None
+        issues.append(str(exc))
+
+    oauth = resolved.get("oauth")
+    if isinstance(oauth, dict) and bool(oauth.get("enabled", True)):
+        token_url = str(oauth.get("token_url") or "").strip()
+        if not token_url:
+            issues.append("OAuth requires token_url")
+        grant_type = str(oauth.get("grant_type") or "client_credentials").strip() or "client_credentials"
+        if grant_type == "client_credentials":
+            if not str(oauth.get("client_id") or "").strip():
+                issues.append("OAuth client_credentials requires client_id")
+            if not str(oauth.get("client_secret") or "").strip():
+                issues.append("OAuth client_credentials requires client_secret")
+        elif grant_type == "refresh_token":
+            if not str(oauth.get("refresh_token") or "").strip():
+                issues.append("OAuth refresh_token grant requires refresh_token")
+        else:
+            issues.append(f"Unsupported OAuth grant type: {grant_type}")
+
+    if missing_env:
+        warnings.append("Missing environment values: " + ", ".join(missing_env))
+
+    return {
+        "enabled": bool(config.get("enabled", True)),
+        "transport": str(config.get("type") or "stdio").strip().lower() or "stdio",
+        "description": str(config.get("description") or "").strip(),
+        "valid": not issues,
+        "issues": issues,
+        "warnings": warnings,
+        "missing_env": missing_env,
+        "uses_env_placeholders": placeholders,
+        "has_oauth": isinstance(config.get("oauth"), dict) and bool(config.get("oauth", {}).get("enabled", True)),
+        "resolved": _public_server_params(params),
+        "loaded_tool_count": 0,
+        "loaded_tools": [],
+    }
 
 
 def _oauth_manager(enabled_servers: dict[str, dict[str, Any]]) -> _OAuthTokenManager | None:
@@ -418,40 +562,59 @@ async def _load_mcp_tools_async() -> list[McpToolAdapter]:
     return [_tool_to_adapter(tool) for tool in tools if getattr(tool, "name", None)]
 
 
+def get_mcp_server_templates() -> dict[str, dict[str, Any]]:
+    return deepcopy(MCP_SERVER_TEMPLATES)
+
+
 def reset_mcp_tool_cache() -> None:
-    global _MCP_TOOLS_CACHE, _MCP_CACHE_SIGNATURE, _MCP_LAST_ERROR
+    global _MCP_TOOLS_CACHE, _MCP_CACHE_SIGNATURE, _MCP_LAST_ERROR, _MCP_LOADING, _MCP_LOADING_SIGNATURE
     with _MCP_LOCK:
         _MCP_TOOLS_CACHE = []
         _MCP_CACHE_SIGNATURE = ""
         _MCP_LAST_ERROR = ""
+        _MCP_LOADING = False
+        _MCP_LOADING_SIGNATURE = ""
+        _MCP_LOAD_CONDITION.notify_all()
 
 
 def get_cached_mcp_tools(force_refresh: bool = False) -> list[McpToolAdapter]:
-    global _MCP_TOOLS_CACHE, _MCP_CACHE_SIGNATURE, _MCP_LAST_ERROR
+    global _MCP_TOOLS_CACHE, _MCP_CACHE_SIGNATURE, _MCP_LAST_ERROR, _MCP_LOADING, _MCP_LOADING_SIGNATURE
 
     raw_servers = get_mcp_servers()
     signature = _config_signature(raw_servers)
 
-    with _MCP_LOCK:
+    with _MCP_LOAD_CONDITION:
         if not force_refresh and signature == _MCP_CACHE_SIGNATURE:
             return list(_MCP_TOOLS_CACHE)
+        while _MCP_LOADING and _MCP_LOADING_SIGNATURE == signature:
+            _MCP_LOAD_CONDITION.wait(timeout=0.25)
+            if not force_refresh and signature == _MCP_CACHE_SIGNATURE:
+                return list(_MCP_TOOLS_CACHE)
+        _MCP_LOADING = True
+        _MCP_LOADING_SIGNATURE = signature
 
     enabled_count = sum(1 for config in raw_servers.values() if isinstance(config, dict) and bool(config.get("enabled", True)))
     packages = _package_state()
     if enabled_count == 0:
-        with _MCP_LOCK:
+        with _MCP_LOAD_CONDITION:
             _MCP_TOOLS_CACHE = []
             _MCP_CACHE_SIGNATURE = signature
             _MCP_LAST_ERROR = ""
+            _MCP_LOADING = False
+            _MCP_LOADING_SIGNATURE = ""
+            _MCP_LOAD_CONDITION.notify_all()
         return []
 
     if not all(packages.values()):
         missing = [name for name, available in packages.items() if not available]
         error = "Missing MCP runtime packages: " + ", ".join(missing)
-        with _MCP_LOCK:
+        with _MCP_LOAD_CONDITION:
             _MCP_TOOLS_CACHE = []
             _MCP_CACHE_SIGNATURE = signature
             _MCP_LAST_ERROR = error
+            _MCP_LOADING = False
+            _MCP_LOADING_SIGNATURE = ""
+            _MCP_LOAD_CONDITION.notify_all()
         logger.warning(error)
         return []
 
@@ -463,10 +626,13 @@ def get_cached_mcp_tools(force_refresh: bool = False) -> list[McpToolAdapter]:
         error = str(exc)
         logger.error("Failed to load MCP tools: %s", exc, exc_info=True)
 
-    with _MCP_LOCK:
+    with _MCP_LOAD_CONDITION:
         _MCP_TOOLS_CACHE = list(adapters)
         _MCP_CACHE_SIGNATURE = signature
         _MCP_LAST_ERROR = error
+        _MCP_LOADING = False
+        _MCP_LOADING_SIGNATURE = ""
+        _MCP_LOAD_CONDITION.notify_all()
 
     return list(adapters)
 
@@ -475,9 +641,20 @@ def get_mcp_runtime_status(load_tools: bool = False) -> dict[str, Any]:
     raw_servers = get_mcp_servers()
     enabled_servers = [name for name, config in raw_servers.items() if isinstance(config, dict) and bool(config.get("enabled", True))]
     packages = _package_state()
+    server_status = {
+        name: _validate_server_config(name, config)
+        for name, config in raw_servers.items()
+        if isinstance(config, dict)
+    }
     tools: list[McpToolAdapter] = []
     if load_tools and enabled_servers and all(packages.values()):
         tools = get_cached_mcp_tools()
+        for tool in tools:
+            server_name = tool.server_name or ""
+            if server_name and server_name in server_status:
+                entry = server_status[server_name]
+                entry["loaded_tools"].append(tool.name)
+                entry["loaded_tool_count"] += 1
 
     with _MCP_LOCK:
         last_error = _MCP_LAST_ERROR
@@ -492,6 +669,7 @@ def get_mcp_runtime_status(load_tools: bool = False) -> dict[str, Any]:
         "cached_tool_count": cached_count,
         "loaded_tool_count": len(tools),
         "loaded_tools": [tool.to_public_dict() for tool in tools],
+        "servers": server_status,
+        "templates": get_mcp_server_templates(),
         "last_error": last_error,
     }
-

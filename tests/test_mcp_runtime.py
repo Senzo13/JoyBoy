@@ -4,6 +4,7 @@ import importlib
 import os
 import tempfile
 import unittest
+from unittest.mock import Mock, patch
 
 from flask import Flask
 
@@ -99,6 +100,83 @@ class McpRuntimeConfigTests(unittest.TestCase):
 
         self.assertEqual(server["env"]["GITHUB_TOKEN"], "gh-test-token")
 
+    def test_runtime_status_reports_templates_and_server_validation(self) -> None:
+        self.local_config.set_mcp_servers(
+            {
+                "github": {
+                    "enabled": True,
+                    "type": "stdio",
+                    "command": "npx",
+                    "args": ["-y", "@modelcontextprotocol/server-github"],
+                    "env": {"GITHUB_TOKEN": "$GITHUB_TOKEN"},
+                    "description": "GitHub MCP",
+                },
+                "broken": {
+                    "enabled": True,
+                    "type": "http",
+                    "description": "Broken MCP",
+                },
+            }
+        )
+
+        status = self.mcp_runtime.get_mcp_runtime_status(load_tools=False)
+
+        self.assertIn("templates", status)
+        self.assertIn("github", status["templates"])
+        self.assertTrue(status["servers"]["github"]["valid"])
+        self.assertFalse(status["servers"]["broken"]["valid"])
+        self.assertTrue(status["servers"]["broken"]["issues"])
+        self.assertEqual(status["servers"]["github"]["resolved"]["env_keys"], ["GITHUB_TOKEN"])
+        self.assertNotIn("gh-test-token", str(status["servers"]["github"]["resolved"]))
+
+    def test_runtime_status_warns_on_missing_env_placeholder(self) -> None:
+        os.environ.pop("MISSING_SAMPLE_TOKEN", None)
+        self.local_config.set_mcp_servers(
+            {
+                "sample": {
+                    "enabled": True,
+                    "type": "stdio",
+                    "command": "npx",
+                    "args": ["-y", "sample"],
+                    "env": {"SAMPLE_TOKEN": "$MISSING_SAMPLE_TOKEN"},
+                }
+            }
+        )
+
+        status = self.mcp_runtime.get_mcp_runtime_status(load_tools=False)
+
+        self.assertEqual(status["servers"]["sample"]["missing_env"], ["MISSING_SAMPLE_TOKEN"])
+        self.assertTrue(status["servers"]["sample"]["warnings"])
+
+    def test_oauth_token_manager_caches_token(self) -> None:
+        manager = self.mcp_runtime._OAuthTokenManager(
+            {
+                "secure-http": {
+                    "enabled": True,
+                    "token_url": "https://auth.example.com/oauth/token",
+                    "grant_type": "client_credentials",
+                    "client_id": "client-id",
+                    "client_secret": "client-secret",
+                }
+            }
+        )
+
+        response = Mock()
+        response.raise_for_status.return_value = None
+        response.json.return_value = {
+            "access_token": "token-123",
+            "token_type": "Bearer",
+            "expires_in": 3600,
+        }
+
+        with patch("core.agent_runtime.mcp_runtime.requests.post", return_value=response) as post_mock:
+            first = self.mcp_runtime._run_awaitable(manager.get_authorization_header("secure-http"))
+            second = self.mcp_runtime._run_awaitable(manager.get_authorization_header("secure-http"))
+
+        self.assertEqual(first, "Bearer token-123")
+        self.assertEqual(second, "Bearer token-123")
+        self.assertEqual(post_mock.call_count, 1)
+
 
 class McpSettingsRouteTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -145,8 +223,10 @@ class McpSettingsRouteTests(unittest.TestCase):
         self.assertEqual(put_response.status_code, 200)
         self.assertTrue(put_response.get_json()["success"])
         self.assertIn("github", put_response.get_json()["mcp_servers"])
+        self.assertIn("templates", put_response.get_json())
         self.assertEqual(get_response.status_code, 200)
         self.assertIn("github", get_response.get_json()["mcp_servers"])
+        self.assertIn("templates", get_response.get_json())
 
 
 if __name__ == "__main__":

@@ -136,6 +136,8 @@ The public repo only ships placeholders such as `HF_TOKEN=`, `CIVITAI_API_KEY=`,
 
 JoyBoy also supports connector-style auth for local developer tools when available. Codex CLI can be read from your local Codex auth, and Claude Code can use local Claude Code OAuth credentials. These are separate from API-key mode so selecting a subscription connector does not also consume the matching provider API key.
 
+JoyBoy also supports DeerFlow-style MCP server wiring for external tools. MCP server config stays local in `~/.joyboy/config.json`, tools are loaded lazily into the terminal harness, and HTTP / SSE servers can use OAuth token injection when needed.
+
 ## Public Core + Local Packs
 
 JoyBoy separates the open source core from optional local extensions.
@@ -156,6 +158,7 @@ See [Local Packs](docs/LOCAL_PACKS.md), [Addons](docs/ADDONS.md), and [Third-Par
 
 - [Getting Started](docs/GETTING_STARTED.md)
 - [Architecture](docs/ARCHITECTURE.md)
+- [MCP](docs/MCP.md)
 - [Local Packs](docs/LOCAL_PACKS.md)
 - [Addons and Pack Templates](docs/ADDONS.md)
 - [Third-Party Packs](docs/THIRD_PARTY_PACKS.md)

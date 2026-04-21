@@ -189,13 +189,14 @@ def providers_set_auth_mode():
 def mcp_get_config():
     """Retourne la config MCP locale façon DeerFlow, hors git."""
     from core.infra.local_config import get_local_config_overview, get_mcp_servers
-    from core.agent_runtime import get_mcp_runtime_status
+    from core.agent_runtime import get_mcp_runtime_status, get_mcp_server_templates
 
     overview = get_local_config_overview()
     load_tools = str(request.args.get('load_tools', '')).lower() in {'1', 'true', 'yes'}
     return jsonify({
         'success': True,
         'mcp_servers': get_mcp_servers(),
+        'templates': get_mcp_server_templates(),
         'runtime': get_mcp_runtime_status(load_tools=load_tools),
         'config_path': overview['config_path'],
         'active_source': overview['active_source'],
@@ -206,7 +207,7 @@ def mcp_get_config():
 def mcp_update_config():
     """Met à jour la configuration MCP locale et invalide le cache runtime."""
     from core.infra.local_config import get_local_config_overview, get_mcp_servers, set_mcp_servers
-    from core.agent_runtime import get_mcp_runtime_status, reset_mcp_tool_cache
+    from core.agent_runtime import get_mcp_runtime_status, get_mcp_server_templates, reset_mcp_tool_cache
 
     data = request.get_json(silent=True) or {}
     servers = data.get('mcp_servers', data.get('mcpServers'))
@@ -219,6 +220,7 @@ def mcp_update_config():
     return jsonify({
         'success': True,
         'mcp_servers': get_mcp_servers(),
+        'templates': get_mcp_server_templates(),
         'runtime': get_mcp_runtime_status(load_tools=False),
         'config_path': overview['config_path'],
         'active_source': overview['active_source'],
