@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 Preload & Quantization Cache System
 Pré-charge les modèles au démarrage et nettoie les caches obsolètes.

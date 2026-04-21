@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 Terminal Brain - Cerveau central pour le mode terminal
 Architecture Cursor/Claude Code avec Native Ollama Tool Calling

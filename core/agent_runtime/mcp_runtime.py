@@ -21,7 +21,7 @@ import os
 import threading
 from copy import deepcopy
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
 
 import requests
@@ -29,6 +29,8 @@ import requests
 from core.infra.local_config import get_mcp_servers
 
 logger = logging.getLogger(__name__)
+
+UTC = timezone.utc
 
 _SYNC_TOOL_EXECUTOR = concurrent.futures.ThreadPoolExecutor(max_workers=8, thread_name_prefix="joyboy-mcp")
 atexit.register(lambda: _SYNC_TOOL_EXECUTOR.shutdown(wait=False))
