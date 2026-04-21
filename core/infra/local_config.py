@@ -620,13 +620,20 @@ def load_local_config() -> dict:
         print(f"[LOCAL_CONFIG] Erreur lecture {source_path}: {exc}")
         return deepcopy(DEFAULT_LOCAL_CONFIG)
 
-    return _deep_merge(DEFAULT_LOCAL_CONFIG, raw if isinstance(raw, dict) else {})
+    merged = _deep_merge(DEFAULT_LOCAL_CONFIG, raw if isinstance(raw, dict) else {})
+    deerflow_servers = raw.get("mcpServers") if isinstance(raw, dict) else None
+    if not merged.get("mcp_servers") and isinstance(deerflow_servers, dict):
+        merged["mcp_servers"] = _normalise_mcp_servers(deerflow_servers)
+    else:
+        merged["mcp_servers"] = _normalise_mcp_servers(merged.get("mcp_servers", {}))
+    return merged
 
 
 def save_local_config(data: dict) -> dict:
     LOCAL_DIR.mkdir(parents=True, exist_ok=True)
     normalized = _deep_merge(DEFAULT_LOCAL_CONFIG, data if isinstance(data, dict) else {})
     normalized["mcp_servers"] = _normalise_mcp_servers(normalized.get("mcp_servers", {}))
+    normalized.pop("mcpServers", None)
     with LOCAL_CONFIG_PATH.open("w", encoding="utf-8") as fh:
         json.dump(normalized, fh, indent=2, ensure_ascii=False)
     return normalized

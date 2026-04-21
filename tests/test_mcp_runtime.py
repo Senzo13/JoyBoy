@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+import json
 import os
 import tempfile
 import unittest
@@ -148,6 +149,25 @@ class McpRuntimeConfigTests(unittest.TestCase):
         self.assertEqual(status["servers"]["sample"]["missing_env"], ["MISSING_SAMPLE_TOKEN"])
         self.assertTrue(status["servers"]["sample"]["warnings"])
 
+    def test_local_config_reads_deerflow_style_mcp_servers(self) -> None:
+        config_path = self.local_config.LOCAL_CONFIG_PATH
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        config_path.write_text(json.dumps({
+            "mcpServers": {
+                "github": {
+                    "enabled": True,
+                    "type": "stdio",
+                    "command": "npx",
+                    "args": ["-y", "@modelcontextprotocol/server-github"],
+                }
+            }
+        }), encoding="utf-8")
+
+        loaded = self.local_config.get_mcp_servers()
+
+        self.assertIn("github", loaded)
+        self.assertEqual(loaded["github"]["command"], "npx")
+
     def test_oauth_token_manager_caches_token(self) -> None:
         manager = self.mcp_runtime._OAuthTokenManager(
             {
@@ -225,10 +245,33 @@ class McpSettingsRouteTests(unittest.TestCase):
         self.assertIn("github", put_response.get_json()["mcp_servers"])
         self.assertIn("github", put_response.get_json()["mcpServers"])
         self.assertIn("templates", put_response.get_json())
+        self.assertIn("extensions_config", put_response.get_json())
         self.assertEqual(get_response.status_code, 200)
         self.assertIn("github", get_response.get_json()["mcp_servers"])
         self.assertIn("github", get_response.get_json()["mcpServers"])
         self.assertIn("templates", get_response.get_json())
+        self.assertIn("extensions_config", get_response.get_json())
+
+    def test_put_mcp_config_accepts_deerflow_extensions_config(self) -> None:
+        payload = {
+            "extensions_config": {
+                "mcpServers": {
+                    "filesystem": {
+                        "enabled": True,
+                        "type": "stdio",
+                        "command": "npx",
+                        "args": ["-y", "@modelcontextprotocol/server-filesystem", "C:/tmp"],
+                    }
+                },
+                "skills": {},
+            }
+        }
+
+        response = self.client.put("/api/mcp/config", json=payload)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("filesystem", response.get_json()["mcp_servers"])
+        self.assertIn("mcpServers", response.get_json()["extensions_config"])
 
 
 if __name__ == "__main__":

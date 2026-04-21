@@ -1735,10 +1735,16 @@ function renderMcpRuntimeSummary(mcpData) {
         <div class="llm-provider-summary mcp-runtime-summary">
             <div class="mcp-runtime-summary-head">
                 <div class="mcp-status-line ${summaryTone}">${escapeHtml(summaryText)}</div>
-                <button class="settings-action-btn compact subtle" type="button" onclick="refreshMcpRuntime()">
-                    <i data-lucide="refresh-cw" aria-hidden="true"></i>
-                    <span>${escapeHtml(t('providers.mcpRefreshRuntime', 'Tester le runtime'))}</span>
-                </button>
+                <div class="settings-inline-actions mcp-summary-actions">
+                    <button class="settings-action-btn compact subtle" type="button" onclick="copyMcpExtensionsConfig()">
+                        <i data-lucide="copy" aria-hidden="true"></i>
+                        <span>${escapeHtml(t('providers.mcpCopyDeerflowConfig', 'Copier format DeerFlow'))}</span>
+                    </button>
+                    <button class="settings-action-btn compact subtle" type="button" onclick="refreshMcpRuntime()">
+                        <i data-lucide="refresh-cw" aria-hidden="true"></i>
+                        <span>${escapeHtml(t('providers.mcpRefreshRuntime', 'Tester le runtime'))}</span>
+                    </button>
+                </div>
             </div>
             <div class="settings-label-desc">${escapeHtml(t('providers.mcpConfigSource', 'Config locale : {source}', { source }))}</div>
             ${errorBlock}
@@ -2130,6 +2136,33 @@ async function copyMcpServerJson(serverName, preferTemplate = false) {
             document.body.removeChild(textarea);
         }
         Toast.success(t('providers.mcpCopiedTitle', 'JSON copié'), t('providers.mcpCopiedBody', 'Le JSON de {name} est prêt dans le presse-papiers.', { name: serverName }), 2200);
+    } catch (error) {
+        Toast.error(t('common.error', 'Erreur'), error.message || String(error));
+    }
+}
+
+async function copyMcpExtensionsConfig() {
+    try {
+        const snapshot = await fetchMcpConfigSnapshot();
+        const config = snapshot.extensions_config || snapshot.extensionsConfig || { mcpServers: {}, skills: {} };
+        const text = JSON.stringify(config, null, 2);
+        try {
+            await navigator.clipboard.writeText(text);
+        } catch {
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            textarea.style.position = 'fixed';
+            textarea.style.opacity = '0';
+            document.body.appendChild(textarea);
+            textarea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textarea);
+        }
+        Toast.success(
+            t('providers.mcpCopiedTitle', 'JSON copié'),
+            t('providers.mcpCopiedDeerflowBody', 'Le fichier extensions_config.json compatible DeerFlow est prêt dans le presse-papiers.'),
+            2200
+        );
     } catch (error) {
         Toast.error(t('common.error', 'Erreur'), error.message || String(error));
     }

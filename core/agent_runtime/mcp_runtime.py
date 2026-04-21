@@ -566,6 +566,13 @@ def get_mcp_server_templates() -> dict[str, dict[str, Any]]:
     return deepcopy(MCP_SERVER_TEMPLATES)
 
 
+def get_deerflow_extensions_config() -> dict[str, Any]:
+    return {
+        "mcpServers": deepcopy(get_mcp_servers()),
+        "skills": {},
+    }
+
+
 def reset_mcp_tool_cache() -> None:
     global _MCP_TOOLS_CACHE, _MCP_CACHE_SIGNATURE, _MCP_LAST_ERROR, _MCP_LOADING, _MCP_LOADING_SIGNATURE
     with _MCP_LOCK:
@@ -671,5 +678,6 @@ def get_mcp_runtime_status(load_tools: bool = False) -> dict[str, Any]:
         "loaded_tools": [tool.to_public_dict() for tool in tools],
         "servers": server_status,
         "templates": get_mcp_server_templates(),
+        "extensions_config": get_deerflow_extensions_config(),
         "last_error": last_error,
     }

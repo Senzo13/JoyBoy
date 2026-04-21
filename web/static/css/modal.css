@@ -1885,6 +1885,12 @@ body.gallery-viewer-open {
     gap: 12px;
 }
 
+.mcp-summary-actions {
+    width: auto;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
 .mcp-card-section {
     display: flex;
     flex-direction: column;
