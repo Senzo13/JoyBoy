@@ -641,6 +641,8 @@ class TerminalBrain:
         self.permission_mode: str = DEFAULT_PERMISSION_MODE
         self._cloud_circuit_failures = defaultdict(int)
         self._cloud_circuit_open_until = defaultdict(float)
+        self._cloud_circuit_state = defaultdict(lambda: "closed")
+        self._cloud_circuit_probe_in_flight = defaultdict(bool)
         self._cloud_circuit_threshold = 3
         self._cloud_circuit_timeout_seconds = 60
 
@@ -1812,24 +1814,49 @@ class TerminalBrain:
         open_until = float(self._cloud_circuit_open_until.get(provider_key, 0.0) or 0.0)
         now = time.time()
         if open_until and now < open_until:
+            self._cloud_circuit_state[provider_key] = "open"
             remaining = max(1, int(round(open_until - now)))
             return (
                 f"Cloud circuit breaker active for {provider_key}. "
                 f"Too many transient failures; retry in about {remaining}s."
             )
+        if open_until and now >= open_until:
+            self._cloud_circuit_state[provider_key] = "half_open"
+            self._cloud_circuit_open_until[provider_key] = 0.0
+            self._cloud_circuit_probe_in_flight[provider_key] = False
+
+        if self._cloud_circuit_state.get(provider_key) == "half_open":
+            if self._cloud_circuit_probe_in_flight.get(provider_key):
+                return (
+                    f"Cloud circuit breaker recovery probe already running for {provider_key}. "
+                    "Wait for that request before retrying."
+                )
+            self._cloud_circuit_probe_in_flight[provider_key] = True
+            return None
         return None
 
     def _record_cloud_circuit_success(self, model_name: str) -> None:
         provider_key = self._cloud_provider_key(model_name)
         self._cloud_circuit_failures[provider_key] = 0
         self._cloud_circuit_open_until[provider_key] = 0.0
+        self._cloud_circuit_state[provider_key] = "closed"
+        self._cloud_circuit_probe_in_flight[provider_key] = False
 
     def _record_cloud_circuit_failure(self, model_name: str) -> None:
         provider_key = self._cloud_provider_key(model_name)
+        if self._cloud_circuit_state.get(provider_key) == "half_open":
+            self._cloud_circuit_failures[provider_key] = self._cloud_circuit_threshold
+            self._cloud_circuit_open_until[provider_key] = time.time() + self._cloud_circuit_timeout_seconds
+            self._cloud_circuit_state[provider_key] = "open"
+            self._cloud_circuit_probe_in_flight[provider_key] = False
+            return
+
         failures = int(self._cloud_circuit_failures.get(provider_key, 0) or 0) + 1
         self._cloud_circuit_failures[provider_key] = failures
         if failures >= self._cloud_circuit_threshold:
             self._cloud_circuit_open_until[provider_key] = time.time() + self._cloud_circuit_timeout_seconds
+            self._cloud_circuit_state[provider_key] = "open"
+            self._cloud_circuit_probe_in_flight[provider_key] = False
 
     @staticmethod
     def _is_compaction_summary_content(content: str) -> bool:

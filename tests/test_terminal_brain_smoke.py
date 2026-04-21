@@ -164,6 +164,37 @@ class TerminalBrainSmokeTests(unittest.TestCase):
         brain._record_cloud_circuit_success("openai:gpt-5.4")
         self.assertIsNone(brain._cloud_circuit_block_reason("openai:gpt-5.4"))
 
+    def test_cloud_circuit_half_open_allows_one_recovery_probe(self):
+        brain = TerminalBrain()
+        now = [1_000.0]
+
+        with patch("core.backends.terminal_brain.time.time", side_effect=lambda: now[0]):
+            for _ in range(3):
+                brain._record_cloud_circuit_failure("openai:gpt-5.4")
+            self.assertIn("retry in about", brain._cloud_circuit_block_reason("openai:gpt-5.4"))
+
+            now[0] = 1_061.0
+            self.assertIsNone(brain._cloud_circuit_block_reason("openai:gpt-5.4"))
+            self.assertIn("recovery probe already running", brain._cloud_circuit_block_reason("openai:gpt-5.4"))
+
+            brain._record_cloud_circuit_success("openai:gpt-5.4")
+            self.assertIsNone(brain._cloud_circuit_block_reason("openai:gpt-5.4"))
+
+    def test_cloud_circuit_failed_half_open_probe_reopens(self):
+        brain = TerminalBrain()
+        now = [2_000.0]
+
+        with patch("core.backends.terminal_brain.time.time", side_effect=lambda: now[0]):
+            for _ in range(3):
+                brain._record_cloud_circuit_failure("openai:gpt-5.4")
+
+            now[0] = 2_061.0
+            self.assertIsNone(brain._cloud_circuit_block_reason("openai:gpt-5.4"))
+            brain._record_cloud_circuit_failure("openai:gpt-5.4")
+
+            reason = brain._cloud_circuit_block_reason("openai:gpt-5.4")
+            self.assertIn("Cloud circuit breaker active for openai", reason)
+
     def test_tool_error_classification_covers_permission_and_validation(self):
         brain = TerminalBrain()
 
