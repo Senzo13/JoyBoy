@@ -528,6 +528,9 @@ SCAFFOLD_CORE_TOOL_ORDER = (
     "glob",
 )
 READ_CORE_TOOL_ORDER = ("list_files", "read_file", "search", "glob")
+COMPACTED_HISTORY_HEADER = "[COMPACTED HISTORY SUMMARY]"
+COMPACTED_LOOP_HEADER = "[COMPACTED LOOP SUMMARY]"
+MAX_COMPACTION_SUMMARY_POINTS = 8
 
 
 # ===== TYPES =====
@@ -1660,6 +1663,175 @@ class TerminalBrain:
         if failures >= self._cloud_circuit_threshold:
             self._cloud_circuit_open_until[provider_key] = time.time() + self._cloud_circuit_timeout_seconds
 
+    @staticmethod
+    def _is_compaction_summary_content(content: str) -> bool:
+        text = str(content or "").strip()
+        return text.startswith(COMPACTED_HISTORY_HEADER) or text.startswith(COMPACTED_LOOP_HEADER)
+
+    def _is_compaction_summary_message(self, message: Any) -> bool:
+        if not isinstance(message, dict):
+            return False
+        return self._is_compaction_summary_content(str(message.get("content", "") or ""))
+
+    @staticmethod
+    def _compact_summary_snippet(text: str, limit: int = 160) -> str:
+        normalized = re.sub(r"\s+", " ", str(text or "")).strip()
+        if not normalized:
+            return ""
+        return truncate_middle(normalized, limit)
+
+    def _extract_compaction_summary_lines(self, content: str) -> List[str]:
+        lines: List[str] = []
+        for raw_line in str(content or "").splitlines():
+            line = raw_line.strip()
+            if not line.startswith("- "):
+                continue
+            snippet = self._compact_summary_snippet(line[2:])
+            if snippet:
+                lines.append(snippet)
+        return lines
+
+    def _extract_tool_result_summary(self, tool_name: str, content: str) -> str:
+        text = str(content or "")
+        if not text.strip():
+            return ""
+        preferred_prefixes = ("summary:", "error:", "stderr:", "stdout:", "status:")
+        fallback = ""
+        for raw_line in text.splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("[RESULT"):
+                continue
+            lower = line.lower()
+            if lower.startswith("command:") or lower.startswith("output:"):
+                continue
+            if lower.startswith(preferred_prefixes):
+                return self._compact_summary_snippet(line)
+            if not fallback:
+                fallback = line
+        if fallback:
+            return self._compact_summary_snippet(fallback)
+        return self._compact_summary_snippet(text)
+
+    def _is_low_signal_user_message(self, content: str) -> bool:
+        text = unicodedata.normalize("NFKD", str(content or "")).encode("ascii", "ignore").decode("ascii").lower()
+        text = re.sub(r"\s+", " ", text).strip()
+        if not text:
+            return True
+        if text.startswith("[active todo list]"):
+            return True
+        low_signal = {
+            "continue",
+            "continue encore",
+            "continue si tu n'avais pas fini",
+            "continue si tu n'avais pas tout fini",
+            "ok",
+            "ok bref",
+            "vas y",
+            "go",
+            "yo",
+            "yo mec",
+            "salut",
+            "merci",
+            "fait le",
+        }
+        if text in low_signal:
+            return True
+        if len(text) <= 6 and re.fullmatch(r"[a-z0-9!?.,' -]+", text):
+            return True
+        return False
+
+    def _summarize_message_for_compaction(self, message: Dict[str, Any]) -> List[str]:
+        if not isinstance(message, dict):
+            return []
+
+        role = str(message.get("role") or "")
+        content = str(message.get("content", "") or "")
+        lines: List[str] = []
+
+        if self._is_compaction_summary_content(content):
+            return self._extract_compaction_summary_lines(content)
+
+        if role == "tool":
+            tool_name = str(message.get("tool_name") or message.get("name") or "tool").strip() or "tool"
+            summary = self._extract_tool_result_summary(tool_name, content)
+            if summary:
+                lines.append(f"tool {tool_name}: {summary}")
+            return lines
+
+        if role == "assistant" and message.get("tool_calls"):
+            tool_names: List[str] = []
+            for call in message.get("tool_calls") or []:
+                name = self._tool_call_name(call)
+                if name and name not in tool_names:
+                    tool_names.append(name)
+            if tool_names:
+                joined = ", ".join(tool_names[:4])
+                extra = f" (+{len(tool_names) - 4} more)" if len(tool_names) > 4 else ""
+                lines.append(f"assistant used tools: {joined}{extra}")
+            return lines
+
+        snippet = self._compact_summary_snippet(content)
+        if not snippet:
+            return []
+
+        if role == "user":
+            if self._is_low_signal_user_message(content):
+                return []
+            lines.append(f"user asked: {snippet}")
+            return lines
+
+        if role == "assistant":
+            lines.append(f"assistant noted: {snippet}")
+            return lines
+
+        return []
+
+    def _collect_compaction_summary_lines(
+        self,
+        messages: List[Dict[str, Any]],
+        max_points: int = MAX_COMPACTION_SUMMARY_POINTS,
+    ) -> List[str]:
+        summary_lines: List[str] = []
+        seen: set[str] = set()
+
+        for message in messages:
+            for line in self._summarize_message_for_compaction(message):
+                normalized = unicodedata.normalize("NFKD", line).encode("ascii", "ignore").decode("ascii").lower()
+                normalized = re.sub(r"\s+", " ", normalized).strip()
+                if not normalized or normalized in seen:
+                    continue
+                summary_lines.append(line)
+                seen.add(normalized)
+                if len(summary_lines) >= max_points:
+                    return summary_lines
+        return summary_lines
+
+    def _build_compaction_summary_message(
+        self,
+        header: str,
+        omitted_count: int,
+        summary_lines: List[str],
+        guidance: str,
+    ) -> Dict[str, str]:
+        bullet_lines = summary_lines[:MAX_COMPACTION_SUMMARY_POINTS]
+        if not bullet_lines:
+            bullet_lines = ["Earlier context was compacted; use the preserved files and latest tool outputs as source of truth."]
+
+        remaining = max(0, len(summary_lines) - len(bullet_lines))
+        content_lines = [
+            header,
+            f"Earlier context compacted: {omitted_count} message(s) folded into this summary.",
+            "Key preserved context:",
+            *[f"- {line}" for line in bullet_lines],
+        ]
+        if remaining:
+            content_lines.append(f"- {remaining} additional point(s) already compacted.")
+        content_lines.extend(["", guidance])
+        return {
+            "role": "user",
+            "content": "\n".join(content_lines),
+        }
+
     def _compact_history(self, history: List[Dict], context_size: int = 4096) -> List[Dict]:
         """Keep recent terminal context inside a rough character budget.
 
@@ -1669,9 +1841,13 @@ class TerminalBrain:
         instead of pasting the whole world back into the prompt.
         """
         max_chars = max(3000, min(12000, int(context_size) * 1))
+        visible_history = [
+            msg for msg in history
+            if str(msg.get("content", "") or "").strip()
+        ]
         compact: List[Dict] = []
         total = 0
-        for msg in reversed(history[-12:]):
+        for msg in reversed(visible_history[-12:]):
             content = str(msg.get("content", "")).strip()
             role = msg.get("role", "user")
             if not content:
@@ -1683,15 +1859,16 @@ class TerminalBrain:
             compact.append({"role": role, "content": content})
             total += len(content)
         compact.reverse()
-        omitted = max(0, len([msg for msg in history if str(msg.get("content", "")).strip()]) - len(compact))
+        omitted_messages = visible_history[:-len(compact)] if compact else visible_history
+        omitted = len(omitted_messages)
         if omitted:
-            compact.insert(0, {
-                "role": "user",
-                "content": (
-                    f"Earlier conversation compacted: {omitted} message(s) omitted. "
-                    "Use the current workspace files and recent messages as source of truth."
-                ),
-            })
+            summary_lines = self._collect_compaction_summary_lines(omitted_messages)
+            compact.insert(0, self._build_compaction_summary_message(
+                COMPACTED_HISTORY_HEADER,
+                omitted,
+                summary_lines,
+                "Use the current workspace files and recent messages as source of truth.",
+            ))
         return compact
 
     def _compact_loop_messages(self, messages: List[Dict], context_size: int = 4096) -> List[Dict]:
@@ -1708,6 +1885,8 @@ class TerminalBrain:
         max_chars = max(6000, min(22000, int(context_size) * 3))
         system = messages[0]
         tail = messages[1:]
+        prior_summary_messages = [msg for msg in tail if self._is_compaction_summary_message(msg)]
+        tail = [msg for msg in tail if not self._is_compaction_summary_message(msg)]
         kept: List[Dict] = []
         total = len(str(system.get("content", "")))
 
@@ -1735,15 +1914,15 @@ class TerminalBrain:
             total += msg_len
 
         kept.reverse()
-        omitted = max(0, len(tail) - len(kept))
-        if omitted:
-            summary = {
-                "role": "user",
-                "content": (
-                    f"Earlier terminal loop compacted: {omitted} message(s) omitted. "
-                    "Do not repeat old broad exploration; rely on preserved tool results or read specific files again."
-                ),
-            }
+        omitted_messages = tail[:-len(kept)] if kept else tail
+        if omitted_messages or prior_summary_messages:
+            summary_lines = self._collect_compaction_summary_lines(prior_summary_messages + omitted_messages)
+            summary = self._build_compaction_summary_message(
+                COMPACTED_LOOP_HEADER,
+                len(omitted_messages) + len(prior_summary_messages),
+                summary_lines,
+                "Do not restart broad exploration. Rely on preserved tool results or read specific files again.",
+            )
             return [system, summary] + kept
         return [system] + kept
 

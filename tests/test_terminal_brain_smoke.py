@@ -255,6 +255,89 @@ class TerminalBrainSmokeTests(unittest.TestCase):
         self.assertNotIn("A" * 1000, serialized)
         self.assertIn("omitted 5000 chars", serialized)
 
+    def test_compaction_summary_collects_useful_tool_and_request_points(self):
+        brain = TerminalBrain()
+        messages = [
+            {
+                "role": "user",
+                "content": (
+                    "[COMPACTED LOOP SUMMARY]\n"
+                    "Earlier context compacted: 2 message(s) folded into this summary.\n"
+                    "Key preserved context:\n"
+                    "- user asked: fix the terminal runtime\n"
+                    "- tool read_file: terminal_brain.py (220 lines)\n"
+                ),
+            },
+            {"role": "user", "content": "continue"},
+            {"role": "tool", "tool_name": "write_file", "content": "[RESULT write_file]\nFile created: src/App.jsx"},
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                    {"type": "function", "function": {"name": "read_file", "arguments": {"path": "README.md"}}},
+                    {"type": "function", "function": {"name": "edit_file", "arguments": {"path": "README.md"}}},
+                ],
+            },
+        ]
+
+        lines = brain._collect_compaction_summary_lines(messages)
+
+        self.assertIn("user asked: fix the terminal runtime", lines)
+        self.assertIn("tool read_file: terminal_brain.py (220 lines)", lines)
+        self.assertIn("tool write_file: File created: src/App.jsx", lines)
+        self.assertIn("assistant used tools: read_file, edit_file", lines)
+        self.assertFalse(any(line.endswith("continue") for line in lines))
+
+    def test_loop_compaction_rolls_prior_summary_forward(self):
+        brain = TerminalBrain()
+        messages = [
+            {"role": "system", "content": "system"},
+            {
+                "role": "user",
+                "content": (
+                    "[COMPACTED LOOP SUMMARY]\n"
+                    "Earlier context compacted: 3 message(s) folded into this summary.\n"
+                    "Key preserved context:\n"
+                    "- user asked: build a React scaffold\n"
+                ),
+            },
+            {"role": "user", "content": "B" * 5000},
+            {"role": "assistant", "content": "C" * 2500},
+            {"role": "tool", "tool_name": "read_file", "content": "[RESULT read_file]\npackage.json (120 lines)\n" + ("D" * 5000)},
+            {"role": "assistant", "content": "Z" * 2500},
+        ]
+
+        compacted = brain._compact_loop_messages(messages, context_size=2048)
+        summary_messages = [
+            msg for msg in compacted
+            if msg.get("role") == "user" and msg.get("content", "").startswith("[COMPACTED LOOP SUMMARY]")
+        ]
+
+        self.assertEqual(len(summary_messages), 1)
+        summary_content = summary_messages[0]["content"]
+        self.assertIn("user asked: build a React scaffold", summary_content)
+        self.assertIn("assistant noted:", summary_content)
+        self.assertEqual(summary_content.count("[COMPACTED LOOP SUMMARY]"), 1)
+
+    def test_history_compaction_preserves_summary_points(self):
+        brain = TerminalBrain()
+        history = [
+            {"role": "user", "content": "Analyse DeerFlow et améliore JoyBoy pour les longues boucles."},
+            {"role": "assistant", "content": "Je vais comparer les middlewares de summarization et loop detection."},
+            {"role": "user", "content": "E" * 3200},
+            {"role": "assistant", "content": "F" * 2200},
+            {"role": "user", "content": "G" * 3200},
+            {"role": "assistant", "content": "H" * 2200},
+            {"role": "user", "content": "continue"},
+            {"role": "assistant", "content": "ok"},
+        ]
+
+        compacted = brain._compact_history(history, context_size=2048)
+
+        self.assertTrue(compacted[0]["content"].startswith("[COMPACTED HISTORY SUMMARY]"))
+        self.assertIn("Analyse DeerFlow", compacted[0]["content"])
+        self.assertIn("assistant noted:", compacted[0]["content"])
+
     def test_tool_selection_omits_network_tools_for_plain_write(self):
         brain = TerminalBrain()
         brain.current_intent = "write"
