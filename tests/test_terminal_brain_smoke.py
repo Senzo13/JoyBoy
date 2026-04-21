@@ -184,6 +184,68 @@ class TerminalBrainSmokeTests(unittest.TestCase):
         self.assertIn("erreurs outils répétées", done.get("full_response", ""))
         self.assertEqual(mock_chat.call_count, 2)
 
+    @patch("core.backends.terminal_brain.chat_with_cloud_model")
+    def test_repeated_tool_batch_warns_before_reexecuting_same_batch(self, mock_chat):
+        repeated_tool_batch = [
+            {
+                "id": "call_list",
+                "type": "function",
+                "function": {"name": "list_files", "arguments": {"path": "."}},
+            },
+            {
+                "id": "call_glob",
+                "type": "function",
+                "function": {"name": "glob", "arguments": {"pattern": "*.md"}},
+            },
+        ]
+        mock_chat.side_effect = [
+            {
+                "message": {"role": "assistant", "content": "", "tool_calls": repeated_tool_batch},
+                "prompt_eval_count": 20,
+                "eval_count": 5,
+            },
+            {
+                "message": {"role": "assistant", "content": "", "tool_calls": repeated_tool_batch},
+                "prompt_eval_count": 20,
+                "eval_count": 5,
+            },
+            {
+                "message": {"role": "assistant", "content": "done without repeating tools"},
+                "prompt_eval_count": 20,
+                "eval_count": 5,
+            },
+        ]
+        brain = TerminalBrain()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            Path(tmp, "README.md").write_text("hello\n", encoding="utf-8")
+            events = list(brain.run_agentic_loop("cherche README", tmp, model="openai:gpt-5.4"))
+
+        loop_warnings = [event for event in events if event.get("type") == "loop_warning"]
+        tool_results = [event for event in events if event.get("type") == "tool_result"]
+        done = [event for event in events if event.get("type") == "done"][-1]
+
+        self.assertTrue(any(event.get("action") == "tool_batch_loop" for event in loop_warnings))
+        self.assertEqual(len(tool_results), 2)
+        self.assertIn("done without repeating tools", done.get("full_response", ""))
+        self.assertEqual(mock_chat.call_count, 3)
+
+    def test_tool_call_batch_signature_is_order_independent(self):
+        brain = TerminalBrain()
+        first = [
+            {"function": {"name": "list_files", "arguments": {"path": "."}}},
+            {"function": {"name": "glob", "arguments": {"pattern": "*.md"}}},
+        ]
+        second = [
+            {"function": {"name": "glob", "arguments": {"pattern": "*.md"}}},
+            {"function": {"name": "list_files", "arguments": {"path": "."}}},
+        ]
+
+        self.assertEqual(
+            brain._tool_call_batch_signature(first),
+            brain._tool_call_batch_signature(second),
+        )
+
     def test_dangling_tool_calls_are_patched_before_cloud_model_call(self):
         brain = TerminalBrain()
         messages = [
@@ -546,6 +608,30 @@ class TerminalBrainSmokeTests(unittest.TestCase):
 
         self.assertEqual(stats.get("tool_count"), 2)
         self.assertGreater(stats.get("tool_schema_tokens", 0), 0)
+
+    def test_prepare_model_call_applies_premodel_middleware_chain(self):
+        brain = TerminalBrain()
+        brain.current_intent = "write"
+        brain._active_context_size = 4096
+        result = ToolResult(success=True, tool_name="read_file", data={"path": "README.md", "lines": 12})
+        summary = brain._summarize_executed_tool("read_file", {"path": "README.md"}, result)
+        brain._record_execution_journal("read_file", {"path": "README.md"}, result, summary)
+
+        messages, tools, prompt_estimate, stats = brain._prepare_model_call(
+            messages=[
+                {"role": "system", "content": "system"},
+                {"role": "user", "content": "corrige le README"},
+            ],
+            initial_message="corrige le README",
+            executed_tools=[summary],
+            force_final=False,
+            autonomous=False,
+        )
+
+        self.assertTrue(any(msg.get("content", "").startswith("[EXECUTION JOURNAL]") for msg in messages))
+        self.assertGreater(len(tools), 0)
+        self.assertGreater(prompt_estimate, 0)
+        self.assertEqual(stats.get("tool_count"), len(tools))
 
     def test_template_request_is_write_and_prioritizes_batch_write(self):
         brain = TerminalBrain()

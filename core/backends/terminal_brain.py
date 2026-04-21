@@ -1145,26 +1145,20 @@ class TerminalBrain:
         write_progress_nudges = 0
         tool_error_followups = 0
         failed_tool_signatures: Dict[str, int] = defaultdict(int)
+        tool_batch_signatures: Dict[str, int] = defaultdict(int)
 
         while iteration < iteration_budget:
             iteration += 1
             yield runtime_event('thinking', iteration=iteration, max_iterations=iteration_budget)
 
             try:
-                # Appel Ollama avec tools
-                tool_names_for_turn = self._select_tool_names_for_turn(
-                    initial_message,
+                messages, tools_for_model, prompt_estimate, tool_schema_stats = self._prepare_model_call(
+                    messages=messages,
+                    initial_message=initial_message,
                     executed_tools=executed_tools,
+                    force_final=force_final,
                     autonomous=autonomous,
                 )
-                tools_for_model = [] if force_final else self.tool_registry.ollama_tools(tool_names_for_turn)
-                messages = self._compact_loop_messages(messages, context_size=self._active_context_size)
-                messages = self._inject_execution_journal(messages)
-                messages = self._inject_todo_reminder(messages, executed_tools=executed_tools)
-                messages = self._inject_step_focus_reminder(messages, initial_message, executed_tools)
-                messages = self._patch_dangling_tool_messages(messages)
-                prompt_estimate = self._estimate_prompt_tokens(messages, tools_for_model)
-                tool_schema_stats = self._tool_schema_stats(tools_for_model)
 
                 if not autonomous and not force_final and iteration > 1:
                     remaining_budget = turn_token_budget - total_token_stats['total']
@@ -1415,6 +1409,40 @@ class TerminalBrain:
                     _end_resource_lease()
                     yield runtime_event('done', full_response=full_response, token_stats=total_token_stats)
                     return
+
+                batch_signature = self._tool_call_batch_signature(tool_calls) if len(tool_calls or []) > 1 else ""
+                if batch_signature:
+                    tool_batch_signatures[batch_signature] += 1
+                    batch_seen = tool_batch_signatures[batch_signature]
+                    if not autonomous and batch_seen >= 3:
+                        yield runtime_event(
+                            'loop_warning',
+                            action='tool_batch_loop',
+                            reason='Repeated identical tool-call batch reached the hard limit; stopping before executing it again.',
+                        )
+                        final_text = self._tool_batch_loop_fallback_answer(initial_message, executed_tools)
+                        full_response += final_text
+                        yield runtime_event('content', text=final_text, token_stats={})
+                        _end_resource_lease()
+                        yield runtime_event('done', full_response=full_response, token_stats=total_token_stats)
+                        return
+                    if not autonomous and batch_seen >= 2:
+                        yield runtime_event(
+                            'loop_warning',
+                            action='tool_batch_loop',
+                            reason='Repeated identical tool-call batch detected; asking the model to choose a different next step.',
+                        )
+                        if content.strip():
+                            messages.append({'role': 'assistant', 'content': content})
+                        messages.append({
+                            'role': 'user',
+                            'content': (
+                                "[LOOP DETECTED]\n"
+                                "You repeated the same batch of tool calls. Do not execute that exact batch again. "
+                                "Use the collected results, choose one different targeted tool call, or answer with the blocker."
+                            ),
+                        })
+                        continue
 
                 # Ajouter la réponse du LLM aux messages
                 messages.append(message_dict)
@@ -2163,6 +2191,29 @@ class TerminalBrain:
             char_count = sum(len(str(msg.get("content", ""))) for msg in messages) + len(str(tools or []))
         return max(1, int(char_count / 4))
 
+    def _prepare_model_call(
+        self,
+        messages: List[Dict],
+        initial_message: str,
+        executed_tools: List[Dict],
+        force_final: bool = False,
+        autonomous: bool = False,
+    ) -> tuple[List[Dict], List[Dict], int, Dict[str, int]]:
+        """Apply JoyBoy's pre-model middleware chain in one readable place."""
+        tool_names_for_turn = self._select_tool_names_for_turn(
+            initial_message,
+            executed_tools=executed_tools,
+            autonomous=autonomous,
+        )
+        tools_for_model = [] if force_final else self.tool_registry.ollama_tools(tool_names_for_turn)
+        prepared = self._compact_loop_messages(messages, context_size=self._active_context_size)
+        prepared = self._inject_execution_journal(prepared)
+        prepared = self._inject_todo_reminder(prepared, executed_tools=executed_tools)
+        prepared = self._inject_step_focus_reminder(prepared, initial_message, executed_tools)
+        prepared = self._patch_dangling_tool_messages(prepared)
+        prompt_estimate = self._estimate_prompt_tokens(prepared, tools_for_model)
+        return prepared, tools_for_model, prompt_estimate, self._tool_schema_stats(tools_for_model)
+
     def _tool_schema_stats(self, tools: List[Dict]) -> Dict[str, int]:
         """Small TokenUsageMiddleware-style telemetry for active tool schemas."""
         try:
@@ -2173,6 +2224,25 @@ class TerminalBrain:
             "tool_count": len(tools or []),
             "tool_schema_tokens": max(0, int(schema_chars / 4)),
         }
+
+    def _tool_call_batch_signature(self, tool_calls: Any) -> str:
+        """Order-independent signature for a model response's tool-call batch."""
+        signatures: List[str] = []
+        for call in tool_calls or []:
+            name = self._tool_call_name(call)
+            if not name:
+                continue
+            raw_args: Any = {}
+            if hasattr(call, "function"):
+                raw_args = getattr(call.function, "arguments", {})
+            elif isinstance(call, dict):
+                function = call.get("function", {})
+                raw_args = function.get("arguments", {}) if isinstance(function, dict) else call.get("args", {})
+            args = self._parse_tool_arguments(raw_args)
+            signatures.append(tool_signature(name, args))
+        if not signatures:
+            return ""
+        return "|".join(sorted(signatures))
 
     def _refresh_dynamic_tool_registry(self) -> None:
         """Reload optional MCP tools into the terminal registry.
@@ -3783,6 +3853,19 @@ class TerminalBrain:
             "Dernières actions observées:\n"
             + "\n".join(bullet_lines)
             + "\n\nRelance avec une cible plus précise ou un autre angle d'action; JoyBoy gardera le contexte déjà collecté."
+        )
+
+    def _tool_batch_loop_fallback_answer(self, initial_message: str, executed_tools: List[Dict]) -> str:
+        bullet_lines = [
+            f"- {item.get('tool')} {item.get('args', {})}: {item.get('summary', '')}"
+            for item in executed_tools[-8:]
+        ]
+        details = "\n".join(bullet_lines) if bullet_lines else "- Aucun outil utile exécuté avant la boucle."
+        return (
+            "J'ai stoppé le terminal parce que le modèle répétait exactement le même lot d'outils.\n\n"
+            "Contexte déjà collecté:\n"
+            + details
+            + "\n\nRelance avec une cible plus précise, ou demande-moi de continuer depuis un fichier/outil concret."
         )
 
     def _budget_fallback_answer(self, initial_message: str, executed_tools: List[Dict]) -> str:
