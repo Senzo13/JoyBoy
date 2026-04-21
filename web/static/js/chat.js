@@ -727,7 +727,7 @@ function finalizeStreamingMessage(msgId, responseTime, tokenStatsData = null) {
                     <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
                 </svg>
             </button>
-            <button class="chat-action-btn" onclick="speakText('${msgId}')" title="${chatT('common.readAloud', 'Lire')}">
+            <button class="chat-action-btn" data-speak-target="${msgId}" onclick="speakText('${msgId}', this)" title="${chatT('common.readAloud', 'Lire')}" aria-label="${chatT('common.readAloud', 'Lire')}" aria-pressed="false">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
                     <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
@@ -770,7 +770,7 @@ function addImageAnalysisMessage(prompt, attachedImage, response, responseTime =
             <button class="chat-action-btn" onclick="copyText('${msgId}')" title="${chatT('common.copy', 'Copier')}">
                 ${ICON_COPY}
             </button>
-            <button class="chat-action-btn" onclick="speakText('${msgId}')" title="${chatT('common.readAloud', 'Lire')}">
+            <button class="chat-action-btn" data-speak-target="${msgId}" onclick="speakText('${msgId}', this)" title="${chatT('common.readAloud', 'Lire')}" aria-label="${chatT('common.readAloud', 'Lire')}" aria-pressed="false">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
                     <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
@@ -1152,7 +1152,7 @@ function addChatMessageWithGenerated(prompt, response, generated, responseTime =
                             <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/>
                         </svg>
                     </button>
-                    <button class="chat-action-btn" onclick="speakText('chat-${msgId}')" title="${chatT('common.readAloud', 'Lire')}">
+                    <button class="chat-action-btn" data-speak-target="chat-${msgId}" onclick="speakText('chat-${msgId}', this)" title="${chatT('common.readAloud', 'Lire')}" aria-label="${chatT('common.readAloud', 'Lire')}" aria-pressed="false">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
                             <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>

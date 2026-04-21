@@ -2615,13 +2615,107 @@ function copyToClipboard(text) {
     Toast.success(uiT('ui.seedCopied', 'Seed copiée'));
 }
 
-function speakText(elementId) {
-    const element = document.getElementById(elementId);
-    if (element && 'speechSynthesis' in window) {
-        const utterance = new SpeechSynthesisUtterance(element.textContent);
-        utterance.lang = 'fr-FR';
-        speechSynthesis.speak(utterance);
+let currentSpeechTargetId = null;
+let currentSpeechUtterance = null;
+
+function getSpeechLocale() {
+    const locale = window.JoyBoyI18n?.getLocale?.() || document.documentElement.lang || navigator.language || 'fr';
+    const normalized = String(locale).toLowerCase().split(/[-_]/)[0];
+    const localeMap = {
+        fr: 'fr-FR',
+        en: 'en-US',
+        es: 'es-ES',
+        it: 'it-IT',
+    };
+    return localeMap[normalized] || locale || 'fr-FR';
+}
+
+function getSpeakButtonsForTarget(elementId, clickedButton = null) {
+    const buttons = Array.from(document.querySelectorAll('[data-speak-target]'))
+        .filter(btn => btn.dataset.speakTarget === elementId);
+    if (clickedButton && !buttons.includes(clickedButton)) {
+        buttons.push(clickedButton);
     }
+    return buttons;
+}
+
+function setSpeakButtonsState(elementId, isSpeaking, clickedButton = null) {
+    const title = isSpeaking
+        ? uiT('common.stop', 'Stop')
+        : uiT('common.readAloud', 'Lire');
+
+    getSpeakButtonsForTarget(elementId, clickedButton).forEach(btn => {
+        btn.classList.toggle('active', isSpeaking);
+        btn.setAttribute('aria-pressed', isSpeaking ? 'true' : 'false');
+        btn.setAttribute('title', title);
+        btn.setAttribute('aria-label', title);
+    });
+}
+
+function getReadableSpeechText(element) {
+    const clone = element.cloneNode(true);
+    clone.querySelectorAll('.code-header, .chat-actions, button, script, style').forEach(node => node.remove());
+    return clone.textContent.replace(/\s+/g, ' ').trim();
+}
+
+function resetSpeechState(clickedButton = null) {
+    if (currentSpeechTargetId) {
+        setSpeakButtonsState(currentSpeechTargetId, false, clickedButton);
+    }
+    currentSpeechTargetId = null;
+    currentSpeechUtterance = null;
+}
+
+function stopSpeaking(clickedButton = null) {
+    if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+    }
+    resetSpeechState(clickedButton);
+}
+
+function speakText(elementId, clickedButton = null) {
+    if (!('speechSynthesis' in window) || typeof SpeechSynthesisUtterance === 'undefined') {
+        return;
+    }
+
+    if (currentSpeechTargetId === elementId && currentSpeechUtterance) {
+        stopSpeaking(clickedButton);
+        return;
+    }
+
+    if (currentSpeechUtterance || window.speechSynthesis.speaking || window.speechSynthesis.pending) {
+        stopSpeaking();
+    }
+
+    const element = document.getElementById(elementId);
+    if (!element) return;
+
+    const text = getReadableSpeechText(element);
+    if (!text) return;
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = getSpeechLocale();
+    currentSpeechTargetId = elementId;
+    currentSpeechUtterance = utterance;
+    setSpeakButtonsState(elementId, true, clickedButton);
+
+    utterance.onend = () => {
+        if (currentSpeechUtterance === utterance) {
+            resetSpeechState(clickedButton);
+        }
+    };
+    utterance.onerror = () => {
+        if (currentSpeechUtterance === utterance) {
+            resetSpeechState(clickedButton);
+        }
+    };
+
+    window.speechSynthesis.cancel();
+    setTimeout(() => {
+        if (currentSpeechUtterance === utterance) {
+            window.speechSynthesis.speak(utterance);
+        }
+    }, 0);
 }
 
 function likeMessage(btn) {
