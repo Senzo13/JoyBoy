@@ -547,6 +547,96 @@ class TerminalBrainSmokeTests(unittest.TestCase):
         self.assertIn("read_file: terminal_brain.py (220 lines)", reminder)
         self.assertIn("edit_file: updated active reminder block", reminder)
 
+    def test_active_plan_focus_reorders_write_tools_after_passive_loop(self):
+        brain = TerminalBrain()
+        brain.current_intent = "write"
+        brain.execute_tool(
+            "write_todos",
+            {
+                "todos": [
+                    {"content": "Review current scaffold", "status": "completed"},
+                    {"content": "Create React scaffold files", "status": "in_progress"},
+                ]
+            },
+            os.getcwd(),
+        )
+
+        names = brain._select_tool_names_for_turn(
+            "crée un template react propre",
+            executed_tools=[
+                {"tool": "list_files", "success": True, "summary": "0 item(s)"},
+                {"tool": "read_file", "success": True, "summary": "package.json (40 lines)"},
+                {"tool": "search", "success": True, "summary": "0 result(s)"},
+            ],
+            autonomous=False,
+        )
+
+        self.assertLess(names.index("write_files"), names.index("list_files"))
+        self.assertLess(names.index("write_file"), names.index("list_files"))
+        self.assertNotIn("tool_search", names)
+
+    def test_active_verify_step_prioritizes_verification_tools(self):
+        brain = TerminalBrain()
+        brain.current_intent = "write"
+        brain._reset_deferred_tools()
+        brain.execute_tool(
+            "write_todos",
+            {
+                "todos": [
+                    {"content": "Create runtime changes", "status": "completed"},
+                    {"content": "Verify tests and build", "status": "in_progress"},
+                ]
+            },
+            os.getcwd(),
+        )
+
+        names = brain._select_tool_names_for_turn(
+            "corrige puis vérifie les tests",
+            executed_tools=[
+                {"tool": "list_files", "success": True, "summary": "4 item(s)"},
+                {"tool": "read_file", "success": True, "summary": "terminal_brain.py (220 lines)"},
+                {"tool": "search", "success": True, "summary": "2 result(s)"},
+            ],
+            autonomous=False,
+        )
+
+        self.assertLess(names.index("bash"), names.index("list_files"))
+        self.assertLess(names.index("delegate_subagent"), names.index("list_files"))
+        self.assertNotIn("tool_search", names)
+
+    def test_step_focus_reminder_is_injected_after_passive_write_loop(self):
+        brain = TerminalBrain()
+        brain.current_intent = "write"
+        brain.execute_tool(
+            "write_todos",
+            {
+                "todos": [
+                    {"content": "Inspect files", "status": "completed"},
+                    {"content": "Apply the real patch", "status": "in_progress"},
+                ]
+            },
+            os.getcwd(),
+        )
+        messages = [
+            {"role": "system", "content": "system"},
+            {"role": "user", "content": "continue"},
+        ]
+
+        injected = brain._inject_step_focus_reminder(
+            messages,
+            "corrige ce fichier",
+            executed_tools=[
+                {"tool": "list_files", "success": True, "summary": "5 item(s)"},
+                {"tool": "read_file", "success": True, "summary": "app.py (120 lines)"},
+                {"tool": "search", "success": True, "summary": "1 result(s)"},
+            ],
+        )
+
+        self.assertEqual(injected[1]["role"], "user")
+        self.assertIn("[ACTIVE EXECUTION STEP]", injected[1]["content"])
+        self.assertIn("Apply the real patch", injected[1]["content"])
+        self.assertIn("Use edit_file, write_files, write_file, or bash now", injected[1]["content"])
+
     def test_delegate_subagent_calls_are_capped_per_response(self):
         brain = TerminalBrain()
         calls = [

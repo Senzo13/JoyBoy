@@ -1148,6 +1148,7 @@ class TerminalBrain:
                 tools_for_model = [] if force_final else self.tool_registry.ollama_tools(tool_names_for_turn)
                 messages = self._compact_loop_messages(messages, context_size=self._active_context_size)
                 messages = self._inject_todo_reminder(messages, executed_tools=executed_tools)
+                messages = self._inject_step_focus_reminder(messages, initial_message, executed_tools)
                 messages = self._patch_dangling_tool_messages(messages)
 
                 if not autonomous and not force_final and iteration > 1:
@@ -2181,7 +2182,10 @@ class TerminalBrain:
         if executed_tools and any(item.get("tool") == "bash" for item in executed_tools):
             names.append("delegate_subagent")
 
-        if self._should_use_todos_for_request(initial_message):
+        if self.current_plan and self._active_step_mode(initial_message) in {"verify", "analyze"}:
+            names.append("delegate_subagent")
+
+        if self._should_use_todos_for_request(initial_message) and not self.current_plan:
             names.append("write_todos")
 
         seen = set()
@@ -2216,7 +2220,10 @@ class TerminalBrain:
             "delete", "supprime", "remove", "efface", "agent", "subagent",
             "delegate", "mcp", "outil", "tool",
         )
-        if any(marker in msg for marker in deferred_markers):
+        explicit_deferred_request = any(marker in msg for marker in deferred_markers)
+        if self._should_force_step_focus(message, executed_tools) and not explicit_deferred_request:
+            return False
+        if explicit_deferred_request:
             return True
         if self._should_use_todos_for_request(message):
             return True
@@ -2498,6 +2505,23 @@ class TerminalBrain:
                     return True
         return False
 
+    def _message_has_step_focus(self, messages: List[Dict]) -> bool:
+        for msg in messages:
+            content = str(msg.get("content", "") or "")
+            if "[ACTIVE EXECUTION STEP]" in content:
+                return True
+        return False
+
+    def _step_focus_tool_hint(self, initial_message: str) -> str:
+        mode = self._active_step_mode(initial_message)
+        if mode == "verify":
+            return "Use bash or delegate_subagent(verifier) for the next concrete verification step, then update files only if the check fails."
+        if mode == "analyze":
+            return "Use one focused read/search/delegate_subagent step, then move to the concrete change instead of broad repo exploration."
+        if mode == "scaffold":
+            return "Use write_files or write_file now for the scaffold itself, then verify with read_file/list_files."
+        return "Use edit_file, write_files, write_file, or bash now for the concrete change, then verify the result."
+
     def _inject_todo_reminder(self, messages: List[Dict], executed_tools: Optional[List[Dict[str, Any]]] = None) -> List[Dict]:
         if not self._has_incomplete_todos() or self._message_has_visible_todos(messages):
             return messages
@@ -2526,6 +2550,38 @@ class TerminalBrain:
                 f"{progress_block}"
                 "Continue from this list and call write_todos when statuses change."
             ),
+        }
+        return [messages[0], reminder] + messages[1:]
+
+    def _inject_step_focus_reminder(
+        self,
+        messages: List[Dict],
+        initial_message: str,
+        executed_tools: List[Dict[str, Any]],
+    ) -> List[Dict]:
+        if not self._should_force_step_focus(initial_message, executed_tools):
+            return messages
+        if not messages or self._message_has_step_focus(messages):
+            return messages
+
+        current_focus = self._format_current_task_focus()
+        recent_progress = self._format_recent_execution_progress(executed_tools)
+        reminder_lines = [
+            "[ACTIVE EXECUTION STEP]",
+            "You are in a write task with an active plan, but the recent turns stayed passive.",
+        ]
+        if current_focus:
+            reminder_lines.extend(["Current step:", current_focus])
+        if recent_progress:
+            reminder_lines.extend(["Recent passive/progress context:", recent_progress])
+        reminder_lines.extend([
+            "",
+            self._step_focus_tool_hint(initial_message),
+            "Do not restart broad exploration unless one specific missing file blocks the next action.",
+        ])
+        reminder = {
+            "role": "user",
+            "content": "\n".join(reminder_lines),
         }
         return [messages[0], reminder] + messages[1:]
 
@@ -2692,7 +2748,9 @@ class TerminalBrain:
             return None
 
         if self.current_intent in {"write", "execute"}:
-            if self._is_scaffold_write_request(initial_message):
+            if self.current_plan and self._has_incomplete_todos():
+                names = self._focused_tool_order_for_active_step(initial_message, executed_tools)
+            elif self._is_scaffold_write_request(initial_message):
                 names = list(SCAFFOLD_CORE_TOOL_ORDER)
             else:
                 names = ["list_files", "read_file", "write_file", "write_files", "edit_file", "bash", "search", "glob"]
@@ -2701,8 +2759,20 @@ class TerminalBrain:
 
         self._active_promoted_tool_names.update(self._auto_promoted_deferred_tools(initial_message, executed_tools))
 
+        priority_promoted: List[str] = []
+        active_step_mode = self._active_step_mode(initial_message) if self.current_plan else ""
+        if active_step_mode in {"verify", "analyze"} and "delegate_subagent" in self._active_promoted_tool_names:
+            priority_promoted.append("delegate_subagent")
+
+        for name in priority_promoted:
+            insert_after = "bash" if active_step_mode == "verify" else "search"
+            if insert_after in names:
+                names.insert(names.index(insert_after) + 1, name)
+            else:
+                names.append(name)
+
         for name in self._ordered_deferred_tool_names:
-            if name in self._active_promoted_tool_names:
+            if name in self._active_promoted_tool_names and name not in priority_promoted:
                 names.append(name)
 
         if self._should_offer_tool_search(initial_message, executed_tools):
@@ -2715,6 +2785,82 @@ class TerminalBrain:
                 seen.add(name)
                 ordered.append(name)
         return ordered
+
+    def _current_task_text(self) -> str:
+        if not self.current_plan:
+            return ""
+        task = self.current_plan.get_current_task()
+        if not task:
+            return ""
+        return " ".join(part for part in (task.title, task.description, task.result or "") if part).strip()
+
+    def _active_step_mode(self, initial_message: str) -> str:
+        msg = self._intent_text(initial_message)
+        task_text = self._intent_text(self._current_task_text())
+        combined = f"{msg} {task_text}".strip()
+
+        scaffold_markers = (
+            "template", "scaffold", "starter", "bootstrap", "next js", "nextjs",
+            "react", "component", "page", "route", "layout", "setup", "init",
+        )
+        verify_markers = (
+            "verify", "verifie", "vérifie", "test", "tests", "build", "lint",
+            "check", "smoke", "validate", "validation",
+        )
+        analyze_markers = (
+            "analyse", "audit", "inspect", "explore", "review", "compare", "cherche",
+            "research", "look into",
+        )
+
+        if self._is_scaffold_write_request(initial_message) or any(marker in combined for marker in scaffold_markers):
+            return "scaffold"
+        if any(marker in combined for marker in verify_markers):
+            return "verify"
+        if any(marker in combined for marker in analyze_markers):
+            return "analyze"
+        return "write" if self.current_intent in {"write", "execute"} else "read"
+
+    def _focused_tool_order_for_active_step(
+        self,
+        initial_message: str,
+        executed_tools: List[Dict],
+    ) -> List[str]:
+        mode = self._active_step_mode(initial_message)
+        force_focus = self._should_force_step_focus(initial_message, executed_tools)
+
+        if mode == "verify":
+            names = ["read_file", "bash", "edit_file", "write_files", "write_file", "search", "list_files"]
+        elif mode == "analyze":
+            names = ["read_file", "search", "glob", "list_files", "edit_file", "write_files", "write_file", "bash"]
+        elif mode == "scaffold":
+            names = ["read_file", "write_files", "write_file", "edit_file", "bash", "search", "list_files", "glob"]
+        else:
+            names = ["read_file", "edit_file", "write_files", "write_file", "bash", "search", "list_files", "glob"]
+
+        if force_focus:
+            names = [name for name in names if name not in {"glob", "tool_search"}]
+        return names
+
+    def _consecutive_passive_tools(self, executed_tools: List[Dict]) -> int:
+        passive_tools = {"list_files", "read_file", "glob", "search", "tool_search", "write_todos", "think"}
+        count = 0
+        for item in reversed(executed_tools or []):
+            tool = str(item.get("tool") or "").strip()
+            if not tool:
+                continue
+            if tool not in passive_tools:
+                break
+            count += 1
+        return count
+
+    def _should_force_step_focus(self, initial_message: str, executed_tools: List[Dict]) -> bool:
+        return (
+            self.current_intent in {"write", "execute"}
+            and self.current_plan is not None
+            and self._has_incomplete_todos()
+            and not self._has_successful_mutation(executed_tools)
+            and self._consecutive_passive_tools(executed_tools) >= 3
+        )
 
     def _is_repo_overview_request(self, message: str) -> bool:
         """Detect broad repo audits that should not rely on free-form tool loops.
