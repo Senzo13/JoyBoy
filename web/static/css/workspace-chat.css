@@ -1,0 +1,713 @@
+/* ===== WORKSPACE CHAT MODE OVERRIDES ===== */
+/* The old terminal skin made workspace chats look like a raw console. Keep the
+   capability, but make the conversation feel like the normal JoyBoy chat. */
+body.terminal-mode .sidebar {
+    display: none !important;
+}
+
+body.terminal-mode #chat-view {
+    margin-left: 260px !important;
+}
+
+body.sidebar-collapsed.terminal-mode #chat-view {
+    margin-left: 50px !important;
+}
+
+body.terminal-mode .chat-container {
+    border: none !important;
+    background: transparent !important;
+}
+
+body.terminal-mode .chat-messages {
+    background: transparent !important;
+    font-family: inherit !important;
+    max-width: none !important;
+    padding: calc(var(--chat-header-h, 48px) + 40px) 30px calc(var(--chat-input-h, 80px) + 96px) !important;
+}
+
+body.terminal-mode .terminal-header {
+    display: flex !important;
+    position: fixed;
+    top: 14px;
+    left: calc(260px + 20px);
+    z-index: 45;
+    width: auto;
+    max-width: min(760px, calc(100vw - 320px));
+    min-height: 38px;
+    padding: 8px 12px;
+    gap: 8px;
+    align-items: center;
+    background: rgba(18, 24, 38, 0.78);
+    border: 1px solid rgba(96, 165, 250, 0.18);
+    border-radius: 999px;
+    color: #dbeafe;
+    box-shadow: 0 16px 45px rgba(0, 0, 0, 0.22);
+    backdrop-filter: blur(14px);
+}
+
+body.sidebar-collapsed.terminal-mode .terminal-header {
+    left: calc(50px + 20px);
+}
+
+body.terminal-mode .terminal-header .terminal-icon {
+    color: #60a5fa !important;
+}
+
+body.terminal-mode .terminal-title {
+    color: #eff6ff !important;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+}
+
+body.terminal-mode .terminal-workspace {
+    max-width: 360px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #9ca3af !important;
+    font-size: 12px;
+}
+
+body.terminal-mode .terminal-tokens,
+body.terminal-mode .autonomous-indicator {
+    background: rgba(255, 255, 255, 0.06) !important;
+    border-color: rgba(255, 255, 255, 0.08) !important;
+    color: #cbd5e1 !important;
+}
+
+body.terminal-mode .chat-input-bar {
+    left: calc(260px + (100% - 260px) / 2) !important;
+    right: auto !important;
+    width: 90% !important;
+    max-width: 850px !important;
+    padding: 0 !important;
+    transform: translateX(-50%) !important;
+}
+
+body.sidebar-collapsed.terminal-mode .chat-input-bar {
+    left: calc(50px + (100% - 50px) / 2) !important;
+}
+
+body.terminal-mode .input-bar {
+    display: grid !important;
+    grid-template-columns: auto auto minmax(0, 1fr) auto auto auto !important;
+    grid-template-areas:
+        "attachments attachments attachments attachments attachments attachments"
+        "prompt prompt prompt prompt prompt prompt"
+        "attach permission spacer model video send" !important;
+    align-items: center !important;
+    max-width: none !important;
+    column-gap: 8px !important;
+    row-gap: 5px !important;
+    padding: 10px 10px 8px 16px !important;
+    border-radius: 24px !important;
+    border-color: #262626 !important;
+    background: #141414 !important;
+}
+
+body.terminal-mode .input-bar:focus-within {
+    border-color: #262626 !important;
+    box-shadow: none !important;
+}
+
+body.terminal-mode .prompt-input {
+    background: transparent !important;
+    border: none !important;
+    color: white !important;
+    font-family: inherit !important;
+    font-size: 16px !important;
+    width: 100% !important;
+    height: 32px !important;
+    min-height: 32px !important;
+    padding: 2px 8px 4px 0 !important;
+    box-shadow: none !important;
+}
+
+body.terminal-mode .prompt-input-wrapper {
+    grid-area: prompt !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    display: block !important;
+    align-self: start !important;
+}
+
+body.terminal-mode .model-picker {
+    grid-area: model !important;
+    position: relative !important;
+    right: auto !important;
+    top: auto !important;
+    transform: none !important;
+    justify-self: end !important;
+}
+
+body.terminal-mode .attach-btn {
+    grid-area: attach !important;
+}
+
+body.terminal-mode .terminal-permission-picker {
+    grid-area: permission !important;
+    justify-self: start !important;
+}
+
+body.terminal-mode .video-btn {
+    grid-area: video !important;
+}
+
+body.terminal-mode .send-btn {
+    grid-area: send !important;
+}
+
+body.terminal-mode .prompt-input::placeholder {
+    color: #666 !important;
+    font-weight: 600 !important;
+}
+
+body.terminal-mode .send-btn {
+    background: #f5f5f5 !important;
+    color: #050505 !important;
+    border: none !important;
+}
+
+body.terminal-mode .send-btn:hover {
+    background: #ffffff !important;
+}
+
+body.terminal-mode .send-btn.stop-mode .stop-icon {
+    background: #050505 !important;
+}
+
+body.terminal-mode #video-btn,
+body.terminal-mode #chat-video-btn,
+body.terminal-mode .video-btn {
+    display: none !important;
+}
+
+body.terminal-mode .image-preview {
+    border: 1px solid rgba(96, 165, 250, 0.35) !important;
+    border-radius: 12px !important;
+}
+
+body.terminal-mode .clear-image-btn {
+    background: rgba(0, 0, 0, 0.75) !important;
+    border: 1px solid rgba(255, 255, 255, 0.12) !important;
+}
+
+body.terminal-mode .input-bar.has-attachments,
+body.terminal-mode .input-bar:has(.image-preview[style*="block"], .style-ref-container.has-image, .face-ref-container.has-image) {
+    border-radius: 24px !important;
+}
+
+body.terminal-mode .input-bar.has-attachments > .composer-attachment-stack,
+body.terminal-mode .input-bar:has(.image-preview[style*="block"], .style-ref-container.has-image, .face-ref-container.has-image) > .composer-attachment-stack {
+    grid-area: attachments !important;
+    display: flex !important;
+    justify-self: start !important;
+    padding: 0 !important;
+}
+
+body.terminal-mode .terminal-permission-btn {
+    border: none !important;
+    background: transparent !important;
+}
+
+body.terminal-mode .terminal-permission-btn:hover {
+    background: rgba(255, 255, 255, 0.06) !important;
+}
+
+body.terminal-mode .terminal-permission-picker[data-mode="full_access"] .terminal-permission-btn {
+    color: #ff8a8a !important;
+    background: transparent !important;
+}
+
+body.terminal-mode .terminal-permission-picker[data-mode="full_access"] .terminal-permission-btn:hover {
+    background: rgba(239, 68, 68, 0.1) !important;
+    color: #ff9f9f !important;
+}
+
+body.terminal-mode .user-bubble {
+    background: #1a1a1a !important;
+    border: 1px solid #2a2a2a !important;
+    border-radius: 18px 18px 4px 18px !important;
+    color: #f5f5f5 !important;
+    font-family: inherit !important;
+    font-size: 15px !important;
+    font-weight: 400 !important;
+    line-height: 1.5 !important;
+    padding: 12px 18px !important;
+}
+
+body.terminal-mode .user-bubble::before {
+    content: none !important;
+}
+
+body.terminal-mode .chat-bubble,
+body.terminal-mode .terminal-ai-output {
+    background: transparent !important;
+    border: none !important;
+    border-radius: 0 !important;
+    color: #e0e0e0 !important;
+    font-family: inherit !important;
+    font-size: 15px !important;
+    font-weight: 400 !important;
+    line-height: 1.6 !important;
+    max-width: 90% !important;
+    padding: 14px 0 !important;
+    white-space: pre-wrap !important;
+}
+
+body.terminal-mode .chat-bubble p,
+body.terminal-mode .chat-bubble li {
+    color: #e0e0e0 !important;
+    font-size: 15px !important;
+    font-weight: 400 !important;
+    line-height: 1.6 !important;
+}
+
+body.terminal-mode .chat-bubble code {
+    background: rgba(96, 165, 250, 0.12) !important;
+    color: #bfdbfe !important;
+}
+
+body.terminal-mode .chat-bubble pre {
+    background: #0b0f19 !important;
+    border: 1px solid rgba(96, 165, 250, 0.14) !important;
+    border-radius: 12px !important;
+}
+
+body.terminal-mode .terminal-thinking,
+body.terminal-mode .terminal-line,
+body.terminal-mode .tool-call-line,
+body.terminal-mode .tool-result-line,
+body.terminal-mode .terminal-code-block {
+    width: min(850px, 90%) !important;
+    box-sizing: border-box !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+    font-family: inherit !important;
+}
+
+body.terminal-mode .terminal-thinking {
+    padding: 10px 0 !important;
+    color: #8b8b8b !important;
+    font-size: 14px !important;
+    font-style: normal !important;
+}
+
+body.terminal-mode .terminal-thinking .thinking-text,
+body.terminal-mode .terminal-thinking .dot {
+    color: #8b8b8b !important;
+}
+
+body.terminal-mode .tool-call-line {
+    padding: 4px 0 2px !important;
+    color: #8b8b8b !important;
+    font-size: 13px !important;
+    opacity: 0.78 !important;
+}
+
+body.terminal-mode .tool-call-line .tool-bullet,
+body.terminal-mode .tool-call-line .tool-action,
+body.terminal-mode .tool-call-line .tool-target {
+    color: #8b8b8b !important;
+}
+
+body.terminal-mode .tool-result-line {
+    padding: 0 0 6px 18px !important;
+    color: #737373 !important;
+    font-size: 12px !important;
+    opacity: 0.74 !important;
+}
+
+body.terminal-mode .typing-indicator {
+    color: #9ca3af !important;
+}
+
+body.terminal-mode .typing-indicator::after {
+    content: '' !important;
+}
+
+body.terminal-mode .model-picker-tab[data-type="inpaint"],
+body.terminal-mode .model-picker-tab[data-type="text2img"],
+body.terminal-mode .model-picker-tab[data-type="video"] {
+    display: none !important;
+}
+
+body.terminal-mode .model-picker-popup {
+    background: #111 !important;
+    border-color: #2a2a2a !important;
+}
+
+body.terminal-mode .model-picker-item:hover {
+    background: rgba(255, 255, 255, 0.06) !important;
+}
+
+body.terminal-mode .model-picker-item.active {
+    background: rgba(96, 165, 250, 0.12) !important;
+    border-color: rgba(96, 165, 250, 0.45) !important;
+}
+
+.chat-list-item.workspace-chat {
+    border: 1px solid rgba(96, 165, 250, 0.12);
+    background: linear-gradient(90deg, rgba(37, 99, 235, 0.12), rgba(37, 99, 235, 0.02));
+}
+
+.chat-list-item.workspace-chat:hover,
+.chat-list-item.workspace-chat.active {
+    border-color: rgba(96, 165, 250, 0.3);
+    background: linear-gradient(90deg, rgba(37, 99, 235, 0.2), rgba(37, 99, 235, 0.05));
+}
+
+.chat-list-item.workspace-chat .chat-list-icon {
+    color: #60a5fa;
+}
+
+.chat-list-mode-badge {
+    flex-shrink: 0;
+    margin-right: 8px;
+    padding: 2px 6px;
+    border-radius: 999px;
+    background: rgba(96, 165, 250, 0.14);
+    border: 1px solid rgba(96, 165, 250, 0.22);
+    color: #93c5fd;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.terminal-workspace-picker {
+    width: min(680px, calc(100% - 32px));
+    margin: 20px auto;
+    padding: 18px;
+    border: 1px solid rgba(96, 165, 250, 0.18);
+    border-radius: 22px;
+    background: linear-gradient(180deg, rgba(17, 24, 39, 0.92), rgba(10, 10, 10, 0.94));
+    box-shadow: 0 28px 80px rgba(0, 0, 0, 0.35);
+}
+
+.terminal-workspace-picker-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: #f5f5f5;
+    font-size: 18px;
+    font-weight: 700;
+}
+
+.terminal-workspace-picker-title svg {
+    color: #60a5fa;
+}
+
+.terminal-workspace-picker-copy,
+.terminal-workspace-empty {
+    margin-top: 8px;
+    color: #9ca3af;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.terminal-workspace-choice-list {
+    display: grid;
+    gap: 8px;
+    margin-top: 16px;
+}
+
+.terminal-workspace-choice {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    align-items: flex-start;
+    width: 100%;
+    padding: 12px 14px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.04);
+    color: #f5f5f5;
+    cursor: pointer;
+    text-align: left;
+}
+
+.terminal-workspace-choice:hover {
+    border-color: rgba(96, 165, 250, 0.35);
+    background: rgba(96, 165, 250, 0.1);
+}
+
+.terminal-workspace-choice-path {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #9ca3af;
+    font-size: 12px;
+}
+
+.terminal-workspace-add-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 14px;
+}
+
+.terminal-workspace-path-input {
+    flex: 1;
+    min-width: 0;
+    height: 40px;
+    padding: 0 12px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    background: rgba(0, 0, 0, 0.25);
+    color: #f5f5f5;
+}
+
+.terminal-workspace-add-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    height: 40px;
+    padding: 0 14px;
+    border: 1px solid rgba(96, 165, 250, 0.26);
+    border-radius: 12px;
+    background: rgba(37, 99, 235, 0.16);
+    color: #bfdbfe;
+    cursor: pointer;
+}
+
+/* Project launcher opened from the sidebar folder button. This replaces the old
+   in-chat workspace card so normal conversations stay clean. */
+.project-launcher-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 12000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 18px;
+    background: rgba(0, 0, 0, 0.46);
+    backdrop-filter: blur(8px);
+    overflow: auto;
+}
+
+.project-launcher-panel {
+    width: min(620px, calc(100vw - 28px));
+    padding: 18px;
+    border: 1px solid rgba(96, 165, 250, 0.2);
+    border-radius: 22px;
+    background: linear-gradient(180deg, rgba(16, 23, 36, 0.98), rgba(11, 13, 18, 0.98));
+    box-shadow: 0 32px 110px rgba(0, 0, 0, 0.46);
+}
+
+.project-launcher-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.project-launcher-kicker {
+    color: #60a5fa;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.project-launcher-title {
+    margin-top: 4px;
+    color: #f8fafc;
+    font-size: 22px;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+}
+
+.project-launcher-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.05);
+    color: #cbd5e1;
+    cursor: pointer;
+}
+
+.project-launcher-close:hover {
+    background: rgba(255, 255, 255, 0.09);
+    color: #fff;
+}
+
+.project-launcher-copy {
+    margin-top: 10px;
+    color: #a8b1c3;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.project-launcher-list {
+    display: grid;
+    gap: 8px;
+    margin-top: 16px;
+}
+
+.project-launcher-empty {
+    padding: 14px;
+    border: 1px dashed rgba(255, 255, 255, 0.12);
+    border-radius: 14px;
+    color: #7f899a;
+    font-size: 13px;
+}
+
+.project-launcher-item {
+    display: grid;
+    grid-template-columns: 32px 1fr;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.04);
+    color: #f8fafc;
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s, transform 0.2s;
+}
+
+.project-launcher-item:hover {
+    transform: translateY(-1px);
+    border-color: rgba(96, 165, 250, 0.34);
+    background: rgba(96, 165, 250, 0.1);
+}
+
+.project-launcher-item > svg {
+    width: 20px;
+    height: 20px;
+    color: #93c5fd;
+}
+
+.project-launcher-item-main {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.project-launcher-item-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.project-launcher-item-path {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #8b95a7;
+    font-size: 12px;
+}
+
+.project-launcher-browse-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    width: 100%;
+    height: 46px;
+    margin-top: 16px;
+    border: 1px solid rgba(96, 165, 250, 0.35);
+    border-radius: 16px;
+    background: linear-gradient(135deg, rgba(37, 99, 235, 0.28), rgba(14, 165, 233, 0.16));
+    color: #dbeafe;
+    font-size: 14px;
+    font-weight: 800;
+    cursor: pointer;
+    transition: transform 0.2s, border-color 0.2s, background 0.2s;
+}
+
+.project-launcher-browse-btn:hover {
+    transform: translateY(-1px);
+    border-color: rgba(147, 197, 253, 0.58);
+    background: linear-gradient(135deg, rgba(37, 99, 235, 0.38), rgba(14, 165, 233, 0.22));
+}
+
+.project-launcher-browse-btn:disabled {
+    cursor: wait;
+    opacity: 0.72;
+    transform: none;
+}
+
+.project-launcher-browse-btn svg {
+    width: 18px;
+    height: 18px;
+}
+
+.project-launcher-browse-btn .spin {
+    animation: spin 1s linear infinite;
+}
+
+.project-launcher-error {
+    margin-top: 12px;
+    padding: 10px 12px;
+    border: 1px solid rgba(248, 113, 113, 0.26);
+    border-radius: 12px;
+    background: rgba(127, 29, 29, 0.2);
+    color: #fecaca;
+    font-size: 13px;
+}
+
+@media (max-width: 768px) {
+    body.terminal-mode #chat-view {
+        margin-left: 0 !important;
+    }
+
+    body.terminal-mode .terminal-header {
+        left: 12px !important;
+        right: 12px;
+        max-width: none;
+        top: 10px;
+    }
+
+    body.terminal-mode .chat-messages {
+        padding: calc(var(--chat-header-h, 48px) + 52px) 12px calc(var(--chat-input-h, 80px) + 72px) !important;
+    }
+
+    body.terminal-mode .chat-input-bar {
+        left: 0 !important;
+        right: 0 !important;
+        width: auto !important;
+        max-width: none !important;
+        padding: 0 12px 12px !important;
+        transform: none !important;
+    }
+
+    body.terminal-mode .prompt-input {
+        padding: 2px 8px 4px 0 !important;
+    }
+
+    body.terminal-mode .input-bar.has-attachments > .composer-attachment-stack,
+    body.terminal-mode .input-bar:has(.image-preview[style*="block"], .style-ref-container.has-image, .face-ref-container.has-image) > .composer-attachment-stack {
+        padding: 0 !important;
+    }
+
+    body.terminal-mode .terminal-thinking,
+    body.terminal-mode .terminal-line,
+    body.terminal-mode .tool-call-line,
+    body.terminal-mode .tool-result-line,
+    body.terminal-mode .terminal-code-block {
+        width: calc(100% - 24px) !important;
+    }
+
+    .terminal-workspace-add-row {
+        flex-direction: column;
+    }
+
+    .project-launcher-overlay {
+        align-items: center;
+        padding: 10px;
+    }
+
+}

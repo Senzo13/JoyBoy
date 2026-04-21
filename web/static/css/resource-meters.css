@@ -1,0 +1,680 @@
+/* ===== SCROLL TO BOTTOM BUTTON ===== */
+
+/* ===== VRAM DISPLAY (Header) ===== */
+.vram-display {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 20px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.vram-display:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.vram-bar {
+  width: 60px;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.vram-fill {
+  height: 100%;
+  background: #22c55e;
+  border-radius: 4px;
+  transition: width 0.3s ease, background 0.3s;
+}
+
+.vram-fill.medium {
+  background: #f59e0b;
+}
+
+.vram-fill.high {
+  background: #f97316;
+}
+
+.vram-fill.critical {
+  background: #ef4444;
+  animation: pulse-vram 1s infinite;
+}
+
+@keyframes pulse-vram {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.vram-text {
+  font-size: 12px;
+  color: #888;
+  font-family: 'SF Mono', monospace;
+  min-width: 70px;
+}
+
+/* ===== RAM DISPLAY (Header) ===== */
+.ram-display {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 20px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.ram-display:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.ram-bar {
+  width: 50px;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.ram-fill {
+  height: 100%;
+  background: #3b82f6;  /* Bleu pour différencier de VRAM */
+  border-radius: 4px;
+  transition: width 0.3s ease, background 0.3s;
+}
+
+.ram-fill.medium {
+  background: #8b5cf6;  /* Violet */
+}
+
+.ram-fill.high {
+  background: #f59e0b;  /* Orange */
+}
+
+.ram-fill.critical {
+  background: #ef4444;
+}
+
+.ram-text {
+  font-size: 11px;
+  color: #666;
+  font-family: 'SF Mono', monospace;
+  min-width: 55px;
+}
+
+/* ===== RAM PANEL (Popup) ===== */
+.ram-panel {
+  position: fixed;
+  top: 60px;
+  right: 20px;
+  width: 300px;
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 12px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+  z-index: 1000;
+  opacity: 0;
+  transform: translateY(-10px);
+  pointer-events: none;
+  transition: all 0.2s ease;
+}
+
+.ram-panel.visible {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.ram-panel-header {
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid #333;
+  font-weight: 600;
+  color: #3b82f6;
+}
+
+.ram-panel-close {
+  background: none;
+  border: none;
+  color: #666;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+
+.ram-panel-close:hover {
+  color: #fff;
+}
+
+.ram-panel-content {
+  padding: 16px;
+}
+
+.ram-gauge {
+  position: relative;
+  height: 40px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+
+.ram-gauge-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background: linear-gradient(90deg, #3b82f6, #2563eb);
+  transition: width 0.3s ease;
+}
+
+.ram-gauge-fill.medium {
+  background: linear-gradient(90deg, #8b5cf6, #7c3aed);
+}
+
+.ram-gauge-fill.high {
+  background: linear-gradient(90deg, #f59e0b, #d97706);
+}
+
+.ram-gauge-fill.critical {
+  background: linear-gradient(90deg, #ef4444, #dc2626);
+  animation: pulse-vram 1s infinite;
+}
+
+.ram-gauge-text {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+  z-index: 1;
+}
+
+.ram-details {
+  margin-bottom: 16px;
+}
+
+.ram-detail-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.ram-detail-label {
+  color: #888;
+  font-size: 13px;
+}
+
+.ram-detail-value {
+  color: #ddd;
+  font-size: 13px;
+  font-family: 'SF Mono', monospace;
+}
+
+.ram-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.ram-action-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: #3b82f6;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.ram-action-btn:hover {
+  background: #2563eb;
+}
+
+.ram-action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ram-action-btn.secondary {
+  background: rgba(255, 255, 255, 0.1);
+  color: #aaa;
+}
+
+.ram-action-btn.secondary:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.ram-action-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* ===== RAM MODELS LIST ===== */
+.ram-models {
+  margin-bottom: 12px;
+}
+
+.ram-models-title {
+  font-size: 12px;
+  color: #666;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+}
+
+.ram-models-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ram-model-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  background: rgba(59, 130, 246, 0.06);
+  border-radius: 4px;
+  font-size: 12px;
+  color: #ccc;
+}
+
+.ram-model-row.dim {
+  color: #555;
+  justify-content: center;
+}
+
+.ram-icon {
+  width: 14px;
+  height: 14px;
+  color: #3b82f6;
+  flex-shrink: 0;
+}
+
+.ram-name {
+  flex: 1;
+  font-weight: 500;
+  color: #eee;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 140px;
+}
+
+.ram-size {
+  font-size: 11px;
+  color: #3b82f6;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.ram-cat {
+  font-size: 10px;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
+}
+
+.ram-model-total {
+  font-size: 11px;
+  color: #3b82f6;
+  text-align: right;
+  padding: 4px 8px 0;
+  font-weight: 600;
+}
+
+.ram-separator {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+  margin: 12px 0;
+}
+
+/* ===== VRAM PANEL (Popup) ===== */
+.vram-panel {
+  position: fixed;
+  top: 60px;
+  right: 20px;
+  width: 300px;
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 12px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+  z-index: 1000;
+  opacity: 0;
+  transform: translateY(-10px);
+  pointer-events: none;
+  transition: all 0.2s ease;
+}
+
+.vram-panel.visible {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.vram-panel-header {
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid #333;
+  font-weight: 600;
+  color: #fff;
+}
+
+.vram-panel-close {
+  background: none;
+  border: none;
+  color: #666;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+
+.vram-panel-close:hover {
+  color: #fff;
+}
+
+.vram-panel-content {
+  padding: 16px;
+}
+
+.vram-gauge {
+  position: relative;
+  height: 40px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+
+.vram-gauge-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background: linear-gradient(90deg, #22c55e, #16a34a);
+  transition: width 0.3s ease;
+}
+
+.vram-gauge-fill.medium {
+  background: linear-gradient(90deg, #f59e0b, #d97706);
+}
+
+.vram-gauge-fill.high {
+  background: linear-gradient(90deg, #f97316, #ea580c);
+}
+
+.vram-gauge-fill.critical {
+  background: linear-gradient(90deg, #ef4444, #dc2626);
+}
+
+.vram-gauge-text {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-weight: 600;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+  font-size: 14px;
+}
+
+.vram-models {
+  margin-bottom: 16px;
+}
+
+.vram-models-title {
+  font-size: 12px;
+  color: #666;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+}
+
+.vram-models-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* VRAM Model rows - compact */
+.vram-model-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 4px;
+  font-size: 12px;
+  color: #ccc;
+}
+
+.vram-model-row.dim {
+  color: #555;
+  justify-content: center;
+}
+
+.vram-icon {
+  width: 14px;
+  height: 14px;
+  color: #666;
+  flex-shrink: 0;
+}
+
+.vram-unload-btn {
+  width: 16px;
+  height: 16px;
+  border: none;
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: bold;
+  line-height: 1;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  opacity: 0.6;
+  transition: opacity 0.2s, background 0.2s;
+}
+
+.vram-unload-btn:hover {
+  opacity: 1;
+  background: rgba(239, 68, 68, 0.3);
+}
+
+.vram-name {
+  flex: 1;
+  font-weight: 500;
+  color: #eee;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 120px;
+}
+
+.vram-size {
+  font-size: 11px;
+  color: #3b82f6;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.vram-cat {
+  font-size: 10px;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
+}
+
+.vram-tips {
+  margin-bottom: 16px;
+}
+
+.vram-warning {
+  padding: 8px 12px;
+  background: rgba(239, 68, 68, 0.15);
+  border-left: 3px solid #ef4444;
+  border-radius: 4px;
+  color: #fca5a5;
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+
+.vram-tip {
+  padding: 8px 12px;
+  background: rgba(59, 130, 246, 0.1);
+  border-left: 3px solid #3b82f6;
+  border-radius: 4px;
+  color: #93c5fd;
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+
+.runtime-resource-list {
+  margin: 0 0 16px;
+  padding: 10px;
+  border: 1px solid rgba(96, 165, 250, 0.16);
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.42);
+}
+
+.runtime-resource-list:empty {
+  display: none;
+}
+
+.runtime-resource-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #dbeafe;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.runtime-resource-title svg {
+  width: 13px;
+  height: 13px;
+  color: #60a5fa;
+}
+
+.runtime-resource-pressure {
+  margin-left: auto;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(59, 130, 246, 0.14);
+  color: #93c5fd;
+  font-size: 10px;
+}
+
+.runtime-resource-groups,
+.runtime-resource-empty {
+  margin-top: 7px;
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.runtime-resource-row {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 6px 8px;
+  margin-top: 8px;
+  padding: 8px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.runtime-resource-kind {
+  color: #60a5fa;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.runtime-resource-model {
+  min-width: 0;
+  overflow: hidden;
+  color: #f8fafc;
+  font-size: 12px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.runtime-resource-unload,
+.runtime-resource-keep {
+  grid-column: 2;
+  color: #fbbf24;
+  font-size: 11px;
+}
+
+.runtime-resource-keep {
+  color: #86efac;
+}
+
+.vram-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.vram-action-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: #ef4444;
+  border: none;
+  border-radius: 8px;
+  color: white;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.vram-action-btn:hover {
+  background: #dc2626;
+}
+
+.vram-action-btn.secondary {
+  background: rgba(255, 255, 255, 0.1);
+  color: #aaa;
+}
+
+.vram-action-btn.secondary:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+}
+
+.vram-action-btn svg {
+  width: 14px;
+  height: 14px;
+}
+

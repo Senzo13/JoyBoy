@@ -1,0 +1,128 @@
+/* ===== CTRL+O TOOL RESULTS MODAL ===== */
+.tool-results-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.9);
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(4px);
+}
+
+.tool-results-content {
+    background: #0a0a0a;
+    border: 1px solid #1a3a1a;
+    border-radius: 12px;
+    width: 90%;
+    max-width: 900px;
+    max-height: 80vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.tool-results-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+    border-bottom: 1px solid #1a3a1a;
+    background: linear-gradient(180deg, #0d1f0d 0%, #0a0a0a 100%);
+}
+
+.tool-results-header h3 {
+    color: #00ff7f;
+    font-size: 16px;
+    font-weight: 600;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.tool-results-close {
+    background: transparent;
+    border: 1px solid #2a5a2a;
+    color: #00ff7f;
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+}
+
+.tool-results-close:hover {
+    background: #1a3a1a;
+    border-color: #00ff7f;
+}
+
+.tool-results-body {
+    padding: 20px;
+    overflow-y: auto;
+    flex: 1;
+}
+
+.tool-result-item {
+    background: #111;
+    border: 1px solid #222;
+    border-radius: 8px;
+    margin-bottom: 16px;
+    overflow: hidden;
+}
+
+.tool-result-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 14px;
+    background: #1a1a1a;
+    border-bottom: 1px solid #222;
+}
+
+.tool-result-name {
+    color: #00ff7f;
+    font-weight: 600;
+    font-size: 14px;
+}
+
+.tool-result-time {
+    color: #666;
+    font-size: 12px;
+}
+
+.tool-result-args,
+.tool-result-output {
+    padding: 12px 14px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    color: #ccc;
+    white-space: pre-wrap;
+    word-break: break-all;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.tool-result-args {
+    background: #0d0d0d;
+    border-bottom: 1px solid #222;
+    color: #888;
+}
+
+.tool-result-output {
+    background: #080808;
+}
+
+.tool-results-empty {
+    text-align: center;
+    padding: 40px;
+    color: #666;
+    font-size: 14px;
+}
+

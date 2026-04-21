@@ -1,0 +1,630 @@
+/* ===== TERMINAL MODE ===== */
+
+/* Masquer la sidebar action en mode terminal */
+body.terminal-mode .sidebar {
+    display: none !important;
+}
+
+/* Chat view pleine largeur en mode terminal */
+body.terminal-mode #chat-view {
+    margin-left: 50px; /* Juste la sidebar compacte */
+    transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+body:not(.sidebar-collapsed).terminal-mode #chat-view {
+    margin-left: 260px; /* Sidebar expandée */
+}
+
+/* Container en mode terminal */
+body.terminal-mode .chat-messages {
+    background: #0a0a0a;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+    max-width: 100%;
+    padding: 20px 30px;
+    padding-bottom: calc(100vh - var(--chat-header-h, 48px) - var(--chat-input-h, 80px));
+}
+
+body.terminal-mode .chat-container {
+    border: 1px solid #1a3a1a;
+    background: #050505;
+}
+
+/* Input bar pleine largeur en mode terminal */
+body.terminal-mode .chat-input-bar {
+    left: 50px; /* Aligné avec sidebar compacte */
+    right: 0;
+    width: auto;
+    max-width: none;
+    transform: none;
+    padding: 0 20px 20px 20px;
+    transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+body:not(.sidebar-collapsed).terminal-mode .chat-input-bar {
+    left: 260px; /* Sidebar expandée */
+}
+
+body.terminal-mode .input-bar {
+    max-width: 100%;
+    border-radius: 8px;
+    border-color: #1a3a1a;
+    background: #0a0a0a;
+}
+
+body.terminal-mode .input-bar:focus-within {
+    border-color: #00ff7f;
+    box-shadow: 0 0 10px rgba(0, 255, 127, 0.2);
+}
+
+/* Image preview en mode terminal - style vert */
+body.terminal-mode .image-preview {
+    border: 2px solid #00ff7f;
+    border-radius: 6px;
+}
+
+body.terminal-mode .image-preview-container {
+    position: relative;
+}
+
+body.terminal-mode .clear-image-btn {
+    background: #1a3a1a;
+    border: 1px solid #00ff7f;
+}
+
+/* Header terminal */
+.terminal-header {
+    display: none;
+    background: linear-gradient(180deg, #0d1f0d 0%, #0a0a0a 100%);
+    border-bottom: 1px solid #1a3a1a;
+    padding: 12px 16px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    color: #00d26a;
+    align-items: center;
+    gap: 12px;
+}
+
+body.terminal-mode .terminal-header {
+    display: flex;
+}
+
+.terminal-header .terminal-icon {
+    color: #00ff7f;
+    font-size: 16px;
+}
+
+.terminal-header .terminal-title {
+    flex: 1;
+    color: #00d26a;
+}
+
+.terminal-header .terminal-workspace {
+    background: #1a3a1a;
+    padding: 4px 10px;
+    border-radius: 4px;
+    color: #00ff7f;
+    font-size: 12px;
+}
+
+.terminal-header .terminal-tokens {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: linear-gradient(135deg, #0a1a0a, #1a2a1a);
+    border: 1px solid #2a5a2a;
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.terminal-header .terminal-tokens:hover {
+    border-color: #00ff7f;
+    background: linear-gradient(135deg, #0a2a0a, #1a3a1a);
+}
+
+.terminal-header .tokens-used {
+    color: #00ff7f;
+    font-weight: 600;
+    font-size: 13px;
+}
+
+.terminal-header .tokens-separator {
+    color: #555;
+    font-size: 12px;
+}
+
+.terminal-header .tokens-max {
+    color: #888;
+    font-size: 12px;
+}
+
+/* Context size popup */
+.context-size-popup {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: #0a0a0a;
+    border: 1px solid #1a3a1a;
+    border-radius: 12px;
+    padding: 20px;
+    z-index: 10001;
+    min-width: 280px;
+    max-height: min(80vh, 560px);
+    overflow-y: auto;
+}
+
+.context-size-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.8);
+    z-index: 10000;
+}
+
+.context-size-popup h4 {
+    color: #00ff7f;
+    margin: 0 0 16px 0;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.context-size-options {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.context-size-option {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+    background: #111;
+    border: 1px solid #222;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.context-size-option:hover {
+    border-color: #00ff7f;
+    background: #1a1a1a;
+}
+
+.context-size-option.active {
+    border-color: #00ff7f;
+    background: #0a1a0a;
+}
+
+.context-size-option .size-label {
+    color: #fff;
+    font-weight: 600;
+    font-size: 14px;
+}
+
+.context-size-option .size-desc {
+    color: #666;
+    font-size: 11px;
+}
+
+.context-size-note {
+    color: #8b98aa;
+    font-size: 11px;
+    line-height: 1.45;
+    margin-top: 12px;
+    max-width: 320px;
+}
+
+/* ===== AUTONOMOUS MODE INDICATOR ===== */
+.terminal-header .autonomous-indicator {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: linear-gradient(135deg, #1a0a2e, #2a1a4e);
+    border: 1px solid #7c3aed;
+    padding: 4px 12px;
+    border-radius: 4px;
+    font-size: 11px;
+    animation: autonomous-glow 2s ease-in-out infinite;
+}
+
+@keyframes autonomous-glow {
+    0%, 100% {
+        box-shadow: 0 0 5px rgba(124, 58, 237, 0.3);
+        border-color: #7c3aed;
+    }
+    50% {
+        box-shadow: 0 0 15px rgba(124, 58, 237, 0.6);
+        border-color: #a78bfa;
+    }
+}
+
+.terminal-header .autonomous-icon {
+    width: 14px;
+    height: 14px;
+    color: #a78bfa;
+}
+
+.terminal-header .autonomous-label {
+    color: #a78bfa;
+    font-weight: 700;
+    font-size: 11px;
+    letter-spacing: 1px;
+}
+
+.terminal-header .autonomous-progress {
+    color: #c4b5fd;
+    font-size: 10px;
+}
+
+.terminal-header .autonomous-time {
+    color: #8b5cf6;
+    font-size: 10px;
+    font-weight: 500;
+}
+
+.terminal-header .tokens-label {
+    color: #4a8a4a;
+    font-size: 10px;
+}
+
+/* Couleurs selon les tokens restants */
+.terminal-header .terminal-tokens.tokens-high .tokens-remaining,
+.terminal-header .terminal-tokens.tokens-high .tokens-used {
+    color: #ef4444;
+}
+
+.terminal-header .terminal-tokens.tokens-medium .tokens-remaining,
+.terminal-header .terminal-tokens.tokens-medium .tokens-used {
+    color: #f59e0b;
+}
+
+.terminal-header .terminal-tokens.tokens-low .tokens-remaining,
+.terminal-header .terminal-tokens.tokens-low .tokens-used {
+    color: #00ff7f;
+}
+
+@keyframes pulse-warning {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+.terminal-header .terminal-close {
+    background: none;
+    border: none;
+    color: #666;
+    cursor: pointer;
+    padding: 4px;
+    font-size: 14px;
+    transition: color 0.2s;
+}
+
+.terminal-header .terminal-close:hover {
+    color: #ff4444;
+}
+
+/* Messages en mode terminal */
+body.terminal-mode .user-bubble {
+    background: #1a3a1a;
+    color: #00ff7f;
+    border-radius: 4px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px;
+    border: 1px solid #2a5a2a;
+}
+
+body.terminal-mode .user-bubble::before {
+    content: '> ';
+    color: #00d26a;
+    opacity: 0.7;
+}
+
+body.terminal-mode .chat-bubble {
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    color: #ffffff;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 16px;
+    font-weight: 600;
+    line-height: 1.7;
+    padding: 8px 0;
+    max-width: 100%;
+}
+
+body.terminal-mode .chat-bubble code {
+    background: #1a2a1a;
+    color: #00ff7f;
+    padding: 2px 6px;
+    border-radius: 3px;
+}
+
+body.terminal-mode .chat-bubble pre {
+    background: #0a1a0a;
+    border: 1px solid #1a3a1a;
+    border-radius: 4px;
+    padding: 12px;
+    overflow-x: auto;
+}
+
+body.terminal-mode .chat-bubble pre code {
+    background: transparent;
+    padding: 0;
+}
+
+/* Listes en mode terminal - blanc, gras, sans couleur sur les marqueurs */
+body.terminal-mode .chat-bubble p {
+    color: #ffffff;
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 12px;
+}
+
+body.terminal-mode .chat-bubble ul,
+body.terminal-mode .chat-bubble ol {
+    padding-left: 24px;
+    margin: 12px 0;
+}
+
+body.terminal-mode .chat-bubble li {
+    color: #ffffff;
+    font-size: 16px;
+    font-weight: 600;
+    line-height: 1.8;
+    margin-bottom: 8px;
+    list-style-type: disc;
+}
+
+body.terminal-mode .chat-bubble ol li {
+    list-style-type: decimal;
+}
+
+body.terminal-mode .chat-bubble li::marker {
+    color: #888;
+    font-weight: 400;
+}
+
+body.terminal-mode .chat-bubble strong,
+body.terminal-mode .chat-bubble b {
+    color: #ffffff;
+    font-weight: 700;
+}
+
+body.terminal-mode .chat-bubble em,
+body.terminal-mode .chat-bubble i {
+    color: #cccccc;
+}
+
+/* Headers en mode terminal */
+body.terminal-mode .chat-bubble h1,
+body.terminal-mode .chat-bubble h2,
+body.terminal-mode .chat-bubble h3,
+body.terminal-mode .chat-bubble h4 {
+    color: #ffffff;
+    font-weight: 700;
+    margin: 16px 0 12px 0;
+}
+
+body.terminal-mode .chat-bubble h1 { font-size: 20px; }
+body.terminal-mode .chat-bubble h2 { font-size: 18px; }
+body.terminal-mode .chat-bubble h3 { font-size: 17px; }
+body.terminal-mode .chat-bubble h4 { font-size: 16px; }
+
+/* Input en mode terminal */
+body.terminal-mode .prompt-input {
+    background: #0a0a0a;
+    border: 1px solid #1a3a1a;
+    color: #00ff7f;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px;
+}
+
+body.terminal-mode .prompt-input::placeholder {
+    color: #2a5a2a;
+}
+
+body.terminal-mode .prompt-input:focus {
+    border-color: #00d26a;
+    box-shadow: 0 0 0 2px rgba(0, 210, 106, 0.1);
+}
+
+body.terminal-mode .input-bar {
+    background: #0a0a0a;
+    border: 1px solid #1a3a1a;
+}
+
+/* Boutons en mode terminal */
+body.terminal-mode .send-btn {
+    background: #1a3a1a;
+    color: #00ff7f;
+    border: 1px solid #2a5a2a;
+}
+
+body.terminal-mode .send-btn:hover {
+    background: #2a5a2a;
+}
+
+/* Workspace result en mode terminal */
+body.terminal-mode .workspace-result {
+    background: #0a1a0a;
+    border: 1px solid #1a3a1a;
+    border-radius: 4px;
+    padding: 8px 12px;
+    margin-top: 8px;
+    font-size: 13px;
+}
+
+body.terminal-mode .workspace-result .success {
+    color: #00ff7f;
+}
+
+body.terminal-mode .workspace-result .error {
+    color: #ff6b6b;
+}
+
+/* Animation typing terminal */
+body.terminal-mode .typing-indicator {
+    color: #00d26a;
+}
+
+body.terminal-mode .typing-indicator::after {
+    content: '█';
+    animation: blink-cursor 1s step-end infinite;
+}
+
+@keyframes blink-cursor {
+    50% { opacity: 0; }
+}
+
+/* Scrollbar en mode terminal */
+body.terminal-mode .chat-messages::-webkit-scrollbar {
+    width: 8px;
+}
+
+body.terminal-mode .chat-messages::-webkit-scrollbar-track {
+    background: #0a0a0a;
+}
+
+body.terminal-mode .chat-messages::-webkit-scrollbar-thumb {
+    background: #1a3a1a;
+    border-radius: 4px;
+}
+
+body.terminal-mode .chat-messages::-webkit-scrollbar-thumb:hover {
+    background: #2a5a2a;
+}
+
+/* ===== TERMINAL LOADING ANIMATION ===== */
+.terminal-loading-msg {
+    transition: all 0.3s ease;
+}
+
+.terminal-loading-msg .terminal-icon {
+    animation: spin 1s linear infinite;
+}
+
+.terminal-fade-out {
+    animation: terminalSlideUp 0.4s ease-out forwards;
+}
+
+@keyframes terminalSlideUp {
+    0% {
+        opacity: 1;
+        transform: translateY(0);
+        max-height: 50px;
+    }
+    100% {
+        opacity: 0;
+        transform: translateY(-20px);
+        max-height: 0;
+        margin: 0;
+        padding: 0;
+    }
+}
+
+/* ===== TOKEN DISPLAY ===== */
+.token-display {
+    display: flex;
+    align-items: center;
+    padding: 6px 12px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+    margin-right: 8px;
+}
+
+.token-info {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    font-family: 'JetBrains Mono', monospace;
+}
+
+.token-used {
+    font-weight: 600;
+}
+
+.token-separator {
+    color: #555;
+}
+
+.token-max {
+    color: #888;
+}
+
+.token-label {
+    color: #666;
+    font-size: 10px;
+    margin-left: 4px;
+}
+
+.token-last {
+    color: #3b82f6;
+    font-size: 10px;
+    margin-left: 6px;
+}
+
+/* Token color states */
+.token-info.token-low .token-used {
+    color: #22c55e;
+}
+
+.token-info.token-medium .token-used {
+    color: #f59e0b;
+}
+
+.token-info.token-high .token-used {
+    color: #ef4444;
+}
+
+/* Token count in message actions */
+.token-count {
+    font-size: 10px;
+    color: #666;
+    font-family: 'JetBrains Mono', monospace;
+    padding: 2px 6px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 4px;
+    margin-right: 8px;
+    cursor: help;
+}
+
+.token-count:hover {
+    color: #888;
+    background: rgba(255, 255, 255, 0.08);
+}
+
+/* ===== MODEL PICKER IN TERMINAL MODE ===== */
+/* En mode terminal, forcer l'onglet chat et masquer les onglets image */
+body.terminal-mode .model-picker-tab[data-type="inpaint"],
+body.terminal-mode .model-picker-tab[data-type="text2img"] {
+    display: none;
+}
+
+body.terminal-mode .model-picker-tab[data-type="chat"] {
+    flex: 1;
+    border-radius: 0;
+}
+
+/* Style terminal pour le model picker */
+body.terminal-mode .model-picker-popup {
+    background: #0a0a0a;
+    border-color: #1a3a1a;
+}
+
+body.terminal-mode .model-picker-item:hover {
+    background: rgba(0, 255, 127, 0.1);
+}
+
+body.terminal-mode .model-picker-item.active {
+    background: rgba(0, 255, 127, 0.15);
+    border-color: #00ff7f;
+}
+

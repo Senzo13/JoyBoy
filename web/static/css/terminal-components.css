@@ -1,0 +1,491 @@
+/* ===== TERMINAL MODE - Thinking Animation ===== */
+.terminal-thinking {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 16px;
+  color: #888;
+  font-size: 14px;
+  font-style: italic;
+}
+
+.terminal-thinking .thinking-text {
+  color: #aaa;
+}
+
+.terminal-thinking .thinking-dots {
+  display: flex;
+  gap: 2px;
+}
+
+.terminal-thinking .dot {
+  animation: thinking-dot 1.4s infinite ease-in-out both;
+  color: #666;
+}
+
+.terminal-thinking .dot:nth-child(1) {
+  animation-delay: 0s;
+}
+
+.terminal-thinking .dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.terminal-thinking .dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes thinking-dot {
+  0%, 80%, 100% {
+    opacity: 0.3;
+    transform: translateY(0);
+  }
+  40% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
+}
+
+/* ===== TERMINAL MODE - Style Terminal (sans bubbles) ===== */
+.terminal-line {
+  padding: 4px 16px;
+  font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #ddd;
+}
+
+.terminal-line.terminal-user {
+  color: #3b82f6;
+  padding-top: 12px;
+}
+
+.terminal-line.terminal-system {
+  color: #888;
+}
+
+.terminal-line.terminal-success {
+  color: #22c55e;
+}
+
+.terminal-line.terminal-error {
+  color: #ef4444;
+}
+
+.terminal-line.terminal-warning {
+  color: #f59e0b;
+}
+
+.terminal-line.terminal-info {
+  color: #3b82f6;
+}
+
+.terminal-line.terminal-dim {
+  color: #666;
+  font-size: 12px;
+}
+
+.terminal-line.terminal-code {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+  padding: 8px 16px;
+  margin: 4px 16px;
+  color: #f59e0b;
+}
+
+.terminal-line.terminal-prompt {
+  color: #a78bfa;
+  padding-top: 8px;
+}
+
+.terminal-line.terminal-blank {
+  height: 8px;
+}
+
+.terminal-line.terminal-tool-call {
+  color: #666;
+  font-weight: 400;
+  padding: 2px 16px;
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+/* Workspace picker shown inside terminal conversations. The old settings-only
+   workflow made the agent run without a clear root folder and encouraged tool
+   loops; keeping the chooser in-chat makes the state explicit and resumable. */
+.terminal-workspace-picker {
+  margin: 14px 16px;
+  padding: 16px;
+  border: 1px solid rgba(59, 130, 246, 0.35);
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at top left, rgba(59, 130, 246, 0.14), transparent 34%),
+    rgba(12, 16, 24, 0.94);
+  color: #e5e7eb;
+  max-width: 760px;
+}
+
+.terminal-workspace-picker-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.terminal-workspace-picker-title svg {
+  width: 17px;
+  height: 17px;
+  color: #60a5fa;
+}
+
+.terminal-workspace-picker-copy,
+.terminal-workspace-empty {
+  color: #9ca3af;
+  font-size: 13px;
+  line-height: 1.45;
+  margin-top: 8px;
+}
+
+.terminal-workspace-choice-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.terminal-workspace-choice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  padding: 10px 12px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.035);
+  color: #f8fafc;
+  cursor: pointer;
+  text-align: left;
+}
+
+.terminal-workspace-choice:hover {
+  border-color: rgba(96, 165, 250, 0.7);
+  background: rgba(59, 130, 246, 0.12);
+}
+
+.terminal-workspace-choice-name {
+  font-weight: 700;
+}
+
+.terminal-workspace-choice-path {
+  color: #94a3b8;
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.terminal-workspace-add-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.terminal-workspace-path-input {
+  flex: 1;
+  min-width: 0;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 10px;
+  color: #f8fafc;
+  padding: 10px 12px;
+}
+
+.terminal-workspace-path-input:focus {
+  outline: none;
+  border-color: #60a5fa;
+  box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.14);
+}
+
+.terminal-workspace-add-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid rgba(96, 165, 250, 0.35);
+  border-radius: 10px;
+  background: rgba(37, 99, 235, 0.22);
+  color: #bfdbfe;
+  padding: 10px 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.terminal-workspace-add-btn:hover {
+  background: rgba(37, 99, 235, 0.34);
+}
+
+.terminal-workspace-add-btn svg {
+  width: 15px;
+  height: 15px;
+}
+
+/* Résultat d'outil - très compact */
+.terminal-line.terminal-tool-result {
+  color: #555;
+  font-size: 11px;
+  padding: 1px 16px 1px 32px;
+  opacity: 0.6;
+}
+
+/* Icone Lucide dans les lignes terminal */
+.terminal-line .terminal-icon {
+  width: 14px;
+  height: 14px;
+  vertical-align: middle;
+  margin-right: 6px;
+  display: inline-block;
+}
+
+/* ===== CLAUDE CODE STYLE TOOL CALLS ===== */
+/* Format: ● Action(target) avec ⎿ résultat */
+
+.tool-call-line {
+  padding: 6px 16px 2px;
+  font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+  font-size: 13px;
+  color: #888;
+}
+
+.tool-call-line .tool-bullet {
+  color: #3b82f6;
+  margin-right: 4px;
+}
+
+.tool-call-line .tool-action {
+  color: #a78bfa;
+  font-weight: 500;
+}
+
+.tool-call-line .tool-target {
+  color: #666;
+}
+
+.tool-result-line {
+  padding: 0 16px 6px 24px;
+  font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+  font-size: 12px;
+  color: #666;
+}
+
+.tool-result-line .tool-corner {
+  color: #444;
+  margin-right: 6px;
+}
+
+.tool-result-line.tool-result-success {
+  color: #22c55e;
+}
+
+.tool-result-line.tool-result-error {
+  color: #ef4444;
+}
+
+.tool-result-line.tool-result-info {
+  color: #888;
+}
+
+/* ===== TERMINAL DOWNLOAD PROGRESS ===== */
+.terminal-download-box {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  border-radius: 12px;
+  padding: 20px;
+  margin: 16px;
+  font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+}
+
+.terminal-download-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.terminal-download-icon {
+  font-size: 24px;
+}
+
+.terminal-download-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.terminal-download-model {
+  font-size: 14px;
+  color: #60a5fa;
+  margin-bottom: 16px;
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 6px;
+  font-family: 'SF Mono', 'Consolas', monospace;
+}
+
+.terminal-download-bar {
+  height: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+
+.terminal-download-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #3b82f6 0%, #8b5cf6 100%);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.terminal-download-status {
+  font-size: 13px;
+  color: #aaa;
+  margin-bottom: 8px;
+}
+
+.terminal-download-hint {
+  font-size: 12px;
+  color: #666;
+  font-style: italic;
+}
+
+/* Terminal input locked state */
+.chat-input-bar input.terminal-locked {
+  background: rgba(255, 255, 255, 0.02);
+  color: #666;
+  cursor: not-allowed;
+}
+
+.chat-input-bar input.terminal-locked::placeholder {
+  color: #555;
+}
+
+/* Terminal mode: AI response - style terminal propre */
+.terminal-mode .terminal-ai-output {
+  padding: 12px 16px;
+  margin: 8px 0;
+  font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #ccc;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+/* Terminal code blocks - plus utilisés mais gardés au cas où */
+.terminal-code-block {
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
+  overflow-x: auto;
+  font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+  font-size: 13px;
+  line-height: 1.4;
+  color: #ddd;
+}
+
+.terminal-code-block code {
+  background: none;
+  padding: 0;
+}
+
+/* Cursor blinking */
+.terminal-ai-output .cursor,
+.terminal-output .cursor {
+  animation: blink 1s step-end infinite;
+  color: #3b82f6;
+  font-weight: bold;
+}
+
+/* ===== TERMINAL TASKS (like Claude Code) ===== */
+.terminal-tasks {
+  background: rgba(30, 30, 30, 0.95);
+  border: 1px solid #333;
+  border-radius: 8px;
+  margin: 12px 16px;
+  overflow: hidden;
+  font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+  font-size: 13px;
+}
+
+.terminal-tasks-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border-bottom: 1px solid #333;
+  color: #888;
+}
+
+.tasks-count {
+  font-weight: 600;
+}
+
+.tasks-toggle {
+  cursor: pointer;
+  opacity: 0.6;
+  transition: opacity 0.2s;
+}
+
+.tasks-toggle:hover {
+  opacity: 1;
+}
+
+.terminal-tasks.collapsed .terminal-tasks-list {
+  display: none;
+}
+
+.terminal-tasks.collapsed .tasks-toggle {
+  transform: rotate(-90deg);
+}
+
+.terminal-tasks-list {
+  padding: 8px 0;
+}
+
+.terminal-task {
+  padding: 4px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #aaa;
+}
+
+.terminal-task .task-icon {
+  width: 16px;
+  text-align: center;
+}
+
+.terminal-task.task-pending {
+  color: #666;
+}
+
+.terminal-task.task-running {
+  color: #3b82f6;
+}
+
+.terminal-task.task-running .task-icon {
+  animation: spin 1s linear infinite;
+}
+
+.terminal-task.task-done {
+  color: #22c55e;
+}
+
+.terminal-task.task-error {
+  color: #ef4444;
+}
+
+/* Classe pour faire tourner une icone */
+.spin {
+  animation: spin 1s linear infinite;
+}
+

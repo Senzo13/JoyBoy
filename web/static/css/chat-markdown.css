@@ -1,0 +1,170 @@
+/* ===== CODE BLOCKS ===== */
+.code-block {
+    background: #0d0d0d;
+    border: 1px solid #333;
+    border-radius: 8px;
+    margin: 10px 0;
+    overflow: hidden;
+}
+
+.code-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 2px 10px;
+    background: #141414;
+    border-bottom: 1px solid #252525;
+    height: 24px;
+}
+
+.code-lang {
+    font-size: 10px;
+    color: #666;
+    text-transform: lowercase;
+    font-weight: 500;
+}
+
+.code-copy-btn {
+    background: #252525;
+    border: none;
+    color: #888;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.code-copy-btn:hover {
+    background: #3b82f6;
+    color: white;
+}
+
+.code-block pre {
+    margin: 0;
+    padding: 12px;
+    overflow-x: auto;
+    overflow-y: auto;
+    max-height: 380px;
+}
+
+.code-block code {
+    font-family: 'Fira Code', 'Consolas', monospace;
+    font-size: 12px;
+    line-height: 1.4;
+    color: #e0e0e0;
+}
+
+.inline-code {
+    background: #2f3136;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 0.9em;
+    color: #eb459e;
+    border: none;
+}
+
+/* Code block en cours de streaming */
+.code-block.incomplete {
+    border-color: #444;
+}
+
+.code-block.incomplete .code-header {
+    background: #0d0d0d;
+}
+
+.code-block.incomplete .code-copy-btn {
+    display: none;
+}
+
+/* ===== MARKDOWN STYLES (Discord-like) ===== */
+.chat-bubble strong {
+    color: #fff;
+    font-weight: 600;
+}
+
+.chat-bubble em {
+    color: #d1d5db;
+    font-style: italic;
+}
+
+.chat-bubble del {
+    color: #6b7280;
+    text-decoration: line-through;
+}
+
+.chat-bubble u {
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+.chat-bubble .md-h2 {
+    font-size: 1.4em;
+    font-weight: 700;
+    color: #fff;
+    margin: 16px 0 8px 0;
+    padding-bottom: 6px;
+    border-bottom: 1px solid #333;
+}
+
+.chat-bubble .md-h3 {
+    font-size: 1.2em;
+    font-weight: 600;
+    color: #fff;
+    margin: 14px 0 6px 0;
+}
+
+.chat-bubble .md-h4 {
+    font-size: 1.1em;
+    font-weight: 600;
+    color: #e5e7eb;
+    margin: 12px 0 4px 0;
+}
+
+.chat-bubble .md-quote {
+    border-left: 3px solid #4b5563;
+    padding-left: 12px;
+    margin: 8px 0;
+    color: #9ca3af;
+    font-style: italic;
+    display: block;
+}
+
+.chat-bubble .md-ul,
+.chat-bubble .md-ol {
+    margin: 8px 0;
+    padding-left: 24px;
+}
+
+.chat-bubble .md-li,
+.chat-bubble .md-oli {
+    margin: 4px 0;
+    color: #e0e0e0;
+}
+
+.chat-bubble .md-ul {
+    list-style-type: disc;
+}
+
+.chat-bubble .md-ol {
+    list-style-type: decimal;
+}
+
+.chat-bubble .md-link {
+    color: #60a5fa;
+    text-decoration: none;
+    transition: color 0.2s;
+}
+
+.chat-bubble .md-link:hover {
+    color: #93c5fd;
+    text-decoration: underline;
+}
+
+.chat-bubble .md-hr {
+    border: none;
+    border-top: 1px solid #333;
+    margin: 16px 0;
+}
+

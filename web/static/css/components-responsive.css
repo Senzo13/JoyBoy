@@ -1,0 +1,133 @@
+/* ===== MOBILE RESPONSIVE ===== */
+@media (max-width: 768px) {
+    /* === MODEL PICKER: bottom sheet style === */
+    .model-picker-popup {
+        position: fixed !important;
+        bottom: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        top: auto !important;
+        width: 100% !important;
+        max-height: 70vh;
+        border-radius: 20px 20px 0 0;
+        z-index: 1000 !important;
+        animation: slideUpSheet 0.25s ease-out !important;
+    }
+
+    @keyframes slideUpSheet {
+        from { transform: translateY(100%); }
+        to { transform: translateY(0); }
+    }
+
+    .model-picker-list {
+        max-height: 50vh;
+    }
+
+    .model-picker-item {
+        padding: 14px 16px;
+    }
+
+    /* === INPUT BAR === */
+    .input-bar {
+        border-radius: 22px;
+    }
+
+    /* === VRAM PANEL === */
+    .vram-panel,
+    .ram-panel {
+        right: 8px;
+        left: 8px;
+        width: auto;
+    }
+
+    /* === IMAGE OPTIONS MENU === */
+    .image-options-content {
+        flex-direction: column;
+        gap: 10px;
+        padding: 20px;
+        width: 90%;
+        max-width: 300px;
+    }
+
+    .image-options-content .option-btn {
+        flex-direction: row;
+        padding: 16px 20px;
+        min-width: unset;
+        width: 100%;
+    }
+
+    .image-options-content .option-btn i {
+        width: 24px;
+        height: 24px;
+    }
+
+    /* === QUEUE === */
+    .prompt-queue {
+        border-radius: 12px;
+        margin-bottom: 8px;
+    }
+
+    .queue-bubble {
+        right: 12px;
+        bottom: 90px;
+    }
+
+    /* === VIDEO BUTTON === */
+    .video-btn {
+        margin-right: 4px;
+    }
+
+    /* === PRIVACY BUTTON === */
+    .privacy-label {
+        display: none;
+    }
+
+    .privacy-btn {
+        padding: 8px;
+    }
+}
+
+@media (max-width: 480px) {
+    /* Smaller model picker items */
+    .model-picker-item {
+        gap: 10px;
+        padding: 12px 14px;
+    }
+
+    .model-picker-icon {
+        width: 34px;
+        height: 34px;
+    }
+
+    .model-picker-name {
+        font-size: 13px;
+    }
+
+    .model-picker-desc {
+        font-size: 10px;
+    }
+
+    /* Compact send button */
+    .send-btn {
+        width: 36px;
+        height: 36px;
+    }
+
+    .video-btn {
+        min-width: 36px;
+        height: 36px;
+        padding: 0 10px;
+    }
+
+    .video-btn-label {
+        display: none;
+    }
+
+    /* VRAM/RAM panels full width */
+    .vram-panel,
+    .ram-panel {
+        top: 50px;
+        right: 4px;
+        left: 4px;
+    }
+}

@@ -1,0 +1,218 @@
+/* ===== RESULT IMAGES ===== */
+.ai-response .result-images {
+    display: flex !important;
+    flex-direction: row !important;
+    gap: 12px;
+    flex-wrap: nowrap !important;
+    align-items: flex-start;
+    width: auto;
+}
+
+.ai-response .result-images .result-image-container {
+    flex: 0 0 auto;
+    width: 300px;
+    max-width: 300px;
+}
+
+/* Skeleton containers s'adaptent à l'image */
+.image-skeleton-message .result-image-container {
+    width: auto;
+    max-width: none;
+}
+
+.image-skeleton-message .skeleton-original-container {
+    width: auto;
+    max-width: 300px;
+}
+
+.image-skeleton-message .modified-skeleton-container {
+    width: auto;
+    max-width: none;  /* Laisser le JS définir la taille exacte */
+}
+
+
+/* Layout 3 colonnes pour mode EDIT avec masque */
+.ai-response .result-images-3 .result-image-container {
+    width: 220px;
+    max-width: 220px;
+}
+
+.ai-response .result-images-3 .mask-preview {
+    opacity: 0.85;
+}
+
+.ai-response .result-images-3 .mask-preview .result-image {
+    background: #111;
+    border: 1px dashed #444;
+}
+
+.ai-response .result-images-3 .mask-preview .image-label {
+    color: #888;
+    font-style: italic;
+}
+
+.result-image-container {
+    position: relative;
+}
+
+/* Wrapper qui épouse la taille réelle de l'image pour que border-radius fonctionne */
+.result-image-wrapper {
+    position: relative;
+    display: inline-block;
+    border-radius: 12px;
+    overflow: hidden;
+    max-width: 100%;
+    max-height: 300px;
+    line-height: 0;
+}
+
+.result-image-wrapper .result-image {
+    display: block;
+    width: 100%;
+    height: auto;
+    max-height: 300px;
+    object-fit: contain;
+    border-radius: 0;
+}
+
+.result-image {
+    width: 100%;
+    height: auto;
+    border-radius: 12px;
+    object-fit: contain;
+    cursor: pointer;
+    transition: transform 0.2s;
+}
+
+.result-image:hover {
+    transform: scale(1.02);
+}
+
+.image-label {
+    text-align: center;
+    color: #888;
+    font-size: 12px;
+    margin-top: 8px;
+}
+
+/* ===== EDIT BUTTON ON IMAGE ===== */
+.edit-btn {
+    position: absolute;
+    bottom: 8px;
+    right: 8px;
+    width: 32px;
+    height: 32px;
+    background: rgba(0,0,0,0.7);
+    border: 1px solid #444;
+    border-radius: 8px;
+    color: white;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.result-image-wrapper:hover .edit-btn,
+.result-image-container:hover .edit-btn {
+    opacity: 1;
+}
+
+.edit-btn:hover {
+    background: rgba(59, 130, 246, 0.8);
+    border-color: #3b82f6;
+}
+
+.edit-btn svg {
+    width: 16px;
+    height: 16px;
+}
+
+/* ===== IMAGE ACTIONS (Edit + Refine buttons) ===== */
+.image-actions {
+    position: absolute;
+    bottom: 8px;
+    right: 8px;
+    display: flex;
+    gap: 6px;
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.result-image-wrapper:hover .image-actions,
+.result-image-container:hover .image-actions {
+    opacity: 1;
+}
+
+.image-actions .edit-btn {
+    position: static;
+    opacity: 1;
+}
+
+/* Fix Details button — same style as Edit (dark) */
+
+/* ===== CHAT ACTIONS ===== */
+.chat-actions {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    margin-top: 10px;
+}
+
+.chat-action-btn {
+    background: none;
+    border: none;
+    color: #666;
+    cursor: pointer;
+    padding: 6px 8px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.2s;
+}
+
+.chat-action-btn:hover {
+    color: #aaa;
+}
+
+.chat-action-btn.active {
+    color: #a855f7;
+}
+
+.chat-action-btn svg {
+    width: 18px;
+    height: 18px;
+}
+
+.chat-actions-divider {
+    width: 1px;
+    height: 16px;
+    background: #333;
+    margin: 0 6px;
+}
+
+.response-time {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: #555;
+    margin-left: 4px;
+}
+
+.response-time .time {
+    color: #666;
+}
+
+.seed-btn {
+    font-size: 12px;
+    color: #888;
+    font-family: monospace;
+}
+
+.response-time .speed {
+    color: #888;
+}
+

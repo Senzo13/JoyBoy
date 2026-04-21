@@ -1,0 +1,199 @@
+/* ===== MOBILE RESPONSIVE ===== */
+@media (max-width: 768px) {
+    /* === MESSAGES === */
+    .user-message {
+        gap: 8px;
+        margin-bottom: 16px;
+    }
+
+    .user-bubble {
+        max-width: 85%;
+        padding: 10px 14px;
+        font-size: 14px;
+    }
+
+    .user-thumb {
+        width: 36px;
+        height: 36px;
+    }
+
+    .chat-bubble {
+        max-width: 90%;
+        padding: 12px 14px;
+        font-size: 14px;
+    }
+
+    /* === IMAGES: stack vertically === */
+    .ai-response .result-images {
+        flex-direction: column !important;
+        gap: 8px;
+    }
+
+    .ai-response .result-images .result-image-container {
+        width: 100%;
+        max-width: 100%;
+    }
+
+    .ai-response .result-images-3 .result-image-container {
+        width: 100%;
+        max-width: 100%;
+    }
+
+    .chat-image {
+        max-width: 100%;
+        max-height: 300px;
+    }
+
+    .result-image-wrapper {
+        max-width: 100%;
+    }
+
+    /* === SKELETON === */
+    .skeleton-preview-container {
+        width: 100%;
+        max-width: 280px;
+    }
+
+    .image-skeleton-message .image-generating-text {
+        width: auto;
+    }
+
+    /* === VIDEO === */
+    .video-skeleton {
+        width: 100%;
+        max-width: 280px;
+    }
+
+    .video-container {
+        width: 100%;
+        max-width: 280px;
+    }
+
+    .result-video-gif {
+        width: 100%;
+        max-width: 280px;
+    }
+
+    /* Video controls always visible on touch */
+    .video-controls {
+        opacity: 1;
+    }
+
+    /* === CODE BLOCKS === */
+    .code-block pre {
+        max-height: 250px;
+        font-size: 11px;
+    }
+
+    .code-block code {
+        font-size: 11px;
+    }
+
+    /* === SUGGESTIONS === */
+    .suggestions-container {
+        max-width: 100%;
+    }
+
+    /* === CHAT ACTIONS: always visible on touch === */
+    .image-actions {
+        opacity: 1;
+    }
+
+    .edit-btn {
+        opacity: 0.8;
+    }
+
+    /* === TERMINAL MODE === */
+    body.terminal-mode .chat-bubble {
+        font-size: 14px;
+    }
+
+    body.terminal-mode .chat-bubble p {
+        font-size: 14px;
+    }
+
+    body.terminal-mode .chat-bubble li {
+        font-size: 14px;
+    }
+
+    .terminal-header {
+        padding: 10px 12px;
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+
+    .terminal-header .terminal-workspace {
+        font-size: 11px;
+    }
+
+    .terminal-header .autonomous-indicator {
+        font-size: 10px;
+        padding: 3px 8px;
+    }
+
+    /* Tool results modal */
+    .tool-results-content {
+        width: 96%;
+        max-height: 90vh;
+    }
+
+    .tool-results-body {
+        padding: 12px;
+    }
+
+    /* === TOKEN DISPLAY === */
+    .token-display {
+        padding: 4px 8px;
+    }
+
+    .token-info {
+        font-size: 10px;
+    }
+
+    .token-label,
+    .token-last {
+        display: none;
+    }
+}
+
+@media (max-width: 480px) {
+    .user-bubble {
+        max-width: 90%;
+        font-size: 13px;
+    }
+
+    .chat-bubble {
+        max-width: 95%;
+        font-size: 13px;
+    }
+
+    .user-thumb {
+        width: 32px;
+        height: 32px;
+        border-radius: 6px;
+    }
+
+    .message {
+        margin-bottom: 16px;
+    }
+
+    .generated-image-container {
+        max-width: 100%;
+    }
+
+    .generated-image-container .result-image,
+    .generated-image-container .result-image-wrapper {
+        max-height: 280px;
+    }
+
+    .video-action-btn {
+        padding: 6px 12px;
+        font-size: 12px;
+    }
+
+    .suggestion-item {
+        font-size: 12px;
+        padding: 6px;
+    }
+}
+
