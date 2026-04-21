@@ -6,6 +6,7 @@ import os
 import platform
 import re
 import shlex
+import shutil
 import subprocess
 from datetime import datetime
 from typing import Dict, List, Optional
@@ -143,6 +144,66 @@ class TerminalActionsMixin:
             "files": written,
             "created": [item["path"] for item in written if item["action"] == "created"],
             "updated": [item["path"] for item in written if item["action"] == "updated"],
+        }
+
+    def _clear_workspace(self, workspace_path: str, keep: Optional[List[str]] = None) -> Dict[str, Any]:
+        """Remove top-level workspace contents while preserving repository metadata."""
+        root = os.path.realpath(os.path.abspath(workspace_path or ""))
+        if not root or not os.path.isdir(root):
+            return {"success": False, "error": "Invalid workspace"}
+
+        protected = {".git", ".hg", ".svn"}
+        keep_names = set(protected)
+        for item in keep or []:
+            name = str(item or "").strip().replace("\\", "/").strip("/")
+            if name and "/" not in name and name not in {".", ".."}:
+                keep_names.add(name)
+
+        deleted: list[str] = []
+        kept: list[str] = []
+        errors: list[str] = []
+
+        try:
+            entries = list(os.scandir(root))
+        except OSError as exc:
+            return {"success": False, "error": str(exc)}
+
+        for entry in entries:
+            name = entry.name
+            if name in keep_names:
+                kept.append(name)
+                continue
+
+            full_path = os.path.realpath(entry.path)
+            if full_path == root or not full_path.startswith(root + os.sep):
+                errors.append(f"{name}: path escapes workspace")
+                continue
+
+            try:
+                if entry.is_dir(follow_symlinks=False):
+                    shutil.rmtree(full_path)
+                else:
+                    os.remove(full_path)
+                deleted.append(name)
+                self._log_action("clear_workspace", name, True)
+            except OSError as exc:
+                errors.append(f"{name}: {exc}")
+                self._log_action("clear_workspace", name, False)
+
+        if errors:
+            return {
+                "success": False,
+                "error": "; ".join(errors[:5]),
+                "deleted": deleted,
+                "kept": sorted(kept),
+                "count": len(deleted),
+            }
+
+        return {
+            "success": True,
+            "deleted": deleted,
+            "kept": sorted(kept),
+            "count": len(deleted),
         }
 
     def _build_memory_context_prompt(self, initial_message: str, limit: int = 4) -> str:

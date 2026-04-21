@@ -278,6 +278,10 @@ class TerminalPlanMixin:
             if len(files) > len(paths):
                 suffix += f", +{len(files) - len(paths)} more"
             return f"wrote batch: {suffix}" if suffix else "wrote batch"
+        if tool_name == "clear_workspace":
+            kept = data.get("kept", []) if isinstance(data, dict) else []
+            kept_suffix = f" (kept {', '.join(kept)})" if kept else ""
+            return f"cleared workspace: {data.get('count', 0)} top-level item(s) deleted{kept_suffix}"
         if tool_name == "bash":
             command = self._compact_summary_snippet(str(args.get("command", "")), limit=120)
             line = f"bash `{command}` -> code {data.get('return_code', '?')}"

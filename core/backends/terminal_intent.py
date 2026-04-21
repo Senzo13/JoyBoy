@@ -32,10 +32,15 @@ class TerminalIntentMixin:
 
         priority_promoted: List[str] = []
         active_step_mode = self._active_step_mode(initial_message) if self.current_plan else ""
+        if "clear_workspace" in self._active_promoted_tool_names:
+            priority_promoted.append("clear_workspace")
         if active_step_mode in {"verify", "analyze"} and "delegate_subagent" in self._active_promoted_tool_names:
             priority_promoted.append("delegate_subagent")
 
         for name in priority_promoted:
+            if name == "clear_workspace" and "write_files" in names:
+                names.insert(names.index("write_files"), name)
+                continue
             insert_after = "bash" if active_step_mode == "verify" else "search"
             if insert_after in names:
                 names.insert(names.index(insert_after) + 1, name)
@@ -391,6 +396,17 @@ class TerminalIntentMixin:
         return f"{raw}\n{folded}"
 
     @staticmethod
+    def _is_clear_workspace_request(message: str) -> bool:
+        msg = TerminalIntentMixin._intent_text(message)
+        clear_markers = (
+            "supprime tout", "efface tout", "delete all", "delete tout",
+            "remove all", "clear workspace", "vide le dossier", "vide tout",
+            "repart de zero", "repart de zéro", "from scratch", "remplace tout",
+            "remplacer tout", "supprime le projet", "reset le projet",
+        )
+        return any(marker in msg for marker in clear_markers)
+
+    @staticmethod
     def _is_scaffold_write_request(message: str) -> bool:
         """Detect project/template creation requests that are write actions."""
         msg = TerminalIntentMixin._intent_text(message)
@@ -406,11 +422,13 @@ class TerminalIntentMixin:
         )
         scaffold_terms = (
             "template", "starter", "scaffold", "boilerplate", "app de base",
-            "projet de base", "page complete", "page complète",
+            "projet de base", "page complete", "page complète", "architecture",
+            "squelette", "structure", "starter project",
         )
         framework_terms = (
             "react", "next js", "next.js", "nextjs", "vite", "app router",
-            "tailwind", "vue", "svelte",
+            "tailwind", "vue", "svelte", "express", "node", "backend",
+            "api", "serveur", "server",
         )
 
         has_scaffold_term = any(term in msg for term in scaffold_terms)
@@ -420,6 +438,8 @@ class TerminalIntentMixin:
 
         if has_read and not has_creation:
             return False
+        if TerminalIntentMixin._is_clear_workspace_request(message) and has_creation:
+            return True
         if has_scaffold_term and (has_creation or not has_read):
             return True
         if has_framework_term and has_creation:

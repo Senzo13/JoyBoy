@@ -19,9 +19,9 @@ class TerminalBrainSmokeTests(unittest.TestCase):
         self.assertIn("Always call read_file", prompt)
         self.assertIn("Do not pretend that files were created", prompt)
         self.assertIn("Workspace path visible to you: /workspace", prompt)
-        self.assertIn("prefer delegate_subagent(code_explorer)", prompt)
+        self.assertIn("explicitly asks for agentic/parallel analysis", prompt)
         self.assertIn("use web_search first, then web_fetch", prompt)
-        self.assertIn("delegate_subagent(verifier)", prompt)
+        self.assertIn("verify directly with read_file/list_files", prompt)
         self.assertNotIn("C:/projects/demo", prompt)
         self.assertNotIn("TOUJOURS", prompt)
         self.assertNotIn("RÈGLES", prompt)
@@ -401,6 +401,29 @@ class TerminalBrainSmokeTests(unittest.TestCase):
             self.assertTrue(deleted.success)
             self.assertFalse(target.exists())
 
+    def test_clear_workspace_preserves_git_metadata_in_full_access(self):
+        brain = TerminalBrain()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            Path(tmp, ".git").mkdir()
+            Path(tmp, "src").mkdir()
+            Path(tmp, "src", "old.js").write_text("old", encoding="utf-8")
+            Path(tmp, "README.md").write_text("old", encoding="utf-8")
+            brain.current_intent = "write"
+
+            blocked = brain.execute_tool("clear_workspace", {}, tmp)
+            self.assertFalse(blocked.success)
+            self.assertIn("full access", blocked.error)
+
+            brain.permission_mode = "full_access"
+            result = brain.execute_tool("clear_workspace", {}, tmp)
+
+            self.assertTrue(result.success)
+            self.assertTrue(Path(tmp, ".git").exists())
+            self.assertFalse(Path(tmp, "src").exists())
+            self.assertFalse(Path(tmp, "README.md").exists())
+            self.assertIn(".git", result.data.get("kept", []))
+
     def test_casual_greeting_fast_path_avoids_agentic_tool_loop(self):
         brain = TerminalBrain()
 
@@ -718,6 +741,109 @@ class TerminalBrainSmokeTests(unittest.TestCase):
         self.assertNotIn("write_todos", names)
         self.assertNotIn("tool_search", names)
 
+    def test_replace_backend_architecture_is_scaffold_without_todo_loop(self):
+        brain = TerminalBrain()
+        message = "supprime tout et fait moi une architecture backend propre et solide en express"
+        brain.current_intent = brain.detect_intent(message)
+        brain._reset_deferred_tools()
+
+        names = brain._select_tool_names_for_turn(message, [], autonomous=False)
+
+        self.assertEqual(brain.current_intent, "write")
+        self.assertTrue(brain._is_scaffold_write_request(message))
+        self.assertIn("clear_workspace", names)
+        self.assertLess(names.index("clear_workspace"), names.index("write_files"))
+        self.assertNotIn("write_todos", names)
+        self.assertNotIn("tool_search", names)
+
+    @patch("core.backends.terminal_brain.chat_with_cloud_model")
+    def test_scaffold_write_files_finishes_without_extra_model_call(self, mock_chat):
+        mock_chat.return_value = {
+            "message": {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                    {
+                        "id": "call_write",
+                        "type": "function",
+                        "function": {
+                            "name": "write_files",
+                            "arguments": {
+                                "files": [
+                                    {"path": "package.json", "content": "{\"scripts\":{\"start\":\"node src/server.js\"}}\n"},
+                                    {"path": "src/server.js", "content": "console.log('ok');\n"},
+                                ]
+                            },
+                        },
+                    }
+                ],
+            },
+            "prompt_eval_count": 100,
+            "eval_count": 25,
+        }
+        brain = TerminalBrain()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            events = list(brain.run_agentic_loop("crée un template backend express", tmp, model="openai:gpt-5.4"))
+
+        done = [event for event in events if event.get("type") == "done"][-1]
+        self.assertEqual(mock_chat.call_count, 1)
+        self.assertIn("écritures ont été vérifiées", done.get("full_response", ""))
+        self.assertTrue(any(event.get("type") == "tool_result" for event in events))
+
+    @patch("core.backends.terminal_brain.chat_with_cloud_model")
+    def test_full_access_clear_then_scaffold_finishes_in_one_model_call(self, mock_chat):
+        mock_chat.return_value = {
+            "message": {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                    {
+                        "id": "call_clear",
+                        "type": "function",
+                        "function": {"name": "clear_workspace", "arguments": {}},
+                    },
+                    {
+                        "id": "call_write",
+                        "type": "function",
+                        "function": {
+                            "name": "write_files",
+                            "arguments": {
+                                "files": [
+                                    {"path": "package.json", "content": "{\"scripts\":{\"start\":\"node src/server.js\"}}\n"},
+                                    {"path": "src/server.js", "content": "console.log('api');\n"},
+                                ]
+                            },
+                        },
+                    },
+                ],
+            },
+            "prompt_eval_count": 140,
+            "eval_count": 30,
+        }
+        brain = TerminalBrain()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            Path(tmp, ".git").mkdir()
+            Path(tmp, "old.txt").write_text("old", encoding="utf-8")
+            events = list(
+                brain.run_agentic_loop(
+                    "supprime tout et fait moi une architecture backend propre en express",
+                    tmp,
+                    model="openai:gpt-5.4",
+                    permission_mode="full_access",
+                )
+            )
+            self.assertTrue(Path(tmp, ".git").exists())
+            self.assertFalse(Path(tmp, "old.txt").exists())
+            self.assertTrue(Path(tmp, "package.json").exists())
+            self.assertTrue(Path(tmp, "src", "server.js").exists())
+
+        done = [event for event in events if event.get("type") == "done"][-1]
+        self.assertEqual(mock_chat.call_count, 1)
+        self.assertIn("clear_workspace", done.get("full_response", ""))
+        self.assertIn("write_files", done.get("full_response", ""))
+
     def test_template_analysis_remains_read_only(self):
         brain = TerminalBrain()
 
@@ -954,7 +1080,7 @@ class TerminalBrainSmokeTests(unittest.TestCase):
         )
 
         self.assertLess(names.index("bash"), names.index("list_files"))
-        self.assertLess(names.index("delegate_subagent"), names.index("list_files"))
+        self.assertNotIn("delegate_subagent", names)
         self.assertNotIn("tool_search", names)
 
     def test_step_focus_reminder_is_injected_after_passive_write_loop(self):

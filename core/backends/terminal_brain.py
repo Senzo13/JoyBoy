@@ -228,7 +228,7 @@ class TerminalBrain(
             )
 
         # Protection écriture si intent = lecture seule
-        write_tools = ['write_file', 'write_files', 'edit_file', 'delete_file']
+        write_tools = ['write_file', 'write_files', 'edit_file', 'clear_workspace', 'delete_file']
         if tool_name in write_tools and self.is_read_only_intent(self.current_intent):
             self.write_blocked = True
             return ToolResult(
@@ -338,6 +338,16 @@ class TerminalBrain(
                         return ToolResult(success=False, tool_name=tool_name, data=result, error=verified.get('error', 'Verification failed'))
                 self._log_action('delete_file', path, result.get('success', False))
                 return ToolResult(success=result.get('success', False), tool_name=tool_name, data=result)
+
+            # === CLEAR WORKSPACE ===
+            elif tool_name == "clear_workspace":
+                result = self._clear_workspace(workspace_path, keep=args.get('keep') or [])
+                return ToolResult(
+                    success=result.get('success', False),
+                    tool_name=tool_name,
+                    data=result,
+                    error=result.get('error'),
+                )
 
             # === SEARCH ===
             elif tool_name == "search":
@@ -1089,6 +1099,18 @@ class TerminalBrain(
                             _end_resource_lease()
                             yield runtime_event('done', full_response=full_response, token_stats=total_token_stats)
                             return
+
+                if (
+                    not autonomous
+                    and not force_final
+                    and self._should_finalize_after_scaffold_write(initial_message, executed_tools)
+                ):
+                    final_text = self._post_write_finalize_answer(initial_message, executed_tools)
+                    full_response += final_text
+                    yield runtime_event('content', text=final_text, token_stats={})
+                    _end_resource_lease()
+                    yield runtime_event('done', full_response=full_response, token_stats=total_token_stats)
+                    return
 
                 if (
                     not force_final

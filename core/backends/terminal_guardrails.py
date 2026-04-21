@@ -107,6 +107,10 @@ class TerminalGuardrailsMixin:
         elif tool_name == "load_skill":
             skill = data.get("skill", {}) if isinstance(data, dict) else {}
             summary["summary"] = skill.get("id", "skill loaded")
+        elif tool_name == "clear_workspace":
+            kept = data.get("kept", []) if isinstance(data, dict) else []
+            kept_text = f", kept {', '.join(kept)}" if kept else ""
+            summary["summary"] = f"deleted {data.get('count', 0)} top-level item(s){kept_text}"
         elif tool_name == "remember_fact":
             fact = data.get("fact", {}) if isinstance(data, dict) else {}
             summary["summary"] = fact.get("id", "memory saved")
@@ -128,7 +132,7 @@ class TerminalGuardrailsMixin:
             if not item.get("success"):
                 continue
             tool = item.get("tool")
-            if tool in {"write_file", "write_files", "edit_file", "delete_file"}:
+            if tool in {"write_file", "write_files", "edit_file", "clear_workspace", "delete_file"}:
                 return True
             if tool == "bash":
                 command = str((item.get("args") or {}).get("command", "")).lower()
@@ -143,6 +147,54 @@ class TerminalGuardrailsMixin:
 
     def _has_attempted_mutation(self, executed_tools: List[Dict]) -> bool:
         return any((item.get("tool") in WRITE_CORE_TOOL_NAMES) for item in executed_tools)
+
+    def _should_finalize_after_scaffold_write(self, initial_message: str, executed_tools: List[Dict]) -> bool:
+        """Stop after a verified scaffold batch instead of spending another LLM turn."""
+        if not self._is_scaffold_write_request(initial_message):
+            return False
+        if self.current_plan and self._has_incomplete_todos():
+            return False
+
+        msg = self._intent_text(initial_message)
+        explicit_verify_markers = (
+            "test", "tests", "build", "lint", "verifie", "vérifie", "verify",
+            "lance", "run ", "npm install", "pnpm install", "yarn install",
+            "demarre", "démarre", "start",
+        )
+        if any(marker in msg for marker in explicit_verify_markers):
+            return False
+
+        last_write_index = -1
+        for index, item in enumerate(executed_tools or []):
+            if item.get("tool") == "write_files" and item.get("success"):
+                last_write_index = index
+        if last_write_index < 0:
+            return False
+
+        later_failures = [
+            item for item in (executed_tools or [])[last_write_index + 1:]
+            if not item.get("success", False)
+        ]
+        return not later_failures
+
+    def _post_write_finalize_answer(self, initial_message: str, executed_tools: List[Dict]) -> str:
+        """Compact deterministic final answer for scaffold turns."""
+        lines: List[str] = []
+        for item in executed_tools or []:
+            if not item.get("success"):
+                continue
+            tool = item.get("tool")
+            if tool not in {"clear_workspace", "write_files", "write_file", "edit_file", "delete_file"}:
+                continue
+            summary = str(item.get("summary", "") or "").strip()
+            if summary:
+                lines.append(f"- {tool}: {summary}")
+
+        details = "\n".join(lines[-8:]) if lines else "- Écritures appliquées et vérifiées."
+        return (
+            "C'est fait. J'ai appliqué la structure demandée et les écritures ont été vérifiées côté runtime.\n\n"
+            f"{details}"
+        )
 
     def _classify_tool_error(self, result: ToolResult) -> str:
         detail = str(result.error or "").lower()

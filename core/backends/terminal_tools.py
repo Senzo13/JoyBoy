@@ -142,6 +142,7 @@ _TOOL_RISKS = {
     "write_file": ToolRisk.WRITE,
     "write_files": ToolRisk.WRITE,
     "edit_file": ToolRisk.WRITE,
+    "clear_workspace": ToolRisk.DESTRUCTIVE,
     "delete_file": ToolRisk.DESTRUCTIVE,
     "bash": ToolRisk.SHELL,
     "web_search": ToolRisk.NETWORK,

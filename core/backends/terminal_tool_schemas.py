@@ -129,7 +129,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "delete_file",
-            "description": "Delete a file. This is blocked until the UI supports explicit confirmation.",
+            "description": "Delete one file inside the workspace. Requires full access permissions.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -139,6 +139,24 @@ TOOLS = [
                     }
                 },
                 "required": ["path"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "clear_workspace",
+            "description": "Delete all top-level workspace contents before rebuilding from scratch. Preserves .git automatically. Requires full access permissions.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "keep": {
+                        "type": "array",
+                        "description": "Optional top-level names to keep in addition to .git.",
+                        "items": {"type": "string"}
+                    }
+                },
+                "required": []
             }
         }
     },
@@ -429,6 +447,7 @@ DEFERRED_TOOL_NAMES = (
     "load_skill",
     "remember_fact",
     "list_memory",
+    "clear_workspace",
     "delete_file",
     "open_workspace",
     "think",
@@ -442,7 +461,7 @@ CORE_TOOL_NAMES = tuple(
     and item.get("function", {}).get("name", "") not in DEFERRED_TOOL_NAMES
     and item.get("function", {}).get("name", "") != "tool_search"
 )
-WRITE_CORE_TOOL_NAMES = ("write_files", "write_file", "edit_file", "delete_file", "bash")
+WRITE_CORE_TOOL_NAMES = ("write_files", "write_file", "edit_file", "clear_workspace", "delete_file", "bash")
 SCAFFOLD_CORE_TOOL_ORDER = (
     "list_files",
     "read_file",

@@ -99,16 +99,24 @@ class TerminalDeferredToolMixin:
         if any(word in msg for word in ("memory", "memoire", "mémoire", "remember", "souviens", "souvenir", "retiens", "retenir")):
             names.extend(["list_memory", "remember_fact"])
 
-        if any(word in msg for word in ("analyse", "audit", "explore", "inspecte", "test", "build", "verify", "vérifie", "verifie")):
+        explicit_subagent_request = any(word in msg for word in (
+            "subagent", "sub-agent", "delegate", "delegue", "délègue",
+            "agent parallele", "agent parallèle", "parallel agent",
+            "deerflow", "deer flow",
+        ))
+        if explicit_subagent_request:
             names.append("delegate_subagent")
 
-        if any(word in msg for word in ("delete", "supprime", "remove", "efface")):
+        if self._is_clear_workspace_request(initial_message):
+            names.append("clear_workspace")
+        elif any(word in msg for word in ("delete", "supprime", "remove", "efface")):
             names.append("delete_file")
 
-        if executed_tools and any(item.get("tool") == "bash" for item in executed_tools):
-            names.append("delegate_subagent")
-
-        if self.current_plan and self._active_step_mode(initial_message) in {"verify", "analyze"}:
+        if (
+            explicit_subagent_request
+            and self.current_plan
+            and self._active_step_mode(initial_message) in {"verify", "analyze"}
+        ):
             names.append("delegate_subagent")
 
         if self._should_use_todos_for_request(initial_message) and not self.current_plan:
@@ -139,6 +147,9 @@ class TerminalDeferredToolMixin:
         if self._should_force_step_focus(message, executed_tools) and not explicit_deferred_request:
             return False
         if explicit_deferred_request:
+            delete_request = any(marker in msg for marker in ("delete", "supprime", "remove", "efface"))
+            if delete_request and {"clear_workspace", "delete_file"} & set(self._active_promoted_tool_names):
+                return False
             return True
         if self._should_use_todos_for_request(message):
             return True

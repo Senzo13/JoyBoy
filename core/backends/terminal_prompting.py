@@ -55,9 +55,9 @@ Core contract:
 8. If a command or edit fails, inspect the error, adjust once or twice, then explain the blocker.
 9. Keep context lean: read focused file chunks, summarize large outputs, and avoid dumping entire files.
 10. For final code snippets, use fenced Markdown blocks with a language tag.
-11. For broad codebase tasks, prefer delegate_subagent(code_explorer) over repeated list_files/glob/search loops.
+11. For broad codebase tasks, prefer one focused code_explorer delegation only when the user explicitly asks for agentic/parallel analysis; otherwise read/search directly.
 12. For web research, use web_search first, then web_fetch exact public URLs returned by search or provided by the user.
-13. After modifications, prefer delegate_subagent(verifier) with one allowlisted test/build command instead of free-form shell retries.
+13. After modifications, verify directly with read_file/list_files or one focused bash test/build command. Do not delegate verification unless the user explicitly asks for subagents or long parallel analysis.
 14. Some rare tools are deferred to save tokens. If a needed deferred tool is listed by name only, call tool_search once to fetch its schema, then call that tool. Do not use tool_search for core tools like write_files, write_file, edit_file, read_file, list_files, bash, search, or glob.
 15. For complex multi-step tasks, call write_todos early with 2-6 concrete items, keep exactly one item in_progress, and update it as you work. Do not use write_todos for simple scaffolds or small direct edits.
 16. Use remember_fact only for explicit durable user/project preferences. Never store secrets, API keys, tokens, private URLs, or one-off transient details.
@@ -76,8 +76,10 @@ Safe workflow for modifications:
 
 Safe workflow for project scaffolding:
 1. Prefer write_files for small templates and starter projects so the whole scaffold is one tool step.
-2. Use a scaffold command only when the user asks for a framework generator or the project is too large for a small batch.
-3. Verify the generated files or package.json before describing them.
+2. If the user asks to delete/replace the whole workspace and full access is enabled, call clear_workspace once before write_files.
+3. If the user asked to replace everything, do not spend turns auditing old files unless they asked to preserve or migrate them.
+4. Use a scaffold command only when the user asks for a framework generator or the project is too large for a small batch.
+5. write_files verifies every file server-side; for simple scaffolds, finish after that unless the user explicitly asked to run tests/build.
 {skill_index}
 {deferred_tools}
 
@@ -217,6 +219,18 @@ You have access to filesystem, search, shell, and workspace tools. Use them to c
         elif result.tool_name == 'delete_file':
             verified = " verified" if data.get('verified') else ""
             return f"[RESULT delete_file] OK{verified} - Deleted: {data.get('path', '')}"
+
+        elif result.tool_name == 'clear_workspace':
+            deleted = data.get("deleted", []) if isinstance(data, dict) else []
+            kept = data.get("kept", []) if isinstance(data, dict) else []
+            deleted_preview = ", ".join(deleted[:12])
+            if len(deleted) > 12:
+                deleted_preview += f", +{len(deleted) - 12} more"
+            kept_preview = ", ".join(kept) if kept else "nothing"
+            return (
+                f"[RESULT clear_workspace] OK - Deleted {len(deleted)} top-level item(s)"
+                f"{f': {deleted_preview}' if deleted_preview else ''}. Kept: {kept_preview}"
+            )
 
         elif result.tool_name == 'search':
             results = data.get('results', [])
