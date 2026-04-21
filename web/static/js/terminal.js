@@ -1852,7 +1852,7 @@ function exitTerminalMode() {
     if (terminalWorkspace?.path || isTerminalWorkspaceRecord(activeRecord)) {
         console.warn('[TERMINAL] Exit ignored: project terminal chats stay bound to their workspace.');
         if (typeof Toast !== 'undefined') {
-            Toast.error(terminalT('terminal.projectModeLocked', 'Le mode dev projet reste attaché à ce chat.'));
+            Toast.error(terminalT('terminal.projectModeLocked', 'L’espace de travail dev reste attaché à ce chat.'));
         }
         return;
     }
@@ -2077,7 +2077,7 @@ function openProjectLauncher(pendingMessage = '') {
             </div>
             <button class="project-launcher-browse-btn" onclick="browseProjectFolder()">
                 <i data-lucide="folder-open"></i>
-                ${escapeHtml(terminalT('terminal.chooseProjectFolder', 'Choisir un dossier projet'))}
+                    ${escapeHtml(terminalT('terminal.chooseProjectFolder', 'Choisir un dossier de travail'))}
             </button>
         </div>
     `;
