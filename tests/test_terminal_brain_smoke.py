@@ -936,6 +936,41 @@ class TerminalBrainSmokeTests(unittest.TestCase):
         )
         self.assertEqual(kept[-1]["function"]["name"], "read_file")
 
+    def test_delegate_subagent_limit_drops_duplicates_and_empty_tasks(self):
+        brain = TerminalBrain()
+        calls = [
+            {"type": "function", "function": {"name": "delegate_subagent", "arguments": {"task": "Explore MCP", "agent_type": "code_explorer"}}},
+            {"type": "function", "function": {"name": "delegate_subagent", "arguments": {"task": "  Explore   MCP  ", "agent_type": "code_explorer"}}},
+            {"type": "function", "function": {"name": "delegate_subagent", "arguments": {"task": "", "agent_type": "code_explorer"}}},
+            {"type": "function", "function": {"name": "delegate_subagent", "arguments": {"task": "Run tests", "agent_type": "verifier", "command": "python -m unittest"}}},
+            {"type": "function", "function": {"name": "read_file", "arguments": {"path": "README.md"}}},
+        ]
+
+        kept, dropped = brain._limit_delegate_subagent_calls(calls)
+
+        self.assertEqual(dropped, 2)
+        self.assertEqual(
+            sum(1 for call in kept if call["function"]["name"] == "delegate_subagent"),
+            2,
+        )
+        self.assertEqual(kept[-1]["function"]["name"], "read_file")
+
+    def test_delegate_subagent_call_key_requires_real_task(self):
+        brain = TerminalBrain()
+
+        self.assertEqual(
+            brain._delegate_subagent_call_key(
+                {"function": {"name": "delegate_subagent", "arguments": {"task": "   "}}}
+            ),
+            "",
+        )
+        self.assertEqual(
+            brain._delegate_subagent_call_key(
+                {"function": {"name": "delegate_subagent", "arguments": {"task": "Explore MCP", "agent_type": "code_explorer"}}}
+            ),
+            "code_explorer:explore mcp:",
+        )
+
     def test_terminal_memory_tools_save_and_retrieve_local_facts(self):
         old_home = os.environ.get("JOYBOY_HOME")
         with tempfile.TemporaryDirectory() as tmp:

@@ -2142,15 +2142,33 @@ class TerminalBrain:
         kept: List[Any] = []
         delegate_count = 0
         dropped = 0
+        seen_delegate_keys: set[str] = set()
         for call in tool_calls or []:
             name = self._tool_call_name(call)
             if name == "delegate_subagent":
+                key = self._delegate_subagent_call_key(call)
+                if not key:
+                    dropped += 1
+                    continue
+                if key in seen_delegate_keys:
+                    dropped += 1
+                    continue
+                seen_delegate_keys.add(key)
                 delegate_count += 1
                 if delegate_count > MAX_DELEGATE_SUBAGENT_CALLS_PER_RESPONSE:
                     dropped += 1
                     continue
             kept.append(call)
         return kept, dropped
+
+    def _delegate_subagent_call_key(self, call: Any) -> str:
+        args = self._tool_call_args(call)
+        task = re.sub(r"\s+", " ", str(args.get("task", "") or "")).strip().lower()
+        if not task:
+            return ""
+        agent_type = str(args.get("agent_type", "code_explorer") or "code_explorer").strip().lower()
+        command = re.sub(r"\s+", " ", str(args.get("command", "") or "")).strip().lower()
+        return f"{agent_type}:{task}:{command}"
 
     @staticmethod
     def _tool_call_name(call: Any) -> str:
@@ -2170,6 +2188,15 @@ class TerminalBrain:
         if isinstance(call, dict):
             return str(call.get("id") or "")
         return ""
+
+    def _tool_call_args(self, call: Any) -> Dict:
+        raw_args: Any = {}
+        if hasattr(call, "function"):
+            raw_args = getattr(call.function, "arguments", {})
+        elif isinstance(call, dict):
+            function = call.get("function", {})
+            raw_args = function.get("arguments", {}) if isinstance(function, dict) else call.get("args", {})
+        return self._parse_tool_arguments(raw_args)
 
     @staticmethod
     def _parse_tool_arguments(raw_args: Any) -> Dict:
@@ -2232,13 +2259,7 @@ class TerminalBrain:
             name = self._tool_call_name(call)
             if not name:
                 continue
-            raw_args: Any = {}
-            if hasattr(call, "function"):
-                raw_args = getattr(call.function, "arguments", {})
-            elif isinstance(call, dict):
-                function = call.get("function", {})
-                raw_args = function.get("arguments", {}) if isinstance(function, dict) else call.get("args", {})
-            args = self._parse_tool_arguments(raw_args)
+            args = self._tool_call_args(call)
             signatures.append(tool_signature(name, args))
         if not signatures:
             return ""
