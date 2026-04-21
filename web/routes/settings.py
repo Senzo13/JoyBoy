@@ -193,9 +193,11 @@ def mcp_get_config():
 
     overview = get_local_config_overview()
     load_tools = str(request.args.get('load_tools', '')).lower() in {'1', 'true', 'yes'}
+    servers = get_mcp_servers()
     return jsonify({
         'success': True,
-        'mcp_servers': get_mcp_servers(),
+        'mcp_servers': servers,
+        'mcpServers': servers,
         'templates': get_mcp_server_templates(),
         'runtime': get_mcp_runtime_status(load_tools=load_tools),
         'config_path': overview['config_path'],
@@ -217,9 +219,11 @@ def mcp_update_config():
     set_mcp_servers(servers)
     reset_mcp_tool_cache()
     overview = get_local_config_overview()
+    saved_servers = get_mcp_servers()
     return jsonify({
         'success': True,
-        'mcp_servers': get_mcp_servers(),
+        'mcp_servers': saved_servers,
+        'mcpServers': saved_servers,
         'templates': get_mcp_server_templates(),
         'runtime': get_mcp_runtime_status(load_tools=False),
         'config_path': overview['config_path'],

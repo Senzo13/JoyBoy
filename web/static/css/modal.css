@@ -1872,6 +1872,72 @@ body.gallery-viewer-open {
     background: rgba(2, 6, 23, 0.28);
 }
 
+.mcp-settings-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.mcp-runtime-summary-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.mcp-card-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.mcp-server-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 10px;
+}
+
+.mcp-server-card,
+.mcp-template-card {
+    margin: 0;
+}
+
+.mcp-server-card .settings-card-body,
+.mcp-template-card .settings-card-body {
+    align-items: stretch;
+    gap: 12px;
+}
+
+.mcp-card-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+    width: 100%;
+}
+
+.mcp-chip-row {
+    gap: 6px;
+}
+
+.mcp-status-line {
+    color: #cbd5e1;
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+.mcp-status-line.ok {
+    color: #dcfce7;
+}
+
+.mcp-status-line.warning {
+    color: #fde68a;
+}
+
+.mcp-status-line.error {
+    color: #fecaca;
+}
+
 .llm-profile-pills {
     display: flex;
     flex-wrap: wrap;
@@ -5222,6 +5288,11 @@ img.compare-xray-overlay {
 
     .settings-version-badge {
         max-width: none;
+    }
+
+    .mcp-runtime-summary-head {
+        flex-direction: column;
+        align-items: stretch;
     }
 
     .addons-hero {

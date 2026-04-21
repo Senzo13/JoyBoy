@@ -36,6 +36,29 @@ async function apiPost(endpoint, data = {}, options = {}) {
 }
 
 /**
+ * Generic PUT request
+ * @param {string} endpoint - API endpoint
+ * @param {object} data - Request body data
+ * @param {object} options - Additional fetch options
+ * @returns {Promise<{data: any, ok: boolean, error?: string}>}
+ */
+async function apiPut(endpoint, data = {}, options = {}) {
+    try {
+        const response = await fetch(endpoint, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data),
+            ...options
+        });
+        const result = await response.json();
+        return { data: result, ok: response.ok, status: response.status };
+    } catch (error) {
+        console.error(`[API] PUT ${endpoint} failed:`, error);
+        return { data: null, ok: false, error: error.message };
+    }
+}
+
+/**
  * Generic GET request
  * @param {string} endpoint - API endpoint
  * @param {object} options - Additional fetch options
@@ -285,6 +308,15 @@ const apiSettings = {
 
     async saveProviderSecret(key, value) {
         return apiPost('/api/providers/secret', { key, value });
+    },
+
+    async getMcpConfig(options = {}) {
+        const query = options.loadTools ? '?load_tools=1' : '';
+        return apiGet(`/api/mcp/config${query}`);
+    },
+
+    async updateMcpConfig(config) {
+        return apiPut('/api/mcp/config', config);
     },
 
     async clearProviderSecret(key) {

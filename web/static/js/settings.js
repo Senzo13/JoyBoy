@@ -1072,14 +1072,18 @@ function saveSetting(settingName, value) {
     saveSettings();
 }
 
-async function loadProviderSettings() {
+async function loadProviderSettings(options = {}) {
     const container = document.getElementById('provider-settings-list');
     const note = document.getElementById('provider-settings-note');
     if (!container) return;
 
     container.innerHTML = `<div class="settings-info">${t('providers.loading', 'Chargement des providers...')}</div>`;
 
-    const result = await apiSettings.getProviderStatus();
+    const [result, mcpResult] = await Promise.all([
+        apiSettings.getProviderStatus(),
+        apiSettings.getMcpConfig({ loadTools: options.loadMcpTools === true }),
+    ]);
+
     if (!result.ok) {
         container.innerHTML = `<div class="settings-info">${t('providers.error', 'Erreur providers : {error}', { error: result.error || 'inconnue' })}</div>`;
         return;
@@ -1120,6 +1124,7 @@ async function loadProviderSettings() {
             llmProviders,
             renderTerminalModelProfilesSummary(data)
         ),
+        renderMcpSettingsGroup(mcpResult.ok ? (mcpResult.data || {}) : null, mcpResult.ok ? '' : (mcpResult.error || mcpResult.data?.error || 'inconnue')),
     ].filter(Boolean);
 
     container.innerHTML = groups.join('') || `<div class="settings-info">${t('providers.empty', 'Aucun provider configuré')}</div>`;
@@ -1441,6 +1446,337 @@ function renderTerminalModelProfilesSummary(data) {
             <div class="llm-profile-pills">${pills}</div>
         </div>
     `;
+}
+
+function renderMcpSettingsGroup(mcpData, loadError = '') {
+    const title = t('providers.mcpTitle', 'MCP et outils externes');
+    const description = t('providers.mcpDesc', 'Connecte des serveurs MCP locaux ou distants et expose leurs tools au terminal.');
+
+    if (!mcpData) {
+        return renderProviderSettingsGroup(
+            title,
+            description,
+            [],
+            `<div class="settings-info">${escapeHtml(t('providers.mcpLoadError', 'Impossible de charger la config MCP : {error}', { error: loadError || 'inconnue' }))}</div>`
+        );
+    }
+
+    const runtime = mcpData.runtime || {};
+    const servers = mcpData.mcp_servers || mcpData.mcpServers || {};
+    const templates = mcpData.templates || {};
+    const runtimeServers = runtime.servers || {};
+    const configuredNames = Object.keys(servers).sort((a, b) => a.localeCompare(b));
+    const templateNames = Object.keys(templates).sort((a, b) => a.localeCompare(b));
+
+    const configuredCards = configuredNames.length
+        ? configuredNames.map(name => renderMcpConfiguredServerCard(name, servers[name], runtimeServers[name] || null)).join('')
+        : `<div class="settings-info">${escapeHtml(t('providers.mcpNoServers', 'Aucun serveur MCP configuré pour l’instant.'))}</div>`;
+
+    const templateCards = templateNames.length
+        ? templateNames.map(name => renderMcpTemplateCard(name, templates[name], servers[name] || null)).join('')
+        : '';
+
+    const summary = renderMcpRuntimeSummary(mcpData);
+
+    return renderProviderSettingsGroup(
+        title,
+        description,
+        [],
+        `
+            <div class="mcp-settings-stack">
+                ${summary}
+                <div class="mcp-card-section">
+                    <div class="settings-label">${escapeHtml(t('providers.mcpConfiguredTitle', 'Serveurs configurés'))}</div>
+                    <div class="mcp-server-grid">${configuredCards}</div>
+                </div>
+                <div class="mcp-card-section">
+                    <div class="settings-label">${escapeHtml(t('providers.mcpTemplatesTitle', 'Templates rapides'))}</div>
+                    <div class="mcp-server-grid">${templateCards}</div>
+                </div>
+            </div>
+        `
+    );
+}
+
+function renderMcpRuntimeSummary(mcpData) {
+    const runtime = mcpData?.runtime || {};
+    const configuredCount = Number(runtime.configured_count || 0);
+    const enabledCount = Number(runtime.enabled_count || 0);
+    const cachedToolCount = Number(runtime.cached_tool_count || 0);
+    const packageAvailable = runtime.package_available !== false;
+    const packageState = runtime.package_state || {};
+    const missingPackages = Object.entries(packageState)
+        .filter(([, available]) => !available)
+        .map(([name]) => name);
+    const summaryText = packageAvailable
+        ? t('providers.mcpSummaryReady', '{configured} serveurs configurés • {enabled} activés • {cached} tools MCP en cache', {
+            configured: configuredCount,
+            enabled: enabledCount,
+            cached: cachedToolCount,
+        })
+        : t('providers.mcpSummaryMissingPackages', 'Runtime MCP incomplet : {packages}', {
+            packages: missingPackages.join(', ') || 'packages manquants',
+        });
+    const summaryTone = packageAvailable ? 'ok' : 'error';
+    const source = mcpData?.active_source || mcpData?.config_path || '~/.joyboy/config.json';
+    const loadedTools = Array.isArray(runtime.loaded_tools) ? runtime.loaded_tools : [];
+    const toolChips = loadedTools.slice(0, 10).map(tool => (
+        `<span class="settings-pack-chip">${escapeHtml(tool.name || '')}</span>`
+    )).join('');
+    const errorBlock = runtime.last_error
+        ? `<div class="mcp-status-line error">${escapeHtml(t('providers.mcpRuntimeError', 'Dernière erreur runtime : {error}', { error: runtime.last_error }))}</div>`
+        : '';
+
+    return `
+        <div class="llm-provider-summary mcp-runtime-summary">
+            <div class="mcp-runtime-summary-head">
+                <div class="mcp-status-line ${summaryTone}">${escapeHtml(summaryText)}</div>
+                <button class="settings-action-btn compact subtle" type="button" onclick="refreshMcpRuntime()">
+                    <i data-lucide="refresh-cw" aria-hidden="true"></i>
+                    <span>${escapeHtml(t('providers.mcpRefreshRuntime', 'Tester le runtime'))}</span>
+                </button>
+            </div>
+            <div class="settings-label-desc">${escapeHtml(t('providers.mcpConfigSource', 'Config locale : {source}', { source }))}</div>
+            ${errorBlock}
+            ${toolChips ? `<div class="settings-pack-chip-row mcp-chip-row">${toolChips}</div>` : ''}
+        </div>
+    `;
+}
+
+function summarizeMcpResolvedTarget(serverStatus = {}) {
+    const resolved = serverStatus?.resolved || {};
+    const transport = String(resolved.transport || serverStatus.transport || '').trim().toUpperCase();
+    const command = String(resolved.command || '').trim();
+    const url = String(resolved.url || '').trim();
+    const args = Array.isArray(resolved.args) ? resolved.args : [];
+    if (command) return `${transport} · ${command}${args.length ? ` ${args.join(' ')}` : ''}`.trim();
+    if (url) return `${transport} · ${url}`.trim();
+    return transport || '';
+}
+
+function renderMcpConfiguredServerCard(serverName, serverConfig = {}, serverStatus = null) {
+    const safeName = String(serverName || '').trim();
+    const nameArg = escapeHtml(JSON.stringify(safeName));
+    const enabled = serverConfig.enabled !== false;
+    const valid = serverStatus?.valid !== false;
+    const loadedToolCount = Number(serverStatus?.loaded_tool_count || 0);
+    const loadedTools = Array.isArray(serverStatus?.loaded_tools) ? serverStatus.loaded_tools : [];
+    const issues = Array.isArray(serverStatus?.issues) ? serverStatus.issues.filter(Boolean) : [];
+    const warnings = Array.isArray(serverStatus?.warnings) ? serverStatus.warnings.filter(Boolean) : [];
+    const missingEnv = Array.isArray(serverStatus?.missing_env) ? serverStatus.missing_env.filter(Boolean) : [];
+    const summaryTarget = summarizeMcpResolvedTarget(serverStatus || serverConfig);
+    const chips = [
+        `<span class="settings-pack-chip settings-pack-chip-state ${enabled ? '' : 'is-warning'}">${escapeHtml(enabled ? t('providers.mcpServerEnabled', 'Actif') : t('providers.mcpServerDisabled', 'Désactivé'))}</span>`,
+        `<span class="settings-pack-chip">${escapeHtml(String(serverConfig.type || serverStatus?.transport || 'stdio').toUpperCase())}</span>`,
+        `<span class="settings-pack-chip ${valid ? '' : 'settings-pack-chip-state is-warning'}">${escapeHtml(valid ? t('providers.mcpServerValid', 'Valide') : t('providers.mcpServerInvalid', 'À corriger'))}</span>`,
+        loadedToolCount
+            ? `<span class="settings-pack-chip">${escapeHtml(t('providers.mcpServerLoadedTools', '{count} tools chargés', { count: loadedToolCount }))}</span>`
+            : `<span class="settings-pack-chip">${escapeHtml(t('providers.mcpServerNoTools', 'Aucun tool chargé'))}</span>`,
+    ].filter(Boolean).join('');
+
+    const loadedToolChips = loadedTools.length
+        ? `<div class="settings-pack-chip-row mcp-chip-row">${loadedTools.slice(0, 8).map(name => `<span class="settings-pack-chip">${escapeHtml(name)}</span>`).join('')}</div>`
+        : '';
+
+    const notes = [
+        summaryTarget ? `<div class="mcp-status-line">${escapeHtml(t('providers.mcpResolvedVia', 'Connexion : {summary}', { summary: summaryTarget }))}</div>` : '',
+        missingEnv.length ? `<div class="mcp-status-line warning">${escapeHtml(t('providers.mcpServerMissingEnv', 'Variables manquantes : {items}', { items: missingEnv.join(', ') }))}</div>` : '',
+        warnings.length ? `<div class="mcp-status-line warning">${escapeHtml(t('providers.mcpServerWarnings', 'À surveiller : {items}', { items: warnings.join(' • ') }))}</div>` : '',
+        issues.length ? `<div class="mcp-status-line error">${escapeHtml(t('providers.mcpServerIssues', 'Points à corriger : {items}', { items: issues.join(' • ') }))}</div>` : '',
+    ].filter(Boolean).join('');
+
+    return `
+        <div class="settings-card mcp-server-card">
+            <div class="settings-card-body">
+                <div class="mcp-card-copy">
+                    <div class="settings-label">${escapeHtml(safeName)}</div>
+                    <div class="settings-label-desc">${escapeHtml(serverConfig.description || '')}</div>
+                    <div class="settings-pack-chip-row mcp-chip-row">${chips}</div>
+                    ${loadedToolChips}
+                    ${notes}
+                </div>
+                <div class="settings-inline-actions">
+                    ${renderSettingsIconAction({
+                        icon: enabled ? 'pause' : 'play',
+                        label: enabled ? t('providers.mcpDisableServer', 'Désactiver') : t('providers.mcpEnableServer', 'Activer'),
+                        tooltip: enabled ? t('providers.mcpDisableServer', 'Désactiver') : t('providers.mcpEnableServer', 'Activer'),
+                        onClick: `toggleMcpServer(${nameArg}, ${enabled ? 'false' : 'true'})`,
+                    })}
+                    ${renderSettingsIconAction({
+                        icon: 'copy',
+                        label: t('providers.mcpCopyConfig', 'Copier JSON'),
+                        tooltip: t('providers.mcpCopyConfig', 'Copier JSON'),
+                        onClick: `copyMcpServerJson(${nameArg})`,
+                        classes: 'subtle',
+                    })}
+                    ${renderSettingsIconAction({
+                        icon: 'trash-2',
+                        label: t('providers.mcpRemoveServer', 'Retirer'),
+                        tooltip: t('providers.mcpRemoveServer', 'Retirer'),
+                        onClick: `removeMcpServer(${nameArg})`,
+                        classes: 'subtle',
+                    })}
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function renderMcpTemplateCard(templateName, templateConfig = {}, existingConfig = null) {
+    const safeName = String(templateName || '').trim();
+    const nameArg = escapeHtml(JSON.stringify(safeName));
+    const existingEnabled = existingConfig && existingConfig.enabled !== false;
+    const primaryLabel = existingConfig
+        ? (existingEnabled ? t('providers.mcpTemplatesConfigured', 'Déjà configuré') : t('providers.mcpEnableServer', 'Activer'))
+        : t('providers.mcpInstallTemplate', 'Ajouter');
+    const primaryIcon = existingConfig ? (existingEnabled ? 'check' : 'play') : 'plus';
+    const primaryClick = existingConfig
+        ? (existingEnabled ? '' : `toggleMcpServer(${nameArg}, true)`)
+        : `installMcpTemplate(${nameArg})`;
+    const transport = String(templateConfig.type || 'stdio').toUpperCase();
+
+    return `
+        <div class="settings-card mcp-template-card">
+            <div class="settings-card-body">
+                <div class="mcp-card-copy">
+                    <div class="settings-label">${escapeHtml(safeName)}</div>
+                    <div class="settings-label-desc">${escapeHtml(templateConfig.description || t('providers.mcpTemplateReady', 'Template prêt à copier dans ta config locale.'))}</div>
+                    <div class="settings-pack-chip-row mcp-chip-row">
+                        <span class="settings-pack-chip">${escapeHtml(transport)}</span>
+                        ${existingConfig ? `<span class="settings-pack-chip settings-pack-chip-state">${escapeHtml(t('providers.mcpTemplatesConfigured', 'Déjà configuré'))}</span>` : ''}
+                    </div>
+                </div>
+                <div class="settings-inline-actions">
+                    ${renderSettingsIconAction({
+                        icon: primaryIcon,
+                        label: primaryLabel,
+                        tooltip: primaryLabel,
+                        onClick: primaryClick || 'void(0)',
+                        disabled: Boolean(existingConfig && existingEnabled),
+                    })}
+                    ${renderSettingsIconAction({
+                        icon: 'copy',
+                        label: t('providers.mcpCopyConfig', 'Copier JSON'),
+                        tooltip: t('providers.mcpCopyConfig', 'Copier JSON'),
+                        onClick: `copyMcpServerJson(${nameArg}, true)`,
+                        classes: 'subtle',
+                    })}
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+async function fetchMcpConfigSnapshot(options = {}) {
+    const result = await apiSettings.getMcpConfig(options);
+    if (!result.ok || !result.data?.success) {
+        throw new Error(result.data?.error || result.error || t('providers.mcpLoadError', 'Impossible de charger la config MCP : {error}', { error: 'inconnue' }));
+    }
+    return result.data;
+}
+
+async function saveMcpServersConfig(servers) {
+    const result = await apiSettings.updateMcpConfig({ mcp_servers: servers });
+    if (!result.ok || !result.data?.success) {
+        throw new Error(result.data?.error || result.error || t('providers.mcpSaveError', 'Impossible de sauvegarder la config MCP : {error}', { error: 'inconnue' }));
+    }
+    return result.data;
+}
+
+async function refreshMcpRuntime(loadTools = true) {
+    await loadProviderSettings({ loadMcpTools: loadTools === true });
+    Toast.info(t('providers.mcpSavedTitle', 'MCP mis à jour'), t('providers.mcpSavedBody', 'La configuration MCP locale a été rafraîchie.'), 2200);
+}
+
+async function installMcpTemplate(templateName) {
+    try {
+        const snapshot = await fetchMcpConfigSnapshot();
+        const servers = { ...(snapshot.mcp_servers || snapshot.mcpServers || {}) };
+        const templates = snapshot.templates || {};
+        const template = templates[templateName];
+        if (!template) {
+            throw new Error(t('providers.mcpLoadError', 'Impossible de charger la config MCP : {error}', { error: templateName }));
+        }
+        if (servers[templateName]) {
+            Toast.info(t('providers.mcpSavedTitle', 'MCP mis à jour'), t('providers.mcpTemplateAlreadyExists', '{name} existe déjà dans la config locale.', { name: templateName }), 2200);
+            return;
+        }
+
+        servers[templateName] = { ...template };
+        await saveMcpServersConfig(servers);
+        await loadProviderSettings();
+        Toast.success(t('providers.mcpAddedTitle', 'Serveur MCP ajouté'), t('providers.mcpAddedBody', '{name} est maintenant dans la config locale.', { name: templateName }), 2200);
+    } catch (error) {
+        Toast.error(t('common.error', 'Erreur'), error.message || String(error));
+    }
+}
+
+async function toggleMcpServer(serverName, enabled) {
+    try {
+        const snapshot = await fetchMcpConfigSnapshot();
+        const servers = { ...(snapshot.mcp_servers || snapshot.mcpServers || {}) };
+        if (!servers[serverName]) {
+            throw new Error(serverName);
+        }
+
+        servers[serverName] = {
+            ...servers[serverName],
+            enabled: enabled === true || enabled === 'true',
+        };
+        await saveMcpServersConfig(servers);
+        await loadProviderSettings();
+        Toast.success(t('providers.mcpSavedTitle', 'MCP mis à jour'), t('providers.mcpSavedBody', 'La configuration MCP locale a été rafraîchie.'), 2200);
+    } catch (error) {
+        Toast.error(t('common.error', 'Erreur'), error.message || String(error));
+    }
+}
+
+async function removeMcpServer(serverName) {
+    const confirmed = await JoyDialog.confirm(
+        t('providers.mcpConfirmRemove', 'Retirer le serveur MCP "{name}" de la config locale ?', { name: serverName }),
+        { variant: 'danger' }
+    );
+    if (!confirmed) return;
+
+    try {
+        const snapshot = await fetchMcpConfigSnapshot();
+        const servers = { ...(snapshot.mcp_servers || snapshot.mcpServers || {}) };
+        delete servers[serverName];
+        await saveMcpServersConfig(servers);
+        await loadProviderSettings();
+        Toast.info(t('providers.mcpRemovedTitle', 'Serveur MCP retiré'), t('providers.mcpRemovedBody', '{name} a été retiré de la config locale.', { name: serverName }), 2200);
+    } catch (error) {
+        Toast.error(t('common.error', 'Erreur'), error.message || String(error));
+    }
+}
+
+async function copyMcpServerJson(serverName, preferTemplate = false) {
+    try {
+        const snapshot = await fetchMcpConfigSnapshot();
+        const servers = snapshot.mcp_servers || snapshot.mcpServers || {};
+        const templates = snapshot.templates || {};
+        const source = preferTemplate ? (templates[serverName] || servers[serverName]) : (servers[serverName] || templates[serverName]);
+        if (!source) {
+            throw new Error(serverName);
+        }
+
+        const text = JSON.stringify({ [serverName]: source }, null, 2);
+        try {
+            await navigator.clipboard.writeText(text);
+        } catch {
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            textarea.style.position = 'fixed';
+            textarea.style.opacity = '0';
+            document.body.appendChild(textarea);
+            textarea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textarea);
+        }
+        Toast.success(t('providers.mcpCopiedTitle', 'JSON copié'), t('providers.mcpCopiedBody', 'Le JSON de {name} est prêt dans le presse-papiers.', { name: serverName }), 2200);
+    } catch (error) {
+        Toast.error(t('common.error', 'Erreur'), error.message || String(error));
+    }
 }
 
 function selectTerminalCloudModel(modelId) {

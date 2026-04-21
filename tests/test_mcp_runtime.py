@@ -223,9 +223,11 @@ class McpSettingsRouteTests(unittest.TestCase):
         self.assertEqual(put_response.status_code, 200)
         self.assertTrue(put_response.get_json()["success"])
         self.assertIn("github", put_response.get_json()["mcp_servers"])
+        self.assertIn("github", put_response.get_json()["mcpServers"])
         self.assertIn("templates", put_response.get_json())
         self.assertEqual(get_response.status_code, 200)
         self.assertIn("github", get_response.get_json()["mcp_servers"])
+        self.assertIn("github", get_response.get_json()["mcpServers"])
         self.assertIn("templates", get_response.get_json())
 
 
