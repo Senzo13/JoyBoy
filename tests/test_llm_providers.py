@@ -104,6 +104,17 @@ class LLMProviderCatalogTest(unittest.TestCase):
         self.assertIn("api-keys", by_key["OPENAI_API_KEY"]["key_url"])
         self.assertIn("models", by_key["OPENAI_API_KEY"]["models_url"])
 
+    def test_empty_local_config_falls_back_to_defaults_without_error(self) -> None:
+        config_path = self.local_config.LOCAL_CONFIG_PATH
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        config_path.write_text("", encoding="utf-8")
+
+        config = self.local_config.load_local_config()
+
+        self.assertIn("providers", config)
+        self.assertIn("OPENAI_API_KEY", config["providers"])
+        self.assertEqual(config["providers"]["OPENAI_API_KEY"], "")
+
     def test_provider_status_exposes_access_modes(self) -> None:
         providers = self.local_config.get_provider_status()
         by_key = {provider["key"]: provider for provider in providers}

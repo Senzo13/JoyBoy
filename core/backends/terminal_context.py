@@ -344,6 +344,37 @@ class TerminalContextMixin:
             })
         return normalised
 
+    def _format_tool_calls_for_provider(self, tool_calls: Any, provider: str) -> List[Dict[str, Any]]:
+        """Adapt canonical tool-call history to the target SDK's expected shape."""
+        calls = self._normalise_tool_calls_for_history(tool_calls)
+        if str(provider or "").lower() != "ollama":
+            return calls
+
+        ollama_calls: List[Dict[str, Any]] = []
+        for call in calls:
+            call_dict = dict(call)
+            function = dict(call_dict.get("function", {}))
+            function["arguments"] = self._parse_tool_arguments(function.get("arguments", {}))
+            call_dict["function"] = function
+            ollama_calls.append(call_dict)
+        return ollama_calls
+
+    def _format_messages_for_provider(self, messages: List[Dict], provider: str) -> List[Dict]:
+        """Return a provider-specific copy of messages without mutating loop state."""
+        formatted: List[Dict] = []
+        for message in messages:
+            if not isinstance(message, dict):
+                formatted.append(message)
+                continue
+            message_copy = dict(message)
+            if message_copy.get("role") == "assistant" and message_copy.get("tool_calls"):
+                message_copy["tool_calls"] = self._format_tool_calls_for_provider(
+                    message_copy.get("tool_calls"),
+                    provider,
+                )
+            formatted.append(message_copy)
+        return formatted
+
     def _patch_dangling_tool_messages(self, messages: List[Dict]) -> List[Dict]:
         """Normalize assistant/tool pairs before the next model call."""
         if not messages:

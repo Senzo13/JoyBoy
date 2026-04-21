@@ -694,6 +694,10 @@ class TerminalBrain(
                     force_final=force_final,
                     autonomous=autonomous,
                 )
+                provider_messages = self._format_messages_for_provider(
+                    messages,
+                    "cloud" if use_cloud_model else "ollama",
+                )
 
                 if not autonomous and not force_final and iteration > 1:
                     remaining_budget = turn_token_budget - total_token_stats['total']
@@ -721,7 +725,7 @@ class TerminalBrain(
                             print(f"[BRAIN] Calling cloud model={model}, tools={len(tools_for_model)} tools")
                             response = chat_with_cloud_model(
                                 model,
-                                messages=messages,
+                                messages=provider_messages,
                                 tools=tools_for_model,
                                 max_tokens=response_token_limit,
                                 temperature=0.2,
@@ -751,7 +755,7 @@ class TerminalBrain(
                     print(f"[BRAIN] Calling ollama.chat with model={model}, tools={len(tools_for_model)} tools")
                     chat_kwargs = {
                         "model": model,
-                        "messages": messages,
+                        "messages": provider_messages,
                         "stream": False,
                         # Qwen reasoning models can spend the whole budget in hidden
                         # thinking and return message.content=None. Terminal mode

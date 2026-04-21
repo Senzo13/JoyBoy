@@ -460,6 +460,55 @@ class TerminalBrainSmokeTests(unittest.TestCase):
         self.assertEqual(patched_tool_ids.count("call_stale"), 1)
         self.assertEqual(len(compacted_tool_results), 1)
 
+    def test_provider_message_format_keeps_cloud_tool_arguments_as_json(self):
+        brain = TerminalBrain()
+        messages = [
+            {"role": "system", "content": "system"},
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                    {
+                        "id": "call_list",
+                        "type": "function",
+                        "function": {"name": "list_files", "arguments": {"path": "."}},
+                    },
+                ],
+            },
+            {"role": "tool", "tool_call_id": "call_list", "tool_name": "list_files", "content": "ok"},
+        ]
+
+        formatted = brain._format_messages_for_provider(messages, "cloud")
+        args = formatted[1]["tool_calls"][0]["function"]["arguments"]
+
+        self.assertIsInstance(args, str)
+        self.assertEqual(brain._parse_tool_arguments(args), {"path": "."})
+
+    def test_provider_message_format_converts_ollama_tool_arguments_to_dict(self):
+        brain = TerminalBrain()
+        messages = [
+            {"role": "system", "content": "system"},
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                    {
+                        "id": "call_list",
+                        "type": "function",
+                        "function": {"name": "list_files", "arguments": '{"path":"."}'},
+                    },
+                ],
+            },
+            {"role": "tool", "tool_call_id": "call_list", "tool_name": "list_files", "content": "ok"},
+        ]
+
+        formatted = brain._format_messages_for_provider(messages, "ollama")
+        args = formatted[1]["tool_calls"][0]["function"]["arguments"]
+
+        self.assertIsInstance(args, dict)
+        self.assertEqual(args, {"path": "."})
+        self.assertIsInstance(messages[1]["tool_calls"][0]["function"]["arguments"], str)
+
     def test_terminal_brain_full_access_allows_delete_file_tool(self):
         brain = TerminalBrain()
 

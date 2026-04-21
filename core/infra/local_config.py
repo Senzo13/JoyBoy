@@ -614,9 +614,14 @@ def load_local_config() -> dict:
         return deepcopy(DEFAULT_LOCAL_CONFIG)
 
     try:
-        with source_path.open("r", encoding="utf-8") as fh:
-            raw = json.load(fh)
-    except Exception as exc:
+        raw_text = source_path.read_text(encoding="utf-8")
+        if not raw_text.strip():
+            return deepcopy(DEFAULT_LOCAL_CONFIG)
+        raw = json.loads(raw_text)
+    except json.JSONDecodeError as exc:
+        print(f"[LOCAL_CONFIG] Config JSON invalide ignorée {source_path}: {exc}")
+        return deepcopy(DEFAULT_LOCAL_CONFIG)
+    except OSError as exc:
         print(f"[LOCAL_CONFIG] Erreur lecture {source_path}: {exc}")
         return deepcopy(DEFAULT_LOCAL_CONFIG)
 
