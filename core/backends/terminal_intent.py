@@ -202,6 +202,8 @@ class TerminalIntentMixin:
     def _should_clarify_request(self, message: str, history: Optional[List[Dict]] = None) -> bool:
         if self._is_repo_overview_request(message) or self._is_open_workspace_request(message):
             return False
+        if self._is_clear_workspace_request(message):
+            return False
         if self._is_casual_greeting_request(message):
             return False
         if self.current_plan and self._has_incomplete_todos():
@@ -403,8 +405,24 @@ class TerminalIntentMixin:
             "remove all", "clear workspace", "vide le dossier", "vide tout",
             "repart de zero", "repart de zéro", "from scratch", "remplace tout",
             "remplacer tout", "supprime le projet", "reset le projet",
+            "supprime ce qu'il y a dans le dossier", "supprime ce qu il y a dans le dossier",
+            "supprime le contenu du dossier", "efface le contenu du dossier",
+            "delete folder contents", "delete workspace contents",
         )
-        return any(marker in msg for marker in clear_markers)
+        if any(marker in msg for marker in clear_markers):
+            return True
+
+        destructive = ("supprime", "efface", "delete", "remove", "clear", "vide")
+        contents = (
+            "contenu", "ce qu'il y a", "ce qu il y a", "ce qui est dedans",
+            "everything inside", "contents",
+        )
+        containers = ("dossier", "folder", "workspace", "repertoire", "répertoire")
+        return (
+            any(word in msg for word in destructive)
+            and any(word in msg for word in contents)
+            and any(word in msg for word in containers)
+        )
 
     @staticmethod
     def _is_scaffold_write_request(message: str) -> bool:

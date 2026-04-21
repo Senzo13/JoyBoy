@@ -529,6 +529,69 @@ class TerminalBrain(
             permission_mode=self.permission_mode,
         )
 
+        if (
+            self._is_clear_workspace_request(initial_message)
+            and not self._is_scaffold_write_request(initial_message)
+        ):
+            args = {"keep": []}
+            yield runtime_event('tool_call', name='clear_workspace', args=args)
+            result = self.execute_tool('clear_workspace', args, workspace_path)
+            yield runtime_event('tool_result', result={
+                'success': result.success,
+                'tool_name': result.tool_name,
+                'data': result.data,
+                'error': result.error,
+                'write_blocked': False,
+            })
+
+            permission = result.data.get("permission") if isinstance(result.data, dict) else None
+            if (
+                not result.success
+                and permission
+                and permission.get("requires_confirmation")
+                and permission.get("mode") == DEFAULT_PERMISSION_MODE
+            ):
+                yield runtime_event(
+                    "approval_required",
+                    tool_name="clear_workspace",
+                    args=args,
+                    permission=permission,
+                    reason=result.error or permission.get("reason", ""),
+                )
+                _end_resource_lease()
+                yield runtime_event(
+                    "done",
+                    full_response="",
+                    token_stats={'prompt_tokens': 0, 'completion_tokens': 0, 'total': 0},
+                    approval_required=True,
+                )
+                return
+
+            if result.success:
+                data = result.data if isinstance(result.data, dict) else {}
+                count = data.get("count", 0)
+                kept = data.get("kept", [])
+                kept_text = f" Conservé : {', '.join(kept)}." if kept else ""
+                text = f"C'est fait, j'ai vidé le dossier. {count} élément(s) supprimé(s).{kept_text}"
+                yield runtime_event('content', text=text, token_stats={})
+                _end_resource_lease()
+                yield runtime_event(
+                    'done',
+                    full_response=text,
+                    token_stats={'prompt_tokens': 0, 'completion_tokens': 0, 'total': 0},
+                )
+                return
+
+            text = f"Je n'ai pas réussi à vider le dossier: {result.error or 'erreur inconnue'}"
+            yield runtime_event('content', text=text, token_stats={})
+            _end_resource_lease()
+            yield runtime_event(
+                'done',
+                full_response=text,
+                token_stats={'prompt_tokens': 0, 'completion_tokens': 0, 'total': 0},
+            )
+            return
+
         if self._is_open_workspace_request(initial_message):
             args = {}
             yield runtime_event('tool_call', name='open_workspace', args=args)

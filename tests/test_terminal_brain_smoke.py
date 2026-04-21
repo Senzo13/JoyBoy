@@ -262,7 +262,7 @@ class TerminalBrainSmokeTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             Path(tmp, "README.md").write_text("original\n", encoding="utf-8")
-            events = list(brain.run_agentic_loop("supprime tout", tmp, model="openai:gpt-5.4"))
+            events = list(brain.run_agentic_loop("explique le README", tmp, model="openai:gpt-5.4"))
 
         loop_warnings = [event for event in events if event.get("type") == "loop_warning"]
         done = [event for event in events if event.get("type") == "done"][-1]
@@ -501,6 +501,45 @@ class TerminalBrainSmokeTests(unittest.TestCase):
             self.assertFalse(Path(tmp, "README.md").exists())
             self.assertIn(".git", result.data.get("kept", []))
 
+    @patch("core.backends.terminal_brain.chat_with_cloud_model")
+    def test_clear_workspace_request_runs_directly_in_full_access(self, mock_chat):
+        brain = TerminalBrain()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            Path(tmp, ".git").mkdir()
+            Path(tmp, "public").mkdir()
+            Path(tmp, "src").mkdir()
+            Path(tmp, "public", "index.html").write_text("old", encoding="utf-8")
+            Path(tmp, "README.md").write_text("old", encoding="utf-8")
+
+            events = list(
+                brain.run_agentic_loop(
+                    "supprime ce qu'il y a dans le dossier",
+                    tmp,
+                    model="openai:gpt-5.4",
+                    permission_mode="full_access",
+                )
+            )
+
+            self.assertFalse(mock_chat.called)
+            self.assertTrue(Path(tmp, ".git").exists())
+            self.assertFalse(Path(tmp, "public").exists())
+            self.assertFalse(Path(tmp, "src").exists())
+            self.assertFalse(Path(tmp, "README.md").exists())
+            tool_calls = [event for event in events if event.get("type") == "tool_call"]
+            self.assertEqual([event.get("name") for event in tool_calls], ["clear_workspace"])
+            done = [event for event in events if event.get("type") == "done"][-1]
+            self.assertEqual(done.get("token_stats", {}).get("total"), 0)
+
+    def test_clear_workspace_request_detects_folder_content_phrasing(self):
+        self.assertTrue(
+            TerminalBrain._is_clear_workspace_request("supprime ce qu'il y a dans le dossier")
+        )
+        self.assertTrue(
+            TerminalBrain._is_clear_workspace_request("supprime le contenu du dossier")
+        )
+        self.assertFalse(TerminalBrain._is_clear_workspace_request("supprime README.md"))
+
     def test_full_access_workspace_clear_shell_command_uses_internal_tool(self):
         brain = TerminalBrain()
 
@@ -564,7 +603,7 @@ class TerminalBrainSmokeTests(unittest.TestCase):
         self.assertEqual(approvals[0].get("tool_name"), "clear_workspace")
         self.assertTrue(approvals[0].get("permission", {}).get("requires_confirmation"))
         self.assertTrue(done.get("approval_required"))
-        self.assertEqual(mock_chat.call_count, 1)
+        self.assertEqual(mock_chat.call_count, 0)
 
     def test_casual_greeting_fast_path_avoids_agentic_tool_loop(self):
         brain = TerminalBrain()
