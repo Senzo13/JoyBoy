@@ -442,6 +442,12 @@ let terminalProgressStartedAt = 0;
 let terminalProgressTimer = null;
 let terminalProgressLogCount = 0;
 let terminalProgressAutoHideTimer = null;
+let terminalProgressRevealTimer = null;
+let terminalProgressBufferedLogs = [];
+let terminalProgressSessionActive = false;
+let terminalProgressContentStarted = false;
+let terminalProgressIntent = '';
+const TERMINAL_PROGRESS_AUTO_REVEAL_MS = 3500;
 
 function formatTerminalElapsed(seconds) {
     const safeSeconds = Math.max(0, Number(seconds) || 0);
@@ -508,8 +514,9 @@ function showTerminalProgressPanel() {
     clearTimeout(terminalProgressAutoHideTimer);
     terminalProgressAutoHideTimer = null;
 
-    terminalProgressStartedAt = Date.now();
-    terminalProgressLogCount = 0;
+    if (!terminalProgressStartedAt) {
+        terminalProgressStartedAt = Date.now();
+    }
     composer.classList.add('terminal-progress-active');
 
     terminalProgressElement = document.createElement('div');
@@ -540,8 +547,38 @@ function showTerminalProgressPanel() {
     return terminalProgressElement;
 }
 
-function addTerminalProgressLog(label, detail = '', type = 'info') {
-    showTerminalProgressPanel();
+function beginTerminalProgressSession() {
+    clearTimeout(terminalProgressRevealTimer);
+    terminalProgressRevealTimer = null;
+    terminalProgressSessionActive = true;
+    terminalProgressContentStarted = false;
+    terminalProgressIntent = '';
+    terminalProgressStartedAt = Date.now();
+    terminalProgressLogCount = 0;
+    terminalProgressBufferedLogs = [];
+}
+
+function scheduleTerminalProgressAutoReveal(delay = TERMINAL_PROGRESS_AUTO_REVEAL_MS) {
+    clearTimeout(terminalProgressRevealTimer);
+    terminalProgressRevealTimer = setTimeout(() => {
+        if (!terminalProgressSessionActive || terminalProgressContentStarted || terminalProgressElement) return;
+        revealTerminalProgressPanel();
+    }, delay);
+}
+
+function revealTerminalProgressPanel() {
+    clearTimeout(terminalProgressRevealTimer);
+    terminalProgressRevealTimer = null;
+    const panel = showTerminalProgressPanel();
+    if (!panel) return null;
+
+    const bufferedLogs = terminalProgressBufferedLogs.splice(0);
+    bufferedLogs.forEach(entry => appendTerminalProgressLog(entry.label, entry.detail, entry.type));
+    refreshTerminalProgressLayout();
+    return panel;
+}
+
+function appendTerminalProgressLog(label, detail = '', type = 'info') {
     if (!terminalProgressLogElement) return;
 
     terminalProgressLogCount += 1;
@@ -563,7 +600,30 @@ function addTerminalProgressLog(label, detail = '', type = 'info') {
     refreshTerminalProgressLayout();
 }
 
+function addTerminalProgressLog(label, detail = '', type = 'info', options = {}) {
+    const shouldReveal = Boolean(options.reveal);
+    if (shouldReveal) {
+        revealTerminalProgressPanel();
+    }
+
+    if (!terminalProgressElement) {
+        terminalProgressBufferedLogs.push({ label, detail, type });
+        if (terminalProgressBufferedLogs.length > 10) {
+            terminalProgressBufferedLogs.shift();
+        }
+        return;
+    }
+
+    appendTerminalProgressLog(label, detail, type);
+}
+
 function completeTerminalProgressPanel(success = true) {
+    clearTimeout(terminalProgressRevealTimer);
+    terminalProgressRevealTimer = null;
+    terminalProgressSessionActive = false;
+    terminalProgressContentStarted = false;
+    terminalProgressIntent = '';
+    terminalProgressBufferedLogs = [];
     if (!terminalProgressElement) return;
     clearInterval(terminalProgressTimer);
     terminalProgressTimer = null;
@@ -576,8 +636,10 @@ function completeTerminalProgressPanel(success = true) {
 function hideTerminalProgressPanel() {
     clearInterval(terminalProgressTimer);
     clearTimeout(terminalProgressAutoHideTimer);
+    clearTimeout(terminalProgressRevealTimer);
     terminalProgressTimer = null;
     terminalProgressAutoHideTimer = null;
+    terminalProgressRevealTimer = null;
     if (terminalProgressElement) {
         terminalProgressElement.remove();
     }
@@ -589,6 +651,10 @@ function hideTerminalProgressPanel() {
     terminalProgressTimerElement = null;
     terminalProgressStartedAt = 0;
     terminalProgressLogCount = 0;
+    terminalProgressBufferedLogs = [];
+    terminalProgressSessionActive = false;
+    terminalProgressContentStarted = false;
+    terminalProgressIntent = '';
     terminalTasksElement = null;
     terminalTasks = [];
     refreshTerminalProgressLayout();
@@ -606,7 +672,7 @@ function toggleTerminalProgressPanel() {
 function showTerminalTasks() {
     if (terminalTasksElement) return terminalTasksElement;
 
-    const progressPanel = showTerminalProgressPanel();
+    const progressPanel = revealTerminalProgressPanel();
     const taskSlot = progressPanel?.querySelector('.terminal-progress-task-slot');
     if (!taskSlot) return null;
 
@@ -2205,7 +2271,7 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
         // Réinitialiser les tâches pour cette requête
         hideTerminalProgressPanel();
         hideTerminalTasks();
-        showTerminalProgressPanel();
+        beginTerminalProgressSession();
         addTerminalProgressLog(terminalT('terminal.progressThinking', 'En réflexion'), message, 'thinking');
         let taskCounter = 0;
 
@@ -2299,10 +2365,14 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                     // Intent détecté - afficher mode autonome si actif
                     if (data.intent) {
                         console.log(`[TERMINAL] Intent: ${data.intent} (read_only: ${data.read_only}, autonomous: ${data.autonomous})`);
+                        terminalProgressIntent = String(data.intent || '').toLowerCase();
                         const intentLabel = data.autonomous
                             ? terminalT('terminal.progressAutonomous', 'Mode autonome')
                             : terminalT('terminal.progressIntent', 'Intention détectée');
                         addTerminalProgressLog(intentLabel, data.intent, 'info');
+                        if (data.autonomous || ['write', 'execute'].includes(terminalProgressIntent)) {
+                            scheduleTerminalProgressAutoReveal();
+                        }
                         const autoIndicator = document.getElementById('autonomous-indicator');
                         if (autoIndicator) {
                             if (data.autonomous) {
@@ -2325,7 +2395,8 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                         addTerminalProgressLog(
                             terminalT('terminal.progressThinkingIteration', 'Réflexion {iteration}', { iteration: data.iteration }),
                             '',
-                            'thinking'
+                            'thinking',
+                            { reveal: Number(data.iteration) > 1 }
                         );
 
                         // Update autonomous progress
@@ -2357,7 +2428,8 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                         addTerminalProgressLog(
                             terminalT('terminal.progressLoopAvoided', 'Boucle évitée'),
                             `${data.action || ''}${reason}`,
-                            'warning'
+                            'warning',
+                            { reveal: true }
                         );
                         showThinkingAnimation('Rethinking');
                         continue;
@@ -2388,7 +2460,8 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                         addTerminalProgressLog(
                             terminalT('terminal.progressToolRunning', 'Exécute {tool}', { tool: action }),
                             path,
-                            'running'
+                            'running',
+                            { reveal: true }
                         );
                         if (shouldShowTerminalToolAsTask(action)) {
                             addTerminalTask(toolTaskId, taskLabel, 'running');
@@ -2413,7 +2486,8 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                             addTerminalProgressLog(
                                 terminalT('terminal.progressToolFailed', 'Échec {tool}', { tool: result.action || '' }),
                                 terminalT('terminal.writeBlockedShort', 'Écriture bloquée'),
-                                'error'
+                                'error',
+                                { reveal: true }
                             );
                             if (window.lastToolCall?.taskId) {
                                 updateTerminalTask(window.lastToolCall.taskId, 'error', terminalT('terminal.writeBlockedShort', 'Écriture bloquée'));
@@ -2429,7 +2503,8 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                                 addTerminalProgressLog(
                                     terminalT('terminal.progressApprovalRequired', 'Autorisation requise'),
                                     result.action || '',
-                                    'warning'
+                                    'warning',
+                                    { reveal: true }
                                 );
                                 if (window.lastToolCall?.taskId) {
                                     updateTerminalTask(window.lastToolCall.taskId, 'error', terminalT('terminal.approvalRequiredLine', 'Autorisation requise'));
@@ -2442,7 +2517,8 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                             addTerminalProgressLog(
                                 terminalT('terminal.progressToolFailed', 'Échec {tool}', { tool: result.action || '' }),
                                 errorText,
-                                'error'
+                                'error',
+                                { reveal: true }
                             );
                             if (window.lastToolCall?.taskId) {
                                 updateTerminalTask(window.lastToolCall.taskId, 'error', errorText);
@@ -2482,7 +2558,8 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                         addTerminalProgressLog(
                             terminalT('terminal.progressToolDone', 'Terminé {tool}', { tool: result.action || '' }),
                             resultSummary,
-                            'success'
+                            'success',
+                            { reveal: true }
                         );
                         // Sinon pas d'affichage (l'IA donnera la réponse à la fin)
 
@@ -2508,7 +2585,8 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                         addTerminalProgressLog(
                             terminalT('terminal.progressCorrection', 'Correction'),
                             data.error || '',
-                            'warning'
+                            'warning',
+                            { reveal: true }
                         );
                         updateThinkingText('Correcting...');
                         continue;
@@ -2519,6 +2597,12 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                         // Créer l'output terminal au premier contenu reçu
                         if (!firstContentReceived) {
                             firstContentReceived = true;
+                            terminalProgressContentStarted = true;
+                            if (!terminalProgressElement) {
+                                clearTimeout(terminalProgressRevealTimer);
+                                terminalProgressRevealTimer = null;
+                                terminalProgressBufferedLogs = [];
+                            }
                             hideThinkingAnimation();
                             createTerminalOutput();
                         }
