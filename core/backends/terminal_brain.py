@@ -1147,7 +1147,7 @@ class TerminalBrain:
                 )
                 tools_for_model = [] if force_final else self.tool_registry.ollama_tools(tool_names_for_turn)
                 messages = self._compact_loop_messages(messages, context_size=self._active_context_size)
-                messages = self._inject_todo_reminder(messages)
+                messages = self._inject_todo_reminder(messages, executed_tools=executed_tools)
                 messages = self._patch_dangling_tool_messages(messages)
 
                 if not autonomous and not force_final and iteration > 1:
@@ -2346,30 +2346,20 @@ class TerminalBrain:
             self.current_plan = None
             return {"success": True, "todos": [], "summary": "Todo list cleared"}
 
-        normalized: List[PlanTask] = []
-        valid_statuses = {item.value for item in PlanStatus}
-        for index, item in enumerate(todos[:8], start=1):
-            if not isinstance(item, dict):
-                continue
-            content = str(item.get("content") or item.get("title") or "").strip()
-            if not content:
-                continue
-            raw_status = str(item.get("status") or "pending").strip().lower()
-            if raw_status not in valid_statuses:
-                raw_status = "pending"
-            task_id = str(item.get("id") or index).strip() or str(index)
-            note = str(item.get("note") or item.get("result") or "").strip()
-            normalized.append(
-                PlanTask(
-                    id=task_id[:48],
-                    title=content[:240],
-                    status=PlanStatus(raw_status),
-                    result=note[:280] if note else None,
-                )
-            )
+        normalized, error = self._normalize_todos_payload(todos)
+        if error:
+            return {"success": False, "error": error}
 
-        if not normalized:
-            return {"success": False, "error": "todos must include at least one item with content"}
+        if self.current_plan and self._plan_signature(normalized) == self._plan_signature(self.current_plan.tasks):
+            return {
+                "success": False,
+                "error": (
+                    "todo list unchanged. Continue the active step and call write_todos again "
+                    "only when statuses or notes actually change."
+                ),
+                "todos": [self._task_to_dict(task) for task in self.current_plan.tasks],
+                "incomplete": self._has_incomplete_todos(),
+            }
 
         current_index = 0
         for index, task in enumerate(normalized):
@@ -2395,6 +2385,48 @@ class TerminalBrain:
             "incomplete": self._has_incomplete_todos(),
         }
 
+    def _normalize_todos_payload(self, todos: Any) -> tuple[List[PlanTask], Optional[str]]:
+        if not isinstance(todos, list):
+            return [], "todos must be a list"
+
+        normalized: List[PlanTask] = []
+        valid_statuses = {item.value for item in PlanStatus}
+        for index, item in enumerate(todos[:8], start=1):
+            if not isinstance(item, dict):
+                continue
+            content = str(item.get("content") or item.get("title") or "").strip()
+            if not content:
+                continue
+            raw_status = str(item.get("status") or "pending").strip().lower()
+            if raw_status not in valid_statuses:
+                raw_status = "pending"
+            task_id = str(item.get("id") or index).strip() or str(index)
+            note = str(item.get("note") or item.get("result") or "").strip()
+            normalized.append(
+                PlanTask(
+                    id=task_id[:48],
+                    title=content[:240],
+                    status=PlanStatus(raw_status),
+                    result=note[:280] if note else None,
+                )
+            )
+
+        if not normalized:
+            return [], "todos must include at least one item with content"
+        return normalized, None
+
+    @staticmethod
+    def _plan_signature(tasks: List[PlanTask]) -> List[tuple[str, str, str, str]]:
+        return [
+            (
+                str(task.id or ""),
+                str(task.title or ""),
+                str(task.status.value if isinstance(task.status, PlanStatus) else task.status or ""),
+                str(task.result or ""),
+            )
+            for task in tasks or []
+        ]
+
     @staticmethod
     def _task_to_dict(task: PlanTask) -> Dict[str, Any]:
         return {
@@ -2418,6 +2450,41 @@ class TerminalBrain:
             lines.append(f"- [{task.status.value}] {task.title}{suffix}")
         return "\n".join(lines)
 
+    def _format_current_task_focus(self) -> str:
+        if not self.current_plan:
+            return ""
+        task = self.current_plan.get_current_task()
+        if not task:
+            return ""
+        suffix = f" - {task.result}" if task.result else ""
+        return f"- [{task.status.value}] {task.title}{suffix}"
+
+    def _format_recent_execution_progress(self, executed_tools: Optional[List[Dict[str, Any]]], limit: int = 4) -> str:
+        if not executed_tools:
+            return ""
+
+        ignored = {"write_todos", "think", "tool_search"}
+        lines: List[str] = []
+        seen: set[str] = set()
+        for item in reversed(executed_tools):
+            tool_name = str(item.get("tool") or "").strip()
+            if not tool_name or tool_name in ignored:
+                continue
+            summary = self._compact_summary_snippet(item.get("summary", ""), limit=140)
+            if not summary:
+                continue
+            success = item.get("success", True)
+            line = f"- {tool_name}: {summary}" if success else f"- {tool_name} failed: {summary}"
+            normalized = unicodedata.normalize("NFKD", line).encode("ascii", "ignore").decode("ascii").lower()
+            normalized = re.sub(r"\s+", " ", normalized).strip()
+            if normalized in seen:
+                continue
+            seen.add(normalized)
+            lines.append(line)
+            if len(lines) >= limit:
+                break
+        return "\n".join(lines)
+
     def _message_has_visible_todos(self, messages: List[Dict]) -> bool:
         for msg in messages:
             if msg.get("tool_name") == "write_todos":
@@ -2431,11 +2498,23 @@ class TerminalBrain:
                     return True
         return False
 
-    def _inject_todo_reminder(self, messages: List[Dict]) -> List[Dict]:
+    def _inject_todo_reminder(self, messages: List[Dict], executed_tools: Optional[List[Dict[str, Any]]] = None) -> List[Dict]:
         if not self._has_incomplete_todos() or self._message_has_visible_todos(messages):
             return messages
         if not messages:
             return messages
+        current_focus = self._format_current_task_focus()
+        recent_progress = self._format_recent_execution_progress(executed_tools)
+        focus_block = (
+            f"\nCurrent execution step:\n{current_focus}\n"
+            if current_focus
+            else ""
+        )
+        progress_block = (
+            f"\nRecent observed progress:\n{recent_progress}\n"
+            if recent_progress
+            else ""
+        )
         reminder = {
             "role": "user",
             "content": (
@@ -2443,6 +2522,8 @@ class TerminalBrain:
                 "Your earlier write_todos call is no longer visible after context compaction, "
                 "but the task list is still active:\n"
                 f"{self._format_active_todos()}\n\n"
+                f"{focus_block}"
+                f"{progress_block}"
                 "Continue from this list and call write_todos when statuses change."
             ),
         }

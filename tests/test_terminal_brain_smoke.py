@@ -480,6 +480,22 @@ class TerminalBrainSmokeTests(unittest.TestCase):
         self.assertIn("[completed] Audit DeerFlow", formatted)
         self.assertIn("[in_progress] Port useful behavior", formatted)
 
+    def test_write_todos_rejects_unchanged_plan(self):
+        brain = TerminalBrain()
+        payload = {
+            "todos": [
+                {"id": "1", "content": "Audit DeerFlow", "status": "completed", "note": "done"},
+                {"id": "2", "content": "Port useful behavior", "status": "in_progress", "note": "ongoing"},
+            ]
+        }
+
+        first = brain.execute_tool("write_todos", payload, os.getcwd())
+        second = brain.execute_tool("write_todos", payload, os.getcwd())
+
+        self.assertTrue(first.success)
+        self.assertFalse(second.success)
+        self.assertIn("todo list unchanged", second.error)
+
     def test_todo_reminder_is_injected_after_context_compaction(self):
         brain = TerminalBrain()
         brain.execute_tool(
@@ -497,6 +513,39 @@ class TerminalBrainSmokeTests(unittest.TestCase):
         self.assertEqual(injected[1]["role"], "user")
         self.assertIn("[ACTIVE TODO LIST]", injected[1]["content"])
         self.assertIn("Finish runtime work", injected[1]["content"])
+
+    def test_todo_reminder_includes_current_focus_and_recent_progress(self):
+        brain = TerminalBrain()
+        brain.execute_tool(
+            "write_todos",
+            {
+                "todos": [
+                    {"content": "Review DeerFlow middleware", "status": "completed", "note": "read"},
+                    {"content": "Port active execution reminders", "status": "in_progress", "note": "editing terminal_brain"},
+                ]
+            },
+            os.getcwd(),
+        )
+        messages = [
+            {"role": "system", "content": "system"},
+            {"role": "user", "content": "continue"},
+        ]
+
+        injected = brain._inject_todo_reminder(
+            messages,
+            executed_tools=[
+                {"tool": "read_file", "success": True, "summary": "terminal_brain.py (220 lines)"},
+                {"tool": "edit_file", "success": True, "summary": "updated active reminder block"},
+                {"tool": "write_todos", "success": True, "summary": "in_progress=1"},
+            ],
+        )
+
+        reminder = injected[1]["content"]
+        self.assertIn("Current execution step:", reminder)
+        self.assertIn("Port active execution reminders", reminder)
+        self.assertIn("Recent observed progress:", reminder)
+        self.assertIn("read_file: terminal_brain.py (220 lines)", reminder)
+        self.assertIn("edit_file: updated active reminder block", reminder)
 
     def test_delegate_subagent_calls_are_capped_per_response(self):
         brain = TerminalBrain()
