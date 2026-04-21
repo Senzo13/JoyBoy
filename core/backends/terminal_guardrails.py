@@ -1,0 +1,412 @@
+"""Guardrails, progress detection, and fallback answers for terminal agent."""
+
+from __future__ import annotations
+
+import os
+from typing import Any, Dict, List, Optional
+
+from core.agent_runtime import tool_guard_reason, tool_signature
+from core.backends.terminal_tool_schemas import WRITE_CORE_TOOL_NAMES
+
+
+class TerminalGuardrailsMixin:
+    """Loop/error guardrails and user-visible fallback messages."""
+
+    def _empty_model_fallback_answer(
+        self,
+        initial_message: str,
+        repo_brief: Optional[str],
+        executed_tools: List[Dict],
+    ) -> str:
+        """Visible fallback when a local model returns no assistant content.
+
+        This happens especially with small reasoning models when ``think`` is
+        ignored or when the model burns the budget without emitting final text.
+        The UI should never be left with only ``List(.)`` and no answer.
+        """
+        if repo_brief:
+            useful_lines = [
+                line.strip()
+                for line in repo_brief.splitlines()
+                if line.strip() and not line.startswith("---")
+            ][:18]
+            summary = "\n".join(f"- {line}" for line in useful_lines[:10])
+            next_files = [
+                line.replace("---", "").strip()
+                for line in repo_brief.splitlines()
+                if line.startswith("---")
+            ][:5]
+            next_text = "\n".join(f"- {path}" for path in next_files) if next_files else "- README / fichiers de config"
+            return (
+                "J'ai bien lancé l'analyse du workspace, mais le modèle local n'a pas renvoyé "
+                "de texte exploitable à la fin. Je te laisse quand même le résumé déterministe "
+                "de ce que JoyBoy a déjà scanné:\n\n"
+                f"{summary or '- Workspace lisible, mais résumé vide.'}\n\n"
+                "Prochaine étape utile:\n"
+                f"{next_text}\n\n"
+                "Si tu me redemandes une analyse ciblée, je partirai directement de ces fichiers "
+                "au lieu de boucler sur la racine."
+            )
+
+        if executed_tools:
+            tool_lines = []
+            for tool in executed_tools[-6:]:
+                name = tool.get("tool", tool.get("name", "outil"))
+                target = tool.get("target") or tool.get("path") or tool.get("command") or ""
+                ok = "OK" if tool.get("success", False) else "erreur"
+                tool_lines.append(f"- {name} {target} ({ok})".strip())
+            return (
+                "Le modèle local n'a pas produit de réponse finale, mais voici les actions déjà faites:\n\n"
+                + "\n".join(tool_lines)
+                + "\n\nJe peux continuer avec une demande plus précise ou relancer une synthèse."
+            )
+
+        return (
+            "Le modèle local n'a pas renvoyé de réponse exploitable. "
+            "Je n'ai donc rien à afficher de fiable pour cette demande. "
+            "Relance avec une demande plus ciblée ou choisis un modèle terminal plus costaud."
+        )
+
+    def _tool_signature(self, tool_name: str, args: Dict) -> str:
+        return tool_signature(tool_name, args)
+
+    def _tool_guard_reason(
+        self,
+        tool_name: str,
+        args: Dict,
+        seen_count: int,
+        executed_tools: List[Dict],
+    ) -> Optional[str]:
+        """Return a reason when a tool call is clearly no-progress noise."""
+        return tool_guard_reason(tool_name, args, seen_count, executed_tools)
+
+    def _summarize_executed_tool(self, tool_name: str, args: Dict, result: ToolResult) -> Dict:
+        summary = {"tool": tool_name, "args": args or {}, "success": result.success}
+        if result.error:
+            summary["summary"] = result.error[:220]
+            return summary
+
+        data = result.data or {}
+        if tool_name == "list_files":
+            summary["summary"] = f"{len(data.get('items', []))} item(s)"
+        elif tool_name == "read_file":
+            summary["summary"] = f"{data.get('path', args.get('path', ''))} ({data.get('lines', 0)} lines)"
+        elif tool_name == "glob":
+            summary["summary"] = f"{len(data.get('files', []))} file(s)"
+        elif tool_name == "search":
+            summary["summary"] = f"{len(data.get('results', []))} result(s)"
+        elif tool_name == "write_todos":
+            counts = data.get("counts", {}) if isinstance(data, dict) else {}
+            summary["summary"] = ", ".join(f"{key}={value}" for key, value in counts.items() if value) or "todo list updated"
+        elif tool_name == "tool_search":
+            summary["summary"] = f"{len(data.get('promoted', []))} tool(s) promoted"
+        elif tool_name == "web_fetch":
+            summary["summary"] = f"{data.get('title', 'page')} ({data.get('length', 0)} chars)"
+        elif tool_name == "delegate_subagent":
+            summary["summary"] = f"{data.get('agent_type', 'subagent')} {data.get('status', 'unknown')}"
+        elif tool_name == "load_skill":
+            skill = data.get("skill", {}) if isinstance(data, dict) else {}
+            summary["summary"] = skill.get("id", "skill loaded")
+        elif tool_name == "remember_fact":
+            fact = data.get("fact", {}) if isinstance(data, dict) else {}
+            summary["summary"] = fact.get("id", "memory saved")
+        elif tool_name == "list_memory":
+            summary["summary"] = f"{data.get('count', 0)} fact(s)"
+        elif tool_name == "bash":
+            summary["summary"] = f"code {data.get('return_code', '?')}"
+        elif tool_name == "open_workspace":
+            summary["summary"] = data.get("path", "workspace opened")
+        elif tool_name in self._mcp_tools_by_name:
+            server_name = data.get("server_name", "")
+            summary["summary"] = f"mcp tool via {server_name or 'external'}"
+        else:
+            summary["summary"] = "ok"
+        return summary
+
+    def _has_successful_mutation(self, executed_tools: List[Dict]) -> bool:
+        for item in executed_tools:
+            if not item.get("success"):
+                continue
+            tool = item.get("tool")
+            if tool in {"write_file", "write_files", "edit_file", "delete_file"}:
+                return True
+            if tool == "bash":
+                command = str((item.get("args") or {}).get("command", "")).lower()
+                mutation_markers = (
+                    "npm create", "npx create", "create-vite", "mkdir", "touch",
+                    "copy ", "cp ", "move ", "mv ", "git init", "pnpm create",
+                    "yarn create", "npm install", "pnpm install", "yarn install",
+                )
+                if any(marker in command for marker in mutation_markers):
+                    return True
+        return False
+
+    def _has_attempted_mutation(self, executed_tools: List[Dict]) -> bool:
+        return any((item.get("tool") in WRITE_CORE_TOOL_NAMES) for item in executed_tools)
+
+    def _classify_tool_error(self, result: ToolResult) -> str:
+        detail = str(result.error or "").lower()
+        data_error = str((result.data or {}).get("error", "")).lower() if isinstance(result.data, dict) else ""
+        combined = f"{detail}\n{data_error}"
+
+        if any(marker in combined for marker in ("timeout", "temporarily unavailable", "please retry", "service unavailable")):
+            return "transient"
+        if any(marker in combined for marker in ("full access", "not allowed", "dangerous command blocked", "permission", "access denied")):
+            return "permission"
+        if any(marker in combined for marker in ("read first", "path escapes", "existing files blocked", "duplicate path", "file path is required", "content is required")):
+            return "validation"
+        if any(marker in combined for marker in ("analysis, not modification", "user asked for analysis")):
+            return "intent"
+        if any(marker in combined for marker in ("unknown tool", "no deferred tools matched")):
+            return "missing"
+        if any(marker in combined for marker in ("blocked", "verification failed", "still exists after deletion", "file not found after write")):
+            return "blocked"
+        return "generic"
+
+    def _tool_error_followup_message(
+        self,
+        initial_message: str,
+        tool_name: str,
+        args: Dict[str, Any],
+        result: ToolResult,
+        failure_reason: str,
+        repeated_failures: int,
+    ) -> str:
+        if repeated_failures >= 2:
+            return (
+                f"[TOOL ERROR REMINDER]\n"
+                f"The same {tool_name} call already failed {repeated_failures} times. "
+                "Do not retry it unchanged. Either adjust the arguments, choose another tool, or explain the blocker clearly."
+            )
+
+        if failure_reason == "transient":
+            return (
+                f"[TOOL ERROR REMINDER]\n"
+                f"{tool_name} failed in a way that looks temporary. Retry at most once with adjusted arguments, "
+                "or switch to another tool if the next step can continue without it."
+            )
+        if failure_reason == "permission":
+            return (
+                f"[TOOL ERROR REMINDER]\n"
+                f"{tool_name} is blocked by permissions or safety rules. Do not retry the same blocked call. "
+                "Choose a safer tool path or explain what permission is missing."
+            )
+        if failure_reason == "validation":
+            return (
+                f"[TOOL ERROR REMINDER]\n"
+                f"{tool_name} failed because the request shape or file state is invalid. "
+                "Read the target file, narrow the path, or fix the arguments before trying again."
+            )
+        if failure_reason == "intent":
+            return (
+                "[TOOL ERROR REMINDER]\n"
+                "The current turn is read-only by intent. Stop trying to mutate files and either answer from context or wait for an explicit modification request."
+            )
+        if failure_reason == "missing":
+            return (
+                f"[TOOL ERROR REMINDER]\n"
+                f"{tool_name} is unavailable or did not match anything useful. "
+                "Use one of the already available core tools, or choose a different deferred tool only if it is clearly needed."
+            )
+        if self.current_intent in {"write", "execute"}:
+            return (
+                f"[TOOL ERROR REMINDER]\n"
+                f"{tool_name} failed. Stop repeating the same failing action. "
+                "Move to the next concrete write step with edit_file/write_files/write_file/bash, or explain the blocker."
+            )
+        return (
+            f"[TOOL ERROR REMINDER]\n"
+            f"{tool_name} failed. Inspect the error once, adjust if needed, then continue from the available context instead of retrying blindly."
+        )
+
+    def _should_stop_after_tool_error(
+        self,
+        tool_name: str,
+        result: ToolResult,
+        failure_reason: str,
+        repeated_failures: int,
+        executed_tools: List[Dict],
+    ) -> bool:
+        if repeated_failures >= 3:
+            return True
+        if failure_reason in {"permission", "intent"} and repeated_failures >= 2:
+            return True
+        if failure_reason == "validation" and repeated_failures >= 2 and self.current_intent in {"write", "execute"}:
+            return True
+
+        consecutive_failures = 0
+        for item in reversed(executed_tools or []):
+            if item.get("success"):
+                break
+            consecutive_failures += 1
+        if consecutive_failures >= 4 and not self._has_successful_mutation(executed_tools):
+            return True
+        return False
+
+    def _should_nudge_write_progress(self, initial_message: str, executed_tools: List[Dict]) -> bool:
+        if self.current_intent not in {"write", "execute"}:
+            return False
+        if self._has_successful_mutation(executed_tools) or self._has_attempted_mutation(executed_tools):
+            return False
+        if len(executed_tools) < 3:
+            return False
+        recent = [item.get("tool") for item in executed_tools[-4:]]
+        passive_tools = {"list_files", "read_file", "glob", "search", "tool_search", "write_todos", "think"}
+        return all(tool in passive_tools for tool in recent)
+
+    def _should_continue_write_after_guard(self, tool_name: str, executed_tools: List[Dict]) -> bool:
+        passive_guard_tools = {"list_files", "glob", "search", "tool_search", "write_todos", "bash"}
+        return (
+            self.current_intent in {"write", "execute"}
+            and tool_name in passive_guard_tools
+            and not self._has_attempted_mutation(executed_tools)
+        )
+
+    def _write_progress_nudge(self, initial_message: str) -> str:
+        if self._is_scaffold_write_request(initial_message):
+            return (
+                "[WRITE TASK REMINDER]\n"
+                "The user asked for a project/template scaffold. Stop planning or searching for write tools. "
+                "Use write_files in the next response for the actual files, or edit_file/write_file if replacing an existing file. "
+                "Then verify with list_files or read_file."
+            )
+        return (
+            "[WRITE TASK REMINDER]\n"
+            "The user asked for a modification. Stop passive exploration unless one specific file is still required. "
+            "Use edit_file, write_file, write_files, or bash now, then verify the result."
+        )
+
+    def _looks_like_unverified_write_claim(self, content: str, executed_tools: List[Dict]) -> bool:
+        if self.is_read_only_intent(self.current_intent) or self._has_successful_mutation(executed_tools):
+            return False
+
+        text = (content or "").lower()
+        if not text:
+            return False
+
+        claim_markers = (
+            "j'ai créé", "j ai créé", "j'ai cree", "j ai cree", "j'ai ajouté",
+            "j ai ajoute", "j'ai modifié", "j ai modifie", "j'ai corrigé",
+            "j ai corrige", "c'est fait", "terminé", "j'ai mis en place",
+            "i created", "i've created", "i have created", "i added",
+            "i updated", "i modified", "i implemented", "i fixed",
+            "created the", "added the", "updated the", "implemented the",
+            "the file has been", "template has been", "project has been created",
+        )
+        return any(marker in text for marker in claim_markers)
+
+    def _verify_file_write(self, workspace_path: str, relative_path: str) -> Dict:
+        try:
+            from core.workspace_tools import _resolve_workspace_path
+
+            full_path = _resolve_workspace_path(workspace_path, relative_path)
+            if not full_path or not os.path.isfile(full_path):
+                return {"verified": False, "error": f"File not found after write: {relative_path}"}
+            size = os.path.getsize(full_path)
+            return {"verified": True, "path": relative_path, "size": size}
+        except Exception as exc:
+            return {"verified": False, "error": str(exc)}
+
+    def _verify_file_deleted(self, workspace_path: str, relative_path: str) -> Dict:
+        try:
+            from core.workspace_tools import _resolve_workspace_path
+
+            full_path = _resolve_workspace_path(workspace_path, relative_path)
+            if full_path and os.path.exists(full_path):
+                return {"verified": False, "error": f"File still exists after deletion: {relative_path}"}
+            return {"verified": True, "path": relative_path}
+        except Exception as exc:
+            return {"verified": False, "error": str(exc)}
+
+    def _resolve_for_snapshot(self, workspace_path: str, relative_path: str) -> Optional[str]:
+        try:
+            from core.workspace_tools import _resolve_workspace_path
+
+            return _resolve_workspace_path(workspace_path, relative_path)
+        except Exception:
+            return None
+
+    def _guardrail_fallback_answer(self, initial_message: str, executed_tools: List[Dict]) -> str:
+        observed = executed_tools[-8:]
+        if not observed:
+            return (
+                "J'ai stoppé le terminal avant qu'il parte en boucle. "
+                "Aucun outil utile n'a encore produit de contexte; choisis un workspace puis demande "
+                "par exemple: `analyse la structure`, `lis README.md`, ou `cherche les routes Flask`."
+            )
+        bullet_lines = [
+            f"- {item.get('tool')} {item.get('args', {})}: {item.get('summary', '')}"
+            for item in observed
+        ]
+        return (
+            "J'ai stoppé la boucle d'outils avant de gaspiller plus de tokens.\n\n"
+            "Dernières observations utiles:\n"
+            + "\n".join(bullet_lines)
+            + "\n\nDemande-moi une cible plus précise, ou relance `analyse mon repo` maintenant: "
+            "JoyBoy utilisera le scan borné au lieu de refaire `ls/glob/pwd` en boucle."
+        )
+
+    def _tool_error_fallback_answer(self, initial_message: str, executed_tools: List[Dict]) -> str:
+        bullet_lines = [
+            f"- {item.get('tool')} {item.get('args', {})}: {item.get('summary', '')}"
+            for item in executed_tools[-8:]
+        ]
+        return (
+            "J'ai stoppé la boucle après des erreurs outils répétées pour éviter de gaspiller plus de tours.\n\n"
+            "Dernières actions observées:\n"
+            + "\n".join(bullet_lines)
+            + "\n\nRelance avec une cible plus précise ou un autre angle d'action; JoyBoy gardera le contexte déjà collecté."
+        )
+
+    def _tool_batch_loop_fallback_answer(self, initial_message: str, executed_tools: List[Dict]) -> str:
+        bullet_lines = [
+            f"- {item.get('tool')} {item.get('args', {})}: {item.get('summary', '')}"
+            for item in executed_tools[-8:]
+        ]
+        details = "\n".join(bullet_lines) if bullet_lines else "- Aucun outil utile exécuté avant la boucle."
+        return (
+            "J'ai stoppé le terminal parce que le modèle répétait exactement le même lot d'outils.\n\n"
+            "Contexte déjà collecté:\n"
+            + details
+            + "\n\nRelance avec une cible plus précise, ou demande-moi de continuer depuis un fichier/outil concret."
+        )
+
+    def _budget_fallback_answer(self, initial_message: str, executed_tools: List[Dict]) -> str:
+        if executed_tools:
+            bullet_lines = [
+                f"- {item.get('tool')} {item.get('args', {})}: {item.get('summary', '')}"
+                for item in executed_tools[-6:]
+            ]
+            return (
+                "J'ai coupé avant de relancer le modèle pour ne pas brûler plus de tokens.\n\n"
+                "Dernières observations utiles:\n"
+                + "\n".join(bullet_lines)
+                + "\n\nRelance avec une cible plus précise, ou demande `analyse le projet`: "
+                "JoyBoy utilisera le scan borné sans boucle d'exploration."
+            )
+
+        return (
+            "J'ai coupé avant un nouvel appel modèle pour éviter une boucle coûteuse. "
+            "Aucun outil n'avait encore produit de contexte utile; demande `analyse le projet` "
+            "ou cible un fichier précis."
+        )
+
+    def _iteration_limit_fallback_answer(self, initial_message: str, executed_tools: List[Dict]) -> str:
+        bullet_lines = [
+            f"- {item.get('tool')} {item.get('args', {})}: {item.get('summary', '')}"
+            for item in executed_tools[-8:]
+        ]
+        if self.current_intent in {"write", "execute"} and not self._has_successful_mutation(executed_tools):
+            return (
+                "J'ai stoppé la boucle avant qu'elle continue à brûler des tokens sans appliquer de changement.\n\n"
+                "Dernières actions observées:\n"
+                + "\n".join(bullet_lines)
+                + "\n\nAucune écriture vérifiée n'a été faite. Relance la même demande: JoyBoy doit maintenant exposer "
+                "`write_files`/`edit_file` directement et éviter `tool_search`/`write_todos` sur ce type de tâche."
+            )
+        return (
+            "J'ai atteint la limite d'itérations, donc je rends l'état observé au lieu de repartir en boucle.\n\n"
+            "Dernières actions observées:\n"
+            + "\n".join(bullet_lines)
+        )
+
