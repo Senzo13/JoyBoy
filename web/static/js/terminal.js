@@ -216,7 +216,33 @@ document.addEventListener('keydown', (e) => {
 let terminalCommandHistory = [];
 let terminalHistoryIndex = -1;
 let terminalCurrentInput = '';  // Sauvegarde l'input actuel avant navigation
+let terminalHistoryStore = {};
+let terminalHistoryScope = '';
 const MAX_TERMINAL_HISTORY = 100;
+const TERMINAL_HISTORY_STORE_KEY = 'terminalHistoryByScope';
+
+function getTerminalHistoryScope() {
+    const chatId = (typeof currentChatId !== 'undefined' && currentChatId) ? currentChatId : 'global';
+    const workspaceKey = terminalWorkspace?.path || terminalWorkspace?.name || 'no-workspace';
+    return `${chatId}:${workspaceKey}`;
+}
+
+function syncTerminalHistoryScope() {
+    const scope = getTerminalHistoryScope();
+    if (terminalHistoryScope === scope) return;
+    terminalHistoryScope = scope;
+    terminalCommandHistory = Array.isArray(terminalHistoryStore[scope])
+        ? [...terminalHistoryStore[scope]]
+        : (Array.isArray(terminalHistoryStore.global) ? [...terminalHistoryStore.global] : []);
+    terminalHistoryIndex = -1;
+    terminalCurrentInput = '';
+}
+
+function saveTerminalHistoryScope() {
+    syncTerminalHistoryScope();
+    terminalHistoryStore[terminalHistoryScope] = terminalCommandHistory.slice(0, MAX_TERMINAL_HISTORY);
+    localStorage.setItem(TERMINAL_HISTORY_STORE_KEY, JSON.stringify(terminalHistoryStore));
+}
 
 /**
  * Ajoute une commande à l'historique terminal
@@ -224,6 +250,7 @@ const MAX_TERMINAL_HISTORY = 100;
  */
 function addToTerminalHistory(command) {
     if (!command.trim()) return;
+    syncTerminalHistoryScope();
 
     // Éviter les doublons consécutifs
     if (terminalCommandHistory.length > 0 && terminalCommandHistory[0] === command) {
@@ -243,7 +270,7 @@ function addToTerminalHistory(command) {
     terminalCurrentInput = '';
 
     // Sauvegarder dans localStorage
-    localStorage.setItem('terminalHistory', JSON.stringify(terminalCommandHistory));
+    saveTerminalHistoryScope();
 }
 
 /**
@@ -251,12 +278,20 @@ function addToTerminalHistory(command) {
  */
 function loadTerminalHistory() {
     try {
-        const saved = localStorage.getItem('terminalHistory');
+        const saved = localStorage.getItem(TERMINAL_HISTORY_STORE_KEY);
         if (saved) {
-            terminalCommandHistory = JSON.parse(saved);
+            terminalHistoryStore = JSON.parse(saved) || {};
+        } else {
+            const legacy = JSON.parse(localStorage.getItem('terminalHistory') || '[]');
+            if (Array.isArray(legacy) && legacy.length) {
+                terminalHistoryStore.global = legacy.slice(0, MAX_TERMINAL_HISTORY);
+            }
         }
+        syncTerminalHistoryScope();
     } catch (e) {
         console.error('[TERMINAL] Erreur chargement historique:', e);
+        terminalHistoryStore = {};
+        syncTerminalHistoryScope();
     }
 }
 
@@ -266,6 +301,7 @@ function loadTerminalHistory() {
  * @param {HTMLInputElement} inputElement - L'élément input
  */
 function navigateTerminalHistory(direction, inputElement) {
+    syncTerminalHistoryScope();
     if (terminalCommandHistory.length === 0) return;
 
     // Sauvegarder l'input actuel si on commence la navigation
@@ -399,6 +435,170 @@ function hideThinkingAnimation() {
 let terminalTasks = [];
 let terminalTasksElement = null;
 let terminalToolTaskSeq = 0;
+let terminalProgressElement = null;
+let terminalProgressLogElement = null;
+let terminalProgressTimerElement = null;
+let terminalProgressStartedAt = 0;
+let terminalProgressTimer = null;
+let terminalProgressLogCount = 0;
+let terminalProgressAutoHideTimer = null;
+
+function formatTerminalElapsed(seconds) {
+    const safeSeconds = Math.max(0, Number(seconds) || 0);
+    if (safeSeconds < 60) return `${safeSeconds}s`;
+    const minutes = Math.floor(safeSeconds / 60);
+    const remaining = safeSeconds % 60;
+    return remaining ? `${minutes}m ${remaining}s` : `${minutes}m`;
+}
+
+function updateTerminalProgressTimer(done = false) {
+    if (!terminalProgressTimerElement || !terminalProgressStartedAt) return;
+    const elapsed = Math.floor((Date.now() - terminalProgressStartedAt) / 1000);
+    const key = done ? 'terminal.progressDoneIn' : 'terminal.progressRunningFor';
+    const fallback = done ? 'Terminé en {time}' : 'En cours depuis {time}';
+    terminalProgressTimerElement.textContent = terminalT(key, fallback, {
+        time: formatTerminalElapsed(elapsed)
+    });
+}
+
+function keepTerminalMessagesAboveComposer() {
+    const messagesDiv = document.getElementById('chat-messages');
+    const inputBar = document.querySelector('#chat-view .chat-input-bar') || document.querySelector('.chat-input-bar');
+    if (!messagesDiv || !inputBar || !document.body.classList.contains('terminal-mode')) return;
+
+    const lastMessage = messagesDiv.lastElementChild;
+    if (!lastMessage) return;
+
+    const inputTop = inputBar.getBoundingClientRect().top;
+    const lastBottom = lastMessage.getBoundingClientRect().bottom;
+    const overlap = lastBottom - (inputTop - 28);
+    if (overlap > 0) {
+        messagesDiv.scrollTop += overlap;
+    }
+}
+
+function refreshTerminalProgressLayout() {
+    if (typeof updateComposerAttachmentState === 'function') {
+        updateComposerAttachmentState();
+    }
+    if (typeof updateChatPadding === 'function') {
+        updateChatPadding();
+    }
+    requestAnimationFrame(() => {
+        if (typeof updateChatPadding === 'function') {
+            updateChatPadding();
+        }
+        keepTerminalMessagesAboveComposer();
+    });
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+        if (typeof updateChatPadding === 'function') {
+            updateChatPadding();
+        }
+        keepTerminalMessagesAboveComposer();
+    }));
+}
+
+function showTerminalProgressPanel() {
+    if (terminalProgressElement) return terminalProgressElement;
+
+    const inputBar = document.querySelector('#chat-view .chat-input-bar') || document.querySelector('.chat-input-bar');
+    const composer = inputBar?.querySelector('.input-bar');
+    if (!inputBar || !composer) return null;
+
+    clearTimeout(terminalProgressAutoHideTimer);
+    terminalProgressAutoHideTimer = null;
+
+    terminalProgressStartedAt = Date.now();
+    terminalProgressLogCount = 0;
+    composer.classList.add('terminal-progress-active');
+
+    terminalProgressElement = document.createElement('div');
+    terminalProgressElement.className = 'terminal-progress-panel';
+    terminalProgressElement.innerHTML = `
+        <div class="terminal-progress-status">
+            <div class="terminal-progress-status-main">
+                <span class="terminal-progress-pulse" aria-hidden="true"></span>
+                <span class="terminal-progress-timer"></span>
+            </div>
+            <button type="button" class="terminal-progress-toggle" onclick="toggleTerminalProgressPanel()" aria-label="${escapeHtml(terminalT('terminal.progressToggle', 'Réduire'))}">
+                <i data-lucide="chevrons-up-down"></i>
+            </button>
+        </div>
+        <div class="terminal-progress-divider"></div>
+        <div class="terminal-progress-log"></div>
+        <div class="terminal-progress-task-slot"></div>
+    `;
+
+    composer.insertBefore(terminalProgressElement, composer.firstChild);
+    terminalProgressTimerElement = terminalProgressElement.querySelector('.terminal-progress-timer');
+    terminalProgressLogElement = terminalProgressElement.querySelector('.terminal-progress-log');
+    updateTerminalProgressTimer(false);
+
+    terminalProgressTimer = setInterval(() => updateTerminalProgressTimer(false), 1000);
+    if (window.lucide) lucide.createIcons();
+    refreshTerminalProgressLayout();
+    return terminalProgressElement;
+}
+
+function addTerminalProgressLog(label, detail = '', type = 'info') {
+    showTerminalProgressPanel();
+    if (!terminalProgressLogElement) return;
+
+    terminalProgressLogCount += 1;
+    const entry = document.createElement('div');
+    entry.className = `terminal-progress-log-line is-${type}`;
+    const safeDetail = detail ? `<span class="terminal-progress-log-detail">${escapeHtml(detail)}</span>` : '';
+    entry.innerHTML = `
+        <span class="terminal-progress-log-index">${terminalProgressLogCount}</span>
+        <span class="terminal-progress-log-text">${escapeHtml(label)}</span>
+        ${safeDetail}
+    `;
+    terminalProgressLogElement.appendChild(entry);
+
+    while (terminalProgressLogElement.children.length > 8) {
+        terminalProgressLogElement.removeChild(terminalProgressLogElement.firstElementChild);
+    }
+
+    terminalProgressLogElement.scrollTop = terminalProgressLogElement.scrollHeight;
+    refreshTerminalProgressLayout();
+}
+
+function completeTerminalProgressPanel(success = true) {
+    if (!terminalProgressElement) return;
+    clearInterval(terminalProgressTimer);
+    terminalProgressTimer = null;
+    terminalProgressElement.classList.toggle('is-complete', success);
+    terminalProgressElement.classList.toggle('is-error', !success);
+    updateTerminalProgressTimer(true);
+    refreshTerminalProgressLayout();
+}
+
+function hideTerminalProgressPanel() {
+    clearInterval(terminalProgressTimer);
+    clearTimeout(terminalProgressAutoHideTimer);
+    terminalProgressTimer = null;
+    terminalProgressAutoHideTimer = null;
+    if (terminalProgressElement) {
+        terminalProgressElement.remove();
+    }
+    document.querySelectorAll('.input-bar.terminal-progress-active').forEach(bar => {
+        bar.classList.remove('terminal-progress-active');
+    });
+    terminalProgressElement = null;
+    terminalProgressLogElement = null;
+    terminalProgressTimerElement = null;
+    terminalProgressStartedAt = 0;
+    terminalProgressLogCount = 0;
+    terminalTasksElement = null;
+    terminalTasks = [];
+    refreshTerminalProgressLayout();
+}
+
+function toggleTerminalProgressPanel() {
+    if (!terminalProgressElement) return;
+    terminalProgressElement.classList.toggle('is-collapsed');
+    refreshTerminalProgressLayout();
+}
 
 /**
  * Crée/affiche la barre de tâches terminal
@@ -406,8 +606,9 @@ let terminalToolTaskSeq = 0;
 function showTerminalTasks() {
     if (terminalTasksElement) return terminalTasksElement;
 
-    const messagesDiv = document.getElementById('chat-messages');
-    if (!messagesDiv) return null;
+    const progressPanel = showTerminalProgressPanel();
+    const taskSlot = progressPanel?.querySelector('.terminal-progress-task-slot');
+    if (!taskSlot) return null;
 
     terminalTasksElement = document.createElement('div');
     terminalTasksElement.className = 'terminal-tasks';
@@ -418,7 +619,8 @@ function showTerminalTasks() {
         </div>
         <div class="terminal-tasks-list"></div>
     `;
-    messagesDiv.appendChild(terminalTasksElement);
+    taskSlot.appendChild(terminalTasksElement);
+    refreshTerminalProgressLayout();
     return terminalTasksElement;
 }
 
@@ -573,7 +775,7 @@ function renderTerminalTasks() {
     }).join('');
     if (window.lucide) lucide.createIcons();
 
-    scrollToBottom(true);
+    refreshTerminalProgressLayout();
 }
 
 /**
@@ -585,6 +787,7 @@ function hideTerminalTasks() {
         terminalTasksElement = null;
     }
     terminalTasks = [];
+    refreshTerminalProgressLayout();
 }
 
 /**
@@ -1050,21 +1253,32 @@ function formatTerminalApprovalCommand(request = {}) {
 
 function closeTerminalApprovalCard() {
     document.querySelectorAll('.terminal-approval-card').forEach(card => card.remove());
+    document.querySelectorAll('.chat-input-bar.terminal-approval-active').forEach(bar => {
+        bar.classList.remove('terminal-approval-active');
+    });
+    if (typeof updateComposerAttachmentState === 'function') {
+        updateComposerAttachmentState();
+    }
+    if (typeof updateChatPadding === 'function') {
+        updateChatPadding();
+    }
 }
 
 function showTerminalApprovalCard(request = {}) {
     closeTerminalApprovalCard();
+    hideTerminalProgressPanel();
     terminalApprovalRequest = { ...request };
 
-    const messagesDiv = document.getElementById('chat-messages');
-    if (!messagesDiv) return;
+    const inputBar = document.querySelector('#chat-view .chat-input-bar') || document.querySelector('.chat-input-bar');
+    if (!inputBar) return;
+    inputBar.classList.add('terminal-approval-active');
 
     const actionLabel = formatTerminalApprovalAction(terminalApprovalRequest.action);
     const commandText = formatTerminalApprovalCommand(terminalApprovalRequest);
     const reason = terminalApprovalRequest.reason || terminalApprovalRequest.permission?.reason || '';
 
     const card = document.createElement('div');
-    card.className = 'terminal-approval-card';
+    card.className = 'terminal-approval-card terminal-approval-composer';
     card.innerHTML = `
         <div class="terminal-approval-head">
             <span class="terminal-approval-icon"><i data-lucide="shield-alert"></i></span>
@@ -1096,9 +1310,14 @@ function showTerminalApprovalCard(request = {}) {
     card.querySelector('[data-approval-action="remember"]')?.addEventListener('click', () => approveTerminalPermission(true));
     card.querySelector('[data-approval-action="deny"]')?.addEventListener('click', denyTerminalPermission);
 
-    messagesDiv.appendChild(card);
+    inputBar.insertBefore(card, inputBar.firstChild);
     if (window.lucide) lucide.createIcons();
-    scrollToBottom(true);
+    if (typeof updateComposerAttachmentState === 'function') {
+        updateComposerAttachmentState();
+    }
+    if (typeof updateChatPadding === 'function') {
+        updateChatPadding();
+    }
 }
 
 function approveTerminalPermission(remember = false) {
@@ -1984,7 +2203,10 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
         showThinkingAnimation('Thinking');
 
         // Réinitialiser les tâches pour cette requête
+        hideTerminalProgressPanel();
         hideTerminalTasks();
+        showTerminalProgressPanel();
+        addTerminalProgressLog(terminalT('terminal.progressThinking', 'En réflexion'), message, 'thinking');
         let taskCounter = 0;
 
         // Préparer l'image si présente (pour les modèles vision)
@@ -2077,6 +2299,10 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                     // Intent détecté - afficher mode autonome si actif
                     if (data.intent) {
                         console.log(`[TERMINAL] Intent: ${data.intent} (read_only: ${data.read_only}, autonomous: ${data.autonomous})`);
+                        const intentLabel = data.autonomous
+                            ? terminalT('terminal.progressAutonomous', 'Mode autonome')
+                            : terminalT('terminal.progressIntent', 'Intention détectée');
+                        addTerminalProgressLog(intentLabel, data.intent, 'info');
                         const autoIndicator = document.getElementById('autonomous-indicator');
                         if (autoIndicator) {
                             if (data.autonomous) {
@@ -2096,6 +2322,11 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                     if (data.thinking) {
                         console.log(`[TERMINAL] Iteration ${data.iteration}`);
                         updateThinkingText(`Thinking (${data.iteration})`);
+                        addTerminalProgressLog(
+                            terminalT('terminal.progressThinkingIteration', 'Réflexion {iteration}', { iteration: data.iteration }),
+                            '',
+                            'thinking'
+                        );
 
                         // Update autonomous progress
                         window.autonomousIterations = data.iteration;
@@ -2123,6 +2354,11 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                         hideThinkingAnimation();
                         const reason = data.reason ? `: ${data.reason}` : '';
                         addTerminalLine(`Boucle évitée (${data.action})${reason}`, 'warning');
+                        addTerminalProgressLog(
+                            terminalT('terminal.progressLoopAvoided', 'Boucle évitée'),
+                            `${data.action || ''}${reason}`,
+                            'warning'
+                        );
                         showThinkingAnimation('Rethinking');
                         continue;
                     }
@@ -2149,6 +2385,11 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                             console.error('[TERMINAL] addToolCall function not found!');
                         }
 
+                        addTerminalProgressLog(
+                            terminalT('terminal.progressToolRunning', 'Exécute {tool}', { tool: action }),
+                            path,
+                            'running'
+                        );
                         if (shouldShowTerminalToolAsTask(action)) {
                             addTerminalTask(toolTaskId, taskLabel, 'running');
                         }
@@ -2169,6 +2410,14 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                         // Écriture bloquée
                         if (result.write_blocked) {
                             addToolResult('Write blocked (read-only mode)', 'error');
+                            addTerminalProgressLog(
+                                terminalT('terminal.progressToolFailed', 'Échec {tool}', { tool: result.action || '' }),
+                                terminalT('terminal.writeBlockedShort', 'Écriture bloquée'),
+                                'error'
+                            );
+                            if (window.lastToolCall?.taskId) {
+                                updateTerminalTask(window.lastToolCall.taskId, 'error', terminalT('terminal.writeBlockedShort', 'Écriture bloquée'));
+                            }
                             showThinkingAnimation('Analyzing');
                             continue;
                         }
@@ -2177,6 +2426,11 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                         if (!result.success) {
                             if (result.permission?.requires_confirmation) {
                                 addToolResult(terminalT('terminal.approvalRequiredLine', 'Autorisation requise'), 'warning');
+                                addTerminalProgressLog(
+                                    terminalT('terminal.progressApprovalRequired', 'Autorisation requise'),
+                                    result.action || '',
+                                    'warning'
+                                );
                                 if (window.lastToolCall?.taskId) {
                                     updateTerminalTask(window.lastToolCall.taskId, 'error', terminalT('terminal.approvalRequiredLine', 'Autorisation requise'));
                                 }
@@ -2185,6 +2439,11 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                             }
                             const errorText = result.error || 'Error';
                             addToolResult(errorText, 'error');
+                            addTerminalProgressLog(
+                                terminalT('terminal.progressToolFailed', 'Échec {tool}', { tool: result.action || '' }),
+                                errorText,
+                                'error'
+                            );
                             if (window.lastToolCall?.taskId) {
                                 updateTerminalTask(window.lastToolCall.taskId, 'error', errorText);
                             }
@@ -2220,6 +2479,11 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                         if (window.lastToolCall?.taskId) {
                             updateTerminalTask(window.lastToolCall.taskId, 'done', resultSummary);
                         }
+                        addTerminalProgressLog(
+                            terminalT('terminal.progressToolDone', 'Terminé {tool}', { tool: result.action || '' }),
+                            resultSummary,
+                            'success'
+                        );
                         // Sinon pas d'affichage (l'IA donnera la réponse à la fin)
 
                         showThinkingAnimation('Analyzing');
@@ -2230,7 +2494,7 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                     if (data.approval_required) {
                         approvalRequiredThisTurn = true;
                         hideThinkingAnimation();
-                        hideTerminalTasks();
+                        completeTerminalProgressPanel(false);
                         showTerminalApprovalCard({
                             ...data.approval_required,
                             message
@@ -2241,6 +2505,11 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                     // Auto-correction - L'IA va réessayer après une erreur
                     if (data.auto_correction) {
                         console.log(`[TERMINAL] Auto-correction: ${data.error}`);
+                        addTerminalProgressLog(
+                            terminalT('terminal.progressCorrection', 'Correction'),
+                            data.error || '',
+                            'warning'
+                        );
                         updateThinkingText('Correcting...');
                         continue;
                     }
@@ -2261,12 +2530,10 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                     // Done - Réponse finale
                     if (data.done) {
                         hideThinkingAnimation();
-                        if (terminalTasks.length === 0) {
-                            hideTerminalTasks();
-                        }
                         const responseTime = Date.now() - startTime;
                         const serverFinalText = (data.full_response || '').trim();
                         const isWaitingForApproval = approvalRequiredThisTurn || Boolean(data.approval_required);
+                        completeTerminalProgressPanel(!isWaitingForApproval);
 
                         // Hide autonomous indicator
                         const autoIndicator = document.getElementById('autonomous-indicator');
@@ -2316,6 +2583,7 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                     // Error
                     if (data.error) {
                         hideThinkingAnimation();
+                        completeTerminalProgressPanel(false);
                         // Hide autonomous indicator on error
                         const autoIndicator = document.getElementById('autonomous-indicator');
                         if (autoIndicator) autoIndicator.style.display = 'none';
@@ -2332,6 +2600,7 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
         hideThinkingAnimation();
         if (err.name !== 'AbortError') {
             console.error('[TERMINAL] Erreur chat:', err);
+            completeTerminalProgressPanel(false);
             addTerminalLine(`Erreur: ${err.message}`, 'error');
         }
     }

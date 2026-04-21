@@ -787,7 +787,7 @@ function updateChatPadding() {
     if (document.body.classList.contains('terminal-mode')) {
         const inputBar = document.querySelector('.chat-input-bar');
         const minPad = inputBar ? (inputBar.offsetHeight + 96) : 188;
-        messagesDiv.style.paddingBottom = `${minPad}px`;
+        messagesDiv.style.setProperty('padding-bottom', `${minPad}px`, 'important');
         return;
     }
     const lastChild = messagesDiv.lastElementChild;
@@ -2599,27 +2599,69 @@ function dislikeMessage(btn) {
 }
 
 // ===== PROMPT HISTORY =====
-let promptHistory = JSON.parse(localStorage.getItem('promptHistory') || '[]');
+const PROMPT_HISTORY_STORE_KEY = 'promptHistoryByScope';
+let promptHistoryStore = {};
 let historyIndex = -1;
 let currentTypedPrompt = '';
+let currentPromptHistoryScope = '';
 const MAX_PROMPT_HISTORY = 10;
 
-function addToPromptHistory(prompt) {
+try {
+    promptHistoryStore = JSON.parse(localStorage.getItem(PROMPT_HISTORY_STORE_KEY) || '{}') || {};
+} catch (_err) {
+    promptHistoryStore = {};
+}
+
+function getPromptHistoryScope(inputElement = null) {
+    const chatId = (typeof currentChatId !== 'undefined' && currentChatId) ? currentChatId : 'global';
+    const id = inputElement?.id || document.activeElement?.id || 'prompt';
+    if (id === 'edit-prompt') return `edit:${chatId}`;
+    if (id === 'prompt-input') return `image:${chatId}`;
+    return `chat:${chatId}`;
+}
+
+function getScopedPromptHistory(inputElement = null) {
+    const scope = getPromptHistoryScope(inputElement);
+    if (currentPromptHistoryScope !== scope) {
+        currentPromptHistoryScope = scope;
+        historyIndex = -1;
+        currentTypedPrompt = '';
+    }
+    if (!Array.isArray(promptHistoryStore[scope])) {
+        promptHistoryStore[scope] = [];
+    }
+    return promptHistoryStore[scope];
+}
+
+function saveScopedPromptHistory(scope, history) {
+    promptHistoryStore[scope] = history.slice(-MAX_PROMPT_HISTORY);
+    localStorage.setItem(PROMPT_HISTORY_STORE_KEY, JSON.stringify(promptHistoryStore));
+}
+
+function addToPromptHistory(prompt, inputElement = null) {
     if (!prompt.trim()) return;
+    const scope = getPromptHistoryScope(inputElement);
+    const promptHistory = getScopedPromptHistory(inputElement);
     if (promptHistory.length === 0 || promptHistory[promptHistory.length - 1] !== prompt) {
         promptHistory.push(prompt);
-        if (promptHistory.length > MAX_PROMPT_HISTORY) {
-            promptHistory.shift();
-        }
-        localStorage.setItem('promptHistory', JSON.stringify(promptHistory));
+        saveScopedPromptHistory(scope, promptHistory);
     }
     historyIndex = -1;
     currentTypedPrompt = '';
 }
 
 function handlePromptKeydown(e, inputElement) {
+    if (
+        typeof terminalMode !== 'undefined'
+        && terminalMode
+        && (inputElement.id === 'prompt-input' || inputElement.id === 'chat-prompt')
+    ) {
+        return;
+    }
+
     // Désactiver l'historique si le texte contient plusieurs lignes
     const isMultiline = inputElement.value.includes('\n');
+    const promptHistory = getScopedPromptHistory(inputElement);
 
     if (e.key === 'ArrowUp' && !isMultiline) {
         e.preventDefault();
