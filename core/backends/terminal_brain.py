@@ -1133,6 +1133,8 @@ class TerminalBrain:
         continuation_nudges = 0
         todo_completion_reminders = 0
         write_progress_nudges = 0
+        tool_error_followups = 0
+        failed_tool_signatures: Dict[str, int] = defaultdict(int)
 
         while iteration < iteration_budget:
             iteration += 1
@@ -1464,6 +1466,11 @@ class TerminalBrain:
                     # Exécuter le tool
                     result = self.execute_tool(tool_name, args, workspace_path)
                     executed_tools.append(self._summarize_executed_tool(tool_name, args, result))
+                    failure_signature = tool_signature(tool_name, args) if not result.success else ""
+                    repeated_tool_failures = 0
+                    if failure_signature:
+                        failed_tool_signatures[failure_signature] += 1
+                        repeated_tool_failures = failed_tool_signatures[failure_signature]
 
                     yield runtime_event('tool_result', result={
                         'success': result.success,
@@ -1487,6 +1494,45 @@ class TerminalBrain:
                     if tool_call_id:
                         tool_message["tool_call_id"] = tool_call_id
                     messages.append(tool_message)
+
+                    if not result.success and not autonomous:
+                        failure_reason = self._classify_tool_error(result)
+                        followup = self._tool_error_followup_message(
+                            initial_message,
+                            tool_name,
+                            args,
+                            result,
+                            failure_reason,
+                            repeated_tool_failures,
+                        )
+                        if followup and tool_error_followups < 3:
+                            tool_error_followups += 1
+                            messages.append({"role": "user", "content": followup})
+
+                        if repeated_tool_failures >= 2:
+                            yield runtime_event(
+                                'loop_warning',
+                                action='tool_error',
+                                reason=(
+                                    f"{tool_name} failed {repeated_tool_failures} times with the same arguments; "
+                                    "stop retrying the same broken call."
+                                ),
+                            )
+
+                        if self._should_stop_after_tool_error(
+                            tool_name,
+                            result,
+                            failure_reason,
+                            repeated_tool_failures,
+                            executed_tools,
+                        ):
+                            force_final = True
+                            final_text = self._tool_error_fallback_answer(initial_message, executed_tools)
+                            full_response += final_text
+                            yield runtime_event('content', text=final_text, token_stats={})
+                            _end_resource_lease()
+                            yield runtime_event('done', full_response=full_response, token_stats=total_token_stats)
+                            return
 
                 if (
                     not force_final
@@ -3196,6 +3242,105 @@ class TerminalBrain:
     def _has_attempted_mutation(self, executed_tools: List[Dict]) -> bool:
         return any((item.get("tool") in WRITE_CORE_TOOL_NAMES) for item in executed_tools)
 
+    def _classify_tool_error(self, result: ToolResult) -> str:
+        detail = str(result.error or "").lower()
+        data_error = str((result.data or {}).get("error", "")).lower() if isinstance(result.data, dict) else ""
+        combined = f"{detail}\n{data_error}"
+
+        if any(marker in combined for marker in ("timeout", "temporarily unavailable", "please retry", "service unavailable")):
+            return "transient"
+        if any(marker in combined for marker in ("full access", "not allowed", "dangerous command blocked", "permission", "access denied")):
+            return "permission"
+        if any(marker in combined for marker in ("read first", "path escapes", "existing files blocked", "duplicate path", "file path is required", "content is required")):
+            return "validation"
+        if any(marker in combined for marker in ("analysis, not modification", "user asked for analysis")):
+            return "intent"
+        if any(marker in combined for marker in ("unknown tool", "no deferred tools matched")):
+            return "missing"
+        if any(marker in combined for marker in ("blocked", "verification failed", "still exists after deletion", "file not found after write")):
+            return "blocked"
+        return "generic"
+
+    def _tool_error_followup_message(
+        self,
+        initial_message: str,
+        tool_name: str,
+        args: Dict[str, Any],
+        result: ToolResult,
+        failure_reason: str,
+        repeated_failures: int,
+    ) -> str:
+        if repeated_failures >= 2:
+            return (
+                f"[TOOL ERROR REMINDER]\n"
+                f"The same {tool_name} call already failed {repeated_failures} times. "
+                "Do not retry it unchanged. Either adjust the arguments, choose another tool, or explain the blocker clearly."
+            )
+
+        if failure_reason == "transient":
+            return (
+                f"[TOOL ERROR REMINDER]\n"
+                f"{tool_name} failed in a way that looks temporary. Retry at most once with adjusted arguments, "
+                "or switch to another tool if the next step can continue without it."
+            )
+        if failure_reason == "permission":
+            return (
+                f"[TOOL ERROR REMINDER]\n"
+                f"{tool_name} is blocked by permissions or safety rules. Do not retry the same blocked call. "
+                "Choose a safer tool path or explain what permission is missing."
+            )
+        if failure_reason == "validation":
+            return (
+                f"[TOOL ERROR REMINDER]\n"
+                f"{tool_name} failed because the request shape or file state is invalid. "
+                "Read the target file, narrow the path, or fix the arguments before trying again."
+            )
+        if failure_reason == "intent":
+            return (
+                "[TOOL ERROR REMINDER]\n"
+                "The current turn is read-only by intent. Stop trying to mutate files and either answer from context or wait for an explicit modification request."
+            )
+        if failure_reason == "missing":
+            return (
+                f"[TOOL ERROR REMINDER]\n"
+                f"{tool_name} is unavailable or did not match anything useful. "
+                "Use one of the already available core tools, or choose a different deferred tool only if it is clearly needed."
+            )
+        if self.current_intent in {"write", "execute"}:
+            return (
+                f"[TOOL ERROR REMINDER]\n"
+                f"{tool_name} failed. Stop repeating the same failing action. "
+                "Move to the next concrete write step with edit_file/write_files/write_file/bash, or explain the blocker."
+            )
+        return (
+            f"[TOOL ERROR REMINDER]\n"
+            f"{tool_name} failed. Inspect the error once, adjust if needed, then continue from the available context instead of retrying blindly."
+        )
+
+    def _should_stop_after_tool_error(
+        self,
+        tool_name: str,
+        result: ToolResult,
+        failure_reason: str,
+        repeated_failures: int,
+        executed_tools: List[Dict],
+    ) -> bool:
+        if repeated_failures >= 3:
+            return True
+        if failure_reason in {"permission", "intent"} and repeated_failures >= 2:
+            return True
+        if failure_reason == "validation" and repeated_failures >= 2 and self.current_intent in {"write", "execute"}:
+            return True
+
+        consecutive_failures = 0
+        for item in reversed(executed_tools or []):
+            if item.get("success"):
+                break
+            consecutive_failures += 1
+        if consecutive_failures >= 4 and not self._has_successful_mutation(executed_tools):
+            return True
+        return False
+
     def _should_nudge_write_progress(self, initial_message: str, executed_tools: List[Dict]) -> bool:
         if self.current_intent not in {"write", "execute"}:
             return False
@@ -3297,6 +3442,18 @@ class TerminalBrain:
             + "\n".join(bullet_lines)
             + "\n\nDemande-moi une cible plus précise, ou relance `analyse mon repo` maintenant: "
             "JoyBoy utilisera le scan borné au lieu de refaire `ls/glob/pwd` en boucle."
+        )
+
+    def _tool_error_fallback_answer(self, initial_message: str, executed_tools: List[Dict]) -> str:
+        bullet_lines = [
+            f"- {item.get('tool')} {item.get('args', {})}: {item.get('summary', '')}"
+            for item in executed_tools[-8:]
+        ]
+        return (
+            "J'ai stoppé la boucle après des erreurs outils répétées pour éviter de gaspiller plus de tours.\n\n"
+            "Dernières actions observées:\n"
+            + "\n".join(bullet_lines)
+            + "\n\nRelance avec une cible plus précise ou un autre angle d'action; JoyBoy gardera le contexte déjà collecté."
         )
 
     def _budget_fallback_answer(self, initial_message: str, executed_tools: List[Dict]) -> str:

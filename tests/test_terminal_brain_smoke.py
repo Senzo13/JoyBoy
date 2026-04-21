@@ -124,6 +124,66 @@ class TerminalBrainSmokeTests(unittest.TestCase):
         brain._record_cloud_circuit_success("openai:gpt-5.4")
         self.assertIsNone(brain._cloud_circuit_block_reason("openai:gpt-5.4"))
 
+    def test_tool_error_classification_covers_permission_and_validation(self):
+        brain = TerminalBrain()
+
+        permission = brain._classify_tool_error(
+            ToolResult(success=False, tool_name="bash", error="Dangerous command blocked: rm -rf")
+        )
+        validation = brain._classify_tool_error(
+            ToolResult(success=False, tool_name="write_file", error="BLOCKED: existing file was not read first.")
+        )
+
+        self.assertEqual(permission, "permission")
+        self.assertEqual(validation, "validation")
+
+    @patch("core.backends.terminal_brain.chat_with_cloud_model")
+    def test_repeated_tool_error_stops_loop(self, mock_chat):
+        mock_chat.side_effect = [
+            {
+                "message": {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [
+                        {
+                            "id": "call_1",
+                            "type": "function",
+                            "function": {"name": "bash", "arguments": {"command": "rm -rf ."}},
+                        }
+                    ],
+                },
+                "prompt_eval_count": 20,
+                "eval_count": 5,
+            },
+            {
+                "message": {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [
+                        {
+                            "id": "call_2",
+                            "type": "function",
+                            "function": {"name": "bash", "arguments": {"command": "rm -rf ."}},
+                        }
+                    ],
+                },
+                "prompt_eval_count": 20,
+                "eval_count": 5,
+            },
+        ]
+        brain = TerminalBrain()
+        brain.current_intent = "write"
+
+        with tempfile.TemporaryDirectory() as tmp:
+            events = list(brain.run_agentic_loop("supprime tout", tmp, model="openai:gpt-5.4"))
+
+        loop_warnings = [event for event in events if event.get("type") == "loop_warning"]
+        done = [event for event in events if event.get("type") == "done"][-1]
+
+        self.assertTrue(any(event.get("action") == "tool_error" for event in loop_warnings))
+        self.assertIn("erreurs outils répétées", done.get("full_response", ""))
+        self.assertEqual(mock_chat.call_count, 2)
+
     def test_dangling_tool_calls_are_patched_before_cloud_model_call(self):
         brain = TerminalBrain()
         messages = [
