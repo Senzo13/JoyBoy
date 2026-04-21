@@ -530,6 +530,7 @@ SCAFFOLD_CORE_TOOL_ORDER = (
 READ_CORE_TOOL_ORDER = ("list_files", "read_file", "search", "glob")
 COMPACTED_HISTORY_HEADER = "[COMPACTED HISTORY SUMMARY]"
 COMPACTED_LOOP_HEADER = "[COMPACTED LOOP SUMMARY]"
+EXECUTION_JOURNAL_HEADER = "[EXECUTION JOURNAL]"
 MAX_COMPACTION_SUMMARY_POINTS = 8
 
 
@@ -629,6 +630,7 @@ class TerminalBrain:
         self._mcp_tools_by_name: Dict[str, Any] = {}
         self.current_plan: Optional[ExecutionPlan] = None
         self._read_files_by_workspace = defaultdict(dict)
+        self._active_execution_journal: List[Dict[str, Any]] = []
 
         # Protection écriture
         self.current_intent: str = 'question'
@@ -1041,6 +1043,7 @@ class TerminalBrain:
         else:
             self.current_intent = self.detect_intent(initial_message)
         self.write_blocked = False
+        self._active_execution_journal = []
         self._reset_deferred_tools()
         self._active_promoted_tool_names.update(self._auto_promoted_deferred_tools(initial_message, []))
         if use_cloud_model:
@@ -1156,6 +1159,7 @@ class TerminalBrain:
                 )
                 tools_for_model = [] if force_final else self.tool_registry.ollama_tools(tool_names_for_turn)
                 messages = self._compact_loop_messages(messages, context_size=self._active_context_size)
+                messages = self._inject_execution_journal(messages)
                 messages = self._inject_todo_reminder(messages, executed_tools=executed_tools)
                 messages = self._inject_step_focus_reminder(messages, initial_message, executed_tools)
                 messages = self._patch_dangling_tool_messages(messages)
@@ -1472,7 +1476,9 @@ class TerminalBrain:
 
                     # Exécuter le tool
                     result = self.execute_tool(tool_name, args, workspace_path)
-                    executed_tools.append(self._summarize_executed_tool(tool_name, args, result))
+                    executed_summary = self._summarize_executed_tool(tool_name, args, result)
+                    executed_tools.append(executed_summary)
+                    self._record_execution_journal(tool_name, args, result, executed_summary)
                     failure_signature = tool_signature(tool_name, args) if not result.success else ""
                     repeated_tool_failures = 0
                     if failure_signature:
@@ -2544,6 +2550,146 @@ class TerminalBrain:
             if len(lines) >= limit:
                 break
         return "\n".join(lines)
+
+    def _record_execution_journal(
+        self,
+        tool_name: str,
+        args: Dict[str, Any],
+        result: ToolResult,
+        executed_summary: Dict[str, Any],
+    ) -> None:
+        ignored = {"write_todos", "think", "tool_search", "remember_fact", "list_memory"}
+        if tool_name in ignored:
+            return
+
+        line = self._execution_journal_line(tool_name, args or {}, result, executed_summary or {})
+        if not line:
+            return
+
+        entry = {
+            "tool": tool_name,
+            "success": bool(result.success),
+            "line": line,
+            "signature": self._execution_journal_signature(tool_name, args or {}, line),
+        }
+
+        self._active_execution_journal = [
+            item
+            for item in self._active_execution_journal
+            if item.get("signature") != entry["signature"]
+        ]
+        self._active_execution_journal.append(entry)
+        self._active_execution_journal = self._active_execution_journal[-8:]
+
+    def _execution_journal_line(
+        self,
+        tool_name: str,
+        args: Dict[str, Any],
+        result: ToolResult,
+        executed_summary: Dict[str, Any],
+    ) -> str:
+        data = result.data or {}
+        if result.error:
+            detail = self._compact_summary_snippet(result.error, limit=180)
+            return f"{tool_name} failed: {detail}" if detail else ""
+
+        if tool_name == "list_files":
+            path = str(args.get("path") or ".")
+            return f"listed {path}: {len(data.get('items', []))} item(s)"
+        if tool_name == "read_file":
+            path = data.get("path") or args.get("path") or ""
+            return f"read {path}: {data.get('lines', 0)} line(s)"
+        if tool_name == "glob":
+            return f"glob {args.get('pattern', '')}: {len(data.get('files', []))} file(s)"
+        if tool_name == "search":
+            location = args.get("path") or "."
+            pattern = self._compact_summary_snippet(str(args.get("pattern", "")), limit=80)
+            return f"searched {location} for {pattern}: {len(data.get('results', []))} result(s)"
+        if tool_name in {"write_file", "edit_file", "delete_file"}:
+            path = data.get("path") or args.get("path") or ""
+            action = "wrote" if tool_name == "write_file" else "edited" if tool_name == "edit_file" else "deleted"
+            return f"{action} {path}".strip()
+        if tool_name == "write_files":
+            files = data.get("files", []) if isinstance(data, dict) else []
+            paths = [item.get("path", "") for item in files[:5] if item.get("path")]
+            suffix = ", ".join(paths)
+            if len(files) > len(paths):
+                suffix += f", +{len(files) - len(paths)} more"
+            return f"wrote batch: {suffix}" if suffix else "wrote batch"
+        if tool_name == "bash":
+            command = self._compact_summary_snippet(str(args.get("command", "")), limit=120)
+            line = f"bash `{command}` -> code {data.get('return_code', '?')}"
+            verification = data.get("verification") if isinstance(data, dict) else None
+            if isinstance(verification, dict) and verification.get("path"):
+                status = "verified" if verification.get("verified") else "unverified"
+                line += f" ({status}: {verification.get('path')})"
+            return line
+        if tool_name == "delegate_subagent":
+            agent_type = data.get("agent_type", "subagent") if isinstance(data, dict) else "subagent"
+            status = data.get("status", "unknown") if isinstance(data, dict) else "unknown"
+            summary = self._compact_summary_snippet(str(data.get("summary", "")) if isinstance(data, dict) else "", limit=140)
+            return f"{agent_type} {status}: {summary}".rstrip(": ")
+        if tool_name == "web_fetch":
+            title = self._compact_summary_snippet(str(data.get("title", "page")), limit=140)
+            return f"fetched web page: {title}"
+        if tool_name == "load_skill":
+            skill = data.get("skill", {}) if isinstance(data, dict) else {}
+            return f"loaded skill: {skill.get('id', 'skill')}"
+        if tool_name == "open_workspace":
+            return f"opened workspace: {data.get('path', '')}"
+        if tool_name in self._mcp_tools_by_name:
+            return f"ran MCP tool {tool_name} via {data.get('server_name', 'external')}"
+
+        summary = self._compact_summary_snippet(str(executed_summary.get("summary", "")), limit=180)
+        return f"{tool_name}: {summary}" if summary else ""
+
+    def _execution_journal_signature(self, tool_name: str, args: Dict[str, Any], line: str) -> str:
+        target = (
+            args.get("path")
+            or args.get("pattern")
+            or args.get("command")
+            or args.get("query")
+            or line
+        )
+        raw = f"{tool_name}:{target}"
+        folded = unicodedata.normalize("NFKD", str(raw)).encode("ascii", "ignore").decode("ascii").lower()
+        return re.sub(r"\s+", " ", folded).strip()[:240]
+
+    def _format_execution_journal(self, limit: int = 6) -> str:
+        if not self._active_execution_journal:
+            return ""
+
+        lines = [
+            EXECUTION_JOURNAL_HEADER,
+            "Short-lived state from this terminal run. Use it to avoid repeating tools after context compaction.",
+        ]
+        for item in self._active_execution_journal[-limit:]:
+            prefix = "OK" if item.get("success") else "FAIL"
+            line = self._compact_summary_snippet(str(item.get("line", "")), limit=220)
+            if line:
+                lines.append(f"- [{prefix}] {line}")
+        if len(lines) <= 2:
+            return ""
+        return "\n".join(lines)
+
+    def _inject_execution_journal(self, messages: List[Dict]) -> List[Dict]:
+        if not messages or not self._active_execution_journal:
+            return messages
+        if self.current_intent not in {"write", "execute"} and not self.current_plan:
+            return messages
+
+        journal = self._format_execution_journal()
+        if not journal:
+            return messages
+
+        cleaned = [
+            msg for msg in messages
+            if not str(msg.get("content", "") or "").startswith(EXECUTION_JOURNAL_HEADER)
+        ]
+        if not cleaned:
+            return messages
+        reminder = {"role": "user", "content": journal}
+        return [cleaned[0], reminder] + cleaned[1:]
 
     def _message_has_visible_todos(self, messages: List[Dict]) -> bool:
         for msg in messages:

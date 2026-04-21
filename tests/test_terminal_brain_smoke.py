@@ -351,6 +351,97 @@ class TerminalBrainSmokeTests(unittest.TestCase):
         self.assertNotIn("A" * 1000, serialized)
         self.assertIn("omitted 5000 chars", serialized)
 
+    def test_execution_journal_records_and_injects_useful_tool_state(self):
+        brain = TerminalBrain()
+        brain.current_intent = "write"
+
+        read_result = ToolResult(
+            success=True,
+            tool_name="read_file",
+            data={"path": "src/app/page.jsx", "lines": 42},
+        )
+        read_summary = brain._summarize_executed_tool(
+            "read_file",
+            {"path": "src/app/page.jsx"},
+            read_result,
+        )
+        brain._record_execution_journal("read_file", {"path": "src/app/page.jsx"}, read_result, read_summary)
+
+        write_result = ToolResult(
+            success=True,
+            tool_name="write_files",
+            data={"files": [{"path": "src/app/page.jsx"}, {"path": "src/app/globals.css"}]},
+        )
+        write_summary = brain._summarize_executed_tool(
+            "write_files",
+            {"files": []},
+            write_result,
+        )
+        brain._record_execution_journal("write_files", {"files": []}, write_result, write_summary)
+
+        messages = [
+            {"role": "system", "content": "system"},
+            {"role": "user", "content": "crée un template complet"},
+        ]
+        injected = brain._inject_execution_journal(messages)
+        journal_messages = [
+            msg for msg in injected
+            if msg.get("content", "").startswith("[EXECUTION JOURNAL]")
+        ]
+
+        self.assertEqual(len(journal_messages), 1)
+        self.assertIn("read src/app/page.jsx", journal_messages[0]["content"])
+        self.assertIn("wrote batch: src/app/page.jsx, src/app/globals.css", journal_messages[0]["content"])
+
+        reinjected = brain._inject_execution_journal(injected)
+        self.assertEqual(
+            sum(1 for msg in reinjected if msg.get("content", "").startswith("[EXECUTION JOURNAL]")),
+            1,
+        )
+
+    def test_execution_journal_ignores_planning_noise_and_dedupes_targets(self):
+        brain = TerminalBrain()
+        brain.current_intent = "write"
+
+        todo_result = ToolResult(
+            success=True,
+            tool_name="write_todos",
+            data={"counts": {"in_progress": 1}},
+        )
+        brain._record_execution_journal(
+            "write_todos",
+            {},
+            todo_result,
+            brain._summarize_executed_tool("write_todos", {}, todo_result),
+        )
+        self.assertEqual(brain._active_execution_journal, [])
+
+        first_read = ToolResult(
+            success=True,
+            tool_name="read_file",
+            data={"path": "README.md", "lines": 10},
+        )
+        second_read = ToolResult(
+            success=True,
+            tool_name="read_file",
+            data={"path": "README.md", "lines": 12},
+        )
+        brain._record_execution_journal(
+            "read_file",
+            {"path": "README.md"},
+            first_read,
+            brain._summarize_executed_tool("read_file", {"path": "README.md"}, first_read),
+        )
+        brain._record_execution_journal(
+            "read_file",
+            {"path": "README.md"},
+            second_read,
+            brain._summarize_executed_tool("read_file", {"path": "README.md"}, second_read),
+        )
+
+        self.assertEqual(len(brain._active_execution_journal), 1)
+        self.assertIn("12 line", brain._active_execution_journal[0]["line"])
+
     def test_compaction_summary_collects_useful_tool_and_request_points(self):
         brain = TerminalBrain()
         messages = [
