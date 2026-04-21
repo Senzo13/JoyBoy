@@ -36,6 +36,15 @@ class MobileLayoutStaticTests(unittest.TestCase):
         self.assertNotIn("mobile-brand-btn", layout)
         self.assertIn("border: none;", layout)
 
+    def test_mobile_sidebar_opens_expanded_and_restores_saved_state(self):
+        ui = self.read("web/static/js/ui.js")
+
+        self.assertIn("function setMobileSidebarOpen(open)", ui)
+        self.assertIn("sidebar.classList.remove('collapsed');", ui)
+        self.assertIn("document.body.classList.remove('sidebar-collapsed');", ui)
+        self.assertIn("restoreSavedSidebarState();", ui)
+        self.assertIn("setMobileSidebarOpen(false);", ui)
+
 
 if __name__ == "__main__":
     unittest.main()

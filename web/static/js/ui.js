@@ -871,9 +871,41 @@ function initSidebarState() {
 }
 
 // ===== MOBILE SIDEBAR =====
+function isMobileSidebarViewport() {
+    return window.matchMedia && window.matchMedia('(max-width: 768px)').matches;
+}
+
+function restoreSavedSidebarState() {
+    const sidebar = document.getElementById('conversations-sidebar');
+    if (!sidebar) return;
+
+    const shouldCollapse = Settings.get('sidebarCollapsed') !== false;
+    sidebar.classList.toggle('collapsed', shouldCollapse);
+    document.body.classList.toggle('sidebar-collapsed', shouldCollapse);
+}
+
+function setMobileSidebarOpen(open) {
+    const sidebar = document.getElementById('conversations-sidebar');
+    if (!sidebar) return;
+
+    sidebar.classList.toggle('mobile-open', open);
+
+    if (!isMobileSidebarViewport()) return;
+
+    if (open) {
+        sidebar.classList.remove('collapsed');
+        document.body.classList.remove('sidebar-collapsed');
+        return;
+    }
+
+    restoreSavedSidebarState();
+}
+
 function toggleMobileSidebar() {
     const sidebar = document.getElementById('conversations-sidebar');
-    sidebar.classList.toggle('mobile-open');
+    if (!sidebar) return;
+
+    setMobileSidebarOpen(!sidebar.classList.contains('mobile-open'));
 }
 
 // Close mobile sidebar when clicking outside
@@ -883,7 +915,7 @@ document.addEventListener('click', function(e) {
 
     if (sidebar && sidebar.classList.contains('mobile-open')) {
         if (!sidebar.contains(e.target) && !menuBtn.contains(e.target)) {
-            sidebar.classList.remove('mobile-open');
+            setMobileSidebarOpen(false);
         }
     }
 });
