@@ -98,6 +98,57 @@ class TerminalToolRegistryTests(unittest.TestCase):
         self.assertTrue(decision.allowed)
         self.assertEqual(decision.risk, ToolRisk.SHELL)
 
+    def test_permission_allows_compound_allowed_shell_commands(self):
+        registry = build_default_terminal_tool_registry(LEGACY_TOOLS)
+        engine = PermissionEngine(registry)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            decision = engine.check("bash", {"command": "python --version && echo ok"}, tmp)
+
+        self.assertTrue(decision.allowed)
+
+    def test_permission_blocks_compound_shell_injection_after_allowed_command(self):
+        registry = build_default_terminal_tool_registry(LEGACY_TOOLS)
+        engine = PermissionEngine(registry)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            decision = engine.check("bash", {"command": "echo ok; powershell -NoProfile whoami"}, tmp)
+
+        self.assertFalse(decision.allowed)
+        self.assertTrue(decision.requires_confirmation)
+        self.assertIn("sub-command is not allowed", decision.reason)
+
+    def test_permission_blocks_piped_shell_injection_after_allowed_command(self):
+        registry = build_default_terminal_tool_registry(LEGACY_TOOLS)
+        engine = PermissionEngine(registry)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            decision = engine.check("bash", {"command": "echo ok | powershell -NoProfile whoami"}, tmp)
+
+        self.assertFalse(decision.allowed)
+        self.assertTrue(decision.requires_confirmation)
+        self.assertIn("sub-command is not allowed", decision.reason)
+
+    def test_permission_blocks_unclosed_shell_quote(self):
+        registry = build_default_terminal_tool_registry(LEGACY_TOOLS)
+        engine = PermissionEngine(registry)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            decision = engine.check("bash", {"command": "echo 'oops"}, tmp)
+
+        self.assertFalse(decision.allowed)
+        self.assertIn("unclosed quote", decision.reason)
+
+    def test_permission_blocks_null_byte_shell_command(self):
+        registry = build_default_terminal_tool_registry(LEGACY_TOOLS)
+        engine = PermissionEngine(registry)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            decision = engine.check("bash", {"command": "echo ok\x00whoami"}, tmp)
+
+        self.assertFalse(decision.allowed)
+        self.assertIn("null byte", decision.reason)
+
     def test_permission_blocks_destructive_shell_command(self):
         registry = build_default_terminal_tool_registry(LEGACY_TOOLS)
         engine = PermissionEngine(registry)

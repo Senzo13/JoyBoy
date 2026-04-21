@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import re
+import shlex
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Optional
 
@@ -27,6 +28,17 @@ class ToolRisk:
 DEFAULT_PERMISSION_MODE = "default"
 FULL_ACCESS_PERMISSION_MODE = "full_access"
 TERMINAL_PERMISSION_MODES = {DEFAULT_PERMISSION_MODE, FULL_ACCESS_PERMISSION_MODE}
+ALLOWED_SHELL_COMMANDS = {
+    "npm", "node", "npx", "yarn", "pnpm",
+    "python", "python3", "pip", "pip3",
+    "git", "gh",
+    "ls", "pwd", "cat", "head", "tail", "wc",
+    "grep", "find", "which", "echo", "date",
+    "mkdir", "touch", "cp", "mv", "rm", "rmdir", "rd",
+    "cargo", "go", "make",
+    "pytest", "jest", "vitest",
+    "eslint", "prettier", "tsc",
+}
 
 
 def normalize_permission_mode(mode: str | None) -> str:
@@ -254,6 +266,22 @@ class PermissionEngine:
         normalized = " ".join(command.strip().split())
         if not normalized:
             return PermissionDecision(False, "Empty command", risk=ToolRisk.SHELL, mode=mode)
+        if len(command) > 10_000:
+            return PermissionDecision(
+                False,
+                "Command blocked: command too long.",
+                risk=ToolRisk.SHELL,
+                requires_confirmation=True,
+                mode=mode,
+            )
+        if "\x00" in command:
+            return PermissionDecision(
+                False,
+                "Command blocked: null byte detected.",
+                risk=ToolRisk.SHELL,
+                requires_confirmation=True,
+                mode=mode,
+            )
 
         lowered = normalized.lower()
         for pattern in self._CRITICAL_SHELL_PATTERNS:
@@ -277,4 +305,98 @@ class PermissionEngine:
                         mode=mode,
                     )
 
+        sub_commands, split_error = self._split_compound_command(command)
+        if split_error:
+            return PermissionDecision(
+                False,
+                f"Command blocked: {split_error}.",
+                risk=ToolRisk.SHELL,
+                requires_confirmation=True,
+                mode=mode,
+            )
+
+        for sub_command in sub_commands:
+            main_cmd = self._shell_main_command(sub_command)
+            if not main_cmd:
+                return PermissionDecision(False, "Command blocked: empty sub-command.", risk=ToolRisk.SHELL, mode=mode)
+            if main_cmd.lower() not in ALLOWED_SHELL_COMMANDS:
+                return PermissionDecision(
+                    False,
+                    f"Command blocked: sub-command is not allowed: {main_cmd}",
+                    risk=ToolRisk.SHELL,
+                    requires_confirmation=True,
+                    mode=mode,
+                )
+
         return PermissionDecision(True, risk=ToolRisk.SHELL, mode=mode)
+
+    @staticmethod
+    def _shell_main_command(command: str) -> str:
+        try:
+            parts = shlex.split(command)
+        except ValueError:
+            return ""
+        return parts[0] if parts else ""
+
+    @staticmethod
+    def _split_compound_command(command: str) -> tuple[List[str], str | None]:
+        parts: List[str] = []
+        current: List[str] = []
+        in_single_quote = False
+        in_double_quote = False
+        escaping = False
+        index = 0
+
+        while index < len(command):
+            char = command[index]
+
+            if escaping:
+                current.append(char)
+                escaping = False
+                index += 1
+                continue
+
+            if char == "\\" and not in_single_quote:
+                current.append(char)
+                escaping = True
+                index += 1
+                continue
+
+            if char == "'" and not in_double_quote:
+                in_single_quote = not in_single_quote
+                current.append(char)
+                index += 1
+                continue
+
+            if char == '"' and not in_single_quote:
+                in_double_quote = not in_double_quote
+                current.append(char)
+                index += 1
+                continue
+
+            if not in_single_quote and not in_double_quote:
+                if command.startswith("&&", index) or command.startswith("||", index):
+                    part = "".join(current).strip()
+                    if part:
+                        parts.append(part)
+                    current = []
+                    index += 2
+                    continue
+                if char in {";", "|"}:
+                    part = "".join(current).strip()
+                    if part:
+                        parts.append(part)
+                    current = []
+                    index += 1
+                    continue
+
+            current.append(char)
+            index += 1
+
+        if in_single_quote or in_double_quote or escaping:
+            return [command], "unclosed quote or dangling escape"
+
+        part = "".join(current).strip()
+        if part:
+            parts.append(part)
+        return (parts if parts else [command]), None

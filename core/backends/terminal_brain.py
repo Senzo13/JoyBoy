@@ -38,6 +38,7 @@ from core.agent_runtime import (
     truncate_middle,
 )
 from core.backends.terminal_tools import (
+    ALLOWED_SHELL_COMMANDS,
     DEFAULT_PERMISSION_MODE,
     PermissionEngine,
     ToolDefinition,
@@ -4489,26 +4490,13 @@ You have access to filesystem, search, shell, and workspace tools. Use them to c
             if pattern in command.lower():
                 return {"success": False, "error": f"Dangerous command blocked: {pattern}"}
 
-        # Whitelist
-        ALLOWED = [
-            'npm', 'node', 'npx', 'yarn', 'pnpm',
-            'python', 'python3', 'pip', 'pip3',
-            'git', 'gh',
-            'ls', 'pwd', 'cat', 'head', 'tail', 'wc',
-            'grep', 'find', 'which', 'echo', 'date',
-            'mkdir', 'touch', 'cp', 'mv', 'rm', 'rmdir', 'rd',
-            'cargo', 'go', 'make',
-            'pytest', 'jest', 'vitest',
-            'eslint', 'prettier', 'tsc',
-        ]
-
         try:
             parts = shlex.split(command)
             main_cmd = parts[0] if parts else ""
         except Exception:
             main_cmd = command.split()[0] if command.split() else ""
 
-        if not any(main_cmd.startswith(cmd) or main_cmd == cmd for cmd in ALLOWED):
+        if main_cmd.lower() not in ALLOWED_SHELL_COMMANDS:
             return {"success": False, "error": f"Command is not allowed: {main_cmd}"}
 
         try:
