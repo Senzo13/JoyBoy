@@ -108,6 +108,8 @@ from web.routes.training import training_bp
 app.register_blueprint(training_bp)
 from web.routes.runtime import runtime_bp
 app.register_blueprint(runtime_bp)
+from web.routes.signalatlas import signalatlas_bp
+app.register_blueprint(signalatlas_bp)
 
 # Désactiver les logs de requêtes HTTP (werkzeug)
 logging.getLogger('werkzeug').setLevel(logging.ERROR)

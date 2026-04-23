@@ -64,6 +64,17 @@ DEFAULT_LOCAL_CONFIG = {
         "profile_name": "",
         "last_completed_at": "",
     },
+    "signalatlas": {
+        "providers": {
+            "google_search_console": {
+                "site_url": "",
+                "service_account_json": "",
+                "service_account_file": "",
+                "oauth_json": "",
+                "oauth_file": "",
+            },
+        },
+    },
 }
 
 PROVIDER_ID_BY_KEY = {
@@ -731,6 +742,38 @@ def reset_onboarding_state() -> dict:
     config["onboarding"] = deepcopy(DEFAULT_LOCAL_CONFIG["onboarding"])
     saved = save_local_config(config)
     return deepcopy(saved.get("onboarding", {}))
+
+
+def get_signalatlas_settings() -> dict:
+    return deepcopy(load_local_config().get("signalatlas", {}))
+
+
+def get_signalatlas_provider_settings(provider_id: str) -> dict:
+    settings = get_signalatlas_settings()
+    providers = settings.get("providers", {})
+    if not isinstance(providers, dict):
+        return {}
+    return deepcopy(providers.get(str(provider_id or "").strip(), {}))
+
+
+def set_signalatlas_provider_settings(provider_id: str, values: dict[str, Any]) -> dict:
+    config = load_local_config()
+    signalatlas = config.setdefault("signalatlas", {})
+    providers = signalatlas.setdefault("providers", {})
+    provider_key = str(provider_id or "").strip()
+    if not provider_key:
+        raise ValueError("SignalAtlas provider id required")
+    current = providers.get(provider_key, {})
+    if not isinstance(current, dict):
+        current = {}
+    clean_values = {
+        str(key): str(value or "").strip()
+        for key, value in dict(values or {}).items()
+        if str(key).strip()
+    }
+    providers[provider_key] = {**current, **clean_values}
+    saved = save_local_config(config)
+    return deepcopy(saved.get("signalatlas", {}).get("providers", {}).get(provider_key, {}))
 
 
 def mask_secret(value: str) -> str:

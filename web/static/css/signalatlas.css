@@ -1,0 +1,1571 @@
+/* ===== SIGNALATLAS WORKSPACE ===== */
+
+.signalatlas-shell {
+    width: 100%;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 30px;
+}
+
+.signalatlas-hero {
+    display: grid;
+    grid-template-columns: 1.4fr 0.8fr;
+    gap: 18px;
+    align-items: stretch;
+}
+
+.signalatlas-hero-copy,
+.signalatlas-current-model-card,
+.signalatlas-control-surface,
+.signalatlas-history-panel,
+.signalatlas-report-panel,
+.signalatlas-drawer-panel,
+.signalatlas-owner-strip,
+.signalatlas-panel,
+.signalatlas-finding-card,
+.signalatlas-template-card,
+.signalatlas-interpretation-card,
+.signalatlas-model-used-card {
+    border: 1px solid rgba(148, 163, 184, 0.14);
+    border-radius: 18px;
+    background:
+        linear-gradient(180deg, rgba(15, 23, 42, 0.82), rgba(2, 6, 23, 0.96));
+}
+
+.signalatlas-hero-copy,
+.signalatlas-current-model-card,
+.signalatlas-control-surface,
+.signalatlas-history-panel,
+.signalatlas-report-panel,
+.signalatlas-drawer-panel,
+.signalatlas-owner-strip,
+.signalatlas-panel,
+.signalatlas-finding-card,
+.signalatlas-template-card,
+.signalatlas-interpretation-card,
+.signalatlas-model-used-card {
+    padding: 22px;
+}
+
+.signalatlas-kicker,
+.signalatlas-panel-kicker {
+    font-size: 11px;
+    color: #7da2ff;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+}
+
+.signalatlas-title {
+    margin: 8px 0 0;
+    font-size: clamp(28px, 4.2vw, 52px);
+    line-height: 1.03;
+    color: #f8fafc;
+}
+
+.signalatlas-description,
+.signalatlas-panel-copy,
+.signalatlas-owner-note,
+.signalatlas-markdown-lite,
+.signalatlas-finding-copy,
+.signalatlas-mini-finding-copy {
+    color: #a8b6cc;
+    line-height: 1.7;
+}
+
+.signalatlas-current-model-kicker,
+.signalatlas-current-model-meta {
+    color: #9fb0c7;
+}
+
+.signalatlas-current-model-name {
+    margin-top: 10px;
+    font-size: 22px;
+    font-weight: 700;
+    color: #f8fafc;
+}
+
+.signalatlas-current-model-list {
+    margin-top: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    color: #d7e2f0;
+    font-size: 13px;
+}
+
+.signalatlas-control-surface {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.signalatlas-input-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 12px;
+}
+
+.signalatlas-target-input,
+.signalatlas-field select {
+    width: 100%;
+    height: 48px;
+    border-radius: 14px;
+    border: 1px solid rgba(148, 163, 184, 0.16);
+    background: rgba(255, 255, 255, 0.04);
+    color: #f8fafc;
+    padding: 0 16px;
+    font-size: 14px;
+}
+
+.signalatlas-target-input:focus {
+    outline: none;
+    border-color: rgba(96, 165, 250, 0.38);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+}
+
+.signalatlas-controls-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.signalatlas-primary-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+    gap: 12px;
+    align-items: end;
+}
+
+.signalatlas-field {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+}
+
+.signalatlas-field-action {
+    padding-top: 24px;
+}
+
+.signalatlas-field-action .signalatlas-advanced-toggle {
+    min-width: 220px;
+}
+
+.signalatlas-field label {
+    font-size: 12px;
+    color: #9fb0c7;
+    font-weight: 600;
+}
+
+.signalatlas-field-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.signalatlas-help-btn {
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    border: 1px solid rgba(148, 163, 184, 0.18);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.05);
+    color: #b8c7da;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: help;
+}
+
+.signalatlas-help-btn:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(96, 165, 250, 0.24);
+    color: #f8fafc;
+}
+
+.signalatlas-field-advanced {
+    gap: 10px;
+}
+
+.signalatlas-control-note {
+    color: #8ea1bb;
+    font-size: 12px;
+    line-height: 1.55;
+}
+
+.signalatlas-advanced-toggle {
+    width: 100%;
+    min-height: 48px;
+    padding: 0 14px;
+    border: 1px solid rgba(148, 163, 184, 0.16);
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.04);
+    color: #f8fafc;
+    display: inline-flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    font-size: 14px;
+    font-weight: 600;
+    transition: background 0.16s ease, border-color 0.16s ease, transform 0.16s ease;
+}
+
+.signalatlas-advanced-toggle:hover,
+.signalatlas-advanced-toggle.is-open {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(96, 165, 250, 0.26);
+}
+
+.signalatlas-control-summary,
+.signalatlas-advanced-panel {
+    border: 1px solid rgba(148, 163, 184, 0.12);
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.03);
+    padding: 14px 16px;
+}
+
+.signalatlas-control-summary {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.signalatlas-control-summary-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.signalatlas-control-summary-title {
+    color: #f8fafc;
+    font-size: 15px;
+    font-weight: 700;
+}
+
+.signalatlas-control-summary-copy {
+    color: #9fb0c7;
+    font-size: 13px;
+    line-height: 1.6;
+}
+
+.signalatlas-control-inline-summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 4px 2px 0;
+}
+
+.signalatlas-summary-chips {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.signalatlas-report-meta {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.signalatlas-serp-card {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    padding: 22px;
+    border: 1px solid rgba(148, 163, 184, 0.14);
+    border-radius: 18px;
+    background:
+        linear-gradient(180deg, rgba(15, 23, 42, 0.82), rgba(2, 6, 23, 0.96));
+}
+
+.signalatlas-serp-card.compact {
+    margin-top: 8px;
+}
+
+.signalatlas-serp-layout {
+    display: grid;
+    grid-template-columns: minmax(240px, 280px) minmax(0, 1fr);
+    gap: 24px;
+    align-items: start;
+}
+
+.signalatlas-serp-sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.signalatlas-serp-sidebar-title {
+    color: #dce6f6;
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+.signalatlas-serp-sidebar-copy {
+    color: #9fb0c7;
+    font-size: 13px;
+    line-height: 1.6;
+}
+
+.signalatlas-serp-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.signalatlas-serp-title-main {
+    margin-top: 6px;
+    color: #f8fafc;
+    font-size: 18px;
+    font-weight: 700;
+}
+
+.signalatlas-serp-shell {
+    border-radius: 18px;
+    overflow: hidden;
+    border: 1px solid rgba(226, 232, 240, 0.8);
+    background: #ffffff;
+    color: #202124;
+    box-shadow: 0 18px 50px rgba(15, 23, 42, 0.28);
+}
+
+.signalatlas-serp-topbar {
+    padding: 14px 18px;
+    border-bottom: 1px solid #e5e7eb;
+    background: #ffffff;
+}
+
+.signalatlas-serp-query {
+    height: 44px;
+    border-radius: 999px;
+    border: 1px solid #dfe1e5;
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    color: #202124;
+    font-size: 15px;
+    box-shadow: 0 1px 6px rgba(32, 33, 36, 0.08);
+}
+
+.signalatlas-serp-results {
+    padding: 14px 24px 22px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    max-height: clamp(360px, 56vh, 520px);
+    overflow-y: scroll;
+    overflow-x: hidden;
+    scrollbar-gutter: stable;
+    scrollbar-width: thin;
+    scrollbar-color: #c0c7d3 #f4f6fb;
+}
+
+.signalatlas-serp-results::-webkit-scrollbar {
+    width: 12px;
+}
+
+.signalatlas-serp-results::-webkit-scrollbar-track {
+    background: #f4f6fb;
+    border-left: 1px solid #e9edf4;
+}
+
+.signalatlas-serp-results::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, #cfd6e2, #aeb7c6);
+    border: 2px solid #f4f6fb;
+    border-radius: 999px;
+}
+
+.signalatlas-serp-results::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, #bcc5d3, #98a4b6);
+}
+
+.signalatlas-serp-stats {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.signalatlas-serp-stat {
+    padding: 12px 14px;
+    border-radius: 14px;
+    background: #ffffff;
+    border: 1px solid #edf1f5;
+}
+
+.signalatlas-serp-stat-label {
+    display: block;
+    color: #5f6368;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+.signalatlas-serp-stat-value {
+    display: block;
+    margin-top: 6px;
+    color: #202124;
+    font-size: 24px;
+    font-weight: 700;
+}
+
+.signalatlas-serp-footnote {
+    color: #8ea1bb;
+    font-size: 12px;
+    line-height: 1.6;
+}
+
+.signalatlas-serp-result {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-width: min(100%, 720px);
+}
+
+.signalatlas-serp-source {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+}
+
+.signalatlas-serp-favicon-wrap {
+    width: 30px;
+    height: 30px;
+    flex: 0 0 auto;
+    border-radius: 999px;
+    overflow: hidden;
+    border: 1px solid #dfe1e5;
+    background: #f8fafc;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.signalatlas-serp-favicon-wrap.is-fallback {
+    background: #e8f0fe;
+    border-color: #d2d9e7;
+}
+
+.signalatlas-serp-favicon {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.signalatlas-serp-favicon-fallback {
+    display: none;
+    width: 100%;
+    height: 100%;
+    align-items: center;
+    justify-content: center;
+    color: #3656a8;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.signalatlas-serp-favicon-wrap.is-fallback .signalatlas-serp-favicon-fallback {
+    display: inline-flex;
+}
+
+.signalatlas-serp-source-copy {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.signalatlas-serp-source-name {
+    color: #202124;
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 1.3;
+}
+
+.signalatlas-serp-source-url {
+    color: #4d5156;
+    font-size: 12px;
+    line-height: 1.4;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.signalatlas-serp-title {
+    color: #1a0dab;
+    font-size: 20px;
+    line-height: 1.3;
+    font-weight: 400;
+    max-width: min(100%, 720px);
+}
+
+.signalatlas-serp-description {
+    color: #4d5156;
+    font-size: 14px;
+    line-height: 1.58;
+    max-width: min(100%, 720px);
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+}
+
+.signalatlas-serp-meta {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    color: #5f6368;
+    font-size: 12px;
+}
+
+.signalatlas-serp-score-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 24px;
+    padding: 0 10px;
+    border-radius: 999px;
+    border: 1px solid transparent;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+}
+
+.signalatlas-serp-score-badge.is-good {
+    color: #067647;
+    background: #ecfdf3;
+    border-color: #abefc6;
+}
+
+.signalatlas-serp-score-badge.is-warn {
+    color: #b54708;
+    background: #fffaeb;
+    border-color: #fedf89;
+}
+
+.signalatlas-serp-score-badge.is-danger {
+    color: #b42318;
+    background: #fef3f2;
+    border-color: #fecdca;
+}
+
+.signalatlas-serp-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 14px 24px 18px;
+    border-top: 1px solid #e5e7eb;
+    background: #ffffff;
+}
+
+.signalatlas-serp-page-status {
+    color: #5f6368;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.signalatlas-serp-page-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.signalatlas-serp-page-btn {
+    min-width: 36px;
+    height: 36px;
+    padding: 0 12px;
+    border-radius: 999px;
+    border: 1px solid #dfe1e5;
+    background: #ffffff;
+    color: #1a0dab;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease, transform 0.18s ease;
+}
+
+.signalatlas-serp-page-btn:hover:not(:disabled) {
+    background: #f6f9fe;
+    border-color: #c7d2fe;
+    transform: translateY(-1px);
+}
+
+.signalatlas-serp-page-btn.active {
+    background: #e8f0fe;
+    border-color: #a9c2ff;
+    color: #174ea6;
+}
+
+.signalatlas-serp-page-btn.nav {
+    min-width: 84px;
+}
+
+.signalatlas-serp-page-btn:disabled {
+    opacity: 0.45;
+    cursor: default;
+    transform: none;
+}
+
+.signalatlas-picker {
+    position: relative;
+    width: 100%;
+    z-index: 8;
+}
+
+.signalatlas-picker .signalatlas-picker-btn {
+    width: 100%;
+    max-width: none;
+    min-height: 48px;
+    justify-content: space-between;
+    padding: 10px 14px;
+    border: 1px solid rgba(148, 163, 184, 0.16);
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.04);
+    color: #f8fafc;
+    gap: 10px;
+}
+
+.signalatlas-picker .signalatlas-picker-btn:hover {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(96, 165, 250, 0.26);
+}
+
+.signalatlas-picker-copy {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+}
+
+.signalatlas-picker-value,
+.signalatlas-picker-meta {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.signalatlas-picker-value {
+    color: #f8fafc;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.signalatlas-picker-meta {
+    color: #93a4bf;
+    font-size: 11px;
+}
+
+.signalatlas-picker .signalatlas-picker-menu {
+    top: calc(100% + 8px);
+    bottom: auto;
+    left: 0;
+    right: 0;
+    width: 100%;
+    min-width: 0;
+}
+
+.signalatlas-picker .signalatlas-picker-list {
+    max-height: 320px;
+}
+
+.signalatlas-picker-section {
+    padding: 10px 12px 4px;
+    color: #7da2ff;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.signalatlas-picker-option {
+    width: 100%;
+    text-align: left;
+    border: none;
+    background: transparent;
+}
+
+.signalatlas-progress-surface {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 14px 16px;
+    border-radius: 16px;
+    border: 1px solid rgba(96, 165, 250, 0.26);
+    background: linear-gradient(180deg, rgba(30, 41, 59, 0.78), rgba(10, 15, 30, 0.96));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.signalatlas-progress-top,
+.signalatlas-progress-meta,
+.signalatlas-history-progress-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.signalatlas-progress-top-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.signalatlas-progress-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 6px;
+    color: #f8fafc;
+    font-size: 15px;
+    font-weight: 700;
+}
+
+.signalatlas-progress-spinner {
+    width: 12px;
+    height: 12px;
+    border-radius: 999px;
+    background: #60a5fa;
+    box-shadow: 0 0 0 0 rgba(96, 165, 250, 0.55);
+    animation: signalatlasPulse 1.35s ease-in-out infinite;
+    flex: 0 0 auto;
+}
+
+.signalatlas-progress-percent {
+    color: #dbeafe;
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.signalatlas-progress-bar,
+.signalatlas-history-progress-bar,
+.modules-card-runtime-bar {
+    width: 100%;
+    height: 8px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: rgba(148, 163, 184, 0.14);
+}
+
+.signalatlas-progress-fill,
+.signalatlas-history-progress-fill,
+.modules-card-runtime-fill {
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, rgba(96, 165, 250, 0.9), rgba(56, 189, 248, 0.95));
+}
+
+.signalatlas-progress-meta,
+.signalatlas-history-progress-copy {
+    color: #9fb0c7;
+    font-size: 12px;
+}
+
+.signalatlas-history-progress-meta {
+    margin-top: 10px;
+    color: #c7d4e8;
+    font-size: 12px;
+}
+
+.signalatlas-history-progress-copy {
+    margin-top: 8px;
+}
+
+.signalatlas-field.is-toggle {
+    justify-content: center;
+}
+
+.signalatlas-switch {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    width: 52px;
+    height: 32px;
+}
+
+.signalatlas-switch input {
+    display: none;
+}
+
+.signalatlas-switch span {
+    position: absolute;
+    inset: 0;
+    border-radius: 999px;
+    background: rgba(148, 163, 184, 0.22);
+}
+
+.signalatlas-switch span::after {
+    content: '';
+    position: absolute;
+    top: 4px;
+    left: 4px;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: #fff;
+    transition: transform 0.18s ease;
+}
+
+.signalatlas-switch input:checked + span {
+    background: rgba(59, 130, 246, 0.6);
+}
+
+.signalatlas-switch input:checked + span::after {
+    transform: translateX(20px);
+}
+
+.signalatlas-transparency-row,
+.signalatlas-summary-badges,
+.signalatlas-template-samples,
+.signalatlas-tabs,
+.signalatlas-owner-list,
+.signalatlas-export-grid,
+.signalatlas-score-grid,
+.signalatlas-actions,
+.signalatlas-control-stack {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.signalatlas-transparency-row {
+    color: #9fb0c7;
+    font-size: 12px;
+}
+
+.signalatlas-ai-note {
+    flex: 1 1 100%;
+    color: #9fb0c7;
+    font-size: 13px;
+    line-height: 1.6;
+}
+
+.signalatlas-workspace-grid {
+    display: grid;
+    grid-template-columns: 300px minmax(0, 1fr);
+    gap: 26px;
+    align-items: start;
+}
+
+.signalatlas-report-panel-wide {
+    width: 100%;
+}
+
+.signalatlas-report-heading {
+    align-items: flex-start;
+    padding-bottom: 16px;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+}
+
+.signalatlas-report-heading-copy {
+    min-width: 0;
+}
+
+.signalatlas-report-heading-copytext {
+    margin-top: 8px;
+    max-width: 720px;
+}
+
+.signalatlas-report-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.signalatlas-report-download {
+    min-height: 52px;
+    padding: 12px 16px;
+    border-radius: 16px;
+    border: 1px solid rgba(96, 165, 250, 0.34);
+    background: linear-gradient(180deg, rgba(32, 84, 186, 0.22), rgba(24, 63, 140, 0.3));
+    color: #eff6ff;
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    cursor: pointer;
+    transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+}
+
+.signalatlas-report-download:hover {
+    transform: translateY(-1px);
+    border-color: rgba(125, 178, 255, 0.5);
+    box-shadow: 0 14px 36px rgba(2, 6, 23, 0.28);
+}
+
+.signalatlas-report-download-icon {
+    width: 34px;
+    height: 34px;
+    border-radius: 12px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.signalatlas-report-download-copy {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    text-align: left;
+}
+
+.signalatlas-report-download-copy strong {
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.signalatlas-report-download-copy small {
+    color: #c7d2e6;
+    font-size: 11px;
+}
+
+.signalatlas-report-hero {
+    margin-top: 24px;
+    display: grid;
+    grid-template-columns: minmax(0, 1.6fr) minmax(320px, 420px);
+    gap: 24px;
+    align-items: stretch;
+}
+
+.signalatlas-report-summary-title {
+    margin: 8px 0 0;
+    color: #f8fafc;
+    font-size: clamp(30px, 4vw, 44px);
+    line-height: 1.05;
+}
+
+.signalatlas-report-score-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    justify-content: space-between;
+}
+
+.signalatlas-score-ring-wrap {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+}
+
+.signalatlas-score-ring {
+    position: relative;
+    width: 132px;
+    height: 132px;
+    flex: 0 0 auto;
+}
+
+.signalatlas-score-ring svg {
+    width: 100%;
+    height: 100%;
+    transform: rotate(-90deg);
+}
+
+.signalatlas-score-ring-track,
+.signalatlas-score-ring-progress {
+    fill: none;
+    stroke-width: 10;
+}
+
+.signalatlas-score-ring-track {
+    stroke: rgba(148, 163, 184, 0.16);
+}
+
+.signalatlas-score-ring-progress {
+    stroke: #60a5fa;
+    stroke-linecap: round;
+    transition: stroke-dashoffset 0.9s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.signalatlas-score-ring.is-empty .signalatlas-score-ring-progress {
+    stroke: rgba(148, 163, 184, 0.22);
+    transition: none;
+}
+
+.signalatlas-score-ring.is-good .signalatlas-score-ring-progress {
+    stroke: #34d399;
+}
+
+.signalatlas-score-ring.is-warn .signalatlas-score-ring-progress {
+    stroke: #fbbf24;
+}
+
+.signalatlas-score-ring.is-danger .signalatlas-score-ring-progress {
+    stroke: #f87171;
+}
+
+.signalatlas-score-ring-center {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+}
+
+.signalatlas-score-ring-value {
+    color: #f8fafc;
+    font-size: 34px;
+    font-weight: 800;
+    line-height: 1;
+}
+
+.signalatlas-score-ring-total {
+    color: #8ea1bb;
+    font-size: 12px;
+    letter-spacing: 0.06em;
+}
+
+.signalatlas-score-ring-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.signalatlas-score-ring-status {
+    color: #f8fafc;
+    font-size: 18px;
+    font-weight: 700;
+}
+
+.signalatlas-model-used-card {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.signalatlas-model-used-value {
+    color: #f8fafc;
+    font-size: 24px;
+    font-weight: 700;
+    line-height: 1.15;
+}
+
+.signalatlas-model-used-copy,
+.signalatlas-model-used-meta {
+    color: #9fb0c7;
+    line-height: 1.6;
+}
+
+.signalatlas-model-used-meta {
+    font-size: 12px;
+}
+
+.signalatlas-drawer-panel {
+    margin-top: 18px;
+}
+
+.signalatlas-drawer-panel.is-entering {
+    animation: signalatlasDrawerIn 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.signalatlas-history-drawer .signalatlas-history-list {
+    margin-top: 14px;
+    max-height: 360px;
+    overflow: auto;
+    padding-right: 4px;
+}
+
+.signalatlas-seo-drawer .signalatlas-tabs {
+    margin-top: 18px;
+}
+
+.signalatlas-section-top,
+.signalatlas-history-top,
+.signalatlas-template-top,
+.signalatlas-interpretation-top,
+.signalatlas-finding-top {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: flex-start;
+}
+
+.signalatlas-panel-title {
+    margin-top: 6px;
+    color: #f8fafc;
+    font-size: 22px;
+    font-weight: 700;
+}
+
+.signalatlas-history-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 16px;
+}
+
+.signalatlas-history-card {
+    width: 100%;
+    text-align: left;
+    padding: 14px;
+    border-radius: 14px;
+    border: 1px solid rgba(148, 163, 184, 0.12);
+    background: rgba(255, 255, 255, 0.03);
+    color: inherit;
+    cursor: pointer;
+}
+
+.signalatlas-history-card.active {
+    border-color: rgba(96, 165, 250, 0.34);
+    background: rgba(59, 130, 246, 0.12);
+}
+
+.signalatlas-history-title,
+.signalatlas-finding-title,
+.signalatlas-template-signature,
+.signalatlas-interpretation-model,
+.signalatlas-export-title {
+    color: #f8fafc;
+    font-weight: 700;
+}
+
+.signalatlas-history-meta,
+.signalatlas-history-model,
+.signalatlas-history-footer,
+.signalatlas-table-subtitle,
+.signalatlas-finding-meta,
+.signalatlas-finding-url,
+.signalatlas-template-meta,
+.signalatlas-interpretation-meta,
+.signalatlas-owner-status,
+.signalatlas-score-meta,
+.signalatlas-visibility-note {
+    color: #8ca0bd;
+    font-size: 12px;
+}
+
+.signalatlas-history-model {
+    margin-top: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.signalatlas-history-model-label {
+    color: #8ca0bd;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 11px;
+}
+
+.signalatlas-history-model-value {
+    color: #dbeafe;
+    font-weight: 600;
+}
+
+.signalatlas-tabs {
+    margin-top: 16px;
+}
+
+.signalatlas-tab,
+.signalatlas-btn,
+.signalatlas-icon-btn,
+.signalatlas-export-card {
+    border-radius: 14px;
+    border: 1px solid rgba(148, 163, 184, 0.14);
+    background: rgba(255, 255, 255, 0.04);
+    color: #e5edf9;
+}
+
+.signalatlas-tab {
+    padding: 8px 12px;
+    font-size: 12px;
+    cursor: pointer;
+    background: rgba(255, 255, 255, 0.025);
+}
+
+.signalatlas-tab.active,
+.signalatlas-btn.launch {
+    border-color: rgba(96, 165, 250, 0.34);
+    background: rgba(59, 130, 246, 0.14);
+}
+
+.signalatlas-tab-panel {
+    margin-top: 14px;
+}
+
+.signalatlas-overview-grid,
+.signalatlas-detail-grid,
+.signalatlas-ai-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 22px;
+}
+
+.signalatlas-overview-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    margin-top: 24px;
+}
+
+.signalatlas-kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.signalatlas-kpi-card {
+    padding: 16px;
+    border-radius: 16px;
+    border: 1px solid rgba(148, 163, 184, 0.12);
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.signalatlas-kpi-label {
+    color: #8ea1bb;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+.signalatlas-kpi-value {
+    margin-top: 8px;
+    color: #f8fafc;
+    font-size: 28px;
+    font-weight: 700;
+}
+
+.signalatlas-score-grid {
+    margin-top: 12px;
+}
+
+.signalatlas-score-card {
+    min-width: 132px;
+    padding: 14px;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.signalatlas-score-card.is-good { border-color: rgba(16, 185, 129, 0.28); }
+.signalatlas-score-card.is-warn { border-color: rgba(245, 158, 11, 0.28); }
+.signalatlas-score-card.is-danger { border-color: rgba(248, 113, 113, 0.28); }
+
+.signalatlas-score-label {
+    color: #9fb0c7;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+.signalatlas-score-value {
+    margin-top: 10px;
+    color: #f8fafc;
+    font-size: 30px;
+    font-weight: 700;
+}
+
+.signalatlas-notes-list {
+    margin: 16px 0 0;
+    padding-left: 18px;
+    color: #c8d4e3;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.signalatlas-tag {
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(148, 163, 184, 0.14);
+    color: #dbeafe;
+    font-size: 12px;
+}
+
+.signalatlas-tag.is-danger { color: #fecaca; border-color: rgba(248, 113, 113, 0.28); }
+.signalatlas-tag.is-warn { color: #fde68a; border-color: rgba(245, 158, 11, 0.28); }
+.signalatlas-tag.is-soft { color: #bfdbfe; }
+
+.signalatlas-table-wrap {
+    overflow: auto;
+    border-radius: 16px;
+    border: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.signalatlas-table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 720px;
+}
+
+.signalatlas-table th,
+.signalatlas-table td {
+    border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+    padding: 12px 14px;
+    text-align: left;
+}
+
+.signalatlas-table th {
+    color: #9fb0c7;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.signalatlas-table-title {
+    color: #f8fafc;
+    font-weight: 600;
+}
+
+.signalatlas-export-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+}
+
+.signalatlas-export-card,
+.signalatlas-btn,
+.signalatlas-icon-btn {
+    cursor: pointer;
+    padding: 14px 16px;
+}
+
+.signalatlas-btn.secondary {
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.signalatlas-btn.secondary.danger {
+    color: #fecaca;
+    border-color: rgba(248, 113, 113, 0.28);
+    background: rgba(127, 29, 29, 0.16);
+}
+
+.signalatlas-stop-btn {
+    width: 54px;
+    min-width: 54px;
+    height: 54px;
+    padding: 0;
+    border-radius: 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.signalatlas-stop-btn svg {
+    width: 16px;
+    height: 16px;
+    fill: currentColor;
+}
+
+.signalatlas-icon-btn {
+    width: 42px;
+    height: 42px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.signalatlas-btn:disabled {
+    opacity: 0.72;
+    cursor: wait;
+}
+
+.signalatlas-empty-panel,
+.signalatlas-history-empty {
+    padding: 22px;
+    border-radius: 16px;
+    border: 1px dashed rgba(148, 163, 184, 0.16);
+    color: #8ca0bd;
+}
+
+.signalatlas-live-job {
+    margin-top: 14px;
+    color: #dbeafe;
+}
+
+.signalatlas-owner-strip {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.signalatlas-owner-inline {
+    margin-top: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.signalatlas-owner-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.signalatlas-owner-card {
+    padding: 14px;
+    border-radius: 14px;
+    border: 1px solid rgba(148, 163, 184, 0.12);
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.signalatlas-owner-name,
+.signalatlas-mini-finding-title {
+    color: #f8fafc;
+    font-weight: 600;
+}
+
+.signalatlas-owner-status.is-good { color: #86efac; }
+.signalatlas-owner-status.is-warn { color: #fde68a; }
+.signalatlas-owner-status.is-danger { color: #fca5a5; }
+
+.signalatlas-visibility-row,
+.signalatlas-owner-evidence-row,
+.signalatlas-metric-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+}
+
+.signalatlas-visibility-row:last-child,
+.signalatlas-owner-evidence-row:last-child,
+.signalatlas-metric-row:last-child {
+    border-bottom: none;
+}
+
+.signalatlas-mini-finding {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 18px 0;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+}
+
+.signalatlas-mini-finding:last-child {
+    border-bottom: none;
+}
+
+.signalatlas-mini-finding-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+@keyframes signalatlasPulse {
+    0% {
+        transform: scale(0.92);
+        box-shadow: 0 0 0 0 rgba(96, 165, 250, 0.45);
+    }
+    70% {
+        transform: scale(1);
+        box-shadow: 0 0 0 8px rgba(96, 165, 250, 0);
+    }
+    100% {
+        transform: scale(0.92);
+        box-shadow: 0 0 0 0 rgba(96, 165, 250, 0);
+    }
+}
+
+@keyframes signalatlasDrawerIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@media (max-width: 1180px) {
+    .signalatlas-hero,
+    .signalatlas-workspace-grid,
+    .signalatlas-overview-grid,
+    .signalatlas-detail-grid,
+    .signalatlas-ai-grid,
+    .signalatlas-report-hero,
+    .signalatlas-serp-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .signalatlas-primary-grid,
+    .signalatlas-kpi-grid,
+    .signalatlas-controls-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .signalatlas-serp-stats {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 760px) {
+    .signalatlas-input-row,
+    .signalatlas-primary-grid,
+    .signalatlas-kpi-grid,
+    .signalatlas-controls-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .signalatlas-progress-top,
+    .signalatlas-progress-meta,
+    .signalatlas-history-progress-meta,
+    .signalatlas-control-summary-head,
+    .signalatlas-serp-head,
+    .signalatlas-report-meta,
+    .signalatlas-report-heading,
+    .signalatlas-report-toolbar,
+    .signalatlas-score-ring-wrap {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .signalatlas-summary-chips {
+        justify-content: flex-start;
+    }
+
+    .signalatlas-serp-pagination,
+    .signalatlas-serp-page-controls {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .signalatlas-serp-stats {
+        grid-template-columns: 1fr;
+    }
+
+    .signalatlas-field-action {
+        padding-top: 0;
+    }
+
+    .signalatlas-field-action .signalatlas-advanced-toggle {
+        min-width: 0;
+        width: 100%;
+    }
+
+    .signalatlas-report-download {
+        width: 100%;
+        justify-content: flex-start;
+    }
+
+    .signalatlas-picker .signalatlas-picker-menu {
+        width: 100%;
+    }
+}

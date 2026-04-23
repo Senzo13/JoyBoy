@@ -1,0 +1,172 @@
+/* ===== MODULES HUB ===== */
+
+#modules-view,
+#signalatlas-view {
+    display: none;
+}
+
+.modules-shell {
+    width: min(100%, 1440px);
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+}
+
+.modules-hero {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding-top: 6px;
+}
+
+.modules-kicker {
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #7da2ff;
+    font-weight: 700;
+}
+
+.modules-title {
+    margin: 0;
+    font-size: clamp(32px, 5vw, 56px);
+    line-height: 1;
+    color: #f8fafc;
+}
+
+.modules-description {
+    max-width: 760px;
+    margin: 0;
+    font-size: 15px;
+    line-height: 1.7;
+    color: #93a4bf;
+}
+
+.modules-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 18px;
+}
+
+.modules-card {
+    border: 1px solid rgba(148, 163, 184, 0.14);
+    border-radius: 18px;
+    background:
+        linear-gradient(180deg, rgba(15, 23, 42, 0.84), rgba(2, 6, 23, 0.92));
+    padding: 20px;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+}
+
+.modules-card:hover {
+    transform: translateY(-2px);
+    border-color: rgba(96, 165, 250, 0.35);
+    background:
+        linear-gradient(180deg, rgba(17, 24, 39, 0.92), rgba(2, 6, 23, 0.98));
+}
+
+.modules-card.featured {
+    border-color: rgba(96, 165, 250, 0.34);
+    box-shadow: 0 18px 40px rgba(2, 6, 23, 0.32);
+}
+
+.modules-card-top,
+.modules-card-title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.modules-card-icon {
+    width: 42px;
+    height: 42px;
+    border-radius: 12px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(59, 130, 246, 0.12);
+    color: #dbeafe;
+}
+
+.modules-card-status {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #cbd5e1;
+}
+
+.modules-card-title {
+    font-size: 22px;
+    font-weight: 700;
+    color: #f8fafc;
+}
+
+.modules-card-tagline {
+    margin-top: 4px;
+    font-size: 13px;
+    color: #a8b6cc;
+}
+
+.modules-card-description {
+    margin-top: 18px;
+    font-size: 14px;
+    line-height: 1.7;
+    color: #c3cfdf;
+}
+
+.modules-card-capabilities {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 18px;
+}
+
+.modules-chip,
+.signalatlas-inline-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(148, 163, 184, 0.16);
+    background: rgba(255, 255, 255, 0.04);
+    color: #d7e2f0;
+    font-size: 12px;
+}
+
+.modules-chip.premium {
+    color: #dbeafe;
+    border-color: rgba(96, 165, 250, 0.28);
+    background: rgba(59, 130, 246, 0.12);
+}
+
+.modules-card-note,
+.modules-empty {
+    margin-top: 14px;
+    color: #8ca0bd;
+    font-size: 13px;
+}
+
+.modules-card-runtime {
+    margin-top: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.modules-card-runtime-copy {
+    color: #dbeafe;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.modules-card-runtime-message {
+    color: #9fb0c7;
+    font-size: 12px;
+    line-height: 1.5;
+}

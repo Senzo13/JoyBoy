@@ -431,6 +431,59 @@ const apiRuntime = {
     }
 };
 
+// ===== MODULES / SIGNALATLAS API =====
+
+const apiModules = {
+    async list() {
+        return apiGet('/api/modules');
+    }
+};
+
+const apiSignalAtlas = {
+    async listAudits(limit = 40) {
+        return apiGet(`/api/signalatlas/audits?limit=${encodeURIComponent(limit)}`);
+    },
+
+    async createAudit(payload = {}) {
+        return apiPost('/api/signalatlas/audits', payload);
+    },
+
+    async getAudit(auditId) {
+        return apiGet(`/api/signalatlas/audits/${encodeURIComponent(auditId)}`);
+    },
+
+    async rerunAi(auditId, payload = {}) {
+        return apiPost(`/api/signalatlas/audits/${encodeURIComponent(auditId)}/rerun-ai`, payload);
+    },
+
+    async compareAi(auditId, payload = {}) {
+        return apiPost(`/api/signalatlas/audits/${encodeURIComponent(auditId)}/compare-ai`, payload);
+    },
+
+    async getModelContext() {
+        return apiGet('/api/signalatlas/models/context');
+    },
+
+    async getProviderStatus(target = '', mode = '') {
+        const params = new URLSearchParams();
+        if (target) params.set('target', target);
+        if (mode) params.set('mode', mode);
+        const query = params.toString();
+        return apiGet(`/api/signalatlas/providers/status${query ? `?${query}` : ''}`);
+    },
+
+    async fetchExportText(auditId, formatName = 'prompt') {
+        try {
+            const response = await fetch(`/api/signalatlas/audits/${encodeURIComponent(auditId)}/export/${encodeURIComponent(formatName)}`);
+            const content = await response.text();
+            return { ok: response.ok, data: content, status: response.status };
+        } catch (error) {
+            console.error('[API] SignalAtlas export fetch failed:', error);
+            return { ok: false, error: error.message, data: '' };
+        }
+    }
+};
+
 // ===== TERMINAL API =====
 
 const apiTerminal = {

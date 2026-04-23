@@ -595,12 +595,15 @@ function openAddonsHub() {
     if (chatView) chatView.style.display = 'none';
     if (modalView) modalView.style.display = 'none';
     if (modelsView) modelsView.style.display = 'none';
+    if (typeof hideModulesWorkspaces === 'function') hideModulesWorkspaces();
     if (typeof hideProjectView === 'function') hideProjectView();
     else if (projectsView) projectsView.style.display = 'none';
     addonsView.style.display = 'flex';
     document.body.classList.add('addons-mode');
     document.body.classList.remove('models-mode');
     document.body.classList.remove('projects-mode');
+    document.body.classList.remove('modules-mode');
+    document.body.classList.remove('signalatlas-mode');
     document.querySelectorAll('.sidebar-hub-btn').forEach(btn => btn.classList.remove('active'));
     document.getElementById('sidebar-addons-btn')?.classList.add('active');
 
@@ -658,12 +661,15 @@ function openModelsHub() {
     if (chatView) chatView.style.display = 'none';
     if (modalView) modalView.style.display = 'none';
     if (addonsView) addonsView.style.display = 'none';
+    if (typeof hideModulesWorkspaces === 'function') hideModulesWorkspaces();
     if (typeof hideProjectView === 'function') hideProjectView();
     else if (projectsView) projectsView.style.display = 'none';
     modelsView.style.display = 'flex';
     document.body.classList.add('models-mode');
     document.body.classList.remove('addons-mode');
     document.body.classList.remove('projects-mode');
+    document.body.classList.remove('modules-mode');
+    document.body.classList.remove('signalatlas-mode');
     document.querySelectorAll('.sidebar-hub-btn').forEach(btn => btn.classList.remove('active'));
     document.getElementById('sidebar-models-btn')?.classList.add('active');
 

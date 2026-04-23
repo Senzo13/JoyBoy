@@ -863,12 +863,21 @@ function hasActiveRuntimeJobForChat(chatId) {
     return runtimeJobsCache.some(job => isRuntimeJobActive(job) && job.conversation_id === chatId);
 }
 
+function notifyRuntimeJobsUpdated() {
+    window.dispatchEvent(new CustomEvent('joyboy:runtime-jobs-updated', {
+        detail: {
+            jobs: Array.isArray(runtimeJobsCache) ? runtimeJobsCache : [],
+        },
+    }));
+}
+
 function runtimeJobLabel(job) {
     const kind = String(job?.kind || 'task');
     if (kind === 'image') return apiT('runtime.kindImage', 'Image');
     if (kind === 'video') return apiT('runtime.kindVideo', 'Vidéo');
     if (kind === 'terminal') return apiT('runtime.kindTerminal', 'Terminal');
     if (kind === 'model') return apiT('runtime.kindModel', 'Modèle');
+    if (kind === 'signalatlas') return apiT('runtime.kindSignalAtlas', 'SignalAtlas');
     return apiT('runtime.kindTask', 'Tâche');
 }
 
@@ -926,6 +935,7 @@ async function refreshRuntimeJobs() {
         );
         renderRuntimeJobs();
         renderChatList();
+        notifyRuntimeJobsUpdated();
     } catch (e) {
         console.warn('[RUNTIME] Jobs refresh failed:', e);
     }
@@ -947,6 +957,10 @@ async function openRuntimeJob(jobId) {
     const job = runtimeJobsCache.find(item => item.id === jobId);
     if (job?.conversation_id) {
         await loadChat(job.conversation_id);
+        return;
+    }
+    if (job?.metadata?.module_id === 'signalatlas' && typeof openSignalAtlasWorkspace === 'function') {
+        await openSignalAtlasWorkspace(job?.metadata?.audit_id || null);
     }
 }
 
@@ -956,6 +970,7 @@ async function cancelRuntimeJob(jobId, event) {
     if (locallyCancelRuntimeJobs(job => job.id === jobId, apiT('runtime.cancelled', 'Arrêté'))) {
         renderRuntimeJobs();
         renderChatList();
+        notifyRuntimeJobsUpdated();
     }
     try {
         await apiRuntime.cancelJob(jobId);

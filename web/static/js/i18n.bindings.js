@@ -83,6 +83,7 @@ BINDINGS.push(
         { selector: '#profile-onboarding-label', key: 'settings.profile.onboardingLabel' },
         { selector: '#profile-onboarding-desc', key: 'settings.profile.onboardingDesc' },
         { selector: '#profile-onboarding-button', key: 'settings.profile.onboardingButton' },
+        { selector: '#sidebar-modules-label', key: 'modules.sidebarLabel' },
         { selector: '#sidebar-addons-label', key: 'settings.addons.sidebarLabel' },
         { selector: '#sidebar-models-label', key: 'settings.tabs.models' },
         { selector: '#addons-hero-kicker', key: 'settings.addons.heroKicker' },
