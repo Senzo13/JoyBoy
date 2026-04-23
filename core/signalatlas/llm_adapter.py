@@ -22,10 +22,41 @@ def _audit_excerpt(audit: Dict[str, Any]) -> Dict[str, Any]:
     scores = audit.get("scores") or []
     snapshot = audit.get("snapshot") or {}
     pages = snapshot.get("pages") or []
+    render_detection = snapshot.get("render_detection") or {}
     return {
         "summary": summary,
         "top_findings": findings[:10],
+        "root_causes": [
+            {
+                "id": item.get("id"),
+                "title": item.get("title"),
+                "severity": item.get("severity"),
+                "confidence": item.get("confidence"),
+                "validation_state": item.get("validation_state"),
+                "relationship_summary": item.get("relationship_summary"),
+            }
+            for item in findings
+            if item.get("root_cause")
+        ],
+        "derived_symptoms": [
+            {
+                "id": item.get("id"),
+                "title": item.get("title"),
+                "severity": item.get("severity"),
+                "confidence": item.get("confidence"),
+                "validation_state": item.get("validation_state"),
+                "derived_from": item.get("derived_from"),
+            }
+            for item in findings
+            if item.get("derived_from")
+        ],
         "scores": scores,
+        "render_detection": {
+            "render_js_requested": render_detection.get("render_js_requested"),
+            "render_js_executed": render_detection.get("render_js_executed"),
+            "note": render_detection.get("note"),
+        },
+        "template_clusters": (snapshot.get("template_clusters") or [])[:6],
         "sample_pages": [
             {
                 "url": page.get("final_url") or page.get("url"),
@@ -65,14 +96,18 @@ def generate_interpretation(
     system_message = (
         "You are SignalAtlas AI inside JoyBoy. The deterministic audit is the source of truth. "
         "Never invent crawl data, indexing facts, or unsupported metrics. "
-        "Use the provided confidence labels exactly as given."
+        "Use the provided confidence labels exactly as given. "
+        "Separate root causes from downstream symptoms. "
+        "When render_js_requested is true but render_js_executed is false, explicitly say that some heading, "
+        "content-depth, duplicate, or internal-linking findings may be baseline-only symptoms of the initial HTML response."
     )
     user_message = (
         f"Task: {prompt_goal}\n"
         f"Preset: {preset}\n"
         f"Model note: {_preset_note(preset)}\n"
         "Return markdown with sections: Executive summary, Root causes, Prioritized roadmap, "
-        "Prompts for action. Include confidence and source transparency.\n\n"
+        "Prompts for action. Include confidence and source transparency.\n"
+        "Call out what is confirmed, what is baseline-only, and what needs rendered-browser validation.\n\n"
         f"AUDIT EXCERPT:\n{excerpt}"
     )
     content = call_text_model(

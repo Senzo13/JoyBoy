@@ -30,6 +30,14 @@ CONFIDENCE_ORDER = {
     "Unknown": 1,
 }
 
+SEVERITY_ORDER = {
+    "critical": 5,
+    "high": 4,
+    "medium": 3,
+    "low": 2,
+    "info": 1,
+}
+
 
 def _confidence_label(findings: List[Dict[str, Any]]) -> str:
     if not findings:
@@ -99,6 +107,46 @@ def score_findings(
         )
 
     global_score = round(weighted_total / total_weight, 1) if total_weight else 0.0
+    root_causes = [item for item in findings if item.get("root_cause")]
+    blocking_candidates = root_causes or [
+        item for item in findings if SEVERITY_ORDER.get(str(item.get("severity", "")).lower(), 0) >= SEVERITY_ORDER["high"]
+    ]
+    blocking_risk = {
+        "level": "Low",
+        "summary": "No blocking root cause was detected in the sampled baseline.",
+        "primary_finding_id": "",
+        "finding_ids": [],
+    }
+    if blocking_candidates:
+        ranked = sorted(
+            blocking_candidates,
+            key=lambda item: (
+                1 if item.get("root_cause") else 0,
+                SEVERITY_ORDER.get(str(item.get("severity", "")).lower(), 0),
+                CONFIDENCE_ORDER.get(item.get("confidence", "Unknown"), 1),
+            ),
+            reverse=True,
+        )
+        primary = ranked[0]
+        severity = str(primary.get("severity", "")).lower()
+        if severity == "critical":
+            level = "Critical"
+        elif severity == "high":
+            level = "High"
+        elif severity == "medium":
+            level = "Medium"
+        else:
+            level = "Low"
+        blocking_risk = {
+            "level": level,
+            "summary": (
+                primary.get("relationship_summary")
+                or primary.get("diagnostic")
+                or "A high-priority issue blocks trustworthy SEO interpretation."
+            ),
+            "primary_finding_id": primary.get("id", ""),
+            "finding_ids": [item.get("id") for item in ranked if item.get("id")],
+        }
     return {
         "global_score": global_score,
         "categories": score_rows,
@@ -107,4 +155,5 @@ def score_findings(
             "page_budget": page_budget,
             "ratio": round(coverage, 2),
         },
+        "blocking_risk": blocking_risk,
     }

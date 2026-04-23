@@ -125,6 +125,11 @@ class Finding:
     dev_prompt: str
     content_prompt: str
     seo_prompt: str
+    root_cause: bool = False
+    derived_from: List[str] = field(default_factory=list)
+    validation_state: str = "confirmed"
+    evidence_mode: str = "public_crawl"
+    relationship_summary: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)

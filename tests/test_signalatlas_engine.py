@@ -98,6 +98,98 @@ class SignalAtlasEngineTests(unittest.TestCase):
             raise AssertionError(f"Unexpected URL fetched during test: {url}")
         return fixtures[url]
 
+    def fake_get_shell(self, url, timeout=None, headers=None, allow_redirects=True):
+        del timeout, headers, allow_redirects
+        fixtures = {
+            "https://spa.example.com/robots.txt": _FakeResponse(
+                "https://spa.example.com/robots.txt",
+                text="User-agent: *\nAllow: /\nSitemap: https://spa.example.com/sitemap.xml\n",
+                headers={"content-type": "text/plain; charset=utf-8"},
+            ),
+            "https://spa.example.com/sitemap.xml": _FakeResponse(
+                "https://spa.example.com/sitemap.xml",
+                text="""
+                <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+                  <url><loc>https://spa.example.com/</loc></url>
+                  <url><loc>https://spa.example.com/about</loc></url>
+                  <url><loc>https://spa.example.com/features</loc></url>
+                </urlset>
+                """,
+                headers={"content-type": "application/xml; charset=utf-8"},
+            ),
+            "https://spa.example.com/": _FakeResponse(
+                "https://spa.example.com/",
+                text="""
+                <html>
+                  <head>
+                    <title>SPA Home</title>
+                    <meta name="description" content="Shell page">
+                    <link rel="canonical" href="https://spa.example.com/">
+                    <script type="module" src="/assets/main.js"></script>
+                    <script>window.__APP__ = true;</script>
+                    <script>window.__boot = true;</script>
+                    <script>window.__chunks = true;</script>
+                    <script>window.__more = true;</script>
+                    <script>window.__evenMore = true;</script>
+                  </head>
+                  <body>
+                    <div id="root"></div>
+                    <a href="/about">About</a>
+                  </body>
+                </html>
+                """,
+                headers={"content-type": "text/html; charset=utf-8"},
+            ),
+            "https://spa.example.com/about": _FakeResponse(
+                "https://spa.example.com/about",
+                text="""
+                <html>
+                  <head>
+                    <title>SPA About</title>
+                    <meta name="description" content="About shell">
+                    <link rel="canonical" href="https://spa.example.com/about">
+                    <script type="module" src="/assets/main.js"></script>
+                    <script>window.__APP__ = true;</script>
+                    <script>window.__boot = true;</script>
+                    <script>window.__chunks = true;</script>
+                    <script>window.__more = true;</script>
+                    <script>window.__evenMore = true;</script>
+                  </head>
+                  <body>
+                    <div id="root"></div>
+                    <a href="/">Home</a>
+                  </body>
+                </html>
+                """,
+                headers={"content-type": "text/html; charset=utf-8"},
+            ),
+            "https://spa.example.com/features": _FakeResponse(
+                "https://spa.example.com/features",
+                text="""
+                <html>
+                  <head>
+                    <title>SPA Features</title>
+                    <meta name="description" content="Features shell">
+                    <link rel="canonical" href="https://spa.example.com/features">
+                    <script type="module" src="/assets/main.js"></script>
+                    <script>window.__APP__ = true;</script>
+                    <script>window.__boot = true;</script>
+                    <script>window.__chunks = true;</script>
+                    <script>window.__more = true;</script>
+                    <script>window.__evenMore = true;</script>
+                  </head>
+                  <body>
+                    <div id="root"></div>
+                  </body>
+                </html>
+                """,
+                headers={"content-type": "text/html; charset=utf-8"},
+            ),
+        }
+        if url not in fixtures:
+            raise AssertionError(f"Unexpected URL fetched during test: {url}")
+        return fixtures[url]
+
     @patch("core.signalatlas.engine.requests.Session.get")
     def test_public_audit_returns_structured_deterministic_report(self, mocked_get):
         mocked_get.side_effect = self.fake_get
@@ -134,6 +226,7 @@ class SignalAtlasEngineTests(unittest.TestCase):
         self.assertEqual(export["extension"], "md")
         self.assertIn("# SignalAtlas Audit", export["content"])
         self.assertIn("## Findings", export["content"])
+        self.assertIn("## Root Cause Snapshot", export["content"])
 
     @patch("core.signalatlas.engine.build_owner_context")
     @patch("core.signalatlas.engine.requests.Session.get")
@@ -176,6 +269,41 @@ class SignalAtlasEngineTests(unittest.TestCase):
         self.assertFalse(result["snapshot"]["render_detection"]["render_js_executed"])
         self.assertEqual(result["snapshot"]["render_detection"]["reason"], "playwright_not_installed")
         self.assertIn("Playwright", result["snapshot"]["render_detection"]["note"])
+
+    @patch("core.signalatlas.engine._playwright_runtime_status")
+    @patch("core.signalatlas.engine.requests.Session.get")
+    def test_shell_baseline_marks_root_cause_and_derived_symptoms(self, mocked_get, mocked_playwright):
+        mocked_get.side_effect = self.fake_get_shell
+        mocked_playwright.return_value = {
+            "available": False,
+            "reason": "playwright_not_installed",
+            "detail": "No module named playwright",
+        }
+
+        result = run_public_audit("spa.example.com", max_pages=6, render_js=True)
+        findings = {item["id"]: item for item in result["findings"]}
+
+        self.assertTrue(findings["js-shell-risk"]["root_cause"])
+        self.assertEqual(findings["js-shell-risk"]["evidence_mode"], "raw_html")
+        self.assertEqual(findings["missing-h1"]["derived_from"], ["js-shell-risk"])
+        self.assertEqual(findings["missing-h1"]["validation_state"], "needs_render_validation")
+        self.assertEqual(findings["thin-content"]["derived_from"], ["js-shell-risk"])
+        self.assertEqual(result["summary"]["primary_root_cause_id"], "js-shell-risk")
+        self.assertTrue(result["summary"]["baseline_only"])
+        self.assertEqual(result["summary"]["blocking_risk"]["primary_finding_id"], "js-shell-risk")
+
+        audit = {
+            "summary": result["summary"],
+            "snapshot": result["snapshot"],
+            "findings": result["findings"],
+            "scores": result["scores"],
+            "interpretations": [],
+            "remediation_items": result["remediation_items"],
+        }
+        export = build_export_payload(audit, "markdown")
+        self.assertIn("### Root causes", export["content"])
+        self.assertIn("### Derived symptoms to revalidate", export["content"])
+        self.assertIn("Needs render validation", export["content"])
 
 
 if __name__ == "__main__":

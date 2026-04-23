@@ -6,11 +6,39 @@ import json
 from typing import Any, Dict, List
 
 
+def _validation_state_label(value: str) -> str:
+    labels = {
+        "confirmed": "Confirmed",
+        "needs_render_validation": "Needs render validation",
+    }
+    return labels.get(str(value or "").strip().lower(), "Confirmed")
+
+
+def _evidence_mode_label(value: str) -> str:
+    labels = {
+        "raw_html": "Raw HTML baseline",
+        "raw_html_vs_rendered": "Raw HTML + rendered comparison",
+        "owner_confirmed": "Owner confirmed",
+        "public_crawl": "Public crawl",
+    }
+    return labels.get(str(value or "").strip().lower(), "Public crawl")
+
+
+def _group_findings(findings: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+    return {
+        "root_causes": [item for item in findings if item.get("root_cause")],
+        "derived": [item for item in findings if item.get("derived_from")],
+        "other": [item for item in findings if not item.get("root_cause") and not item.get("derived_from")],
+    }
+
+
 def build_executive_summary(audit: Dict[str, Any]) -> str:
     summary = audit.get("summary") or {}
     findings = audit.get("findings") or []
     owner_context = audit.get("owner_context") or {}
     render_detection = (audit.get("snapshot") or {}).get("render_detection") or {}
+    grouped = _group_findings(findings)
+    primary_root = grouped["root_causes"][0] if grouped["root_causes"] else {}
     top_findings = findings[:5]
     lines = [
         f"SignalAtlas audited {summary.get('target') or 'the requested site'} in {summary.get('mode', 'public')} mode.",
@@ -18,6 +46,16 @@ def build_executive_summary(audit: Dict[str, Any]) -> str:
         f"Detected platform: {summary.get('platform', 'Custom')} with {summary.get('rendering', 'hybrid')} rendering.",
         f"Sample coverage: {summary.get('pages_crawled', 0)} page(s).",
     ]
+    if primary_root:
+        lines.append(
+            f"Primary root cause: {primary_root.get('title')} "
+            f"({primary_root.get('severity')}, {_validation_state_label(primary_root.get('validation_state'))})."
+        )
+    if summary.get("blocking_risk", {}).get("level") not in {"", "Low", None}:
+        lines.append(
+            f"Blocking risk: {summary.get('blocking_risk', {}).get('level')} — "
+            f"{summary.get('blocking_risk', {}).get('summary')}"
+        )
     if any(item.get("status") == "confirmed" for item in (owner_context.get("integrations") or []) if isinstance(item, dict)):
         lines.append("Owner-mode enrichment: confirmed via an official Search Console property.")
     elif summary.get("mode") == "verified_owner":
@@ -30,6 +68,10 @@ def build_executive_summary(audit: Dict[str, Any]) -> str:
             )
         else:
             lines.append(f"JS render probes were requested but not executed: {render_detection.get('note', 'unavailable')}")
+    if grouped["derived"] and summary.get("baseline_only"):
+        lines.append(
+            f"{len(grouped['derived'])} downstream symptom(s) are currently treated as raw-HTML baseline signals and should be revalidated after rendered-browser probing."
+        )
     if top_findings:
         lines.append("Priority issues:")
         for item in top_findings:
@@ -90,6 +132,48 @@ def build_markdown_report(audit: Dict[str, Any]) -> str:
         f"- Render JS executed: `{bool(render_detection.get('render_js_executed'))}`",
         f"- Detail: {render_detection.get('note', 'Raw HTML baseline only.')}",
         "",
+        "## Root Cause Snapshot",
+        "",
+    ])
+
+    blocking_risk = summary.get("blocking_risk") or {}
+    if blocking_risk:
+        lines.extend([
+            f"- Blocking risk: `{blocking_risk.get('level', 'Low')}`",
+            f"- Summary: {blocking_risk.get('summary', 'No blocking root cause was detected in the sampled baseline.')}",
+            "",
+        ])
+
+    grouped = _group_findings(findings)
+    if grouped["root_causes"]:
+        lines.append("### Root causes")
+        lines.append("")
+        for item in grouped["root_causes"]:
+            lines.extend(
+                [
+                    f"- **{item.get('title')}** — {_validation_state_label(item.get('validation_state'))}, {_evidence_mode_label(item.get('evidence_mode'))}",
+                    f"  - Diagnostic: {item.get('diagnostic')}",
+                ]
+            )
+            if item.get("relationship_summary"):
+                lines.append(f"  - Why it matters: {item.get('relationship_summary')}")
+        lines.append("")
+
+    if grouped["derived"]:
+        lines.append("### Derived symptoms to revalidate")
+        lines.append("")
+        for item in grouped["derived"]:
+            lines.extend(
+                [
+                    f"- **{item.get('title')}** — {_validation_state_label(item.get('validation_state'))}, {_evidence_mode_label(item.get('evidence_mode'))}",
+                    f"  - Linked root cause(s): {', '.join(item.get('derived_from') or [])}",
+                ]
+            )
+            if item.get("relationship_summary"):
+                lines.append(f"  - Why it is derived: {item.get('relationship_summary')}")
+        lines.append("")
+
+    lines.extend([
         "## Scores",
         "",
     ])
@@ -109,9 +193,21 @@ def build_markdown_report(audit: Dict[str, Any]) -> str:
                     f"- Category: `{item.get('category')}`",
                     f"- Severity: `{item.get('severity')}`",
                     f"- Confidence: `{item.get('confidence')}`",
+                    f"- Validation state: `{_validation_state_label(item.get('validation_state'))}`",
+                    f"- Evidence mode: `{_evidence_mode_label(item.get('evidence_mode'))}`",
                     f"- Expected impact: `{item.get('expected_impact')}`",
                     f"- Diagnostic: {item.get('diagnostic')}",
                     f"- Probable cause: {item.get('probable_cause')}",
+                    (
+                        f"- Relationship: {item.get('relationship_summary')}"
+                        if item.get("relationship_summary")
+                        else ""
+                    ),
+                    (
+                        f"- Derived from: `{', '.join(item.get('derived_from') or [])}`"
+                        if item.get("derived_from")
+                        else ""
+                    ),
                     f"- Recommended fix: {item.get('recommended_fix')}",
                     f"- Acceptance criteria: {item.get('acceptance_criteria')}",
                     "",
@@ -159,6 +255,7 @@ def build_report_html(audit: Dict[str, Any]) -> str:
     findings = audit.get("findings") or []
     owner_context = audit.get("owner_context") or {}
     render_detection = (audit.get("snapshot") or {}).get("render_detection") or {}
+    blocking_risk = summary.get("blocking_risk") or {}
     score_cards = "".join(
         f"<div class='score-card'><div class='label'>{score.get('label')}</div>"
         f"<div class='value'>{score.get('score')}</div>"
@@ -210,6 +307,7 @@ def build_report_html(audit: Dict[str, Any]) -> str:
   <h1>SignalAtlas Audit</h1>
   <div class="muted">{summary.get('target', '')}</div>
   <p>{build_executive_summary(audit)}</p>
+  <p><strong>Blocking risk:</strong> {blocking_risk.get('level', 'Low')} — {blocking_risk.get('summary', 'No blocking root cause was detected in the sampled baseline.')}</p>
   <div class="scores">{score_cards}</div>
   <h2>Provenance & Confidence</h2>
   <div class="owner-grid">

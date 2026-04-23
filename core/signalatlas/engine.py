@@ -679,6 +679,23 @@ def _build_template_clusters(pages: List[Dict[str, Any]]) -> List[Dict[str, Any]
     return rows
 
 
+def _render_baseline_only(render_detection: Optional[Dict[str, Any]]) -> bool:
+    payload = render_detection or {}
+    return bool(payload.get("render_js_requested")) and not bool(payload.get("render_js_executed"))
+
+
+def _render_root_relationship(render_detection: Optional[Dict[str, Any]]) -> str:
+    if _render_baseline_only(render_detection):
+        return (
+            "Treat this as the primary issue first. In this audit, some heading, content-depth, "
+            "duplicate-like, and internal-linking findings may be downstream symptoms of the initial HTML baseline."
+        )
+    return (
+        "Treat this as the primary issue first. Rendering delivery should be resolved before interpreting downstream "
+        "content or linking symptoms."
+    )
+
+
 def _finding(
     identifier: str,
     *,
@@ -695,11 +712,32 @@ def _finding(
     probable_cause: str,
     recommended_fix: str,
     acceptance: str,
+    root_cause: bool = False,
+    derived_from: Optional[Iterable[str]] = None,
+    validation_state: str = "confirmed",
+    evidence_mode: str = "public_crawl",
+    relationship_summary: str = "",
 ) -> Dict[str, Any]:
+    relation_text = relationship_summary or ""
+    derived_ids = [str(item).strip() for item in (derived_from or []) if str(item).strip()]
+    context_tail = []
+    if root_cause:
+        context_tail.append("Classification: root cause")
+    elif derived_ids:
+        context_tail.append(f"Likely downstream symptom of: {', '.join(derived_ids)}")
+    if validation_state:
+        context_tail.append(f"Validation state: {validation_state}")
+    if evidence_mode:
+        context_tail.append(f"Evidence mode: {evidence_mode}")
+    if relation_text:
+        context_tail.append(f"Relationship: {relation_text}")
+    context_block = "\n".join(context_tail)
+    context_suffix = f"\n{context_block}\n" if context_block else "\n"
     dev_prompt = (
         "You are fixing a JoyBoy SignalAtlas audit issue.\n"
         f"Category: {category}\n"
         f"URL or scope: {url or scope}\n"
+        f"{context_suffix}"
         f"Diagnosis: {diagnostic}\n"
         f"Recommended fix: {recommended_fix}\n"
         f"Acceptance criteria: {acceptance}\n"
@@ -708,6 +746,7 @@ def _finding(
     content_prompt = (
         "You are helping remediate an SEO content issue.\n"
         f"URL or scope: {url or scope}\n"
+        f"{context_suffix}"
         f"Diagnosis: {diagnostic}\n"
         f"Recommended fix: {recommended_fix}\n"
         f"Acceptance criteria: {acceptance}\n"
@@ -717,6 +756,7 @@ def _finding(
         "You are reviewing a structured SEO audit issue.\n"
         f"Category: {category}\n"
         f"URL or scope: {url or scope}\n"
+        f"{context_suffix}"
         f"Evidence: {' | '.join(str(item) for item in evidence)}\n"
         f"Diagnosis: {diagnostic}\n"
         f"Recommended fix: {recommended_fix}\n"
@@ -740,6 +780,11 @@ def _finding(
         "dev_prompt": dev_prompt,
         "content_prompt": content_prompt,
         "seo_prompt": seo_prompt,
+        "root_cause": root_cause,
+        "derived_from": derived_ids,
+        "validation_state": validation_state,
+        "evidence_mode": evidence_mode,
+        "relationship_summary": relationship_summary,
     }
 
 
@@ -750,10 +795,12 @@ def _build_findings(
     robots: Dict[str, Any],
     sitemaps: Dict[str, Any],
     site_classification: Dict[str, Any],
+    render_detection: Optional[Dict[str, Any]] = None,
 ) -> List[Dict[str, Any]]:
     findings: List[Dict[str, Any]] = []
     page_by_url = {page.get("final_url") or page.get("url"): page for page in pages}
     homepage = page_by_url.get(target_url) or (pages[0] if pages else {})
+    baseline_only = _render_baseline_only(render_detection)
 
     if not robots.get("found"):
         findings.append(_finding(
@@ -828,11 +875,12 @@ def _build_findings(
         ))
 
     shell_like_pages = [page for page in pages if page.get("shell_like")]
+    js_shell_root_active = bool(shell_like_pages)
     if shell_like_pages:
         sample = shell_like_pages[0]
         findings.append(_finding(
             "js-shell-risk",
-            title="Initial HTML looks JS-heavy",
+            title="Initial HTML behaves like a JS app shell" if baseline_only else "Initial HTML looks JS-heavy",
             url=sample.get("final_url") or sample.get("url") or target_url,
             scope="site",
             category="rendering",
@@ -841,10 +889,22 @@ def _build_findings(
             confidence="Strong signal",
             impact="High",
             evidence=sample.get("classification_reasons") or ["Thin initial HTML", "App shell markers"],
-            diagnostic="Several sampled pages expose very little meaningful HTML before client-side hydration.",
-            probable_cause="The site relies heavily on client-side rendering or an app shell with delayed content injection.",
+            diagnostic=(
+                "Several sampled pages expose very little meaningful HTML before client-side hydration."
+                if baseline_only
+                else "Several sampled pages expose very little meaningful HTML before client-side hydration."
+            ),
+            probable_cause=(
+                "The site likely relies on client-side rendering or prerenders metadata without delivering meaningful body content in the initial HTML response."
+                if baseline_only
+                else "The site relies heavily on client-side rendering or an app shell with delayed content injection."
+            ),
             recommended_fix="Ensure critical content, metadata, canonicals, and links are present in the initial HTML response.",
             acceptance="Sampled pages return crawlable HTML with meaningful body copy and metadata before JS execution.",
+            root_cause=True,
+            validation_state="confirmed",
+            evidence_mode="raw_html" if baseline_only else "raw_html_vs_rendered",
+            relationship_summary=_render_root_relationship(render_detection),
         ))
 
     pages_without_title = [page for page in pages if not page.get("title")]
@@ -892,7 +952,7 @@ def _build_findings(
         sample = missing_h1[0]
         findings.append(_finding(
             "missing-h1",
-            title="Pages missing H1 heading",
+            title="H1 missing from the initial HTML baseline" if baseline_only and js_shell_root_active else "Pages missing H1 heading",
             url=sample.get("final_url") or sample.get("url") or target_url,
             scope="template",
             category="headings",
@@ -901,10 +961,34 @@ def _build_findings(
             confidence="Confirmed",
             impact="Medium",
             evidence=[f"{len(missing_h1)} sampled page(s) without an H1"],
-            diagnostic="One or more sampled templates have no primary H1 heading.",
-            probable_cause="Content hierarchy is not enforced consistently across templates.",
-            recommended_fix="Ensure each indexable page exposes exactly one descriptive H1 in the main content.",
-            acceptance="Sampled pages contain a visible, route-relevant H1 in the body.",
+            diagnostic=(
+                "Sampled pages do not expose an H1 in the initial HTML response."
+                if baseline_only and js_shell_root_active
+                else "One or more sampled templates have no primary H1 heading."
+            ),
+            probable_cause=(
+                "The site may inject the main heading after hydration, or the initial HTML baseline may stop at an app shell."
+                if baseline_only and js_shell_root_active
+                else "Content hierarchy is not enforced consistently across templates."
+            ),
+            recommended_fix=(
+                "Fix initial HTML delivery first, then ensure each indexable page still exposes exactly one descriptive H1 in the server-delivered HTML."
+                if baseline_only and js_shell_root_active
+                else "Ensure each indexable page exposes exactly one descriptive H1 in the main content."
+            ),
+            acceptance=(
+                "Sampled pages expose a visible, route-relevant H1 in the initial HTML response, and rendered validation confirms the same heading survives hydration."
+                if baseline_only and js_shell_root_active
+                else "Sampled pages contain a visible, route-relevant H1 in the body."
+            ),
+            derived_from=["js-shell-risk"] if baseline_only and js_shell_root_active else [],
+            validation_state="needs_render_validation" if baseline_only and js_shell_root_active else "confirmed",
+            evidence_mode="raw_html",
+            relationship_summary=(
+                "Likely downstream symptom of the JS-heavy initial HTML baseline. Revalidate after fixing server-delivered HTML."
+                if baseline_only and js_shell_root_active
+                else ""
+            ),
         ))
 
     alt_missing = [page for page in pages if page.get("image_missing_alt", 0) > 0]
@@ -932,7 +1016,7 @@ def _build_findings(
         sample = thin_pages[0]
         findings.append(_finding(
             "thin-content",
-            title="Large share of sampled pages are thin",
+            title="Initial HTML baseline looks very thin" if baseline_only and js_shell_root_active else "Large share of sampled pages are thin",
             url=sample.get("final_url") or sample.get("url") or target_url,
             scope="site",
             category="content",
@@ -941,10 +1025,34 @@ def _build_findings(
             confidence="Strong signal",
             impact="Medium",
             evidence=[f"{len(thin_pages)} of {len(pages)} sampled pages have under 180 visible words"],
-            diagnostic="A meaningful portion of the crawl exposes very short visible content.",
-            probable_cause="Template placeholders, sparse landing pages, or overly shallow article bodies.",
-            recommended_fix="Expand key pages with genuinely useful copy, internal anchors, and supporting context.",
-            acceptance="Core templates exceed minimal content depth and expose substantial visible text in HTML.",
+            diagnostic=(
+                "A meaningful portion of the crawl exposes very short visible content in the initial HTML response."
+                if baseline_only and js_shell_root_active
+                else "A meaningful portion of the crawl exposes very short visible content."
+            ),
+            probable_cause=(
+                "Critical page copy may be injected after hydration, or the templates may genuinely be too shallow."
+                if baseline_only and js_shell_root_active
+                else "Template placeholders, sparse landing pages, or overly shallow article bodies."
+            ),
+            recommended_fix=(
+                "Fix initial HTML delivery first, then expand key pages that remain shallow even in server-delivered HTML."
+                if baseline_only and js_shell_root_active
+                else "Expand key pages with genuinely useful copy, internal anchors, and supporting context."
+            ),
+            acceptance=(
+                "Core templates expose substantial visible text in the initial HTML baseline, and rendered comparison no longer shows major copy gaps."
+                if baseline_only and js_shell_root_active
+                else "Core templates exceed minimal content depth and expose substantial visible text in HTML."
+            ),
+            derived_from=["js-shell-risk"] if baseline_only and js_shell_root_active else [],
+            validation_state="needs_render_validation" if baseline_only and js_shell_root_active else "confirmed",
+            evidence_mode="raw_html",
+            relationship_summary=(
+                "Likely downstream symptom of the JS-heavy initial HTML baseline. Revalidate after fixing server-delivered HTML."
+                if baseline_only and js_shell_root_active
+                else ""
+            ),
         ))
 
     duplicates = Counter(page.get("text_hash") for page in pages if page.get("text_hash"))
@@ -954,7 +1062,7 @@ def _build_findings(
         sample = dup_pages[0]
         findings.append(_finding(
             "duplicate-content",
-            title="Quasi-duplicate content detected",
+            title="Raw HTML baseline looks quasi-duplicate" if baseline_only and js_shell_root_active else "Quasi-duplicate content detected",
             url=sample.get("final_url") or sample.get("url") or target_url,
             scope="site",
             category="content",
@@ -963,10 +1071,34 @@ def _build_findings(
             confidence="Strong signal",
             impact="Medium",
             evidence=[f"{len(dup_pages)} sampled pages share near-identical extracted text"],
-            diagnostic="The sampled crawl surfaced repeated or near-repeated content bodies.",
-            probable_cause="Duplicated templates, paginated clones, parameter variants, or copied boilerplate pages.",
-            recommended_fix="Consolidate duplicates with canonicals, redirects, or differentiated content.",
-            acceptance="Duplicate templates are consolidated and canonical targets are consistent.",
+            diagnostic=(
+                "The sampled crawl surfaced repeated or near-repeated content in the initial HTML baseline."
+                if baseline_only and js_shell_root_active
+                else "The sampled crawl surfaced repeated or near-repeated content bodies."
+            ),
+            probable_cause=(
+                "Repeated app-shell HTML or shared boilerplate may be masking true page uniqueness before hydration."
+                if baseline_only and js_shell_root_active
+                else "Duplicated templates, paginated clones, parameter variants, or copied boilerplate pages."
+            ),
+            recommended_fix=(
+                "Fix initial HTML delivery first, then re-evaluate duplicate clusters that remain similar after rendered validation."
+                if baseline_only and js_shell_root_active
+                else "Consolidate duplicates with canonicals, redirects, or differentiated content."
+            ),
+            acceptance=(
+                "Important templates remain materially distinct in initial HTML or are consolidated with canonicals or redirects."
+                if baseline_only and js_shell_root_active
+                else "Duplicate templates are consolidated and canonical targets are consistent."
+            ),
+            derived_from=["js-shell-risk"] if baseline_only and js_shell_root_active else [],
+            validation_state="needs_render_validation" if baseline_only and js_shell_root_active else "confirmed",
+            evidence_mode="raw_html",
+            relationship_summary=(
+                "May partly reflect repeated app-shell HTML rather than true rendered duplication. Revalidate after fixing initial HTML delivery."
+                if baseline_only and js_shell_root_active
+                else ""
+            ),
         ))
 
     orphan_like = []
@@ -977,7 +1109,7 @@ def _build_findings(
     if orphan_like:
         findings.append(_finding(
             "orphan-like-pages",
-            title="Sitemap URLs look weakly linked",
+            title="Sitemap URLs look weakly linked in the bounded HTML crawl" if baseline_only and js_shell_root_active else "Sitemap URLs look weakly linked",
             url=orphan_like[0],
             scope="site",
             category="internal_linking",
@@ -986,10 +1118,34 @@ def _build_findings(
             confidence="Estimated",
             impact="Medium",
             evidence=[f"{len(orphan_like)} sitemap URL(s) were not seen in the sampled internal link graph"],
-            diagnostic="Some URLs referenced by the sitemap were not discovered through internal links during the bounded crawl.",
-            probable_cause="Weak navigation, deep architecture, or sitemap entries that are isolated from the main site graph.",
-            recommended_fix="Surface important sitemap URLs from relevant navigation, hubs, or contextual links.",
-            acceptance="Important sitemap URLs are reachable through internal links within a reasonable click depth.",
+            diagnostic=(
+                "Some URLs referenced by the sitemap were not discovered through HTML links during the bounded crawl."
+                if baseline_only and js_shell_root_active
+                else "Some URLs referenced by the sitemap were not discovered through internal links during the bounded crawl."
+            ),
+            probable_cause=(
+                "Important navigation or contextual links may only appear after client-side rendering, or the internal link graph may genuinely be weak."
+                if baseline_only and js_shell_root_active
+                else "Weak navigation, deep architecture, or sitemap entries that are isolated from the main site graph."
+            ),
+            recommended_fix=(
+                "After fixing initial HTML delivery, verify that important URLs are discoverable through crawlable HTML links within a reasonable click depth."
+                if baseline_only and js_shell_root_active
+                else "Surface important sitemap URLs from relevant navigation, hubs, or contextual links."
+            ),
+            acceptance=(
+                "Important sitemap URLs are reachable through crawlable HTML links within a reasonable click depth after raw-HTML validation."
+                if baseline_only and js_shell_root_active
+                else "Important sitemap URLs are reachable through internal links within a reasonable click depth."
+            ),
+            derived_from=["js-shell-risk"] if baseline_only and js_shell_root_active else [],
+            validation_state="needs_render_validation" if baseline_only and js_shell_root_active else "confirmed",
+            evidence_mode="raw_html",
+            relationship_summary=(
+                "May partly reflect links that only appear after client-side rendering. Revalidate after fixing initial HTML delivery."
+                if baseline_only and js_shell_root_active
+                else ""
+            ),
         ))
 
     blog_pages = [page for page in pages if page.get("has_blog_signals")]
@@ -1009,6 +1165,14 @@ def _build_findings(
             probable_cause="The site may rely entirely on commercial pages or the editorial surface is deeply buried.",
             recommended_fix="If content-led acquisition matters for the niche, create an editorial architecture tied to core topics.",
             acceptance="The site exposes a crawlable editorial hub with clear topic clusters or deliberately documents why one is unnecessary.",
+            validation_state="needs_render_validation" if baseline_only and js_shell_root_active else "confirmed",
+            evidence_mode="raw_html",
+            derived_from=["js-shell-risk"] if baseline_only and js_shell_root_active else [],
+            relationship_summary=(
+                "This may partly reflect a raw-HTML baseline that hides editorial links until hydration."
+                if baseline_only and js_shell_root_active
+                else ""
+            ),
         ))
 
     if not homepage.get("structured_data_count"):
@@ -1262,10 +1426,15 @@ def run_site_audit(
         robots=robots,
         sitemaps=sitemaps,
         site_classification=classification,
+        render_detection=render_detection,
     )
 
     emit("score", 76, "Scoring technical findings")
     score_payload = score_findings(findings, pages_analyzed=len(pages), page_budget=max_pages)
+    root_causes = [item for item in findings if item.get("root_cause")]
+    derived_symptoms = [item for item in findings if item.get("derived_from")]
+    primary_root_cause = root_causes[0] if root_causes else None
+    baseline_only = _render_baseline_only(render_detection)
 
     emit("report", 88, "Building audit report")
     summary = {
@@ -1285,8 +1454,17 @@ def run_site_audit(
             for item in (owner_context.get("integrations") or [])
             if isinstance(item, dict)
         ),
+        "baseline_only": baseline_only,
         "render_js_requested": bool(render_detection.get("render_js_requested")),
         "render_js_executed": bool(render_detection.get("render_js_executed")),
+        "primary_root_cause_id": primary_root_cause.get("id", "") if primary_root_cause else "",
+        "primary_root_cause_title": primary_root_cause.get("title", "") if primary_root_cause else "",
+        "root_cause_count": len(root_causes),
+        "derived_symptom_count": len(derived_symptoms),
+        "needs_render_validation_count": sum(
+            1 for item in findings if item.get("validation_state") == "needs_render_validation"
+        ),
+        "blocking_risk": score_payload.get("blocking_risk") or {},
         "signals": {
             "robots": "Confirmed" if robots.get("found") else "Unknown",
             "sitemap": visibility.get("sitemap_coherence", {}).get("confidence", "Estimated"),
@@ -1304,7 +1482,21 @@ def run_site_audit(
                 if render_detection.get("render_js_executed")
                 else render_detection.get("note") or "Raw HTML remained the source of truth for rendering analysis."
             ),
+            (
+                "Several symptoms are marked as baseline-only and should be revalidated after rendered-browser probing."
+                if baseline_only and derived_symptoms
+                else "No derived baseline-only symptom cluster was detected in this sampled pass."
+            ),
             "LLM interpretation can be rerun later without repeating the crawl.",
+        ],
+        "root_causes": [
+            {
+                "id": item.get("id"),
+                "title": item.get("title"),
+                "severity": item.get("severity"),
+                "confidence": item.get("confidence"),
+            }
+            for item in root_causes
         ],
     }
 
