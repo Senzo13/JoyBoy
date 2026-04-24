@@ -105,6 +105,7 @@
     display: grid;
     grid-template-columns: 1fr auto;
     gap: 12px;
+    align-items: start;
 }
 
 .signalatlas-target-input,
@@ -123,6 +124,24 @@
     outline: none;
     border-color: rgba(96, 165, 250, 0.38);
     box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+}
+
+.signalatlas-target-input.is-invalid {
+    border-color: rgba(248, 113, 113, 0.6);
+    box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.12);
+}
+
+.signalatlas-target-feedback {
+    display: none;
+    grid-column: 1 / -1;
+    margin-top: -4px;
+    color: #fca5a5;
+    font-size: 12px;
+    line-height: 1.55;
+}
+
+.signalatlas-target-feedback.is-visible {
+    display: block;
 }
 
 .signalatlas-controls-grid {

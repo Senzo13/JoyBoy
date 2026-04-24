@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from typing import Any, Dict, Tuple
 from urllib.parse import urlparse
 
@@ -25,6 +26,21 @@ signalatlas_bp = Blueprint("signalatlas", __name__)
 SIGNALATLAS_DEFAULT_PAGE_BUDGET = 12
 SIGNALATLAS_MAX_PAGE_BUDGET = 1500
 SIGNALATLAS_UNLIMITED_PAGE_BUDGET_TOKENS = {"unlimited", "infinity", "infinite", "inf", "∞"}
+SIGNALATLAS_HOST_LABEL_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$", re.IGNORECASE)
+
+
+def _is_valid_signalatlas_public_host(hostname: str) -> bool:
+    clean = str(hostname or "").strip().lower().rstrip(".")
+    if not clean or "." not in clean:
+        return False
+
+    labels = [label for label in clean.split(".") if label]
+    if len(labels) < 2:
+        return False
+    if len(labels[-1]) < 2 or labels[-1].isdigit():
+        return False
+
+    return all(SIGNALATLAS_HOST_LABEL_RE.fullmatch(label) for label in labels)
 
 
 def _normalize_target(raw_value: str, mode: str) -> Dict[str, Any]:
@@ -34,13 +50,21 @@ def _normalize_target(raw_value: str, mode: str) -> Dict[str, Any]:
     if "://" not in value:
         value = f"https://{value}"
     parsed = urlparse(value)
-    if not parsed.netloc:
+    if parsed.scheme not in {"http", "https"}:
         raise ValueError("invalid target url")
-    normalized = parsed._replace(path=parsed.path or "/", params="", query="", fragment="").geturl()
+    if parsed.username or parsed.password:
+        raise ValueError("invalid target url")
+    hostname = str(parsed.hostname or "").strip().lower()
+    if not hostname or not _is_valid_signalatlas_public_host(hostname):
+        raise ValueError("invalid target url")
+    netloc = hostname
+    if parsed.port:
+        netloc = f"{netloc}:{parsed.port}"
+    normalized = parsed._replace(netloc=netloc, path=parsed.path or "/", params="", query="", fragment="").geturl()
     return {
         "raw": raw_value,
         "normalized_url": normalized,
-        "host": parsed.netloc.lower(),
+        "host": netloc,
         "mode": mode,
     }
 

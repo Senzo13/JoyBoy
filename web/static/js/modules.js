@@ -27,6 +27,7 @@ const SIGNALATLAS_DEFAULT_PAGE_BUDGET = 12;
 const SIGNALATLAS_MAX_PAGE_BUDGET = 1500;
 const SIGNALATLAS_UNLIMITED_PAGE_BUDGET = 'unlimited';
 const SIGNALATLAS_PAGE_BUDGET_STEPS = [8, 12, 20, 30, 40, 50, 75, 100, 150, 250, 500, 750, 1000, 1500];
+const SIGNALATLAS_HOST_LABEL_RE = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i;
 const SIGNALATLAS_AUDIT_PROFILES = {
     basic: {
         max_pages: 12,
@@ -78,6 +79,76 @@ function signalAtlasResolvedPageBudget(value, fallback = SIGNALATLAS_DEFAULT_PAG
     return normalized === SIGNALATLAS_UNLIMITED_PAGE_BUDGET
         ? SIGNALATLAS_MAX_PAGE_BUDGET
         : normalized;
+}
+
+function signalAtlasIsValidPublicHost(hostname) {
+    const clean = String(hostname || '').trim().toLowerCase().replace(/\.+$/, '');
+    if (!clean || !clean.includes('.')) return false;
+    const labels = clean.split('.').filter(Boolean);
+    if (labels.length < 2) return false;
+    const tld = labels[labels.length - 1] || '';
+    if (tld.length < 2 || /^\d+$/.test(tld)) return false;
+    return labels.every(label => SIGNALATLAS_HOST_LABEL_RE.test(label));
+}
+
+function signalAtlasValidateTarget(value) {
+    const raw = String(value || '').trim();
+    if (!raw) {
+        return {
+            valid: false,
+            present: false,
+            normalized: '',
+            message: moduleT('signalatlas.targetRequired', 'Add a real domain or public URL first, for example https://nevomove.com/.'),
+        };
+    }
+
+    const candidate = raw.includes('://') ? raw : `https://${raw}`;
+    let parsed = null;
+    try {
+        parsed = new URL(candidate);
+    } catch (error) {
+        parsed = null;
+    }
+
+    const invalidMessage = moduleT('signalatlas.targetInvalid', 'Use a real domain or full public URL, for example https://nevomove.com/.');
+    if (!parsed) {
+        return { valid: false, present: true, normalized: '', message: invalidMessage };
+    }
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+        return { valid: false, present: true, normalized: '', message: invalidMessage };
+    }
+    if (parsed.username || parsed.password || !signalAtlasIsValidPublicHost(parsed.hostname)) {
+        return { valid: false, present: true, normalized: '', message: invalidMessage };
+    }
+
+    return {
+        valid: true,
+        present: true,
+        normalized: parsed.toString(),
+        message: '',
+    };
+}
+
+function renderSignalAtlasTargetValidationUi() {
+    const input = document.getElementById('signalatlas-target-input');
+    const feedback = document.getElementById('signalatlas-target-feedback');
+    const launchButton = document.getElementById('signalatlas-launch-btn');
+    const validation = signalAtlasValidateTarget(input?.value ?? signalAtlasDraft.target);
+    const showError = validation.present && !validation.valid;
+
+    if (input) {
+        input.classList.toggle('is-invalid', showError);
+        input.setAttribute('aria-invalid', showError ? 'true' : 'false');
+    }
+    if (feedback) {
+        feedback.textContent = showError ? validation.message : '';
+        feedback.classList.toggle('is-visible', showError);
+    }
+    if (launchButton) {
+        launchButton.disabled = signalAtlasLaunchPending || !validation.valid;
+    }
+
+    return validation;
 }
 
 function signalAtlasMarkInteraction() {
@@ -1557,7 +1628,12 @@ function syncSignalAtlasDraftFromDom() {
 
 async function refreshSignalAtlasProviderStatus(target = signalAtlasDraft.target, mode = signalAtlasDraft.mode) {
     if (typeof apiSignalAtlas === 'undefined') return [];
-    const providerResult = await apiSignalAtlas.getProviderStatus(target || '', mode || 'public');
+    const validation = signalAtlasValidateTarget(target);
+    if (!validation.valid) {
+        signalAtlasProviders = [];
+        return signalAtlasProviders;
+    }
+    const providerResult = await apiSignalAtlas.getProviderStatus(validation.normalized || target || '', mode || 'public');
     signalAtlasProviders = Array.isArray(providerResult.data?.providers) ? providerResult.data.providers : [];
     return signalAtlasProviders;
 }
@@ -1571,6 +1647,7 @@ async function signalAtlasControlsChanged() {
 function signalAtlasTargetInputChanged(event) {
     signalAtlasMarkInteraction();
     signalAtlasDraft.target = String(event?.target?.value || '');
+    renderSignalAtlasTargetValidationUi();
 }
 
 async function loadModulesCatalog() {
@@ -2235,6 +2312,7 @@ function renderSignalAtlasWorkspace() {
     const progressState = signalAtlasAuditProgressState(audit) || signalAtlasAnyProgressState();
     const progressStatus = String(progressState?.status || '').toLowerCase();
     const canCancelAudit = !!progressState?.job && ['queued', 'running', 'cancelling'].includes(progressStatus);
+    const targetValidation = signalAtlasValidateTarget(signalAtlasDraft.target);
     const selectedProfile = signalAtlasDraft.profile || 'elevated';
     const reportModelInfo = signalAtlasReportModelInfo(audit);
     const currentModelLabel = signalAtlasDraft.model || currentJoyBoyChatModel();
@@ -2256,7 +2334,7 @@ function renderSignalAtlasWorkspace() {
         <div class="signalatlas-shell">
             <section class="signalatlas-control-surface">
                 <div class="signalatlas-input-row">
-                    <input id="signalatlas-target-input" class="signalatlas-target-input" type="text" value="${escapeHtml(signalAtlasDraft.target)}" placeholder="${escapeHtml(moduleT('signalatlas.targetPlaceholder', 'Enter a domain or URL'))}" oninput="signalAtlasTargetInputChanged(event)" onblur="signalAtlasControlsChanged()">
+                    <input id="signalatlas-target-input" class="signalatlas-target-input${targetValidation.present && !targetValidation.valid ? ' is-invalid' : ''}" type="text" value="${escapeHtml(signalAtlasDraft.target)}" placeholder="${escapeHtml(moduleT('signalatlas.targetPlaceholder', 'Example: https://nevomove.com/'))}" oninput="signalAtlasTargetInputChanged(event)" onblur="signalAtlasControlsChanged()" aria-invalid="${targetValidation.present && !targetValidation.valid ? 'true' : 'false'}" inputmode="url" autocapitalize="off" spellcheck="false">
                     ${canCancelAudit ? `
                         <button
                             class="signalatlas-btn launch signalatlas-stop-btn"
@@ -2269,8 +2347,9 @@ function renderSignalAtlasWorkspace() {
                             <i data-lucide="square"></i>
                         </button>
                     ` : `
-                        <button class="signalatlas-btn launch" type="button" onclick="launchSignalAtlasAudit()" ${signalAtlasLaunchPending ? 'disabled' : ''}>${escapeHtml(signalAtlasLaunchPending ? moduleT('signalatlas.launching', 'Launching') : moduleT('signalatlas.runAudit', 'Run audit'))}</button>
+                        <button id="signalatlas-launch-btn" class="signalatlas-btn launch" type="button" onclick="launchSignalAtlasAudit()" ${(signalAtlasLaunchPending || !targetValidation.valid) ? 'disabled' : ''}>${escapeHtml(signalAtlasLaunchPending ? moduleT('signalatlas.launching', 'Launching') : moduleT('signalatlas.runAudit', 'Run audit'))}</button>
                     `}
+                    <div id="signalatlas-target-feedback" class="signalatlas-target-feedback${targetValidation.present && !targetValidation.valid ? ' is-visible' : ''}">${escapeHtml(targetValidation.present && !targetValidation.valid ? targetValidation.message : '')}</div>
                 </div>
                 <div class="signalatlas-primary-grid">
                     <div class="signalatlas-field">
@@ -2440,6 +2519,7 @@ function renderSignalAtlasWorkspace() {
     `;
     if (window.lucide) lucide.createIcons({ nodes: [host] });
     hydrateSignalAtlasMotion(host);
+    renderSignalAtlasTargetValidationUi();
     restoreSignalAtlasUiState(uiState);
     signalAtlasAnimateHistoryDrawer = false;
     signalAtlasAnimateSeoDrawer = false;
@@ -2483,15 +2563,21 @@ function openNativeModule(moduleId) {
 
 async function launchSignalAtlasAudit() {
     syncSignalAtlasDraftFromDom();
-    const target = String(signalAtlasDraft.target || '').trim();
-    if (!target) {
-        Toast?.warning?.(moduleT('signalatlas.targetRequired', 'Add a domain or URL first.'));
+    const targetValidation = signalAtlasValidateTarget(signalAtlasDraft.target);
+    if (!targetValidation.present) {
+        Toast?.warning?.(moduleT('signalatlas.targetRequired', 'Add a real domain or public URL first, for example https://nevomove.com/.'));
+        renderSignalAtlasTargetValidationUi();
+        return;
+    }
+    if (!targetValidation.valid) {
+        Toast?.warning?.(moduleT('signalatlas.targetInvalid', 'Use a real domain or full public URL, for example https://nevomove.com/.'));
+        renderSignalAtlasTargetValidationUi();
         return;
     }
     signalAtlasLaunchPending = true;
     renderSignalAtlasWorkspace();
     const payload = {
-        target,
+        target: String(signalAtlasDraft.target || '').trim(),
         mode: signalAtlasDraft.mode || 'public',
         options: {
             max_pages: signalAtlasResolvedPageBudget(signalAtlasDraft.max_pages, SIGNALATLAS_DEFAULT_PAGE_BUDGET),

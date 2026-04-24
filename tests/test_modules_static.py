@@ -42,6 +42,7 @@ class ModulesStaticTests(unittest.TestCase):
                 self.assertIn("sidebarLabel:", data)
                 self.assertIn("signalatlas: {", data)
                 self.assertIn("targetPlaceholder:", data)
+                self.assertIn("targetInvalid:", data)
                 self.assertIn("providerConfigured:", data)
                 self.assertIn("renderSummaryExecuted:", data)
                 self.assertIn("visibilityLabel_geo:", data)
