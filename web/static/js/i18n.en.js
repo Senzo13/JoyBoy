@@ -171,6 +171,8 @@ Object.assign(MESSAGES.en, {
             dataSourcesLabel: 'Data sources',
             maxPages: 'Page budget',
             pageBudgetHint: 'Maximum number of pages sampled in this audit pass.',
+            pageBudgetUnlimited: '∞ Unlimited',
+            pageBudgetUnlimitedHint: 'Uses the runtime ceiling for this pass (1500 pages).',
             crawlDepth: 'Crawl depth',
             depthHint: 'Controls how deep the deterministic crawler can follow internal links.',
             renderJs: 'Render JS (scaffolded)',

@@ -84,8 +84,9 @@ function toggleSidebarRecentsSection(event) {
 function renderSidebarChatItem(record, options = {}) {
     const { nested = false } = options;
     const isActive = record.id === currentChatId;
-    const hasVisualSkeleton = /(?:image|video|skeleton)-skeleton-message|user-pending-msg|streaming/.test(record.html || '');
-    const hasRunningJob = hasVisualSkeleton || (typeof hasActiveRuntimeJobForChat === 'function' && hasActiveRuntimeJobForChat(record.id));
+    const hasRunningJob = typeof shouldShowChatAsRunning === 'function'
+        ? shouldShowChatAsRunning(record)
+        : (typeof hasActiveRuntimeJobForChat === 'function' && hasActiveRuntimeJobForChat(record.id));
     const isWorkspaceChat = record.mode === 'terminal' && !!record.workspace?.path;
     const active = `${isActive ? ' active' : ''}${hasRunningJob ? ' running' : ''}${isWorkspaceChat ? ' workspace-chat' : ''}${nested ? ' nested' : ''}`;
     const date = projectDateLabel(record.updatedAt);

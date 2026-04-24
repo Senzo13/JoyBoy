@@ -171,6 +171,8 @@ Object.assign(MESSAGES.fr, {
             dataSourcesLabel: 'Sources de données',
             maxPages: 'Budget pages',
             pageBudgetHint: 'Nombre maximum de pages échantillonnées sur cette passe d’audit.',
+            pageBudgetUnlimited: '∞ Illimité',
+            pageBudgetUnlimitedHint: 'Utilise la limite haute du runtime pour cette passe (1500 pages).',
             crawlDepth: 'Profondeur de crawl',
             depthHint: 'Contrôle jusqu’où le crawler déterministe peut suivre les liens internes.',
             renderJs: 'Rendu JS (scaffold)',

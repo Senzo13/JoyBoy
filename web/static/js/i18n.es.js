@@ -152,6 +152,8 @@ Object.assign(MESSAGES.es, {
             dataSourcesLabel: 'Fuentes de datos',
             maxPages: 'Presupuesto de páginas',
             pageBudgetHint: 'Número máximo de páginas muestreadas en esta pasada.',
+            pageBudgetUnlimited: '∞ Sin límite',
+            pageBudgetUnlimitedHint: 'Usa el techo del runtime para esta pasada (1500 páginas).',
             crawlDepth: 'Profundidad de crawl',
             depthHint: 'Controla hasta dónde el crawler determinista puede seguir enlaces internos.',
             renderJs: 'Renderizar JS (scaffold)',

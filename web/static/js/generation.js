@@ -1782,7 +1782,7 @@ function addImageSkeletonToChat(chatId = (typeof currentChatId !== 'undefined' ?
     messagesDiv.appendChild(skeleton);
     scrollToBottom();
     if (chatId && typeof saveCurrentChatHtml === 'function' && chatId === currentChatId) {
-        saveCurrentChatHtml('', getCurrentChatHtml(), chatId);
+        saveCurrentChatHtml('', messagesDiv.innerHTML, chatId);
     }
 }
 
@@ -1832,6 +1832,9 @@ function replaceImageSkeletonWithReal(imageSrc, totalTimeMs, targetChatId = null
             skeleton.removeAttribute('data-chat-id');
             skeleton.removeAttribute('data-started-at');
             skeleton.innerHTML = resultHtml;
+            if (typeof saveCurrentChatHtml === 'function') {
+                saveCurrentChatHtml('', getCurrentChatHtml(), chatId);
+            }
 
             return;
         }
@@ -1974,6 +1977,9 @@ function replaceImageSkeletonWithError(error, targetChatId = null, options = {})
             skeleton.removeAttribute('data-started-at');
             skeleton.innerHTML = errorHtml;
             if (window.lucide) lucide.createIcons();
+            if (typeof saveCurrentChatHtml === 'function') {
+                saveCurrentChatHtml('', getCurrentChatHtml(), chatId);
+            }
 
             return;
         }

@@ -23,6 +23,10 @@ let signalAtlasInteractionTrackingReady = false;
 const signalAtlasAnimatedScoreRingKeys = new Set();
 const SIGNALATLAS_SERP_PAGE_SIZE = 10;
 const SIGNALATLAS_INTERACTION_IDLE_MS = 1400;
+const SIGNALATLAS_DEFAULT_PAGE_BUDGET = 12;
+const SIGNALATLAS_MAX_PAGE_BUDGET = 1500;
+const SIGNALATLAS_UNLIMITED_PAGE_BUDGET = 'unlimited';
+const SIGNALATLAS_PAGE_BUDGET_STEPS = [8, 12, 20, 30, 40, 50, 75, 100, 150, 250, 500, 750, 1000, 1500];
 const SIGNALATLAS_AUDIT_PROFILES = {
     basic: {
         max_pages: 12,
@@ -39,7 +43,7 @@ const SIGNALATLAS_AUDIT_PROFILES = {
         level: 'full_expert_analysis',
     },
     ultra: {
-        max_pages: 50,
+        max_pages: 1500,
         depth: 5,
         render_js: true,
         preset: 'expert',
@@ -58,6 +62,23 @@ let signalAtlasDraft = {
     level: 'full_expert_analysis',
     compare_model: '',
 };
+
+function signalAtlasNormalizePageBudget(value, fallback = SIGNALATLAS_DEFAULT_PAGE_BUDGET) {
+    const raw = String(value ?? '').trim().toLowerCase();
+    if (raw === SIGNALATLAS_UNLIMITED_PAGE_BUDGET) return SIGNALATLAS_UNLIMITED_PAGE_BUDGET;
+    const parsed = Number.parseInt(raw, 10);
+    if (Number.isFinite(parsed) && parsed > 0) {
+        return Math.min(parsed, SIGNALATLAS_MAX_PAGE_BUDGET);
+    }
+    return fallback;
+}
+
+function signalAtlasResolvedPageBudget(value, fallback = SIGNALATLAS_DEFAULT_PAGE_BUDGET) {
+    const normalized = signalAtlasNormalizePageBudget(value, fallback);
+    return normalized === SIGNALATLAS_UNLIMITED_PAGE_BUDGET
+        ? SIGNALATLAS_MAX_PAGE_BUDGET
+        : normalized;
+}
 
 function signalAtlasMarkInteraction() {
     signalAtlasLastInteractionAt = Date.now();
@@ -1134,7 +1155,7 @@ async function selectSignalAtlasPickerOption(pickerId, value, event) {
 
     if (pickerId === 'profile') applySignalAtlasProfile(String(value || 'elevated'));
     if (pickerId === 'mode') signalAtlasDraft.mode = String(value || 'public');
-    if (pickerId === 'max_pages') signalAtlasDraft.max_pages = Number.parseInt(value, 10) || signalAtlasDraft.max_pages;
+    if (pickerId === 'max_pages') signalAtlasDraft.max_pages = signalAtlasNormalizePageBudget(value, signalAtlasDraft.max_pages);
     if (pickerId === 'depth') signalAtlasDraft.depth = Number.parseInt(value, 10) || signalAtlasDraft.depth;
     if (pickerId === 'model') signalAtlasDraft.model = String(value || currentJoyBoyChatModel());
     if (pickerId === 'preset') signalAtlasDraft.preset = String(value || 'balanced');
@@ -1238,11 +1259,24 @@ function signalAtlasPickerOptions(pickerId) {
         ], signalAtlasDraft.mode);
     }
     if (pickerId === 'max_pages') {
-        return buildSignalAtlasSimpleOptions([8, 12, 20, 30, 40, 50].map(value => ({
+        const budgetOptions = SIGNALATLAS_PAGE_BUDGET_STEPS.map(value => ({
             value,
             label: String(value),
             description: moduleT('signalatlas.pageBudgetHint', 'Maximum number of pages sampled for this audit pass.'),
-        })), signalAtlasDraft.max_pages);
+        }));
+        budgetOptions.push({
+            value: SIGNALATLAS_UNLIMITED_PAGE_BUDGET,
+            label: moduleT('signalatlas.pageBudgetUnlimited', '∞ Unlimited'),
+            description: moduleT(
+                'signalatlas.pageBudgetUnlimitedHint',
+                `Uses the runtime ceiling for this pass (${SIGNALATLAS_MAX_PAGE_BUDGET} pages).`
+            ),
+            tone: 'expert',
+        });
+        return buildSignalAtlasSimpleOptions(
+            budgetOptions,
+            signalAtlasNormalizePageBudget(signalAtlasDraft.max_pages, SIGNALATLAS_DEFAULT_PAGE_BUDGET)
+        );
     }
     if (pickerId === 'depth') {
         return buildSignalAtlasSimpleOptions([1, 2, 3, 4, 5].map(value => ({
@@ -1502,7 +1536,7 @@ function syncSignalAtlasDraftFromDom() {
     if (targetInput) signalAtlasDraft.target = targetInput.value;
     if (profile) signalAtlasDraft.profile = profile.value;
     if (modeSelect) signalAtlasDraft.mode = modeSelect.value;
-    if (maxPages) signalAtlasDraft.max_pages = Number.parseInt(maxPages.value, 10) || signalAtlasDraft.max_pages;
+    if (maxPages) signalAtlasDraft.max_pages = signalAtlasNormalizePageBudget(maxPages.value, signalAtlasDraft.max_pages);
     if (depth) signalAtlasDraft.depth = Number.parseInt(depth.value, 10) || signalAtlasDraft.depth;
     if (renderJs) signalAtlasDraft.render_js = !!renderJs.checked;
     if (model) signalAtlasDraft.model = model.value;
@@ -2450,7 +2484,7 @@ async function launchSignalAtlasAudit() {
         target,
         mode: signalAtlasDraft.mode || 'public',
         options: {
-            max_pages: signalAtlasDraft.max_pages || 12,
+            max_pages: signalAtlasResolvedPageBudget(signalAtlasDraft.max_pages, SIGNALATLAS_DEFAULT_PAGE_BUDGET),
             depth: signalAtlasDraft.depth || 2,
             render_js: !!signalAtlasDraft.render_js,
         },

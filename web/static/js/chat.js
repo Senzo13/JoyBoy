@@ -25,6 +25,21 @@ function getChatMessages() {
     return _chatMessagesEl;
 }
 
+function sanitizeChatTranscriptHtml(html = '') {
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = String(html || '');
+
+    tempDiv.querySelectorAll('.skeleton-message, .image-skeleton-message, .video-skeleton-message, .user-pending-msg').forEach(node => node.remove());
+    tempDiv.querySelectorAll('.terminal-workspace-picker, .project-launcher-overlay').forEach(node => node.remove());
+    tempDiv.querySelectorAll('.before-image-skeleton').forEach(node => node.classList.remove('before-image-skeleton'));
+    tempDiv.querySelectorAll('.chat-bubble.streaming').forEach(node => {
+        node.classList.remove('streaming');
+        node.querySelectorAll('.cursor').forEach(cursor => cursor.remove());
+    });
+
+    return tempDiv.innerHTML;
+}
+
 // Helper: barre d'action pour les images (même style que les réponses texte)
 function buildImageActionsBar(prompt, generationTime, seed = null, totalTime = null) {
     const safePrompt = (prompt || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
@@ -423,18 +438,7 @@ function addChatSkeletonMessage(prompt, attachedImage = null) {
 // Retourne le HTML sans le skeleton (pour sauvegarder)
 function getChatHtmlWithoutSkeleton() {
     const messagesDiv = getChatMessages();
-    const tempDiv = document.createElement('div');
-    tempDiv.innerHTML = messagesDiv.innerHTML;
-
-    // Supprimer le skeleton
-    const skeleton = tempDiv.querySelector('.skeleton-message');
-    if (skeleton) skeleton.remove();
-
-    // Ancien flux projet: le sélecteur de workspace ne doit jamais être stocké
-    // dans le transcript. Le launcher projet vit hors du chat, comme Codex.
-    tempDiv.querySelectorAll('.terminal-workspace-picker, .project-launcher-overlay').forEach(el => el.remove());
-
-    return tempDiv.innerHTML;
+    return sanitizeChatTranscriptHtml(messagesDiv?.innerHTML || '');
 }
 
 // Streaming message - updates in real-time

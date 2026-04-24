@@ -152,6 +152,8 @@ Object.assign(MESSAGES.it, {
             dataSourcesLabel: 'Fonti dati',
             maxPages: 'Budget pagine',
             pageBudgetHint: 'Numero massimo di pagine campionate in questa passata.',
+            pageBudgetUnlimited: '∞ Illimitato',
+            pageBudgetUnlimitedHint: 'Usa il tetto del runtime per questa passata (1500 pagine).',
             crawlDepth: 'Profondità crawl',
             depthHint: 'Controlla fin dove il crawler deterministico può seguire i link interni.',
             renderJs: 'Render JS (scaffold)',

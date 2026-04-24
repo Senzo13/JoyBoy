@@ -8,9 +8,80 @@ let projectRecordsCache = [];
 let projectRecordsReady = false;
 let runtimeJobsCache = [];
 let runtimeJobsPollTimer = null;
+let runtimeJobsHydrated = false;
 const runtimeJobsCancelRequests = new Set();
 
 const RUNTIME_JOB_DONE_STATES = new Set(['done', 'error', 'cancelled']);
+const CHAT_PENDING_VISUAL_STATE_RE = /(?:image|video|skeleton)-skeleton-message|user-pending-msg|streaming/;
+
+function chatRecordHasPendingVisuals(recordOrHtml) {
+    const html = typeof recordOrHtml === 'string'
+        ? recordOrHtml
+        : (recordOrHtml?.html || '');
+    return CHAT_PENDING_VISUAL_STATE_RE.test(html || '');
+}
+
+function hasLocalPendingGenerationForChat(chatId) {
+    const targetChatId = chatId ? String(chatId) : '';
+    const activeGenerationChatId = typeof currentGenerationChatId !== 'undefined' && currentGenerationChatId
+        ? String(currentGenerationChatId)
+        : '';
+    return Boolean(
+        typeof isGenerating !== 'undefined'
+        && isGenerating
+        && targetChatId
+        && activeGenerationChatId
+        && activeGenerationChatId === targetChatId
+    );
+}
+
+function shouldShowChatAsRunning(record) {
+    const chatId = record?.id ? String(record.id) : '';
+    if (!chatId) return false;
+    if (typeof hasActiveRuntimeJobForChat === 'function' && hasActiveRuntimeJobForChat(chatId)) return true;
+    if (hasLocalPendingGenerationForChat(chatId)) return true;
+    return !runtimeJobsHydrated && chatRecordHasPendingVisuals(record);
+}
+
+function shouldSanitizePersistedChatHtml(chatId) {
+    return Boolean(
+        runtimeJobsHydrated
+        && chatId
+        && !hasActiveRuntimeJobForChat(chatId)
+        && !hasLocalPendingGenerationForChat(chatId)
+    );
+}
+
+function cleanupStalePendingUiForActiveChat() {
+    if (!shouldSanitizePersistedChatHtml(currentChatId)) return;
+    if (typeof sanitizeChatTranscriptHtml !== 'function') return;
+
+    const messagesDiv = getMessagesDiv();
+    const rawHtml = messagesDiv?.innerHTML || '';
+    if (!chatRecordHasPendingVisuals(rawHtml)) return;
+
+    const cleanHtml = sanitizeChatTranscriptHtml(rawHtml);
+    if (cleanHtml === rawHtml) return;
+
+    if (messagesDiv) {
+        messagesDiv.innerHTML = cleanHtml;
+        if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [messagesDiv] });
+        if (typeof updateChatPadding === 'function') updateChatPadding();
+    }
+
+    const cacheIndex = chatRecordsCache.findIndex(record => record.id === currentChatId);
+    if (cacheIndex >= 0) {
+        chatRecordsCache.splice(cacheIndex, 1, {
+            ...chatRecordsCache[cacheIndex],
+            html: cleanHtml,
+        });
+    }
+
+    getChatRecord(currentChatId).then(record => {
+        if (!record) return;
+        return putChatRecord({ ...record, html: cleanHtml });
+    }).catch(e => console.warn('[CHAT] Active stale pending cleanup failed:', e));
+}
 
 function requestToPromise(request) {
     return new Promise((resolve, reject) => {
@@ -472,16 +543,27 @@ function loadAllChats(options = {}) {
 }
 
 async function loadChat(chatId) {
-    const record = await getChatRecord(chatId);
+    let record = await getChatRecord(chatId);
     if (!record) return;
     currentChatId = record.id;
     chatHistory = Array.isArray(record.messages) ? record.messages : [];
     if (typeof cacheLastVisualReferenceForChat === 'function') {
         cacheLastVisualReferenceForChat(record.id, record.lastVisualReference || null);
     }
+    let html = record.html || '';
+    if (shouldSanitizePersistedChatHtml(record.id) && typeof sanitizeChatTranscriptHtml === 'function') {
+        const cleanHtml = sanitizeChatTranscriptHtml(html);
+        if (cleanHtml !== html) {
+            html = cleanHtml;
+            record = { ...record, html };
+            const cacheIndex = chatRecordsCache.findIndex(item => item.id === record.id);
+            if (cacheIndex >= 0) chatRecordsCache.splice(cacheIndex, 1, record);
+            putChatRecord(record).catch(e => console.warn('[CHAT] Stored stale pending cleanup failed:', e));
+        }
+    }
     const messagesDiv = getMessagesDiv();
     if (messagesDiv) {
-        messagesDiv.innerHTML = record.html || '';
+        messagesDiv.innerHTML = html;
         // Workspace/project selection is UI state, not transcript content.
         // Older builds accidentally saved that card in chats; strip it on load.
         messagesDiv.querySelectorAll('.terminal-workspace-picker, .project-launcher-overlay').forEach(el => el.remove());
@@ -933,6 +1015,8 @@ async function refreshRuntimeJobs() {
         runtimeJobsCache = jobs.filter(job =>
             !(isRuntimeJobActive(job) && isRuntimeJobOrphan(job) && !isCurrentRuntimeJob(job))
         );
+        runtimeJobsHydrated = true;
+        cleanupStalePendingUiForActiveChat();
         renderRuntimeJobs();
         renderChatList();
         notifyRuntimeJobsUpdated();
@@ -999,8 +1083,7 @@ function renderChatList() {
         // DOM skeletons are only a visual fallback. The runtime job store is the
         // source of truth after refresh/reload, so stale saved HTML cannot hide
         // or fake an active generation.
-        const hasVisualSkeleton = /(?:image|video|skeleton)-skeleton-message|user-pending-msg|streaming/.test(record.html || '');
-        const hasRunningJob = hasVisualSkeleton || hasActiveRuntimeJobForChat(record.id);
+        const hasRunningJob = shouldShowChatAsRunning(record);
         const isWorkspaceChat = record.mode === 'terminal' && !!record.workspace?.path;
         const active = `${isActive ? ' active' : ''}${hasRunningJob ? ' running' : ''}${isWorkspaceChat ? ' workspace-chat' : ''}`;
         const date = record.updatedAt ? new Date(record.updatedAt).toLocaleDateString(undefined, { day: '2-digit', month: '2-digit' }) : '';
