@@ -20,7 +20,7 @@ except Exception:  # pragma: no cover - best effort fallback
     BeautifulSoup = None
 
 from core.runtime.storage import utc_now_iso
-from .providers import build_owner_context
+from .providers import build_owner_context, get_signalatlas_provider_status
 from .scoring import score_findings
 
 
@@ -28,6 +28,38 @@ USER_AGENT = "JoyBoy-SignalAtlas/1.0 (+https://joyboy.local)"
 DEFAULT_TIMEOUT = (5, 15)
 MAX_LINK_SAMPLES = 48
 MAX_RENDER_PROBES = 3
+CJK_CHAR_RE = re.compile(r"[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uac00-\ud7af]")
+LOCALE_ROOT_RE = re.compile(r"^/[a-z]{2,3}(?:[-_][a-z0-9]{2,4})?$", re.I)
+SYSTEM_PATH_PREFIXES = ("/cdn-cgi/",)
+CC_TLD_LANGUAGE_MAP = {
+    "fr": "fr",
+    "de": "de",
+    "it": "it",
+    "es": "es",
+    "pt": "pt",
+    "nl": "nl",
+    "pl": "pl",
+    "tr": "tr",
+    "jp": "ja",
+    "kr": "ko",
+    "cn": "zh",
+    "tw": "zh",
+    "ru": "ru",
+}
+GEO_STRUCTURED_TYPES = {
+    "organization",
+    "website",
+    "article",
+    "newsarticle",
+    "blogposting",
+    "faqpage",
+    "howto",
+    "breadcrumblist",
+    "product",
+    "service",
+    "localbusiness",
+    "person",
+}
 
 
 def _normalize_target(raw_target: str) -> Tuple[str, str]:
@@ -46,6 +78,64 @@ def _clean_url(url: str) -> str:
     parsed = urlparse(str(url or "").strip())
     path = parsed.path or "/"
     return urlunparse((parsed.scheme or "https", parsed.netloc.lower(), path, "", "", ""))
+
+
+def _comparison_url(url: str) -> str:
+    parsed = urlparse(str(url or "").strip())
+    path = parsed.path or "/"
+    if path != "/":
+        path = path.rstrip("/") or "/"
+    return urlunparse((parsed.scheme or "https", parsed.netloc.lower(), path, "", "", ""))
+
+
+def _normalized_path(url: str) -> str:
+    parsed = urlparse(str(url or "").strip())
+    path = parsed.path or "/"
+    if path != "/":
+        path = path.rstrip("/") or "/"
+    return path
+
+
+def _same_normalized_url(left: str, right: str) -> bool:
+    return _comparison_url(left) == _comparison_url(right)
+
+
+def _is_system_url(url: str) -> bool:
+    path = _normalized_path(url).lower()
+    return any(path == prefix.rstrip("/") or path.startswith(prefix) for prefix in SYSTEM_PATH_PREFIXES)
+
+
+def _host_tld(host: str) -> str:
+    parts = [part.strip().lower() for part in str(host or "").split(".") if part.strip()]
+    if not parts:
+        return ""
+    return parts[-1]
+
+
+def _normalize_lang_tag(value: str) -> str:
+    clean = str(value or "").strip().lower().replace("_", "-")
+    if not clean:
+        return ""
+    return clean
+
+
+def _lang_root(value: str) -> str:
+    clean = _normalize_lang_tag(value)
+    return clean.split("-", 1)[0] if clean else ""
+
+
+def _path_locale_hint(url: str) -> str:
+    parts = [part for part in _normalized_path(url).split("/") if part]
+    if not parts:
+        return ""
+    first = str(parts[0] or "").strip().lower()
+    if re.fullmatch(r"[a-z]{2,3}(?:[-_][a-z0-9]{2,4})?", first):
+        return _normalize_lang_tag(first)
+    return ""
+
+
+def _page_language_hint(page: Dict[str, Any]) -> str:
+    return _normalize_lang_tag(page.get("html_lang") or _path_locale_hint(page.get("final_url") or page.get("url") or ""))
 
 
 def _same_host(url: str, host: str) -> bool:
@@ -69,6 +159,61 @@ def _text_content(html: str) -> str:
             node.decompose()
         return " ".join(soup.get_text(" ").split())
     return " ".join(re.sub(r"<[^>]+>", " ", html).split())
+
+
+def _text_metrics(text: str) -> Dict[str, Any]:
+    compact = " ".join(str(text or "").split())
+    if not compact:
+        return {
+            "word_count": 0,
+            "cjk_char_count": 0,
+            "content_units": 0,
+            "cjk_adjusted": False,
+        }
+    word_count = len(compact.split())
+    cjk_char_count = len(CJK_CHAR_RE.findall(compact))
+    # CJK copy carries more meaning per visible character than whitespace-tokenized word counts suggest.
+    content_units = max(word_count, round(cjk_char_count * 0.75))
+    return {
+        "word_count": word_count,
+        "cjk_char_count": cjk_char_count,
+        "content_units": content_units,
+        "cjk_adjusted": content_units > word_count and cjk_char_count >= 80,
+    }
+
+
+def _probe_llms_txt(session: requests.Session, entry_url: str) -> Dict[str, Any]:
+    parsed = urlparse(entry_url)
+    base = f"{parsed.scheme}://{parsed.netloc}"
+    for path in ("/llms.txt", "/llms-full.txt"):
+        url = f"{base}{path}"
+        try:
+            response = session.get(url, timeout=DEFAULT_TIMEOUT, headers={"User-Agent": USER_AGENT})
+        except Exception as exc:
+            return {
+                "found": False,
+                "confidence": "Unknown",
+                "status": "unknown",
+                "note": str(exc),
+                "url": url,
+            }
+        content_type = str(response.headers.get("content-type", "")).lower()
+        body = str(response.text or "").strip()
+        if response.ok and body and ("text/plain" in content_type or "text/markdown" in content_type or not content_type):
+            return {
+                "found": True,
+                "confidence": "Confirmed",
+                "status": "detected",
+                "note": f"Detected {path} on the public host.",
+                "url": url,
+            }
+    return {
+        "found": False,
+        "confidence": "Estimated",
+        "status": "not_detected",
+        "note": "No public llms.txt file was detected on the sampled host.",
+        "url": f"{base}/llms.txt",
+    }
 
 
 def _excerpt(value: str, limit: int = 500) -> str:
@@ -111,9 +256,12 @@ def _extract_internal_links(soup: Any, page_url: str, host: str) -> Tuple[List[s
         if not absolute.startswith("http"):
             continue
         if _same_host(absolute, host):
-            if absolute not in seen:
+            if _is_system_url(absolute):
+                continue
+            key = _comparison_url(absolute)
+            if key not in seen:
                 internal.append(absolute)
-                seen.add(absolute)
+                seen.add(key)
         else:
             external += 1
     return internal[:MAX_LINK_SAMPLES], external
@@ -167,7 +315,8 @@ def _render_signals(html: str, text_content: str) -> Tuple[List[str], bool, List
     raw = html or ""
     plain_text = text_content or ""
     script_count = raw.count("<script")
-    word_count = len(plain_text.split())
+    metrics = _text_metrics(plain_text)
+    content_units = int(metrics["content_units"] or 0)
     reasons: List[str] = []
     signals: List[str] = []
     shell_like = False
@@ -175,7 +324,7 @@ def _render_signals(html: str, text_content: str) -> Tuple[List[str], bool, List
     if script_count >= 8:
         signals.append("script_heavy")
         reasons.append("High script density compared to visible content.")
-    if word_count <= 120:
+    if content_units <= 120:
         signals.append("thin_initial_html")
         reasons.append("Very little visible text in the initial HTML response.")
     if re.search(r'<div[^>]+id="(?:root|app|__next)"[^>]*>\s*</div>', raw, re.I | re.S):
@@ -184,7 +333,7 @@ def _render_signals(html: str, text_content: str) -> Tuple[List[str], bool, List
     if "hydrate" in raw.lower():
         signals.append("hydration_signals")
         reasons.append("Hydration-related markers found in the HTML payload.")
-    if ("app_shell" in signals and "thin_initial_html" in signals) or (script_count >= 12 and word_count <= 80):
+    if ("app_shell" in signals and "thin_initial_html" in signals) or (script_count >= 12 and content_units <= 80):
         shell_like = True
         reasons.append("Initial response looks like a JS shell rather than a fully rendered document.")
     return signals, shell_like, reasons
@@ -229,13 +378,15 @@ def _render_page_with_playwright(url: str) -> Dict[str, Any]:
                 browser.close()
 
         plain_text = _text_content(html)
+        metrics = _text_metrics(plain_text)
         render_signals, shell_like, reasons = _render_signals(html, plain_text)
         return {
             "url": url,
             "executed": True,
             "html": html,
             "title": title[:240],
-            "word_count": len(plain_text.split()),
+            "word_count": int(metrics["word_count"] or 0),
+            "content_units": int(metrics["content_units"] or 0),
             "text_hash": _hash_text(plain_text),
             "shell_like": shell_like,
             "render_signals": render_signals,
@@ -314,23 +465,24 @@ def _apply_render_probe(
         rendered = _render_page_with_playwright(candidate)
         raw_page = page_by_url.get(candidate)
         if rendered.get("executed") and raw_page is not None:
-            raw_words = int(raw_page.get("word_count") or 0)
-            rendered_words = int(rendered.get("word_count") or 0)
-            word_delta = rendered_words - raw_words
+            raw_units = int(raw_page.get("content_units") or raw_page.get("word_count") or 0)
+            rendered_units = int(rendered.get("content_units") or rendered.get("word_count") or 0)
+            word_delta = rendered_units - raw_units
             changed = (
-                (raw_page.get("shell_like") and rendered_words >= max(150, raw_words + 80))
+                (raw_page.get("shell_like") and rendered_units >= max(150, raw_units + 80))
                 or word_delta >= 120
                 or bool(rendered.get("title") and not raw_page.get("title"))
             )
             raw_page["render_js_executed"] = True
-            raw_page["rendered_word_count"] = rendered_words
+            raw_page["rendered_word_count"] = int(rendered.get("word_count") or 0)
+            raw_page["rendered_content_units"] = rendered_units
             raw_page["rendered_shell_like"] = bool(rendered.get("shell_like"))
             raw_page["render_word_delta"] = word_delta
             raw_page["render_changed_content"] = changed
             if changed:
                 changed_count += 1
                 raw_page.setdefault("classification_reasons", []).append(
-                    f"Rendered probe exposed richer HTML content ({rendered_words} words vs {raw_words} raw)."
+                    f"Rendered probe exposed richer HTML content ({rendered_units} content units vs {raw_units} raw)."
                 )
             elif rendered.get("executed"):
                 raw_page.setdefault("classification_reasons", []).append(
@@ -381,9 +533,9 @@ def _classify_site(pages: List[Dict[str, Any]]) -> Dict[str, Any]:
         render_signals.update(page.get("render_signals") or [])
         if page.get("shell_like"):
             shell_pages += 1
-        if (page.get("word_count") or 0) >= 180 and page.get("h1") and not page.get("shell_like"):
+        if (page.get("content_units") or page.get("word_count") or 0) >= 180 and page.get("h1") and not page.get("shell_like"):
             rich_initial_html_pages += 1
-        if (page.get("word_count") or 0) < 180 and (page.get("status_code") or 0) < 400:
+        if (page.get("content_units") or page.get("word_count") or 0) < 180 and (page.get("status_code") or 0) < 400:
             sparse_initial_html_pages += 1
         reasons.extend(page.get("classification_reasons") or [])
 
@@ -557,9 +709,10 @@ def _discover_sitemaps(session: requests.Session, entry_url: str, robots: Dict[s
     url_seen = set()
     for url in sitemap_urls:
         clean = _clean_url(url)
-        if clean not in url_seen:
+        key = _comparison_url(clean)
+        if key not in url_seen:
             unique_urls.append(clean)
-            url_seen.add(clean)
+            url_seen.add(key)
 
     return {
         "found": any(item.get("found") for item in fetched),
@@ -591,17 +744,23 @@ def _extract_page_snapshot(
         "external_link_count": 0,
         "heading_counts": {},
         "hreflang": [],
+        "html_lang": "",
         "structured_data_types": [],
         "open_graph": {},
         "twitter_cards": {},
         "word_count": 0,
+        "content_units": 0,
+        "cjk_char_count": 0,
         "visible_text_length": 0,
         "visible_text_excerpt": "",
         "body_text_excerpt": "",
         "body_html_excerpt": "",
         "image_total": 0,
         "image_missing_alt": 0,
+        "image_empty_alt": 0,
         "shell_like": False,
+        "system_url": _is_system_url(final_url),
+        "indexable_candidate": False,
         "template_signature": _template_signature(final_url),
         "has_blog_signals": False,
     }
@@ -611,7 +770,10 @@ def _extract_page_snapshot(
 
     html = response.text or ""
     plain_text = _text_content(html)
-    page["word_count"] = len(plain_text.split())
+    text_metrics = _text_metrics(plain_text)
+    page["word_count"] = int(text_metrics["word_count"] or 0)
+    page["content_units"] = int(text_metrics["content_units"] or 0)
+    page["cjk_char_count"] = int(text_metrics["cjk_char_count"] or 0)
     page["visible_text_length"] = len(plain_text)
     page["visible_text_excerpt"] = _excerpt(plain_text)
     page["text_hash"] = _hash_text(plain_text)
@@ -624,6 +786,10 @@ def _extract_page_snapshot(
         return page
 
     soup = BeautifulSoup(html, "html.parser")
+    html_tag = soup.find("html")
+    page["html_lang"] = _normalize_lang_tag(
+        str((html_tag or {}).get("lang") or (html_tag or {}).get("xml:lang") or "").strip()
+    )
     page["title"] = (soup.title.get_text(" ", strip=True) if soup.title else "")[:240]
     page["meta_description"] = _meta_content(soup, "description")
     page["canonical"] = str((soup.find("link", rel=lambda rel: rel and "canonical" in str(rel).lower()) or {}).get("href") or "").strip()
@@ -691,7 +857,10 @@ def _extract_page_snapshot(
 
     images = soup.find_all("img")
     page["image_total"] = len(images)
-    page["image_missing_alt"] = sum(1 for image in images if not str(image.get("alt") or "").strip())
+    page["image_missing_alt"] = sum(1 for image in images if not image.has_attr("alt"))
+    page["image_empty_alt"] = sum(
+        1 for image in images if image.has_attr("alt") and not str(image.get("alt") or "").strip()
+    )
 
     signatures, reasons = _framework_signatures(html, dict(response.headers))
     render_signals, shell_like, render_reasons = _render_signals(html, plain_text)
@@ -700,6 +869,7 @@ def _extract_page_snapshot(
     page["shell_like"] = shell_like
     page["classification_reasons"] = reasons + render_reasons
     page["has_blog_signals"] = _is_blog_like(final_url, page["title"])
+    page["indexable_candidate"] = _is_indexable_page(page)
     return page
 
 
@@ -714,12 +884,14 @@ def _build_template_clusters(pages: List[Dict[str, Any]]) -> List[Dict[str, Any]
                 "count": 0,
                 "sample_urls": [],
                 "avg_word_count": 0.0,
+                "avg_content_units": 0.0,
                 "shell_like_count": 0,
                 "blog_like_count": 0,
             },
         )
         cluster["count"] += 1
         cluster["avg_word_count"] += float(page.get("word_count") or 0)
+        cluster["avg_content_units"] += float(page.get("content_units") or page.get("word_count") or 0)
         cluster["shell_like_count"] += 1 if page.get("shell_like") else 0
         cluster["blog_like_count"] += 1 if page.get("has_blog_signals") else 0
         if len(cluster["sample_urls"]) < 4:
@@ -728,6 +900,7 @@ def _build_template_clusters(pages: List[Dict[str, Any]]) -> List[Dict[str, Any]
     for cluster in clusters.values():
         count = max(1, int(cluster["count"]))
         cluster["avg_word_count"] = round(float(cluster["avg_word_count"]) / count, 1)
+        cluster["avg_content_units"] = round(float(cluster["avg_content_units"]) / count, 1)
         rows.append(cluster)
     rows.sort(key=lambda item: item["count"], reverse=True)
     return rows
@@ -748,6 +921,117 @@ def _render_root_relationship(render_detection: Optional[Dict[str, Any]]) -> str
         "Treat this as the primary issue first. Rendering delivery should be resolved before interpreting downstream "
         "content or linking symptoms."
     )
+
+
+def _is_indexable_page(page: Dict[str, Any]) -> bool:
+    status_code = int(page.get("status_code") or 0)
+    if status_code <= 0 or status_code >= 400:
+        return False
+    if page.get("noindex"):
+        return False
+    if _is_system_url(page.get("final_url") or page.get("url") or ""):
+        return False
+    content_type = str(page.get("content_type") or "").lower()
+    if content_type and "html" not in content_type and "xhtml" not in content_type:
+        return False
+    return True
+
+
+def _homepage_canonical_allowed_alias(
+    homepage: Dict[str, Any],
+    target_url: str,
+    sitemaps: Dict[str, Any],
+) -> bool:
+    final_url = homepage.get("final_url") or homepage.get("url") or target_url
+    canonical = str(homepage.get("canonical") or "").strip()
+    if not canonical:
+        return False
+    canonical_url = _clean_url(urljoin(final_url, canonical))
+    if _same_normalized_url(canonical_url, final_url):
+        return True
+    if _normalized_path(final_url) != "/":
+        return False
+    if not _same_host(canonical_url, urlparse(final_url).netloc):
+        return False
+    canonical_path = _normalized_path(canonical_url)
+    if not LOCALE_ROOT_RE.fullmatch(canonical_path):
+        return False
+    sitemap_keys = {_comparison_url(url) for url in sitemaps.get("urls") or []}
+    return _comparison_url(final_url) not in sitemap_keys and _comparison_url(canonical_url) in sitemap_keys
+
+
+def _geo_signal_snapshot(
+    pages: List[Dict[str, Any]],
+    llms_signal: Dict[str, Any],
+) -> Dict[str, Any]:
+    indexable_pages = [page for page in pages if _is_indexable_page(page)]
+    schema_pages = 0
+    faq_pages = 0
+    article_pages = 0
+    for page in indexable_pages:
+        schema_types = {str(item or "").strip().lower() for item in page.get("structured_data_types") or []}
+        if schema_types & GEO_STRUCTURED_TYPES:
+            schema_pages += 1
+        if "faqpage" in schema_types:
+            faq_pages += 1
+        if {"article", "newsarticle", "blogposting"} & schema_types:
+            article_pages += 1
+
+    if llms_signal.get("found"):
+        return {
+            "status": "Strong signal",
+            "confidence": llms_signal.get("confidence", "Confirmed"),
+            "note": (
+                f"Detected public llms.txt support and {schema_pages} sampled page(s) with AI-friendly structured data."
+                if schema_pages
+                else llms_signal.get("note", "Detected public llms.txt support.")
+            ),
+            "llms_txt": llms_signal,
+            "schema_pages": schema_pages,
+            "faq_pages": faq_pages,
+            "article_pages": article_pages,
+        }
+
+    if indexable_pages and schema_pages >= max(2, len(indexable_pages) // 2):
+        return {
+            "status": "Strong signal",
+            "confidence": "Strong signal",
+            "note": (
+                f"{schema_pages} of {len(indexable_pages)} sampled indexable page(s) expose AI-friendly structured data "
+                f"(FAQ/article/organization-style signals)."
+            ),
+            "llms_txt": llms_signal,
+            "schema_pages": schema_pages,
+            "faq_pages": faq_pages,
+            "article_pages": article_pages,
+        }
+
+    if schema_pages:
+        return {
+            "status": "Partial signal",
+            "confidence": "Estimated",
+            "note": (
+                f"Some sampled pages expose AI-friendly structured data ({schema_pages}/{len(indexable_pages)}), "
+                "but SignalAtlas did not detect a stronger public GEO surface such as llms.txt."
+            ),
+            "llms_txt": llms_signal,
+            "schema_pages": schema_pages,
+            "faq_pages": faq_pages,
+            "article_pages": article_pages,
+        }
+
+    return {
+        "status": "Unknown",
+        "confidence": llms_signal.get("confidence", "Estimated"),
+        "note": (
+            llms_signal.get("note")
+            or "No strong public GEO signal was detected in the sampled HTML."
+        ),
+        "llms_txt": llms_signal,
+        "schema_pages": schema_pages,
+        "faq_pages": faq_pages,
+        "article_pages": article_pages,
+    }
 
 
 def _finding(
@@ -846,15 +1130,25 @@ def _build_findings(
     pages: List[Dict[str, Any]],
     *,
     target_url: str,
+    discovered_url_count: int,
     robots: Dict[str, Any],
     sitemaps: Dict[str, Any],
     site_classification: Dict[str, Any],
     render_detection: Optional[Dict[str, Any]] = None,
 ) -> List[Dict[str, Any]]:
     findings: List[Dict[str, Any]] = []
-    page_by_url = {page.get("final_url") or page.get("url"): page for page in pages}
-    homepage = page_by_url.get(target_url) or (pages[0] if pages else {})
+    homepage = next(
+        (
+            page
+            for page in pages
+            if _same_normalized_url(page.get("final_url") or page.get("url") or "", target_url)
+        ),
+        pages[0] if pages else {},
+    )
     baseline_only = _render_baseline_only(render_detection)
+    indexable_pages = [page for page in pages if _is_indexable_page(page)]
+    target_host = urlparse(target_url).netloc.lower()
+    target_tld = _host_tld(target_host)
 
     if not robots.get("found"):
         findings.append(_finding(
@@ -910,6 +1204,35 @@ def _build_findings(
             acceptance="The homepage returns HTTP 200 consistently with valid HTML.",
         ))
 
+    if discovered_url_count <= 8 or len(indexable_pages) <= 5:
+        findings.append(_finding(
+            "organic-surface-too-small",
+            title="Very small crawlable surface limits organic visibility",
+            url=target_url,
+            scope="site",
+            category="content_strategy",
+            bucket="content_depth_blog",
+            severity="high" if discovered_url_count <= 4 or len(indexable_pages) <= 3 else "medium",
+            confidence="Confirmed",
+            impact="High",
+            evidence=[
+                f"{discovered_url_count} URL(s) discovered in the crawl graph",
+                f"{len(indexable_pages)} indexable sampled page(s)",
+            ],
+            diagnostic=(
+                "SignalAtlas discovered a very small indexable surface. With so few crawlable pages, organic visibility usually stays limited to brand or exact-match queries."
+            ),
+            probable_cause=(
+                "The site has very few published pages, or too much content is hidden behind weak navigation, JavaScript, or non-indexable routes."
+            ),
+            recommended_fix=(
+                "Publish more indexable pages mapped to real search intents: core services, use cases, FAQs, comparisons, help content, and an editorial/blog surface if acquisition matters."
+            ),
+            acceptance=(
+                "The site exposes a materially larger set of crawlable indexable pages covering core commercial and informational intents."
+            ),
+        ))
+
     if homepage.get("noindex"):
         findings.append(_finding(
             "homepage-noindex",
@@ -961,7 +1284,7 @@ def _build_findings(
             relationship_summary=_render_root_relationship(render_detection),
         ))
 
-    pages_without_title = [page for page in pages if not page.get("title")]
+    pages_without_title = [page for page in indexable_pages if not page.get("title")]
     if pages_without_title:
         sample = pages_without_title[0]
         findings.append(_finding(
@@ -981,7 +1304,7 @@ def _build_findings(
             acceptance="All sampled HTML documents contain a non-empty, route-specific title tag.",
         ))
 
-    pages_without_description = [page for page in pages if not page.get("meta_description")]
+    pages_without_description = [page for page in indexable_pages if not page.get("meta_description")]
     if pages_without_description:
         sample = pages_without_description[0]
         findings.append(_finding(
@@ -1001,7 +1324,7 @@ def _build_findings(
             acceptance="All key templates return a non-empty meta description aligned with the page intent.",
         ))
 
-    missing_h1 = [page for page in pages if not page.get("h1")]
+    missing_h1 = [page for page in indexable_pages if not page.get("h1")]
     if missing_h1:
         sample = missing_h1[0]
         findings.append(_finding(
@@ -1045,7 +1368,7 @@ def _build_findings(
             ),
         ))
 
-    alt_missing = [page for page in pages if page.get("image_missing_alt", 0) > 0]
+    alt_missing = [page for page in indexable_pages if page.get("image_missing_alt", 0) > 0]
     if alt_missing:
         sample = alt_missing[0]
         findings.append(_finding(
@@ -1065,8 +1388,12 @@ def _build_findings(
             acceptance="Informative sampled images expose alt text; decorative images are explicitly empty-alt.",
         ))
 
-    thin_pages = [page for page in pages if int(page.get("word_count") or 0) < 180 and page.get("status_code", 0) < 400]
-    if len(thin_pages) >= max(2, len(pages) // 3):
+    thin_pages = [
+        page
+        for page in indexable_pages
+        if int(page.get("content_units") or page.get("word_count") or 0) < 180
+    ]
+    if len(thin_pages) >= max(2, len(indexable_pages) // 3):
         sample = thin_pages[0]
         findings.append(_finding(
             "thin-content",
@@ -1078,7 +1405,7 @@ def _build_findings(
             severity="medium",
             confidence="Strong signal",
             impact="Medium",
-            evidence=[f"{len(thin_pages)} of {len(pages)} sampled pages have under 180 visible words"],
+            evidence=[f"{len(thin_pages)} of {len(indexable_pages)} indexable sampled page(s) have under 180 content units"],
             diagnostic=(
                 "A meaningful portion of the crawl exposes very short visible content in the initial HTML response."
                 if baseline_only and js_shell_root_active
@@ -1109,10 +1436,10 @@ def _build_findings(
             ),
         ))
 
-    duplicates = Counter(page.get("text_hash") for page in pages if page.get("text_hash"))
+    duplicates = Counter(page.get("text_hash") for page in indexable_pages if page.get("text_hash"))
     duplicate_hashes = {hash_value for hash_value, count in duplicates.items() if count > 1}
     if duplicate_hashes:
-        dup_pages = [page for page in pages if page.get("text_hash") in duplicate_hashes]
+        dup_pages = [page for page in indexable_pages if page.get("text_hash") in duplicate_hashes]
         sample = dup_pages[0]
         findings.append(_finding(
             "duplicate-content",
@@ -1155,42 +1482,63 @@ def _build_findings(
             ),
         ))
 
-    orphan_like = []
-    internal_linked = {link for page in pages for link in page.get("internal_links") or []}
-    for url in sitemaps.get("urls") or []:
-        if url not in internal_linked and url not in {page.get("final_url") for page in pages}:
-            orphan_like.append(url)
-    if orphan_like:
+    sitemap_urls = [url for url in sitemaps.get("urls") or [] if not _is_system_url(url)]
+    crawled_keys = {_comparison_url(page.get("final_url") or page.get("url") or "") for page in pages}
+    internal_linked_keys = {
+        _comparison_url(link)
+        for page in indexable_pages
+        for link in (page.get("internal_links") or [])
+        if link and not _is_system_url(link)
+    }
+    sitemap_only_urls: List[str] = []
+    sampled_but_unlinked_urls: List[str] = []
+    for url in sitemap_urls:
+        key = _comparison_url(url)
+        if key not in crawled_keys and key not in internal_linked_keys:
+            sitemap_only_urls.append(url)
+        elif key in crawled_keys and key not in internal_linked_keys:
+            sampled_but_unlinked_urls.append(url)
+    if sitemap_only_urls or sampled_but_unlinked_urls:
+        sample = (sampled_but_unlinked_urls or sitemap_only_urls)[0]
+        evidence = []
+        if sitemap_only_urls:
+            evidence.append(f"{len(sitemap_only_urls)} sitemap URL(s) were only seen in sitemap discovery")
+        if sampled_but_unlinked_urls:
+            evidence.append(f"{len(sampled_but_unlinked_urls)} sampled sitemap URL(s) were not corroborated by HTML internal links")
         findings.append(_finding(
             "orphan-like-pages",
-            title="Sitemap URLs look weakly linked in the bounded HTML crawl" if baseline_only and js_shell_root_active else "Sitemap URLs look weakly linked",
-            url=orphan_like[0],
+            title=(
+                "Sitemap URLs were not corroborated by the bounded HTML crawl graph"
+                if baseline_only and js_shell_root_active
+                else "Sitemap URLs were not corroborated by the bounded HTML crawl graph"
+            ),
+            url=sample,
             scope="site",
             category="internal_linking",
             bucket="architecture_linking",
             severity="medium",
             confidence="Estimated",
             impact="Medium",
-            evidence=[f"{len(orphan_like)} sitemap URL(s) were not seen in the sampled internal link graph"],
+            evidence=evidence,
             diagnostic=(
-                "Some URLs referenced by the sitemap were not discovered through HTML links during the bounded crawl."
+                "Some sitemap URLs were not corroborated by crawlable HTML links during the bounded crawl. This is a discovery-gap signal, not proof that the URLs are truly orphaned."
                 if baseline_only and js_shell_root_active
-                else "Some URLs referenced by the sitemap were not discovered through internal links during the bounded crawl."
+                else "Some sitemap URLs were not corroborated by crawlable HTML links during the bounded crawl. This is a discovery-gap signal, not proof that the URLs are truly orphaned."
             ),
             probable_cause=(
-                "Important navigation or contextual links may only appear after client-side rendering, or the internal link graph may genuinely be weak."
+                "Bounded crawl depth, locale partitioning, rendered navigation, or genuinely weak internal linking can all produce this pattern."
                 if baseline_only and js_shell_root_active
-                else "Weak navigation, deep architecture, or sitemap entries that are isolated from the main site graph."
+                else "Bounded crawl depth, locale partitioning, rendered navigation, or genuinely weak internal linking can all produce this pattern."
             ),
             recommended_fix=(
-                "After fixing initial HTML delivery, verify that important URLs are discoverable through crawlable HTML links within a reasonable click depth."
+                "Separate sitemap-only URLs from priority pages that should be linked from crawlable navigation, hubs, or contextual modules, then revalidate with rendered crawling if needed."
                 if baseline_only and js_shell_root_active
-                else "Surface important sitemap URLs from relevant navigation, hubs, or contextual links."
+                else "Separate sitemap-only URLs from priority pages that should be linked from crawlable navigation, hubs, or contextual modules."
             ),
             acceptance=(
-                "Important sitemap URLs are reachable through crawlable HTML links within a reasonable click depth after raw-HTML validation."
+                "Priority sitemap URLs are reachable through crawlable links within a reasonable click depth, and any sitemap-only URLs are intentionally isolated or removed from sitemap strategy."
                 if baseline_only and js_shell_root_active
-                else "Important sitemap URLs are reachable through internal links within a reasonable click depth."
+                else "Priority sitemap URLs are reachable through crawlable links within a reasonable click depth, and any sitemap-only URLs are intentionally isolated or removed from sitemap strategy."
             ),
             derived_from=["js-shell-risk"] if baseline_only and js_shell_root_active else [],
             validation_state="needs_render_validation" if baseline_only and js_shell_root_active else "confirmed",
@@ -1229,6 +1577,48 @@ def _build_findings(
             ),
         ))
 
+    expected_lang = CC_TLD_LANGUAGE_MAP.get(target_tld)
+    if expected_lang:
+        mismatched_pages = [
+            page
+            for page in indexable_pages
+            if _page_language_hint(page)
+            and _lang_root(_page_language_hint(page)) != _lang_root(expected_lang)
+        ]
+        english_pages = [
+            page for page in mismatched_pages if _lang_root(_page_language_hint(page)) == "en"
+        ]
+        if english_pages:
+            sample = english_pages[0]
+            findings.append(_finding(
+                "cc-tld-language-mismatch",
+                title=f"Country-code domain `.{target_tld}` carries English content",
+                url=sample.get("final_url") or sample.get("url") or target_url,
+                scope="site",
+                category="internationalization",
+                bucket="indexability",
+                severity="high" if target_tld == "fr" else "medium",
+                confidence="Strong signal",
+                impact="High",
+                evidence=[
+                    f"{len(english_pages)} sampled page(s) expose English language signals on a .{target_tld} domain",
+                    f"Sample page language hint: {_page_language_hint(sample) or 'en'}",
+                ],
+                diagnostic=(
+                    f"The site uses a country-code domain `.{target_tld}` while publishing English sections. "
+                    "A ccTLD sends a strong country-targeting signal, which can dilute international discoverability for those English pages."
+                ),
+                probable_cause=(
+                    "The international strategy is mixing country-targeted hosting with a broader English content footprint."
+                ),
+                recommended_fix=(
+                    "Keep the ccTLD primarily aligned with its target market language, or move international/English sections to a neutral domain, dedicated subdomain, or a deliberately managed hreflang structure."
+                ),
+                acceptance=(
+                    "The domain strategy, language targeting, and hreflang signals are aligned so English pages are hosted on an intentional international surface rather than an ambiguous ccTLD setup."
+                ),
+            ))
+
     if not homepage.get("structured_data_count"):
         findings.append(_finding(
             "structured-data-missing",
@@ -1265,7 +1655,7 @@ def _build_findings(
             acceptance="Homepage and key templates expose OG title, description, and image metadata in HTML.",
         ))
 
-    if homepage.get("canonical") and _clean_url(urljoin(homepage.get("final_url") or target_url, homepage["canonical"])) != _clean_url(homepage.get("final_url") or target_url):
+    if homepage.get("canonical") and not _homepage_canonical_allowed_alias(homepage, target_url, sitemaps):
         findings.append(_finding(
             "homepage-canonical-mismatch",
             title="Homepage canonical points elsewhere",
@@ -1277,10 +1667,10 @@ def _build_findings(
             confidence="Confirmed",
             impact="High",
             evidence=[homepage.get("canonical", "")],
-            diagnostic="The homepage canonical does not self-reference the sampled final URL.",
+            diagnostic="The homepage canonical does not self-reference the sampled final URL and does not match a recognized locale-root alias pattern.",
             probable_cause="Canonical logic is using a stale host, wrong locale root, or staging domain.",
-            recommended_fix="Point the homepage canonical to the preferred public homepage URL.",
-            acceptance="Homepage canonical matches the intended live homepage without cross-domain drift.",
+            recommended_fix="Point the homepage canonical to the preferred public homepage URL, or keep the locale-root alias strategy explicit and consistent with the sitemap.",
+            acceptance="Homepage canonical matches the intended live homepage or a deliberate locale-root alias without cross-domain drift.",
         ))
 
     return findings
@@ -1292,16 +1682,27 @@ def _build_visibility_signals(
     classification: Dict[str, Any],
     pages: List[Dict[str, Any]],
     owner_context: Optional[Dict[str, Any]] = None,
+    provider_statuses: Optional[List[Dict[str, Any]]] = None,
     render_detection: Optional[Dict[str, Any]] = None,
+    llms_signal: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     owner_context = owner_context or {}
+    provider_statuses = provider_statuses or []
     render_detection = render_detection or {}
+    llms_signal = llms_signal or {}
     owner_integrations = {
         item.get("id"): item
         for item in (owner_context.get("integrations") or [])
         if isinstance(item, dict)
     }
+    provider_by_id = {
+        item.get("id"): item
+        for item in provider_statuses
+        if isinstance(item, dict)
+    }
     gsc = owner_integrations.get("google_search_console") or {}
+    bing_provider = provider_by_id.get("bing_webmaster") or {}
+    indexnow_provider = provider_by_id.get("indexnow") or {}
     google_status = "Unknown"
     google_confidence = "Unknown"
     google_note = "Public audit mode cannot confirm exact Google indexing without an official source such as Search Console."
@@ -1332,6 +1733,42 @@ def _build_visibility_signals(
     elif render_detection.get("render_js_requested") and not render_detection.get("render_js_executed"):
         js_note = render_detection.get("note") or js_note
 
+    indexnow_public_hint = any(
+        "indexnow" in str(line or "").lower()
+        for line in (robots.get("rules_sample") or [])
+    ) or any(
+        "indexnow" in (
+            f"{page.get('body_html_excerpt', '')} {page.get('visible_text_excerpt', '')}".lower()
+        )
+        for page in pages[:6]
+    )
+
+    owner_mode = owner_context.get("mode") == "verified_owner"
+
+    if owner_mode and indexnow_provider.get("configured"):
+        indexnow_status = "Strong signal"
+        indexnow_confidence = "Confirmed"
+        indexnow_note = "Owner-side IndexNow key is configured in JoyBoy for this target workspace."
+    elif indexnow_public_hint:
+        indexnow_status = "Strong signal"
+        indexnow_confidence = "Estimated"
+        indexnow_note = "SignalAtlas found public IndexNow hints in the sampled host output."
+    else:
+        indexnow_status = "Unknown"
+        indexnow_confidence = "Unknown"
+        indexnow_note = "IndexNow support could not be confirmed from the public crawl."
+
+    if owner_mode and bing_provider.get("configured"):
+        bing_status = "Strong signal"
+        bing_confidence = "Confirmed"
+        bing_note = "Bing Webmaster connectivity is configured in JoyBoy for this target workspace."
+    else:
+        bing_status = "Estimated"
+        bing_confidence = "Estimated"
+        bing_note = "Bing ecosystem visibility is inferred from crawlability, metadata, and sitemap coherence only."
+
+    geo_signal = _geo_signal_snapshot(pages, llms_signal)
+
     return {
         "google": {
             "status": google_status,
@@ -1339,14 +1776,14 @@ def _build_visibility_signals(
             "note": google_note,
         },
         "bing": {
-            "status": "Estimated",
-            "confidence": "Estimated",
-            "note": "Bing ecosystem visibility is inferred from crawlability, metadata, and sitemap coherence only.",
+            "status": bing_status,
+            "confidence": bing_confidence,
+            "note": bing_note,
         },
         "indexnow": {
-            "status": "Unknown",
-            "confidence": "Unknown",
-            "note": "IndexNow support cannot be confirmed in public mode without owner-side validation.",
+            "status": indexnow_status,
+            "confidence": indexnow_confidence,
+            "note": indexnow_note,
         },
         "crawlability": {
             "status": "Confirmed" if robots.get("allowed", True) else "Blocked",
@@ -1363,6 +1800,7 @@ def _build_visibility_signals(
             "confidence": js_confidence,
             "note": js_note,
         },
+        "geo": geo_signal,
     }
 
 
@@ -1396,12 +1834,13 @@ def run_site_audit(
     emit("crawl", 12, "Discovering sitemap signals")
     ensure_not_cancelled()
     sitemaps = _discover_sitemaps(session, entry_url, robots)
+    llms_signal = _probe_llms_txt(session, entry_url)
 
     queue: Deque[Tuple[str, int]] = deque()
     seen = set()
     for candidate in [entry_url] + list(sitemaps.get("urls") or [])[: max_pages]:
         clean = _clean_url(candidate)
-        if _same_host(clean, host) and clean not in seen:
+        if _same_host(clean, host) and clean not in seen and not _is_system_url(clean):
             queue.append((clean, 0))
             seen.add(clean)
 
@@ -1421,7 +1860,7 @@ def run_site_audit(
                 continue
             for link in page.get("internal_links") or []:
                 clean = _clean_url(link)
-                if clean in seen or not _same_host(clean, host):
+                if clean in seen or not _same_host(clean, host) or _is_system_url(clean):
                     continue
                 seen.add(clean)
                 discovered_urls.add(clean)
@@ -1442,17 +1881,23 @@ def run_site_audit(
                 "external_link_count": 0,
                 "heading_counts": {},
                 "hreflang": [],
+                "html_lang": "",
                 "structured_data_types": [],
                 "open_graph": {},
                 "twitter_cards": {},
                 "word_count": 0,
+                "content_units": 0,
+                "cjk_char_count": 0,
                 "visible_text_length": 0,
                 "visible_text_excerpt": "",
                 "body_text_excerpt": "",
                 "body_html_excerpt": "",
                 "image_total": 0,
                 "image_missing_alt": 0,
+                "image_empty_alt": 0,
                 "shell_like": False,
+                "system_url": _is_system_url(current),
+                "indexable_candidate": False,
                 "template_signature": _template_signature(current),
                 "has_blog_signals": _is_blog_like(current, ""),
             })
@@ -1468,19 +1913,23 @@ def run_site_audit(
         cancel_check=cancel_check,
     )
     owner_context = build_owner_context(entry_url, mode=mode)
+    provider_statuses = get_signalatlas_provider_status(entry_url, mode=mode)
     visibility = _build_visibility_signals(
         robots,
         sitemaps,
         classification,
         pages,
         owner_context=owner_context,
+        provider_statuses=provider_statuses,
         render_detection=render_detection,
+        llms_signal=llms_signal,
     )
     template_clusters = _build_template_clusters(pages)
 
     findings = _build_findings(
         pages,
         target_url=entry_url,
+        discovered_url_count=len(discovered_urls),
         robots=robots,
         sitemaps=sitemaps,
         site_classification=classification,
@@ -1531,6 +1980,8 @@ def run_site_audit(
             "robots": "Confirmed" if robots.get("found") else "Unknown",
             "sitemap": visibility.get("sitemap_coherence", {}).get("confidence", "Estimated"),
             "rendering": visibility.get("js_render_risk", {}).get("confidence", "Strong signal"),
+            "indexnow": visibility.get("indexnow", {}).get("confidence", "Unknown"),
+            "geo": visibility.get("geo", {}).get("confidence", "Unknown"),
         },
         "notes": [
             "Technical findings come from a deterministic crawl and extraction layer.",
@@ -1549,6 +2000,8 @@ def run_site_audit(
                 if baseline_only and derived_symptoms
                 else "No derived baseline-only symptom cluster was detected in this sampled pass."
             ),
+            visibility.get("indexnow", {}).get("note", ""),
+            visibility.get("geo", {}).get("note", ""),
             "LLM interpretation can be rerun later without repeating the crawl.",
         ],
         "root_causes": [
@@ -1561,6 +2014,7 @@ def run_site_audit(
             for item in root_causes
         ],
     }
+    summary["notes"] = [note for note in summary.get("notes", []) if str(note or "").strip()]
 
     finished_at = utc_now_iso()
     crawl_snapshot = {
@@ -1573,9 +2027,11 @@ def run_site_audit(
         "broken_urls": sorted(broken_urls),
         "robots": robots,
         "sitemaps": sitemaps,
+        "llms_signal": llms_signal,
         "framework_detection": classification,
         "render_detection": render_detection,
         "visibility_signals": visibility,
+        "provider_statuses": provider_statuses,
         "template_clusters": template_clusters,
         "page_count": len(pages),
         "duration_seconds": round(time.time() - start, 2),

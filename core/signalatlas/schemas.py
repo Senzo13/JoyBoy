@@ -56,7 +56,10 @@ class PageSnapshot:
     canonical: str = ""
     h1: str = ""
     heading_counts: Dict[str, int] = field(default_factory=dict)
+    html_lang: str = ""
     word_count: int = 0
+    content_units: int = 0
+    cjk_char_count: int = 0
     text_hash: str = ""
     content_hash: str = ""
     noindex: bool = False
@@ -71,7 +74,10 @@ class PageSnapshot:
     external_link_count: int = 0
     image_total: int = 0
     image_missing_alt: int = 0
+    image_empty_alt: int = 0
     shell_like: bool = False
+    system_url: bool = False
+    indexable_candidate: bool = False
     framework_signatures: List[str] = field(default_factory=list)
     render_signals: List[str] = field(default_factory=list)
     classification_reasons: List[str] = field(default_factory=list)

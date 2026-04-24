@@ -15,6 +15,18 @@ class _FakeResponse:
 
 
 class SignalAtlasEngineTests(unittest.TestCase):
+    def _fixture_response(self, url, fixtures):
+        if url in fixtures:
+            return fixtures[url]
+        if url.endswith("/llms.txt") or url.endswith("/llms-full.txt"):
+            return _FakeResponse(
+                url,
+                status_code=404,
+                text="not found",
+                headers={"content-type": "text/plain; charset=utf-8"},
+            )
+        raise AssertionError(f"Unexpected URL fetched during test: {url}")
+
     def fake_get(self, url, timeout=None, headers=None, allow_redirects=True):
         del timeout, headers, allow_redirects
         fixtures = {
@@ -94,9 +106,7 @@ class SignalAtlasEngineTests(unittest.TestCase):
                 headers={"content-type": "text/html; charset=utf-8"},
             ),
         }
-        if url not in fixtures:
-            raise AssertionError(f"Unexpected URL fetched during test: {url}")
-        return fixtures[url]
+        return self._fixture_response(url, fixtures)
 
     def fake_get_shell(self, url, timeout=None, headers=None, allow_redirects=True):
         del timeout, headers, allow_redirects
@@ -186,9 +196,7 @@ class SignalAtlasEngineTests(unittest.TestCase):
                 headers={"content-type": "text/html; charset=utf-8"},
             ),
         }
-        if url not in fixtures:
-            raise AssertionError(f"Unexpected URL fetched during test: {url}")
-        return fixtures[url]
+        return self._fixture_response(url, fixtures)
 
     def fake_get_prerendered_react(self, url, timeout=None, headers=None, allow_redirects=True):
         del timeout, headers, allow_redirects
@@ -284,9 +292,423 @@ class SignalAtlasEngineTests(unittest.TestCase):
                 headers={"content-type": "text/html; charset=utf-8"},
             ),
         }
-        if url not in fixtures:
-            raise AssertionError(f"Unexpected URL fetched during test: {url}")
-        return fixtures[url]
+        return self._fixture_response(url, fixtures)
+
+    def fake_get_locale_alias(self, url, timeout=None, headers=None, allow_redirects=True):
+        del timeout, headers, allow_redirects
+        fixtures = {
+            "https://locale.example.com/robots.txt": _FakeResponse(
+                "https://locale.example.com/robots.txt",
+                text="User-agent: *\nAllow: /\nSitemap: https://locale.example.com/sitemap.xml\n",
+                headers={"content-type": "text/plain; charset=utf-8"},
+            ),
+            "https://locale.example.com/sitemap.xml": _FakeResponse(
+                "https://locale.example.com/sitemap.xml",
+                text="""
+                <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+                  <url><loc>https://locale.example.com/fr/</loc></url>
+                  <url><loc>https://locale.example.com/en/</loc></url>
+                </urlset>
+                """,
+                headers={"content-type": "application/xml; charset=utf-8"},
+            ),
+            "https://locale.example.com/": _FakeResponse(
+                "https://locale.example.com/",
+                text="""
+                <html>
+                  <head>
+                    <title>Locale Root</title>
+                    <meta name="description" content="Locale alias root">
+                    <link rel="canonical" href="https://locale.example.com/fr">
+                  </head>
+                  <body>
+                    <h1>Locale root alias</h1>
+                    <p>This root URL acts as a language chooser alias and intentionally canonicalizes to the French locale root included in the sitemap.</p>
+                    <a href="/fr/">FR</a>
+                    <a href="/en/">EN</a>
+                  </body>
+                </html>
+                """,
+                headers={"content-type": "text/html; charset=utf-8"},
+            ),
+            "https://locale.example.com/fr/": _FakeResponse(
+                "https://locale.example.com/fr/",
+                text="""
+                <html>
+                  <head>
+                    <title>Locale FR</title>
+                    <meta name="description" content="French locale home">
+                    <link rel="canonical" href="https://locale.example.com/fr/">
+                  </head>
+                  <body>
+                    <h1>Accueil FR</h1>
+                    <p>Cette page représente la racine indexable principale du site pour la langue française.</p>
+                  </body>
+                </html>
+                """,
+                headers={"content-type": "text/html; charset=utf-8"},
+            ),
+            "https://locale.example.com/en/": _FakeResponse(
+                "https://locale.example.com/en/",
+                text="""
+                <html>
+                  <head>
+                    <title>Locale EN</title>
+                    <meta name="description" content="English locale home">
+                    <link rel="canonical" href="https://locale.example.com/en/">
+                  </head>
+                  <body>
+                    <h1>Home EN</h1>
+                    <p>This page is the English locale root and is intentionally present in the sitemap as an indexable page.</p>
+                  </body>
+                </html>
+                """,
+                headers={"content-type": "text/html; charset=utf-8"},
+            ),
+        }
+        return self._fixture_response(url, fixtures)
+
+    def fake_get_decorative_images(self, url, timeout=None, headers=None, allow_redirects=True):
+        del timeout, headers, allow_redirects
+        fixtures = {
+            "https://decorative.example.com/robots.txt": _FakeResponse(
+                "https://decorative.example.com/robots.txt",
+                text="User-agent: *\nAllow: /\n",
+                headers={"content-type": "text/plain; charset=utf-8"},
+            ),
+            "https://decorative.example.com/sitemap.xml": _FakeResponse(
+                "https://decorative.example.com/sitemap.xml",
+                status_code=404,
+                text="not found",
+                headers={"content-type": "text/plain; charset=utf-8"},
+            ),
+            "https://decorative.example.com/": _FakeResponse(
+                "https://decorative.example.com/",
+                text="""
+                <html>
+                  <head>
+                    <title>Decorative Images</title>
+                    <meta name="description" content="Homepage with decorative art">
+                    <link rel="canonical" href="https://decorative.example.com/">
+                  </head>
+                  <body>
+                    <h1>Decorative images are allowed</h1>
+                    <p>This page contains a decorative flourish with empty alt text and an informative hero image with descriptive alt text.</p>
+                    <img src="/sparkles.png" alt="">
+                    <img src="/hero.jpg" alt="Player walking with a virtual creature">
+                  </body>
+                </html>
+                """,
+                headers={"content-type": "text/html; charset=utf-8"},
+            ),
+        }
+        return self._fixture_response(url, fixtures)
+
+    def fake_get_system_noise(self, url, timeout=None, headers=None, allow_redirects=True):
+        del timeout, headers, allow_redirects
+        fixtures = {
+            "https://noise.example.com/robots.txt": _FakeResponse(
+                "https://noise.example.com/robots.txt",
+                text="User-agent: *\nAllow: /\n",
+                headers={"content-type": "text/plain; charset=utf-8"},
+            ),
+            "https://noise.example.com/sitemap.xml": _FakeResponse(
+                "https://noise.example.com/sitemap.xml",
+                status_code=404,
+                text="not found",
+                headers={"content-type": "text/plain; charset=utf-8"},
+            ),
+            "https://noise.example.com/": _FakeResponse(
+                "https://noise.example.com/",
+                text="""
+                <html>
+                  <head>
+                    <title>Noise Filter</title>
+                    <meta name="description" content="Filter system endpoints">
+                    <link rel="canonical" href="https://noise.example.com/">
+                  </head>
+                  <body>
+                    <h1>Noise filter</h1>
+                    <p>This page links to a real page and to a Cloudflare system endpoint that should never be treated as an SEO page.</p>
+                    <a href="/real-page">Real page</a>
+                    <a href="/cdn-cgi/l/email-protection">System endpoint</a>
+                  </body>
+                </html>
+                """,
+                headers={"content-type": "text/html; charset=utf-8"},
+            ),
+            "https://noise.example.com/real-page": _FakeResponse(
+                "https://noise.example.com/real-page",
+                text="""
+                <html>
+                  <head>
+                    <title>Real Page</title>
+                    <meta name="description" content="This is a valid page">
+                    <link rel="canonical" href="https://noise.example.com/real-page">
+                  </head>
+                  <body>
+                    <h1>Real page</h1>
+                    <p>This page has the metadata it needs and exists only to prove that system routes should be filtered out before findings are generated.</p>
+                  </body>
+                </html>
+                """,
+                headers={"content-type": "text/html; charset=utf-8"},
+            ),
+            "https://noise.example.com/cdn-cgi/l/email-protection": _FakeResponse(
+                "https://noise.example.com/cdn-cgi/l/email-protection",
+                status_code=404,
+                text="not found",
+                headers={"content-type": "text/html; charset=utf-8"},
+            ),
+        }
+        return self._fixture_response(url, fixtures)
+
+    def fake_get_cjk_content(self, url, timeout=None, headers=None, allow_redirects=True):
+        del timeout, headers, allow_redirects
+        zh_intro = "一起走路收集宠物挑战好友赢取奖励探索地图完成任务记录真实步数保持每日连胜"
+        zh_blog_a = zh_intro * 8
+        zh_blog_b = "训练伙伴提升等级参加赛季活动解锁造型领取奖章分享进度邀请朋友一起冒险" * 8
+        fixtures = {
+            "https://cjk.example.com/robots.txt": _FakeResponse(
+                "https://cjk.example.com/robots.txt",
+                text="User-agent: *\nAllow: /\nSitemap: https://cjk.example.com/sitemap.xml\n",
+                headers={"content-type": "text/plain; charset=utf-8"},
+            ),
+            "https://cjk.example.com/sitemap.xml": _FakeResponse(
+                "https://cjk.example.com/sitemap.xml",
+                text="""
+                <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+                  <url><loc>https://cjk.example.com/</loc></url>
+                  <url><loc>https://cjk.example.com/zh_cn/blog/a</loc></url>
+                  <url><loc>https://cjk.example.com/zh_cn/blog/b</loc></url>
+                </urlset>
+                """,
+                headers={"content-type": "application/xml; charset=utf-8"},
+            ),
+            "https://cjk.example.com/": _FakeResponse(
+                "https://cjk.example.com/",
+                text=f"""
+                <html>
+                  <head>
+                    <title>CJK Home</title>
+                    <meta name="description" content="Chinese homepage">
+                    <link rel="canonical" href="https://cjk.example.com/">
+                  </head>
+                  <body>
+                    <h1>首页</h1>
+                    <p>{zh_intro * 10}</p>
+                    <a href="/zh_cn/blog/a">文章A</a>
+                    <a href="/zh_cn/blog/b">文章B</a>
+                  </body>
+                </html>
+                """,
+                headers={"content-type": "text/html; charset=utf-8"},
+            ),
+            "https://cjk.example.com/zh_cn/blog/a": _FakeResponse(
+                "https://cjk.example.com/zh_cn/blog/a",
+                text=f"""
+                <html>
+                  <head>
+                    <title>文章 A</title>
+                    <meta name="description" content="Article A">
+                    <link rel="canonical" href="https://cjk.example.com/zh_cn/blog/a">
+                  </head>
+                  <body>
+                    <h1>文章 A</h1>
+                    <article><p>{zh_blog_a}</p></article>
+                  </body>
+                </html>
+                """,
+                headers={"content-type": "text/html; charset=utf-8"},
+            ),
+            "https://cjk.example.com/zh_cn/blog/b": _FakeResponse(
+                "https://cjk.example.com/zh_cn/blog/b",
+                text=f"""
+                <html>
+                  <head>
+                    <title>文章 B</title>
+                    <meta name="description" content="Article B">
+                    <link rel="canonical" href="https://cjk.example.com/zh_cn/blog/b">
+                  </head>
+                  <body>
+                    <h1>文章 B</h1>
+                    <article><p>{zh_blog_b}</p></article>
+                  </body>
+                </html>
+                """,
+                headers={"content-type": "text/html; charset=utf-8"},
+            ),
+        }
+        return self._fixture_response(url, fixtures)
+
+    def fake_get_small_surface(self, url, timeout=None, headers=None, allow_redirects=True):
+        del timeout, headers, allow_redirects
+        fixtures = {
+            "https://small.example.com/robots.txt": _FakeResponse(
+                "https://small.example.com/robots.txt",
+                text="User-agent: *\nAllow: /\n",
+                headers={"content-type": "text/plain; charset=utf-8"},
+            ),
+            "https://small.example.com/sitemap.xml": _FakeResponse(
+                "https://small.example.com/sitemap.xml",
+                status_code=404,
+                text="not found",
+                headers={"content-type": "text/plain; charset=utf-8"},
+            ),
+            "https://small.example.com/": _FakeResponse(
+                "https://small.example.com/",
+                text="""
+                <html>
+                  <head>
+                    <title>Small Site</title>
+                    <meta name="description" content="Tiny website">
+                    <link rel="canonical" href="https://small.example.com/">
+                  </head>
+                  <body>
+                    <h1>Small website</h1>
+                    <p>Very small brochure site.</p>
+                    <a href="/contact">Contact</a>
+                  </body>
+                </html>
+                """,
+                headers={"content-type": "text/html; charset=utf-8"},
+            ),
+            "https://small.example.com/contact": _FakeResponse(
+                "https://small.example.com/contact",
+                text="""
+                <html>
+                  <head>
+                    <title>Contact</title>
+                    <meta name="description" content="Contact us">
+                    <link rel="canonical" href="https://small.example.com/contact">
+                  </head>
+                  <body>
+                    <h1>Contact</h1>
+                    <p>Email and contact details only.</p>
+                  </body>
+                </html>
+                """,
+                headers={"content-type": "text/html; charset=utf-8"},
+            ),
+        }
+        return self._fixture_response(url, fixtures)
+
+    def fake_get_cc_tld_en(self, url, timeout=None, headers=None, allow_redirects=True):
+        del timeout, headers, allow_redirects
+        fixtures = {
+            "https://brand.fr/robots.txt": _FakeResponse(
+                "https://brand.fr/robots.txt",
+                text="User-agent: *\nAllow: /\nSitemap: https://brand.fr/sitemap.xml\n",
+                headers={"content-type": "text/plain; charset=utf-8"},
+            ),
+            "https://brand.fr/sitemap.xml": _FakeResponse(
+                "https://brand.fr/sitemap.xml",
+                text="""
+                <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+                  <url><loc>https://brand.fr/</loc></url>
+                  <url><loc>https://brand.fr/fr/</loc></url>
+                  <url><loc>https://brand.fr/en/</loc></url>
+                </urlset>
+                """,
+                headers={"content-type": "application/xml; charset=utf-8"},
+            ),
+            "https://brand.fr/": _FakeResponse(
+                "https://brand.fr/",
+                text="""
+                <html lang="fr">
+                  <head>
+                    <title>Marque FR</title>
+                    <meta name="description" content="Accueil français">
+                    <link rel="canonical" href="https://brand.fr/">
+                  </head>
+                  <body>
+                    <h1>Accueil</h1>
+                    <p>Version française principale.</p>
+                    <a href="/fr/">FR</a>
+                    <a href="/en/">EN</a>
+                  </body>
+                </html>
+                """,
+                headers={"content-type": "text/html; charset=utf-8"},
+            ),
+            "https://brand.fr/fr/": _FakeResponse(
+                "https://brand.fr/fr/",
+                text="""
+                <html lang="fr">
+                  <head>
+                    <title>Page FR</title>
+                    <meta name="description" content="Page française">
+                    <link rel="canonical" href="https://brand.fr/fr/">
+                  </head>
+                  <body>
+                    <h1>Page FR</h1>
+                    <p>Contenu pensé pour le marché français.</p>
+                  </body>
+                </html>
+                """,
+                headers={"content-type": "text/html; charset=utf-8"},
+            ),
+            "https://brand.fr/en/": _FakeResponse(
+                "https://brand.fr/en/",
+                text="""
+                <html lang="en">
+                  <head>
+                    <title>English Page</title>
+                    <meta name="description" content="English content on .fr">
+                    <link rel="canonical" href="https://brand.fr/en/">
+                  </head>
+                  <body>
+                    <h1>English page</h1>
+                    <p>This page targets English queries while staying on a .fr country-code domain.</p>
+                  </body>
+                </html>
+                """,
+                headers={"content-type": "text/html; charset=utf-8"},
+            ),
+        }
+        return self._fixture_response(url, fixtures)
+
+    def fake_get_geo_ready(self, url, timeout=None, headers=None, allow_redirects=True):
+        del timeout, headers, allow_redirects
+        fixtures = {
+            "https://geo.example.com/robots.txt": _FakeResponse(
+                "https://geo.example.com/robots.txt",
+                text="User-agent: *\nAllow: /\n",
+                headers={"content-type": "text/plain; charset=utf-8"},
+            ),
+            "https://geo.example.com/sitemap.xml": _FakeResponse(
+                "https://geo.example.com/sitemap.xml",
+                status_code=404,
+                text="not found",
+                headers={"content-type": "text/plain; charset=utf-8"},
+            ),
+            "https://geo.example.com/llms.txt": _FakeResponse(
+                "https://geo.example.com/llms.txt",
+                text="Project summary\n\n- Product: JoyBoy\n- Audience: AI builders\n",
+                headers={"content-type": "text/plain; charset=utf-8"},
+            ),
+            "https://geo.example.com/": _FakeResponse(
+                "https://geo.example.com/",
+                text="""
+                <html lang="en">
+                  <head>
+                    <title>Geo Ready</title>
+                    <meta name="description" content="Strong AI visibility signals">
+                    <link rel="canonical" href="https://geo.example.com/">
+                    <script type="application/ld+json">
+                      {"@context":"https://schema.org","@type":["Organization","WebSite"]}
+                    </script>
+                  </head>
+                  <body>
+                    <h1>Geo ready site</h1>
+                    <p>Structured, explainable product content.</p>
+                  </body>
+                </html>
+                """,
+                headers={"content-type": "text/html; charset=utf-8"},
+            ),
+        }
+        return self._fixture_response(url, fixtures)
 
     @patch("core.signalatlas.engine.requests.Session.get")
     def test_public_audit_returns_structured_deterministic_report(self, mocked_get):
@@ -428,6 +850,114 @@ class SignalAtlasEngineTests(unittest.TestCase):
         self.assertEqual(homepage["h1_count"], 1)
         self.assertGreater(homepage["visible_text_length"], 120)
         self.assertTrue(homepage["body_text_excerpt"])
+
+    @patch("core.signalatlas.engine.requests.Session.get")
+    def test_locale_root_canonical_alias_is_not_flagged_as_homepage_mismatch(self, mocked_get):
+        mocked_get.side_effect = self.fake_get_locale_alias
+
+        result = run_public_audit("locale.example.com", max_pages=4, render_js=False)
+
+        self.assertFalse(any(item["id"] == "homepage-canonical-mismatch" for item in result["findings"]))
+        self.assertEqual(result["summary"]["sitemap_url_count"], 2)
+
+    @patch("core.signalatlas.engine.requests.Session.get")
+    def test_decorative_empty_alt_does_not_trigger_missing_alt_finding(self, mocked_get):
+        mocked_get.side_effect = self.fake_get_decorative_images
+
+        result = run_public_audit("decorative.example.com", max_pages=2, render_js=False)
+        homepage = result["snapshot"]["pages"][0]
+
+        self.assertEqual(homepage["image_missing_alt"], 0)
+        self.assertEqual(homepage["image_empty_alt"], 1)
+        self.assertFalse(any(item["id"] == "images-missing-alt" for item in result["findings"]))
+
+    @patch("core.signalatlas.engine.requests.Session.get")
+    def test_system_routes_are_filtered_out_of_seo_findings(self, mocked_get):
+        mocked_get.side_effect = self.fake_get_system_noise
+
+        result = run_public_audit("noise.example.com", max_pages=4, render_js=False)
+
+        self.assertFalse(any("/cdn-cgi/" in url for url in result["snapshot"]["crawled_urls"]))
+        self.assertFalse(any(item["id"] == "missing-description" for item in result["findings"]))
+
+    @patch("core.signalatlas.engine.requests.Session.get")
+    def test_cjk_pages_use_adjusted_content_units_for_thin_content(self, mocked_get):
+        mocked_get.side_effect = self.fake_get_cjk_content
+
+        result = run_public_audit("cjk.example.com", max_pages=4, render_js=False)
+        findings = {item["id"]: item for item in result["findings"]}
+        zh_page = next(
+            page for page in result["snapshot"]["pages"] if page["final_url"] == "https://cjk.example.com/zh_cn/blog/a"
+        )
+
+        self.assertLess(zh_page["word_count"], 40)
+        self.assertGreater(zh_page["content_units"], 180)
+        self.assertNotIn("thin-content", findings)
+
+    @patch("core.signalatlas.engine.requests.Session.get")
+    def test_small_surface_adds_discovery_and_blog_advice(self, mocked_get):
+        mocked_get.side_effect = self.fake_get_small_surface
+
+        result = run_public_audit("small.example.com", max_pages=4, render_js=False)
+        findings = {item["id"]: item for item in result["findings"]}
+
+        self.assertIn("organic-surface-too-small", findings)
+        self.assertIn("blog-surface-absent", findings)
+
+    @patch("core.signalatlas.engine.requests.Session.get")
+    def test_cc_tld_with_english_sections_is_flagged(self, mocked_get):
+        mocked_get.side_effect = self.fake_get_cc_tld_en
+
+        result = run_public_audit("brand.fr", max_pages=4, render_js=False)
+        findings = {item["id"]: item for item in result["findings"]}
+
+        self.assertIn("cc-tld-language-mismatch", findings)
+        self.assertIn(".fr", findings["cc-tld-language-mismatch"]["title"])
+
+    @patch("core.signalatlas.engine.build_owner_context")
+    @patch("core.signalatlas.engine.get_signalatlas_provider_status")
+    @patch("core.signalatlas.engine.requests.Session.get")
+    def test_visibility_signals_include_indexnow_and_geo(self, mocked_get, mocked_provider_status, mocked_owner_context):
+        mocked_get.side_effect = self.fake_get_geo_ready
+        mocked_provider_status.return_value = [
+            {
+                "id": "google_search_console",
+                "status": "not_configured",
+                "configured": False,
+            },
+            {
+                "id": "bing_webmaster",
+                "status": "configured",
+                "configured": True,
+            },
+            {
+                "id": "indexnow",
+                "status": "configured",
+                "configured": True,
+            },
+        ]
+        mocked_owner_context.return_value = {
+            "mode": "verified_owner",
+            "integrations": [],
+        }
+
+        result = run_site_audit("geo.example.com", mode="verified_owner", max_pages=2, render_js=False)
+        visibility = result["snapshot"]["visibility_signals"]
+        audit = {
+            "summary": result["summary"],
+            "snapshot": result["snapshot"],
+            "findings": result["findings"],
+            "scores": result["scores"],
+            "interpretations": [],
+            "remediation_items": result["remediation_items"],
+        }
+        export = build_export_payload(audit, "markdown")
+
+        self.assertEqual(visibility["indexnow"]["status"], "Strong signal")
+        self.assertIn(visibility["geo"]["status"], {"Strong signal", "Confirmed"})
+        self.assertIn("## Search & AI visibility signals", export["content"])
+        self.assertIn("IndexNow", export["content"])
+        self.assertIn("GEO / AI visibility", export["content"])
 
 
 if __name__ == "__main__":

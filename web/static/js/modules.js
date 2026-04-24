@@ -578,6 +578,16 @@ function signalAtlasVisibilityNote(key, value = {}, audit) {
     if (cleanKey === 'indexnow') {
         return moduleT('signalatlas.visibilityNote_indexnow', 'IndexNow ne peut pas être confirmé en audit public sans validation côté propriétaire.');
     }
+    if (cleanKey === 'geo') {
+        const status = String(value?.status || '').trim().toLowerCase();
+        if (status === 'strong signal' || status === 'confirmed') {
+            return moduleT('signalatlas.visibilityNote_geo_strong', 'The site exposes strong public AI-visibility signals such as llms.txt or rich structured data coverage.');
+        }
+        if (status === 'partial signal') {
+            return moduleT('signalatlas.visibilityNote_geo_partial', 'Some AI-visibility signals are present, but the public GEO surface is still partial.');
+        }
+        return moduleT('signalatlas.visibilityNote_geo_unknown', 'No strong public GEO signal was detected yet in this audit pass.');
+    }
     if (cleanKey === 'crawlability') {
         return String(value?.status || '').toLowerCase() === 'blocked'
             ? moduleT('signalatlas.visibilityNote_crawlability_blocked', 'Des signaux de blocage crawl ont été détectés depuis robots.txt ou la couche HTTP.')
@@ -2081,7 +2091,7 @@ function renderSignalAtlasTemplates(audit) {
                 <div class="signalatlas-template-signature">${escapeHtml(template.signature || '/')}</div>
                 <div class="signalatlas-inline-chip">${escapeHtml(moduleT('signalatlas.templatePages', '{count} page(s)', { count: template.count || 0 }))}</div>
             </div>
-            <div class="signalatlas-template-meta">${escapeHtml(moduleT('signalatlas.avgWords', 'Average words: {count}', { count: template.avg_word_count || 0 }))}</div>
+            <div class="signalatlas-template-meta">${escapeHtml(moduleT('signalatlas.avgContentUnits', 'Average content units: {count}', { count: template.avg_content_units || template.avg_word_count || 0 }))}</div>
             <div class="signalatlas-template-samples">
                 ${(template.sample_urls || []).map(url => `<span class="signalatlas-inline-chip">${escapeHtml(url)}</span>`).join('')}
             </div>

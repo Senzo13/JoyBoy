@@ -56,13 +56,19 @@ def _audit_excerpt(audit: Dict[str, Any]) -> Dict[str, Any]:
             "render_js_executed": render_detection.get("render_js_executed"),
             "note": render_detection.get("note"),
         },
+        "visibility_signals": snapshot.get("visibility_signals") or {},
         "template_clusters": (snapshot.get("template_clusters") or [])[:6],
         "sample_pages": [
             {
                 "url": page.get("final_url") or page.get("url"),
                 "status_code": page.get("status_code"),
                 "title": page.get("title"),
+                "html_lang": page.get("html_lang"),
                 "word_count": page.get("word_count"),
+                "content_units": page.get("content_units"),
+                "cjk_char_count": page.get("cjk_char_count"),
+                "image_missing_alt": page.get("image_missing_alt"),
+                "image_empty_alt": page.get("image_empty_alt"),
                 "shell_like": page.get("shell_like"),
                 "framework_signatures": page.get("framework_signatures"),
             }

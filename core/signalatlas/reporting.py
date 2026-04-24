@@ -32,11 +32,25 @@ def _group_findings(findings: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, 
     }
 
 
+def _signal_label(value: str) -> str:
+    labels = {
+        "google": "Google",
+        "bing": "Bing",
+        "indexnow": "IndexNow",
+        "crawlability": "Crawlability",
+        "sitemap_coherence": "Sitemap coherence",
+        "js_render_risk": "JS rendering",
+        "geo": "GEO / AI visibility",
+    }
+    return labels.get(str(value or "").strip(), str(value or "").replace("_", " ").title())
+
+
 def build_executive_summary(audit: Dict[str, Any]) -> str:
     summary = audit.get("summary") or {}
     findings = audit.get("findings") or []
     owner_context = audit.get("owner_context") or {}
     render_detection = (audit.get("snapshot") or {}).get("render_detection") or {}
+    visibility_signals = (audit.get("snapshot") or {}).get("visibility_signals") or {}
     grouped = _group_findings(findings)
     primary_root = grouped["root_causes"][0] if grouped["root_causes"] else {}
     top_findings = findings[:5]
@@ -76,6 +90,10 @@ def build_executive_summary(audit: Dict[str, Any]) -> str:
             )
         else:
             lines.append(f"JS render probes were requested but not executed: {render_detection.get('note', 'unavailable')}")
+    if visibility_signals.get("indexnow", {}).get("status") in {"Strong signal", "Confirmed"}:
+        lines.append(f"IndexNow: {visibility_signals.get('indexnow', {}).get('note')}")
+    if visibility_signals.get("geo", {}).get("status") in {"Strong signal", "Confirmed"}:
+        lines.append(f"GEO / AI visibility: {visibility_signals.get('geo', {}).get('note')}")
     if grouped["derived"] and summary.get("baseline_only"):
         lines.append(
             f"{len(grouped['derived'])} downstream symptom(s) are currently treated as raw-HTML baseline signals and should be revalidated after rendered-browser probing."
@@ -94,6 +112,7 @@ def build_markdown_report(audit: Dict[str, Any]) -> str:
     snapshot = audit.get("snapshot") or {}
     owner_context = audit.get("owner_context") or {}
     render_detection = snapshot.get("render_detection") or {}
+    visibility_signals = snapshot.get("visibility_signals") or {}
     lines = [
         "# SignalAtlas Audit",
         "",
@@ -143,6 +162,26 @@ def build_markdown_report(audit: Dict[str, Any]) -> str:
         f"- Render JS executed: `{bool(render_detection.get('render_js_executed'))}`",
         f"- Detail: {render_detection.get('note', 'Raw HTML baseline only.')}",
         "",
+        "### Search & AI visibility signals",
+        "",
+    ])
+    if visibility_signals:
+        for key, payload in visibility_signals.items():
+            if not isinstance(payload, dict):
+                continue
+            lines.append(
+                f"- **{_signal_label(key)}** — status `{payload.get('status', 'Unknown')}`, confidence `{payload.get('confidence', 'Unknown')}`"
+            )
+            if payload.get("note"):
+                lines.append(f"  - Detail: {payload.get('note')}")
+        lines.append("")
+    else:
+        lines.extend([
+            "- No visibility signals were attached to this audit.",
+            "",
+        ])
+
+    lines.extend([
         "## Root Cause Snapshot",
         "",
     ])
@@ -203,8 +242,14 @@ def build_markdown_report(audit: Dict[str, Any]) -> str:
                 f"- Title: `{page.get('title', '')}`",
                 f"- Canonical: `{page.get('canonical', '')}`",
                 f"- H1 count: `{page.get('h1_count', (page.get('heading_counts') or {}).get('h1', 0))}`",
-                f"- Visible text length: `{page.get('visible_text_length', 0)}` characters / `{page.get('word_count', 0)}` words",
-                f"- Missing image alt count: `{page.get('image_missing_alt', 0)}` of `{page.get('image_total', 0)}` image(s)",
+                (
+                    f"- Visible text length: `{page.get('visible_text_length', 0)}` characters / "
+                    f"`{page.get('word_count', 0)}` raw words / `{page.get('content_units', page.get('word_count', 0))}` content units"
+                ),
+                (
+                    f"- Missing image alt count: `{page.get('image_missing_alt', 0)}` of `{page.get('image_total', 0)}` image(s)"
+                    f"; decorative empty-alt count: `{page.get('image_empty_alt', 0)}`"
+                ),
                 f"- Cleaned body excerpt: {page.get('body_text_excerpt') or page.get('visible_text_excerpt') or '(empty)' }",
                 "",
             ])
@@ -263,7 +308,7 @@ def build_markdown_report(audit: Dict[str, Any]) -> str:
         for cluster in template_clusters[:8]:
             lines.append(
                 f"- `{cluster.get('signature')}` — {cluster.get('count')} page(s), "
-                f"avg words `{cluster.get('avg_word_count')}`"
+                f"avg content units `{cluster.get('avg_content_units', cluster.get('avg_word_count'))}`"
             )
         lines.append("")
 
@@ -296,6 +341,7 @@ def build_report_html(audit: Dict[str, Any]) -> str:
     findings = audit.get("findings") or []
     owner_context = audit.get("owner_context") or {}
     render_detection = (audit.get("snapshot") or {}).get("render_detection") or {}
+    visibility_signals = (audit.get("snapshot") or {}).get("visibility_signals") or {}
     blocking_risk = summary.get("blocking_risk") or {}
     score_cards = "".join(
         f"<div class='score-card'><div class='label'>{score.get('label')}</div>"
@@ -309,6 +355,13 @@ def build_report_html(audit: Dict[str, Any]) -> str:
         f"<div class='meta'>{item.get('detail') or item.get('site_url') or ''}</div></div>"
         for item in (owner_context.get("integrations") or [])
         if isinstance(item, dict)
+    )
+    visibility_cards = "".join(
+        f"<div class='owner-card'><div class='label'>{_signal_label(key)}</div>"
+        f"<div class='value'>{payload.get('status', 'Unknown')}</div>"
+        f"<div class='meta'>{payload.get('note', '')}</div></div>"
+        for key, payload in visibility_signals.items()
+        if isinstance(payload, dict)
     )
     finding_rows = "".join(
         "<tr>"
@@ -358,6 +411,10 @@ def build_report_html(audit: Dict[str, Any]) -> str:
       <div class="value">{'executed' if render_detection.get('render_js_executed') else 'raw baseline'}</div>
       <div class="meta">{render_detection.get('note', 'Raw HTML baseline only.')}</div>
     </div>
+  </div>
+  <h2>Search & AI Visibility Signals</h2>
+  <div class="owner-grid">
+    {visibility_cards or "<div class='owner-card'><div class='label'>signals</div><div class='value'>none</div><div class='meta'>No visibility signals were attached to this audit.</div></div>"}
   </div>
   <h2>Findings</h2>
   <table>

@@ -44,6 +44,13 @@ class ModulesStaticTests(unittest.TestCase):
                 self.assertIn("targetPlaceholder:", data)
                 self.assertIn("providerConfigured:", data)
                 self.assertIn("renderSummaryExecuted:", data)
+                self.assertIn("visibilityLabel_geo:", data)
+                self.assertIn("visibilityNote_geo_strong:", data)
+                self.assertIn("avgContentUnits:", data)
+                self.assertIn("findingTitle_organic_surface_too_small:", data)
+                self.assertIn("findingFix_organic_surface_too_small:", data)
+                self.assertIn("findingTitle_cc_tld_language_mismatch:", data)
+                self.assertIn("findingFix_cc_tld_language_mismatch:", data)
                 self.assertIn("kindSignalAtlas:", data)
 
     def test_modules_sidebar_label_is_bound_to_i18n(self):
