@@ -824,7 +824,7 @@ class TerminalBrain(
                 total_token_stats['tool_schema_tokens'] = token_stats.get('tool_schema_tokens', 0)
                 total_token_stats['estimated_prompt_tokens'] = token_stats.get('estimated_prompt_tokens', 0)
 
-                print(f"[BRAIN] Content: {content[:100] if content else 'None'}...")
+                print(f"[BRAIN] Content: {self._debug_content_preview(content)}...")
                 print(f"[BRAIN] Tool calls: {len(tool_calls) if tool_calls else 0}")
                 print(f"[BRAIN] Tokens this call: {token_stats.get('total', 0)} | Total session: {total_token_stats['total']}")
 
@@ -1016,7 +1016,7 @@ class TerminalBrain(
                     else:
                         args = args_raw if args_raw else {}
 
-                    print(f"[BRAIN] Executing tool: {tool_name}({args})")
+                    print(f"[BRAIN] Executing tool: {tool_name}({self._tool_call_debug_preview(tool_name, args)})")
 
                     guard_reason = loop_guard.check(tool_name, args, executed_tools)
                     if guard_reason and not autonomous:

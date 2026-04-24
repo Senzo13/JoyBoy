@@ -110,6 +110,86 @@ class TerminalBrainSmokeTests(unittest.TestCase):
 
         self.assertIn("coupé avant de relancer", text)
         self.assertIn("list_files", text)
+        self.assertIn("```text", text)
+
+    def test_mutation_tool_summaries_stay_compact_and_path_focused(self):
+        brain = TerminalBrain()
+
+        edited = brain._summarize_executed_tool(
+            "edit_file",
+            {
+                "path": "src/app/page.jsx",
+                "old_text": "A" * 400,
+                "new_text": "B" * 400,
+            },
+            ToolResult(
+                success=True,
+                tool_name="edit_file",
+                data={"path": "src/app/page.jsx", "replacements": 1, "verified": True},
+            ),
+        )
+        written_batch = brain._summarize_executed_tool(
+            "write_files",
+            {"files": [{"path": "src/app/page.jsx"}, {"path": "src/app/globals.css"}]},
+            ToolResult(
+                success=True,
+                tool_name="write_files",
+                data={
+                    "count": 2,
+                    "files": [
+                        {"path": "src/app/page.jsx"},
+                        {"path": "src/app/globals.css"},
+                    ],
+                },
+            ),
+        )
+
+        self.assertIn("src/app/page.jsx", edited["summary"])
+        self.assertIn("replacement", edited["summary"])
+        self.assertNotIn("old_text", edited["summary"])
+        self.assertNotIn("new_text", edited["summary"])
+        self.assertIn("2 file(s)", written_batch["summary"])
+        self.assertIn("src/app/globals.css", written_batch["summary"])
+
+    def test_iteration_limit_fallback_reports_verified_write_progress_without_raw_args(self):
+        brain = TerminalBrain()
+        brain.current_intent = "write"
+        observed = [
+            {
+                "tool": "read_file",
+                "args": {"path": "src/app/page.jsx", "max_lines": 220},
+                "success": True,
+                "summary": "src/app/page.jsx (17 lines)",
+            },
+            {
+                "tool": "edit_file",
+                "args": {
+                    "path": "src/app/page.jsx",
+                    "old_text": "export default function Home() {}\n" * 60,
+                    "new_text": "export default function Home() { return <main />; }\n" * 60,
+                },
+                "success": True,
+                "summary": "src/app/page.jsx (1 replacement(s), verified)",
+            },
+            {
+                "tool": "write_file",
+                "args": {
+                    "path": "src/app/globals.css",
+                    "content": ".page { color: white; }\n" * 120,
+                },
+                "success": True,
+                "summary": "src/app/globals.css (updated, verified)",
+            },
+        ]
+
+        text = brain._iteration_limit_fallback_answer("continue le dev fait une landing page spt", observed)
+
+        self.assertIn("changements", text.lower())
+        self.assertIn("```text", text)
+        self.assertIn("src/app/page.jsx", text)
+        self.assertIn("src/app/globals.css", text)
+        self.assertNotIn("old_text", text)
+        self.assertNotIn("new_text", text)
 
     def test_cloud_error_classification_separates_quota_auth_and_transient(self):
         brain = TerminalBrain()

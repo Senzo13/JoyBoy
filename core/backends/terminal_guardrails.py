@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from typing import Any, Dict, List, Optional
 
 from core.agent_runtime import tool_guard_reason, tool_signature
@@ -95,6 +96,27 @@ class TerminalGuardrailsMixin:
             summary["summary"] = f"{len(data.get('files', []))} file(s)"
         elif tool_name == "search":
             summary["summary"] = f"{len(data.get('results', []))} result(s)"
+        elif tool_name == "write_file":
+            path = data.get("path", args.get("path", ""))
+            state = "created" if data.get("created") else "updated"
+            verified = ", verified" if data.get("verified") else ""
+            summary["summary"] = f"{path} ({state}{verified})".strip()
+        elif tool_name == "edit_file":
+            path = data.get("path", args.get("path", ""))
+            replacements = int(data.get("replacements", 0) or 0)
+            verified = ", verified" if data.get("verified") else ""
+            summary["summary"] = f"{path} ({replacements} replacement(s){verified})".strip()
+        elif tool_name == "delete_file":
+            path = data.get("path", args.get("path", ""))
+            verified = ", verified" if data.get("verified") else ""
+            summary["summary"] = f"{path} (deleted{verified})".strip()
+        elif tool_name == "write_files":
+            files = data.get("files", []) if isinstance(data, dict) else []
+            paths = [str(item.get("path", "")).strip() for item in files[:4] if item.get("path")]
+            suffix = f", +{len(files) - len(paths)} more" if len(files) > len(paths) else ""
+            preview = ", ".join(paths)
+            count = data.get("count", len(files))
+            summary["summary"] = f"{count} file(s): {preview}{suffix}".strip(": ").strip()
         elif tool_name == "write_todos":
             counts = data.get("counts", {}) if isinstance(data, dict) else {}
             summary["summary"] = ", ".join(f"{key}={value}" for key, value in counts.items() if value) or "todo list updated"
@@ -127,6 +149,113 @@ class TerminalGuardrailsMixin:
             summary["summary"] = "ok"
         return summary
 
+    def _explicit_verify_requested(self, initial_message: str) -> bool:
+        msg = self._intent_text(initial_message)
+        explicit_verify_markers = (
+            "test", "tests", "build", "lint", "verifie", "vérifie", "verify",
+            "lance", "run ", "npm install", "pnpm install", "yarn install",
+            "demarre", "démarre", "start",
+        )
+        return any(marker in msg for marker in explicit_verify_markers)
+
+    def _successful_mutation_items(self, executed_tools: List[Dict]) -> List[Dict]:
+        mutation_tools = {"write_file", "write_files", "edit_file", "clear_workspace", "delete_file"}
+        return [
+            item
+            for item in executed_tools or []
+            if item.get("success") and item.get("tool") in mutation_tools
+        ]
+
+    def _last_successful_mutation_index(self, executed_tools: List[Dict]) -> int:
+        for index in range(len(executed_tools or []) - 1, -1, -1):
+            item = (executed_tools or [])[index]
+            if item.get("success") and item.get("tool") in {"write_file", "write_files", "edit_file", "clear_workspace", "delete_file"}:
+                return index
+        return -1
+
+    def _should_surface_verified_write_progress(self, initial_message: str, executed_tools: List[Dict]) -> bool:
+        if self.current_intent not in {"write", "execute"}:
+            return False
+        if not self._has_successful_mutation(executed_tools):
+            return False
+        if self.current_plan and self._has_incomplete_todos():
+            return False
+        if self._explicit_verify_requested(initial_message):
+            return False
+
+        last_mutation_index = self._last_successful_mutation_index(executed_tools)
+        if last_mutation_index < 0:
+            return False
+
+        later_failures = [
+            item
+            for item in (executed_tools or [])[last_mutation_index + 1:]
+            if not item.get("success", False)
+        ]
+        return not later_failures
+
+    def _format_recent_tool_block(self, executed_tools: List[Dict], limit: int = 8) -> str:
+        lines: List[str] = []
+        for item in (executed_tools or [])[-limit:]:
+            tool_name = str(item.get("tool") or item.get("name") or "tool").strip()
+            summary = self._compact_summary_snippet(item.get("summary", ""), limit=180)
+            if summary:
+                line = f"[{'OK' if item.get('success', True) else 'FAIL'}] {tool_name}: {summary}"
+            else:
+                line = f"[{'OK' if item.get('success', True) else 'FAIL'}] {tool_name}"
+            lines.append(line)
+        if not lines:
+            lines.append("[INFO] Aucun outil utile exécuté avant l'arrêt.")
+        return "```text\n" + "\n".join(lines) + "\n```"
+
+    def _verified_write_progress_answer(self, initial_message: str, executed_tools: List[Dict]) -> str:
+        relevant = self._successful_mutation_items(executed_tools)[-8:] or executed_tools[-8:]
+        lead = (
+            "J'ai déjà appliqué des changements vérifiés avant d'arrêter la boucle."
+            if not self._is_scaffold_write_request(initial_message)
+            else "C'est fait. Les changements demandés ont été appliqués et vérifiés avant que la boucle soit stoppée."
+        )
+        return (
+            f"{lead}\n\n"
+            "Changements réellement appliqués:\n"
+            f"{self._format_recent_tool_block(relevant)}"
+        )
+
+    def _debug_content_preview(self, text: str, limit: int = 140) -> str:
+        compact = self._compact_summary_snippet(text, limit=max(limit * 2, 220))
+        if not compact:
+            return "None"
+        compact = re.sub(r"\bto=\w+\b[^`]*?(?=(?:\bto=\w+\b|$))", "[tool-trace-hidden] ", compact)
+        compact = compact.replace("● List(.)", "[list-files-hidden]")
+        compact = compact.replace("⎿ Subagent", "[subagent-hidden]")
+        return self._compact_summary_snippet(compact, limit=limit) or "None"
+
+    def _tool_call_debug_preview(self, tool_name: str, args: Dict[str, Any]) -> str:
+        args = args or {}
+        if tool_name in {"read_file", "write_file", "edit_file", "delete_file", "open_workspace"}:
+            return str(args.get("path") or args.get("url") or "").strip()
+        if tool_name == "write_files":
+            files = args.get("files", []) if isinstance(args.get("files"), list) else []
+            paths = [str(item.get("path", "")).strip() for item in files[:4] if isinstance(item, dict) and item.get("path")]
+            suffix = f", +{len(files) - len(paths)} more" if len(files) > len(paths) else ""
+            return f"{len(files)} file(s): {', '.join(paths)}{suffix}".strip()
+        if tool_name == "bash":
+            return self._compact_summary_snippet(str(args.get("command", "")), limit=140)
+        if tool_name == "glob":
+            return str(args.get("pattern", "")).strip()
+        if tool_name == "search":
+            pattern = self._compact_summary_snippet(str(args.get("pattern", "")), limit=80)
+            base = str(args.get("path", ".")).strip()
+            return f"{pattern} @ {base}".strip()
+        if tool_name == "write_todos":
+            todos = args.get("todos", []) if isinstance(args.get("todos"), list) else []
+            return f"{len(todos)} todo(s)"
+        if tool_name == "delegate_subagent":
+            task = self._compact_summary_snippet(str(args.get("task", "")), limit=120)
+            agent_type = str(args.get("agent_type", "subagent")).strip()
+            return f"{agent_type}: {task}".strip(": ")
+        return self._compact_summary_snippet(str(args), limit=140)
+
     def _has_successful_mutation(self, executed_tools: List[Dict]) -> bool:
         for item in executed_tools:
             if not item.get("success"):
@@ -155,13 +284,7 @@ class TerminalGuardrailsMixin:
         if self.current_plan and self._has_incomplete_todos():
             return False
 
-        msg = self._intent_text(initial_message)
-        explicit_verify_markers = (
-            "test", "tests", "build", "lint", "verifie", "vérifie", "verify",
-            "lance", "run ", "npm install", "pnpm install", "yarn install",
-            "demarre", "démarre", "start",
-        )
-        if any(marker in msg for marker in explicit_verify_markers):
+        if self._explicit_verify_requested(initial_message):
             return False
 
         last_write_index = -1
@@ -179,20 +302,11 @@ class TerminalGuardrailsMixin:
 
     def _post_write_finalize_answer(self, initial_message: str, executed_tools: List[Dict]) -> str:
         """Compact deterministic final answer for scaffold turns."""
-        lines: List[str] = []
-        for item in executed_tools or []:
-            if not item.get("success"):
-                continue
-            tool = item.get("tool")
-            if tool not in {"clear_workspace", "write_files", "write_file", "edit_file", "delete_file"}:
-                continue
-            summary = str(item.get("summary", "") or "").strip()
-            if summary:
-                lines.append(f"- {tool}: {summary}")
-
-        details = "\n".join(lines[-8:]) if lines else "- Écritures appliquées et vérifiées."
+        mutation_items = self._successful_mutation_items(executed_tools)[-8:]
+        details = self._format_recent_tool_block(mutation_items) if mutation_items else "```text\n[OK] Écritures appliquées et vérifiées.\n```"
         return (
             "C'est fait. J'ai appliqué la structure demandée et les écritures ont été vérifiées côté runtime.\n\n"
+            "Changements appliqués:\n"
             f"{details}"
         )
 
@@ -379,6 +493,8 @@ class TerminalGuardrailsMixin:
             return None
 
     def _guardrail_fallback_answer(self, initial_message: str, executed_tools: List[Dict]) -> str:
+        if self._should_surface_verified_write_progress(initial_message, executed_tools):
+            return self._verified_write_progress_answer(initial_message, executed_tools)
         observed = executed_tools[-8:]
         if not observed:
             return (
@@ -386,36 +502,28 @@ class TerminalGuardrailsMixin:
                 "Aucun outil utile n'a encore produit de contexte; choisis un workspace puis demande "
                 "par exemple: `analyse la structure`, `lis README.md`, ou `cherche les routes Flask`."
             )
-        bullet_lines = [
-            f"- {item.get('tool')} {item.get('args', {})}: {item.get('summary', '')}"
-            for item in observed
-        ]
         return (
             "J'ai stoppé la boucle d'outils avant de gaspiller plus de tokens.\n\n"
             "Dernières observations utiles:\n"
-            + "\n".join(bullet_lines)
+            + self._format_recent_tool_block(observed)
             + "\n\nDemande-moi une cible plus précise, ou relance `analyse mon repo` maintenant: "
             "JoyBoy utilisera le scan borné au lieu de refaire `ls/glob/pwd` en boucle."
         )
 
     def _tool_error_fallback_answer(self, initial_message: str, executed_tools: List[Dict]) -> str:
-        bullet_lines = [
-            f"- {item.get('tool')} {item.get('args', {})}: {item.get('summary', '')}"
-            for item in executed_tools[-8:]
-        ]
+        if self._should_surface_verified_write_progress(initial_message, executed_tools):
+            return self._verified_write_progress_answer(initial_message, executed_tools)
         return (
             "J'ai stoppé la boucle après des erreurs outils répétées pour éviter de gaspiller plus de tours.\n\n"
             "Dernières actions observées:\n"
-            + "\n".join(bullet_lines)
+            + self._format_recent_tool_block(executed_tools[-8:])
             + "\n\nRelance avec une cible plus précise ou un autre angle d'action; JoyBoy gardera le contexte déjà collecté."
         )
 
     def _tool_batch_loop_fallback_answer(self, initial_message: str, executed_tools: List[Dict]) -> str:
-        bullet_lines = [
-            f"- {item.get('tool')} {item.get('args', {})}: {item.get('summary', '')}"
-            for item in executed_tools[-8:]
-        ]
-        details = "\n".join(bullet_lines) if bullet_lines else "- Aucun outil utile exécuté avant la boucle."
+        if self._should_surface_verified_write_progress(initial_message, executed_tools):
+            return self._verified_write_progress_answer(initial_message, executed_tools)
+        details = self._format_recent_tool_block(executed_tools[-8:])
         return (
             "J'ai stoppé le terminal parce que le modèle répétait exactement le même lot d'outils.\n\n"
             "Contexte déjà collecté:\n"
@@ -425,14 +533,10 @@ class TerminalGuardrailsMixin:
 
     def _budget_fallback_answer(self, initial_message: str, executed_tools: List[Dict]) -> str:
         if executed_tools:
-            bullet_lines = [
-                f"- {item.get('tool')} {item.get('args', {})}: {item.get('summary', '')}"
-                for item in executed_tools[-6:]
-            ]
             return (
                 "J'ai coupé avant de relancer le modèle pour ne pas brûler plus de tokens.\n\n"
                 "Dernières observations utiles:\n"
-                + "\n".join(bullet_lines)
+                + self._format_recent_tool_block(executed_tools[-6:], limit=6)
                 + "\n\nRelance avec une cible plus précise, ou demande `analyse le projet`: "
                 "JoyBoy utilisera le scan borné sans boucle d'exploration."
             )
@@ -444,21 +548,19 @@ class TerminalGuardrailsMixin:
         )
 
     def _iteration_limit_fallback_answer(self, initial_message: str, executed_tools: List[Dict]) -> str:
-        bullet_lines = [
-            f"- {item.get('tool')} {item.get('args', {})}: {item.get('summary', '')}"
-            for item in executed_tools[-8:]
-        ]
+        if self._should_surface_verified_write_progress(initial_message, executed_tools):
+            return self._verified_write_progress_answer(initial_message, executed_tools)
         if self.current_intent in {"write", "execute"} and not self._has_successful_mutation(executed_tools):
             return (
                 "J'ai stoppé la boucle avant qu'elle continue à brûler des tokens sans appliquer de changement.\n\n"
                 "Dernières actions observées:\n"
-                + "\n".join(bullet_lines)
+                + self._format_recent_tool_block(executed_tools[-8:])
                 + "\n\nAucune écriture vérifiée n'a été faite. Relance la même demande: JoyBoy doit maintenant exposer "
                 "`write_files`/`edit_file` directement et éviter `tool_search`/`write_todos` sur ce type de tâche."
             )
         return (
             "J'ai atteint la limite d'itérations, donc je rends l'état observé au lieu de repartir en boucle.\n\n"
             "Dernières actions observées:\n"
-            + "\n".join(bullet_lines)
+            + self._format_recent_tool_block(executed_tools[-8:])
         )
 
