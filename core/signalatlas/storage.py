@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import threading
 import uuid
 from pathlib import Path
@@ -157,6 +158,24 @@ class SignalAtlasStorage:
         audit_folder = self.exports_dir / str(audit_id)
         audit_folder.mkdir(parents=True, exist_ok=True)
         return audit_folder / f"{_slug_from_host(format_name)}"
+
+    def delete_audit(self, audit_id: str) -> bool:
+        clean_audit_id = str(audit_id or "").strip()
+        if not clean_audit_id:
+            return False
+        audit_path = self._audit_path(clean_audit_id)
+        export_folder = self.exports_dir / clean_audit_id
+        with self._lock:
+            index = self._load_index_locked()
+            audits = index.setdefault("audits", {})
+            existed = clean_audit_id in audits or audit_path.exists() or export_folder.exists()
+            audits.pop(clean_audit_id, None)
+            self._save_index_locked(index)
+            if audit_path.exists():
+                audit_path.unlink()
+            if export_folder.exists():
+                shutil.rmtree(export_folder, ignore_errors=True)
+        return existed
 
 
 _STORAGE: Optional[SignalAtlasStorage] = None

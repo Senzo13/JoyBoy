@@ -140,9 +140,16 @@ def signalatlas_audits():
     return jsonify({"success": True, "audit": started["audit"], "job": started["job"]}), 202
 
 
-@signalatlas_bp.route("/api/signalatlas/audits/<audit_id>", methods=["GET"])
+@signalatlas_bp.route("/api/signalatlas/audits/<audit_id>", methods=["GET", "DELETE"])
 def signalatlas_audit_detail(audit_id: str):
-    audit = get_signalatlas_storage().get_audit(audit_id)
+    storage = get_signalatlas_storage()
+    if request.method == "DELETE":
+        deleted = storage.delete_audit(audit_id)
+        if not deleted:
+            return jsonify({"success": False, "error": "Audit introuvable"}), 404
+        return jsonify({"success": True, "deleted": True, "audit_id": audit_id})
+
+    audit = storage.get_audit(audit_id)
     if not audit:
         return jsonify({"success": False, "error": "Audit introuvable"}), 404
     return jsonify({"success": True, "audit": audit})

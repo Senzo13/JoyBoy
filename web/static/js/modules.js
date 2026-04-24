@@ -962,6 +962,11 @@ function signalAtlasJobPhaseLabel(phase) {
     return signalAtlasStatusLabel(clean || 'unknown');
 }
 
+function signalAtlasIsLiveProgressStatus(status) {
+    const clean = String(status || '').trim().toLowerCase();
+    return ['queued', 'running', 'cancelling'].includes(clean);
+}
+
 function signalAtlasJobMessage(job) {
     const raw = String(job?.message || '').trim();
     if (!raw) return signalAtlasJobPhaseLabel(job?.phase || job?.status);
@@ -980,6 +985,24 @@ function signalAtlasJobMessage(job) {
     if (/^Building audit report$/i.test(raw)) {
         return moduleT('signalatlas.progressBuildingReport', 'Construction du rapport');
     }
+    if (/^Generating AI interpretation$/i.test(raw)) {
+        return moduleT('signalatlas.progressGeneratingAi', 'Génération de l’interprétation IA');
+    }
+    if (/^Preparing deterministic audit excerpt$/i.test(raw)) {
+        return moduleT('signalatlas.progressPreparingAiExcerpt', 'Préparation du contexte d’audit pour l’IA');
+    }
+    if (/^Generating first interpretation$/i.test(raw)) {
+        return moduleT('signalatlas.progressGeneratingFirstInterpretation', 'Génération de la première interprétation');
+    }
+    if (/^Generating second interpretation$/i.test(raw)) {
+        return moduleT('signalatlas.progressGeneratingSecondInterpretation', 'Génération de la seconde interprétation');
+    }
+    if (/^SignalAtlas AI interpretation ready$/i.test(raw)) {
+        return moduleT('signalatlas.progressAiReady', 'Interprétation IA prête');
+    }
+    if (/^SignalAtlas audit complete$/i.test(raw)) {
+        return moduleT('signalatlas.progressAuditComplete', 'Audit SignalAtlas terminé');
+    }
     if (/^SignalAtlas audit ready$/i.test(raw)) {
         return moduleT('signalatlas.progressReady', 'Rapport prêt');
     }
@@ -994,6 +1017,41 @@ function signalAtlasJobMessage(job) {
         });
     }
     return raw;
+}
+
+function signalAtlasProgressSupportCopy(progressState, fallbackHint = '') {
+    const clean = String(progressState?.job?.phase || progressState?.status || '').trim().toLowerCase();
+    if (!progressState && signalAtlasLaunchPending) {
+        return moduleT('signalatlas.progressLaunchingCopy', 'SignalAtlas prépare le runtime, les options et la première passe d’analyse.');
+    }
+    if (clean === 'queued') {
+        return moduleT('signalatlas.progressQueuedCopy', 'L’audit attend son créneau de calcul avant de démarrer les premières vérifications.');
+    }
+    if (clean === 'crawl') {
+        return moduleT('signalatlas.progressCrawlCopy', 'Le crawler suit les liens internes, consolide les URL utiles et relève les premiers signaux techniques.');
+    }
+    if (clean === 'render') {
+        return moduleT('signalatlas.progressRenderCopy', 'SignalAtlas compare le HTML brut avec le rendu navigateur quand la sonde JavaScript est disponible.');
+    }
+    if (clean === 'extract') {
+        return moduleT('signalatlas.progressExtractCopy', 'Les métadonnées, headings, liens, images et signaux de structure sont en cours d’extraction.');
+    }
+    if (clean === 'score') {
+        return moduleT('signalatlas.progressScoreCopy', 'Les findings sont pondérés pour distinguer le blocage racine des symptômes secondaires.');
+    }
+    if (clean === 'report') {
+        return moduleT('signalatlas.progressReportCopy', 'Le rapport déterministe se met en forme avant l’éventuelle couche d’interprétation IA.');
+    }
+    if (clean === 'ai') {
+        return moduleT('signalatlas.progressAiCopy', 'Le modèle lit les findings, regroupe les causes racines et rédige le rapport IA. Cette étape peut rester un moment sur le même pourcentage.');
+    }
+    if (clean === 'cancelling') {
+        return moduleT('signalatlas.progressCancellingCopy', 'L’annulation est en cours. SignalAtlas arrête proprement les écritures restantes.');
+    }
+    if (clean === 'running') {
+        return moduleT('signalatlas.progressWorkingCopy', 'SignalAtlas continue d’analyser la cible et mettra le rapport à jour dès que cette étape se termine.');
+    }
+    return fallbackHint || moduleT('signalatlas.backgroundResumeHint', 'This audit keeps running if you leave the view.');
 }
 
 function signalAtlasAuditProgressState(audit) {
@@ -1286,27 +1344,33 @@ function renderSignalAtlasProgressBanner(progressState, targetLabel = '') {
     const message = signalAtlasLaunchPending && !progressState
         ? moduleT('signalatlas.launchingAudit', 'Starting the audit runtime...')
         : progressState.message;
-    const liveStatus = String(progressState?.status || '').toLowerCase();
+    const liveStatus = signalAtlasLaunchPending && !progressState
+        ? 'queued'
+        : String(progressState?.status || '').toLowerCase();
+    const isLive = signalAtlasLaunchPending || signalAtlasIsLiveProgressStatus(liveStatus);
+    const supportCopy = signalAtlasProgressSupportCopy(progressState, targetLabel);
     return `
         <div class="signalatlas-progress-surface">
             <div class="signalatlas-progress-top">
-                <div>
+                <div class="signalatlas-progress-heading">
                     <div class="signalatlas-panel-kicker">${escapeHtml(moduleT('signalatlas.progressTitle', 'Audit activity'))}</div>
-                    <div class="signalatlas-progress-title">
+                    <div class="signalatlas-progress-title" aria-live="polite">
                         <span class="signalatlas-progress-spinner" aria-hidden="true"></span>
-                        <span>${escapeHtml(message)}</span>
+                        <span class="signalatlas-progress-message${isLive ? ' signalatlas-shimmer-text' : ''}">${escapeHtml(message)}</span>
                     </div>
+                    <div class="signalatlas-progress-support">${escapeHtml(supportCopy)}</div>
                 </div>
                 <div class="signalatlas-progress-top-actions">
-                    <div class="signalatlas-progress-percent">${escapeHtml(moduleT('signalatlas.progressPercent', '{value}%', { value: progress }))}</div>
+                    <span class="signalatlas-progress-chip">${escapeHtml(signalAtlasStatusLabel(liveStatus || 'running'))}</span>
+                    <span class="signalatlas-progress-chip is-phase">${escapeHtml(phase)}</span>
+                    <span class="signalatlas-progress-chip is-percent">${escapeHtml(moduleT('signalatlas.progressPercent', '{value}%', { value: progress }))}</span>
                 </div>
             </div>
-            <div class="signalatlas-progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${escapeHtml(String(progress))}">
-                <div class="signalatlas-progress-fill" style="width:${escapeHtml(String(progress))}%"></div>
+            <div class="signalatlas-progress-bar${isLive ? ' is-live' : ''}" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${escapeHtml(String(progress))}">
+                <div class="signalatlas-progress-fill${isLive ? ' is-live' : ''}" style="width:${escapeHtml(String(progress))}%"></div>
             </div>
             <div class="signalatlas-progress-meta">
-                <span>${escapeHtml(moduleT('signalatlas.progressPhase', 'Phase: {phase}', { phase }))}</span>
-                <span>${escapeHtml(targetLabel || moduleT('signalatlas.backgroundResumeHint', 'This audit keeps running if you leave the view.'))}</span>
+                <span class="signalatlas-progress-meta-copy">${escapeHtml(targetLabel || moduleT('signalatlas.backgroundResumeHint', 'This audit keeps running if you leave the view.'))}</span>
             </div>
         </div>
     `;
@@ -1733,11 +1797,36 @@ function renderSignalAtlasHistory() {
         const active = audit.id === signalAtlasCurrentAuditId;
         const score = audit.global_score ?? '--';
         const progressState = signalAtlasAuditProgressState(audit);
+        const canDelete = !progressState;
+        const isLive = signalAtlasIsLiveProgressStatus(progressState?.status || '');
+        const supportCopy = progressState ? signalAtlasProgressSupportCopy(progressState) : '';
         return `
-            <button class="signalatlas-history-card${active ? ' active' : ''}" type="button" onclick="openSignalAtlasWorkspace('${escapeHtml(audit.id)}')">
+            <div
+                class="signalatlas-history-card${active ? ' active' : ''}"
+                role="button"
+                tabindex="0"
+                onclick="openSignalAtlasWorkspace('${escapeHtml(audit.id)}')"
+                onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openSignalAtlasWorkspace('${escapeHtml(audit.id)}');}"
+            >
                 <div class="signalatlas-history-top">
-                    <div class="signalatlas-history-title">${escapeHtml(audit.title || audit.host || audit.target_url || 'Audit')}</div>
-                    <div class="signalatlas-history-status">${escapeHtml(signalAtlasStatusLabel(audit.status))}</div>
+                    <div class="signalatlas-history-title-wrap">
+                        <div class="signalatlas-history-title">${escapeHtml(audit.title || audit.host || audit.target_url || 'Audit')}</div>
+                        <div class="signalatlas-history-status">${escapeHtml(signalAtlasStatusLabel(audit.status))}</div>
+                    </div>
+                    <button
+                        class="signalatlas-history-delete"
+                        type="button"
+                        onclick="deleteSignalAtlasAudit('${escapeHtml(audit.id)}', event)"
+                        aria-label="${escapeHtml(canDelete
+                            ? moduleT('signalatlas.deleteAudit', 'Supprimer l’audit')
+                            : moduleT('signalatlas.deleteAuditBlocked', 'Annule cet audit avant de le supprimer'))}"
+                        title="${escapeHtml(canDelete
+                            ? moduleT('signalatlas.deleteAudit', 'Supprimer l’audit')
+                            : moduleT('signalatlas.deleteAuditBlocked', 'Annule cet audit avant de le supprimer'))}"
+                        ${canDelete ? '' : 'disabled'}
+                    >
+                        <i data-lucide="trash-2"></i>
+                    </button>
                 </div>
                 <div class="signalatlas-history-meta">
                     <span>${escapeHtml(audit.host || '')}</span>
@@ -1757,15 +1846,16 @@ function renderSignalAtlasHistory() {
                 </div>
                 ${progressState ? `
                     <div class="signalatlas-history-progress-meta">
-                        <span>${escapeHtml(progressState.phase)}</span>
-                        <span>${escapeHtml(moduleT('signalatlas.progressPercent', '{value}%', { value: progressState.progress }))}</span>
+                        <span class="signalatlas-progress-chip is-phase">${escapeHtml(progressState.phase)}</span>
+                        <span class="signalatlas-progress-chip is-percent">${escapeHtml(moduleT('signalatlas.progressPercent', '{value}%', { value: progressState.progress }))}</span>
                     </div>
-                    <div class="signalatlas-history-progress-bar">
-                        <div class="signalatlas-history-progress-fill" style="width:${escapeHtml(String(progressState.progress))}%"></div>
+                    <div class="signalatlas-history-progress-bar${isLive ? ' is-live' : ''}">
+                        <div class="signalatlas-history-progress-fill${isLive ? ' is-live' : ''}" style="width:${escapeHtml(String(progressState.progress))}%"></div>
                     </div>
-                    <div class="signalatlas-history-progress-copy">${escapeHtml(progressState.message)}</div>
+                    <div class="signalatlas-history-progress-copy${isLive ? ' signalatlas-shimmer-text' : ''}" aria-live="polite">${escapeHtml(progressState.message)}</div>
+                    <div class="signalatlas-history-progress-detail">${escapeHtml(supportCopy)}</div>
                 ` : ''}
-            </button>
+            </div>
         `;
     }).join('');
 }
@@ -2413,6 +2503,40 @@ async function cancelSignalAtlasAudit(auditId = '') {
     await refreshSignalAtlasWorkspace();
 }
 
+async function deleteSignalAtlasAudit(auditId = '', event = null) {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    const targetAuditId = String(auditId || '').trim();
+    if (!targetAuditId) return;
+    const progressState = signalAtlasAuditProgressState(targetAuditId);
+    if (progressState) {
+        Toast?.warning?.(moduleT('signalatlas.deleteAuditBlocked', 'Annule cet audit avant de le supprimer.'));
+        return;
+    }
+    const audit = (signalAtlasAudits || []).find(item => String(item?.id || '') === targetAuditId);
+    const title = audit?.title || audit?.host || moduleT('signalatlas.auditItem', 'cet audit');
+    const confirmed = window.confirm(
+        moduleT('signalatlas.deleteAuditConfirm', 'Supprimer définitivement {title} ?', { title })
+    );
+    if (!confirmed) return;
+    const result = await apiSignalAtlas.deleteAudit(targetAuditId);
+    if (!result.ok) {
+        Toast?.error?.(result.data?.error || moduleT('signalatlas.deleteAuditFailed', 'Impossible de supprimer cet audit.'));
+        return;
+    }
+    signalAtlasAudits = (signalAtlasAudits || []).filter(item => String(item?.id || '') !== targetAuditId);
+    if (String(signalAtlasCurrentAuditId || '') === targetAuditId) {
+        signalAtlasCurrentAuditId = signalAtlasAudits[0]?.id || null;
+        signalAtlasCurrentAudit = null;
+    }
+    await loadSignalAtlasBootstrap();
+    if (signalAtlasCurrentAuditId) {
+        await loadSignalAtlasAudit(signalAtlasCurrentAuditId, { silent: true });
+    }
+    renderSignalAtlasWorkspace();
+    Toast?.success?.(moduleT('signalatlas.deleteAuditSuccess', 'Audit supprimé.'));
+}
+
 async function rerunSignalAtlasAi() {
     if (!signalAtlasCurrentAuditId) return;
     syncSignalAtlasDraftFromDom();
@@ -2568,3 +2692,4 @@ window.toggleSignalAtlasHistoryDrawer = toggleSignalAtlasHistoryDrawer;
 window.toggleSignalAtlasSeoDetails = toggleSignalAtlasSeoDetails;
 window.downloadSignalAtlasAiReport = downloadSignalAtlasAiReport;
 window.cancelSignalAtlasAudit = cancelSignalAtlasAudit;
+window.deleteSignalAtlasAudit = deleteSignalAtlasAudit;

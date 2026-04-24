@@ -71,6 +71,11 @@ def _text_content(html: str) -> str:
     return " ".join(re.sub(r"<[^>]+>", " ", html).split())
 
 
+def _excerpt(value: str, limit: int = 500) -> str:
+    compact = re.sub(r"\s+", " ", str(value or "")).strip()
+    return compact[:limit]
+
+
 def _hash_text(value: str) -> str:
     return hashlib.sha1(value.encode("utf-8", errors="ignore")).hexdigest()
 
@@ -368,16 +373,25 @@ def _classify_site(pages: List[Dict[str, Any]]) -> Dict[str, Any]:
     signatures = Counter()
     render_signals = Counter()
     shell_pages = 0
+    rich_initial_html_pages = 0
+    sparse_initial_html_pages = 0
     reasons: List[str] = []
     for page in pages:
         signatures.update(page.get("framework_signatures") or [])
         render_signals.update(page.get("render_signals") or [])
         if page.get("shell_like"):
             shell_pages += 1
+        if (page.get("word_count") or 0) >= 180 and page.get("h1") and not page.get("shell_like"):
+            rich_initial_html_pages += 1
+        if (page.get("word_count") or 0) < 180 and (page.get("status_code") or 0) < 400:
+            sparse_initial_html_pages += 1
         reasons.extend(page.get("classification_reasons") or [])
 
+    total_pages = float(len(pages) or 1)
     top_signature = signatures.most_common(1)[0][0] if signatures else "custom"
-    shell_ratio = float(shell_pages) / float(len(pages) or 1)
+    shell_ratio = float(shell_pages) / total_pages
+    rich_ratio = float(rich_initial_html_pages) / total_pages
+    sparse_ratio = float(sparse_initial_html_pages) / total_pages
 
     platform = "Custom"
     rendering = "hybrid"
@@ -408,8 +422,22 @@ def _classify_site(pages: List[Dict[str, Any]]) -> Dict[str, Any]:
         seo_risk = "high" if shell_ratio > 0.5 else "moderate"
     elif top_signature in {"react_spa", "vite"}:
         platform = "Custom React/Vite"
-        rendering = "spa"
-        seo_risk = "high"
+        if shell_ratio >= 0.5:
+            rendering = "spa"
+            seo_risk = "high"
+            reasons.append("React/Vite markers were found and a majority of sampled pages still look like JS shells.")
+        elif rich_ratio >= 0.65 and shell_ratio <= 0.1:
+            rendering = "ssg"
+            seo_risk = "low"
+            reasons.append(
+                "React/Vite markers were found, but most sampled pages already deliver substantial HTML before JS."
+            )
+        else:
+            rendering = "hybrid"
+            seo_risk = "moderate"
+            reasons.append(
+                "React/Vite markers were found, but the sampled HTML mixes rich prerendered routes with thinner pages."
+            )
 
     if shell_ratio >= 0.6:
         rendering = "spa"
@@ -419,6 +447,15 @@ def _classify_site(pages: List[Dict[str, Any]]) -> Dict[str, Any]:
     if top_signature == "nextjs" and any("__NEXT_DATA__" in " ".join(page.get("classification_reasons") or []) for page in pages):
         reasons.append("Next.js signals were confirmed by framework markers in the sampled HTML.")
 
+    deduped_reasons: List[str] = []
+    seen_reasons = set()
+    for reason in reasons:
+        label = str(reason or "").strip()
+        if not label or label in seen_reasons:
+            continue
+        deduped_reasons.append(label)
+        seen_reasons.add(label)
+
     return {
         "platform": platform,
         "rendering": rendering,
@@ -426,7 +463,13 @@ def _classify_site(pages: List[Dict[str, Any]]) -> Dict[str, Any]:
         "top_signature": top_signature,
         "signature_counts": dict(signatures),
         "render_signal_counts": dict(render_signals),
-        "reasons": reasons[:18],
+        "shell_pages": shell_pages,
+        "shell_ratio": round(shell_ratio, 3),
+        "rich_initial_html_pages": rich_initial_html_pages,
+        "rich_initial_html_ratio": round(rich_ratio, 3),
+        "sparse_initial_html_pages": sparse_initial_html_pages,
+        "sparse_initial_html_ratio": round(sparse_ratio, 3),
+        "reasons": deduped_reasons[:18],
     }
 
 
@@ -552,6 +595,10 @@ def _extract_page_snapshot(
         "open_graph": {},
         "twitter_cards": {},
         "word_count": 0,
+        "visible_text_length": 0,
+        "visible_text_excerpt": "",
+        "body_text_excerpt": "",
+        "body_html_excerpt": "",
         "image_total": 0,
         "image_missing_alt": 0,
         "shell_like": False,
@@ -565,6 +612,8 @@ def _extract_page_snapshot(
     html = response.text or ""
     plain_text = _text_content(html)
     page["word_count"] = len(plain_text.split())
+    page["visible_text_length"] = len(plain_text)
+    page["visible_text_excerpt"] = _excerpt(plain_text)
     page["text_hash"] = _hash_text(plain_text)
     page["content_hash"] = _hash_text(re.sub(r"\s+", " ", html))
 
@@ -583,8 +632,13 @@ def _extract_page_snapshot(
     for level in ("h1", "h2", "h3", "h4"):
         heading_counts[level] = len(soup.find_all(level))
     page["heading_counts"] = heading_counts
+    page["h1_count"] = heading_counts.get("h1", 0)
     first_h1 = soup.find("h1")
     page["h1"] = first_h1.get_text(" ", strip=True)[:240] if first_h1 else ""
+    body_text = soup.body.get_text(" ", strip=True) if soup.body else plain_text
+    page["body_text_excerpt"] = _excerpt(body_text)
+    body_html = soup.body.decode_contents() if soup.body else html
+    page["body_html_excerpt"] = _excerpt(body_html)
 
     robots_meta = _meta_content(soup, "robots")
     x_robots = str(response.headers.get("x-robots-tag", "")).strip()
@@ -1392,6 +1446,10 @@ def run_site_audit(
                 "open_graph": {},
                 "twitter_cards": {},
                 "word_count": 0,
+                "visible_text_length": 0,
+                "visible_text_excerpt": "",
+                "body_text_excerpt": "",
+                "body_html_excerpt": "",
                 "image_total": 0,
                 "image_missing_alt": 0,
                 "shell_like": False,
@@ -1443,6 +1501,10 @@ def run_site_audit(
         "mode": mode,
         "pages_crawled": len(pages),
         "pages_sampled": len(pages),
+        "page_budget": max_pages,
+        "pages_discovered": len(discovered_urls),
+        "sitemap_url_count": len(sitemaps.get("urls") or []),
+        "sitemap_index_count": len(sitemaps.get("indexes") or []),
         "global_score": score_payload["global_score"],
         "coverage": score_payload["coverage"],
         "top_risk": classification.get("seo_risk", "moderate"),

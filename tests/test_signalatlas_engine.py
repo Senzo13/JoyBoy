@@ -190,6 +190,104 @@ class SignalAtlasEngineTests(unittest.TestCase):
             raise AssertionError(f"Unexpected URL fetched during test: {url}")
         return fixtures[url]
 
+    def fake_get_prerendered_react(self, url, timeout=None, headers=None, allow_redirects=True):
+        del timeout, headers, allow_redirects
+        fixtures = {
+            "https://react.example.com/robots.txt": _FakeResponse(
+                "https://react.example.com/robots.txt",
+                text="User-agent: *\nAllow: /\nSitemap: https://react.example.com/sitemap.xml\n",
+                headers={"content-type": "text/plain; charset=utf-8"},
+            ),
+            "https://react.example.com/sitemap.xml": _FakeResponse(
+                "https://react.example.com/sitemap.xml",
+                text="""
+                <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+                  <url><loc>https://react.example.com/</loc></url>
+                  <url><loc>https://react.example.com/fr/</loc></url>
+                  <url><loc>https://react.example.com/en/</loc></url>
+                </urlset>
+                """,
+                headers={"content-type": "application/xml; charset=utf-8"},
+            ),
+            "https://react.example.com/": _FakeResponse(
+                "https://react.example.com/",
+                text="""
+                <html>
+                  <head>
+                    <title>React Example</title>
+                    <meta name="description" content="Rich prerendered homepage">
+                    <link rel="canonical" href="https://react.example.com/">
+                    <script type="module" src="/assets/main.js"></script>
+                  </head>
+                  <body>
+                    <div id="root">
+                      <main>
+                        <h1>Move more every day</h1>
+                        <p>React Example already ships meaningful HTML before hydration, including headings, copy, and crawlable navigation links for search engines.</p>
+                        <p>This route is intentionally verbose enough to prove that a React/Vite stack does not automatically mean an empty shell response.</p>
+                        <a href="/fr/">French</a>
+                        <a href="/en/">English</a>
+                        <img src="/hero.jpg" alt="Runner with a friendly creature">
+                      </main>
+                    </div>
+                  </body>
+                </html>
+                """,
+                headers={"content-type": "text/html; charset=utf-8"},
+            ),
+            "https://react.example.com/fr/": _FakeResponse(
+                "https://react.example.com/fr/",
+                text="""
+                <html>
+                  <head>
+                    <title>React Example FR</title>
+                    <meta name="description" content="Version française">
+                    <link rel="canonical" href="https://react.example.com/fr/">
+                    <script type="module" src="/assets/main.js"></script>
+                  </head>
+                  <body>
+                    <div id="root">
+                      <main>
+                        <h1>Version française déjà pré-rendue</h1>
+                        <p>Cette page livre déjà beaucoup de texte visible, un vrai H1, et plusieurs liens internes avant toute hydratation JavaScript.</p>
+                        <p>Le but du test est de vérifier que SignalAtlas n'appelle pas cela une SPA shell juste parce qu'il repère Vite et un conteneur root.</p>
+                        <a href="/">Accueil</a>
+                      </main>
+                    </div>
+                  </body>
+                </html>
+                """,
+                headers={"content-type": "text/html; charset=utf-8"},
+            ),
+            "https://react.example.com/en/": _FakeResponse(
+                "https://react.example.com/en/",
+                text="""
+                <html>
+                  <head>
+                    <title>React Example EN</title>
+                    <meta name="description" content="English version">
+                    <link rel="canonical" href="https://react.example.com/en/">
+                    <script type="module" src="/assets/main.js"></script>
+                  </head>
+                  <body>
+                    <div id="root">
+                      <main>
+                        <h1>English route with real HTML</h1>
+                        <p>This route also exposes substantial text, semantic headings, and internal links directly in the initial HTML payload.</p>
+                        <p>That should be enough for SignalAtlas to classify the stack as prerendered or hybrid rather than a pure shell.</p>
+                        <a href="/">Home</a>
+                      </main>
+                    </div>
+                  </body>
+                </html>
+                """,
+                headers={"content-type": "text/html; charset=utf-8"},
+            ),
+        }
+        if url not in fixtures:
+            raise AssertionError(f"Unexpected URL fetched during test: {url}")
+        return fixtures[url]
+
     @patch("core.signalatlas.engine.requests.Session.get")
     def test_public_audit_returns_structured_deterministic_report(self, mocked_get):
         mocked_get.side_effect = self.fake_get
@@ -227,6 +325,8 @@ class SignalAtlasEngineTests(unittest.TestCase):
         self.assertIn("# SignalAtlas Audit", export["content"])
         self.assertIn("## Findings", export["content"])
         self.assertIn("## Root Cause Snapshot", export["content"])
+        self.assertIn("## Sampling & Extraction Evidence", export["content"])
+        self.assertIn("Page budget", export["content"])
 
     @patch("core.signalatlas.engine.build_owner_context")
     @patch("core.signalatlas.engine.requests.Session.get")
@@ -304,6 +404,30 @@ class SignalAtlasEngineTests(unittest.TestCase):
         self.assertIn("### Root causes", export["content"])
         self.assertIn("### Derived symptoms to revalidate", export["content"])
         self.assertIn("Needs render validation", export["content"])
+
+    @patch("core.signalatlas.engine.requests.Session.get")
+    def test_prerendered_react_site_is_not_misclassified_as_spa_shell(self, mocked_get):
+        mocked_get.side_effect = self.fake_get_prerendered_react
+
+        result = run_public_audit("react.example.com", max_pages=6, render_js=False)
+
+        self.assertEqual(result["summary"]["platform"], "Custom React/Vite")
+        self.assertNotEqual(result["summary"]["rendering"], "spa")
+        self.assertIn(result["summary"]["rendering"], {"hybrid", "ssg"})
+        self.assertNotEqual(result["summary"]["top_risk"], "high")
+        self.assertFalse(any(item["id"] == "js-shell-risk" for item in result["findings"]))
+        self.assertEqual(result["summary"]["sitemap_url_count"], 3)
+        self.assertTrue(
+            any(
+                "deliver substantial HTML before JS" in reason or "mixes rich prerendered routes" in reason
+                for reason in result["snapshot"]["framework_detection"]["reasons"]
+            )
+        )
+
+        homepage = result["snapshot"]["pages"][0]
+        self.assertEqual(homepage["h1_count"], 1)
+        self.assertGreater(homepage["visible_text_length"], 120)
+        self.assertTrue(homepage["body_text_excerpt"])
 
 
 if __name__ == "__main__":

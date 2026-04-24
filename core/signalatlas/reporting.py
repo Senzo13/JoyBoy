@@ -44,8 +44,16 @@ def build_executive_summary(audit: Dict[str, Any]) -> str:
         f"SignalAtlas audited {summary.get('target') or 'the requested site'} in {summary.get('mode', 'public')} mode.",
         f"Global readiness score: {summary.get('global_score', 'n/a')}.",
         f"Detected platform: {summary.get('platform', 'Custom')} with {summary.get('rendering', 'hybrid')} rendering.",
-        f"Sample coverage: {summary.get('pages_crawled', 0)} page(s).",
+        (
+            f"Sample coverage: {summary.get('pages_crawled', 0)} page(s) analyzed "
+            f"from {summary.get('pages_discovered', summary.get('pages_crawled', 0))} discovered URL(s), "
+            f"bounded by a page budget of {summary.get('page_budget', summary.get('pages_crawled', 0))}."
+        ),
     ]
+    if summary.get("sitemap_url_count"):
+        lines.append(
+            f"Sitemap discovery found {summary.get('sitemap_url_count')} URL(s) across {summary.get('sitemap_index_count', 0)} nested sitemap index file(s)."
+        )
     if primary_root:
         lines.append(
             f"Primary root cause: {primary_root.get('title')} "
@@ -95,6 +103,9 @@ def build_markdown_report(audit: Dict[str, Any]) -> str:
         f"- Platform: `{summary.get('platform', 'Custom')}`",
         f"- Rendering: `{summary.get('rendering', 'hybrid')}`",
         f"- Pages sampled: `{summary.get('pages_crawled', 0)}`",
+        f"- Page budget: `{summary.get('page_budget', summary.get('pages_crawled', 0))}`",
+        f"- URLs discovered in crawl graph: `{summary.get('pages_discovered', summary.get('pages_crawled', 0))}`",
+        f"- Sitemap URLs discovered: `{summary.get('sitemap_url_count', 0)}`",
         "",
         "## Executive Summary",
         "",
@@ -172,6 +183,36 @@ def build_markdown_report(audit: Dict[str, Any]) -> str:
             if item.get("relationship_summary"):
                 lines.append(f"  - Why it is derived: {item.get('relationship_summary')}")
         lines.append("")
+
+    lines.extend([
+        "## Sampling & Extraction Evidence",
+        "",
+        "- The crawl is intentionally bounded by the configured page budget.",
+        "- `Sitemap URLs discovered` reflects URLs declared in sitemap files.",
+        "- `Pages sampled` reflects the subset actually fetched and analyzed in this run.",
+        "",
+    ])
+    evidence_pages = (snapshot.get("pages") or [])[:8]
+    if evidence_pages:
+        for page in evidence_pages:
+            lines.extend([
+                f"### {page.get('final_url') or page.get('url')}",
+                "",
+                f"- Final URL: `{page.get('final_url') or page.get('url')}`",
+                f"- HTTP status: `{page.get('status_code', 0)}`",
+                f"- Title: `{page.get('title', '')}`",
+                f"- Canonical: `{page.get('canonical', '')}`",
+                f"- H1 count: `{page.get('h1_count', (page.get('heading_counts') or {}).get('h1', 0))}`",
+                f"- Visible text length: `{page.get('visible_text_length', 0)}` characters / `{page.get('word_count', 0)}` words",
+                f"- Missing image alt count: `{page.get('image_missing_alt', 0)}` of `{page.get('image_total', 0)}` image(s)",
+                f"- Cleaned body excerpt: {page.get('body_text_excerpt') or page.get('visible_text_excerpt') or '(empty)' }",
+                "",
+            ])
+    else:
+        lines.extend([
+            "- No page-level evidence snapshot was attached to this audit.",
+            "",
+        ])
 
     lines.extend([
         "## Scores",

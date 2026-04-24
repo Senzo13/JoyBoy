@@ -705,8 +705,8 @@
 .signalatlas-progress-surface {
     display: flex;
     flex-direction: column;
-    gap: 12px;
-    padding: 14px 16px;
+    gap: 14px;
+    padding: 16px 18px;
     border-radius: 16px;
     border: 1px solid rgba(96, 165, 250, 0.26);
     background: linear-gradient(180deg, rgba(30, 41, 59, 0.78), rgba(10, 15, 30, 0.96));
@@ -717,15 +717,19 @@
 .signalatlas-progress-meta,
 .signalatlas-history-progress-meta {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: space-between;
     gap: 12px;
 }
 
+.signalatlas-progress-heading {
+    min-width: 0;
+}
+
 .signalatlas-progress-top-actions {
     display: inline-flex;
-    align-items: center;
-    gap: 12px;
+    align-items: flex-start;
+    gap: 10px;
     flex-wrap: wrap;
     justify-content: flex-end;
 }
@@ -740,6 +744,20 @@
     font-weight: 700;
 }
 
+.signalatlas-progress-message {
+    display: inline-block;
+    min-width: 0;
+}
+
+.signalatlas-progress-support,
+.signalatlas-history-progress-detail {
+    margin-top: 8px;
+    color: #9fb0c7;
+    font-size: 12px;
+    line-height: 1.55;
+    max-width: 78ch;
+}
+
 .signalatlas-progress-spinner {
     width: 12px;
     height: 12px;
@@ -750,15 +768,37 @@
     flex: 0 0 auto;
 }
 
-.signalatlas-progress-percent {
+.signalatlas-progress-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 30px;
+    padding: 0 12px;
+    border-radius: 999px;
+    border: 1px solid rgba(148, 163, 184, 0.18);
+    background: rgba(15, 23, 42, 0.56);
     color: #dbeafe;
-    font-size: 14px;
+    font-size: 12px;
     font-weight: 700;
+    white-space: nowrap;
+}
+
+.signalatlas-progress-chip.is-phase {
+    color: #bfdbfe;
+    border-color: rgba(96, 165, 250, 0.18);
+    background: rgba(37, 99, 235, 0.12);
+}
+
+.signalatlas-progress-chip.is-percent {
+    color: #f8fafc;
+    border-color: rgba(59, 130, 246, 0.28);
+    background: rgba(37, 99, 235, 0.18);
 }
 
 .signalatlas-progress-bar,
 .signalatlas-history-progress-bar,
 .modules-card-runtime-bar {
+    position: relative;
     width: 100%;
     height: 8px;
     overflow: hidden;
@@ -769,9 +809,22 @@
 .signalatlas-progress-fill,
 .signalatlas-history-progress-fill,
 .modules-card-runtime-fill {
+    position: relative;
     height: 100%;
     border-radius: inherit;
     background: linear-gradient(90deg, rgba(96, 165, 250, 0.9), rgba(56, 189, 248, 0.95));
+    transition: width 820ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.signalatlas-progress-fill.is-live::after,
+.signalatlas-history-progress-fill.is-live::after,
+.modules-card-runtime-fill.is-live::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.12) 35%, rgba(255, 255, 255, 0.42) 50%, rgba(255, 255, 255, 0.12) 65%, transparent 100%);
+    transform: translateX(-120%);
+    animation: signalatlasProgressSweep 1.9s linear infinite;
 }
 
 .signalatlas-progress-meta,
@@ -780,14 +833,39 @@
     font-size: 12px;
 }
 
+.signalatlas-progress-meta {
+    justify-content: flex-start;
+}
+
+.signalatlas-progress-meta-copy {
+    display: inline-flex;
+    align-items: center;
+    min-height: 28px;
+    padding: 0 12px;
+    border-radius: 999px;
+    border: 1px solid rgba(148, 163, 184, 0.14);
+    background: rgba(15, 23, 42, 0.36);
+}
+
 .signalatlas-history-progress-meta {
-    margin-top: 10px;
+    margin-top: 12px;
     color: #c7d4e8;
     font-size: 12px;
 }
 
 .signalatlas-history-progress-copy {
-    margin-top: 8px;
+    margin-top: 10px;
+    color: #e2e8f0;
+    font-weight: 600;
+}
+
+.signalatlas-shimmer-text {
+    background-image: linear-gradient(110deg, rgba(226, 232, 240, 0.72) 0%, #ffffff 45%, rgba(191, 219, 254, 0.88) 55%, rgba(226, 232, 240, 0.72) 100%);
+    background-size: 220% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: signalatlasTextShimmer 1.75s linear infinite;
 }
 
 .signalatlas-field.is-toggle {
@@ -1118,6 +1196,7 @@
 }
 
 .signalatlas-history-card {
+    position: relative;
     width: 100%;
     text-align: left;
     padding: 14px;
@@ -1128,9 +1207,52 @@
     cursor: pointer;
 }
 
+.signalatlas-history-title-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
 .signalatlas-history-card.active {
     border-color: rgba(96, 165, 250, 0.34);
     background: rgba(59, 130, 246, 0.12);
+}
+
+.signalatlas-history-card:focus-visible {
+    outline: 2px solid rgba(96, 165, 250, 0.65);
+    outline-offset: 2px;
+}
+
+.signalatlas-history-delete {
+    flex: 0 0 auto;
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    border: 1px solid rgba(248, 113, 113, 0.18);
+    background: rgba(127, 29, 29, 0.14);
+    color: #fca5a5;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background 0.16s ease, border-color 0.16s ease, transform 0.16s ease, opacity 0.16s ease;
+}
+
+.signalatlas-history-delete:hover:not(:disabled) {
+    background: rgba(127, 29, 29, 0.24);
+    border-color: rgba(248, 113, 113, 0.32);
+    transform: translateY(-1px);
+}
+
+.signalatlas-history-delete:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+}
+
+.signalatlas-history-delete svg {
+    width: 15px;
+    height: 15px;
 }
 
 .signalatlas-history-title,
@@ -1480,6 +1602,18 @@
     100% {
         transform: scale(0.92);
         box-shadow: 0 0 0 0 rgba(96, 165, 250, 0);
+    }
+}
+
+@keyframes signalatlasProgressSweep {
+    100% {
+        transform: translateX(120%);
+    }
+}
+
+@keyframes signalatlasTextShimmer {
+    100% {
+        background-position: -220% 0;
     }
 }
 

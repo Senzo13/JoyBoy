@@ -78,6 +78,26 @@ async function apiGet(endpoint, options = {}) {
     }
 }
 
+/**
+ * Generic DELETE request
+ * @param {string} endpoint - API endpoint
+ * @param {object} options - Additional fetch options
+ * @returns {Promise<{data: any, ok: boolean, error?: string}>}
+ */
+async function apiDelete(endpoint, options = {}) {
+    try {
+        const response = await fetch(endpoint, {
+            method: 'DELETE',
+            ...options
+        });
+        const result = await response.json();
+        return { data: result, ok: response.ok, status: response.status };
+    } catch (error) {
+        console.error(`[API] DELETE ${endpoint} failed:`, error);
+        return { data: null, ok: false, error: error.message };
+    }
+}
+
 // ===== OLLAMA API =====
 
 const apiOllama = {
@@ -450,6 +470,10 @@ const apiSignalAtlas = {
 
     async getAudit(auditId) {
         return apiGet(`/api/signalatlas/audits/${encodeURIComponent(auditId)}`);
+    },
+
+    async deleteAudit(auditId) {
+        return apiDelete(`/api/signalatlas/audits/${encodeURIComponent(auditId)}`);
     },
 
     async rerunAi(auditId, payload = {}) {
