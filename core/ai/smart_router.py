@@ -13,9 +13,12 @@ Rules, traduction et fallback → voir core/router_rules.py
 from __future__ import annotations
 
 import re
+from enum import Enum
 
 from core.ai.edit_directives import build_repose_directives, parse_edit_request
-from core.ai.text_model_router import call_text_model, select_text_model
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
+
+from core.ai.text_model_router import call_text_model, call_text_model_structured, select_text_model
 from core.infra.local_config import is_feature_enabled
 from core.infra.packs import get_pack_prompt_assets, is_adult_runtime_available
 from core.router_rules import (
@@ -94,14 +97,97 @@ CRITICAL PROMPT RULES:
 - If the user is asking what is visible in the existing image, use INTENT image_analysis, MASK none, STRENGTH 0.0, CONTROLNET no, IPADAPTER no.
 - Keep prompts SHORT and focused. No need for 10 synonyms.
 
-Reply ONLY in this exact format (one field per line):
-INTENT: <intent>
-MASK: <strategy>
-STRENGTH: <float>
-CONTROLNET: <yes/no>
-IPADAPTER: <yes/no>
-PROMPT: <optimized prompt in English for Stable Diffusion>
-NEGATIVE: <negative prompt>"""
+When you are asked for a structured response, return JSON only and match the provided schema exactly."""
+
+
+ROUTER_VALID_INTENTS = (
+    'nudity', 'pose_change', 'clothing_change', 'hair_change',
+    'expression_change', 'makeup_change', 'eye_change', 'accessory_change',
+    'body_modify', 'skin_change', 'age_change', 'lighting_change', 'style_transfer',
+    'scene_modify', 'text_edit', 'add_element', 'background_change',
+    'object_modify', 'image_analysis', 'general_edit', 'reframe', 'repose',
+)
+
+ROUTER_VALID_MASKS = (
+    'clothes', 'hair', 'shoes', 'hat', 'background', 'person',
+    'body', 'full', 'brush_only', 'none',
+)
+
+
+class RouterIntent(str, Enum):
+    NUDITY = "nudity"
+    POSE_CHANGE = "pose_change"
+    CLOTHING_CHANGE = "clothing_change"
+    HAIR_CHANGE = "hair_change"
+    EXPRESSION_CHANGE = "expression_change"
+    MAKEUP_CHANGE = "makeup_change"
+    EYE_CHANGE = "eye_change"
+    ACCESSORY_CHANGE = "accessory_change"
+    BODY_MODIFY = "body_modify"
+    SKIN_CHANGE = "skin_change"
+    AGE_CHANGE = "age_change"
+    LIGHTING_CHANGE = "lighting_change"
+    STYLE_TRANSFER = "style_transfer"
+    SCENE_MODIFY = "scene_modify"
+    TEXT_EDIT = "text_edit"
+    ADD_ELEMENT = "add_element"
+    BACKGROUND_CHANGE = "background_change"
+    OBJECT_MODIFY = "object_modify"
+    IMAGE_ANALYSIS = "image_analysis"
+    GENERAL_EDIT = "general_edit"
+    REFRAME = "reframe"
+    REPOSE = "repose"
+
+
+class SmartRouterStructuredResponse(BaseModel):
+    """Schema-first contract for the image smart router."""
+
+    model_config = ConfigDict(extra="ignore", populate_by_name=True, use_enum_values=True)
+
+    intent: RouterIntent = RouterIntent.GENERAL_EDIT
+    mask_strategy: str = Field(
+        default="full",
+        validation_alias=AliasChoices("mask_strategy", "mask"),
+        description="Mask strategy such as clothes, hair, background, full, brush_only, none, or target:<object>.",
+    )
+    strength: float = Field(default=0.75, ge=0.0, le=1.0)
+    needs_controlnet: bool = Field(default=False, validation_alias=AliasChoices("needs_controlnet", "controlnet"))
+    needs_ip_adapter: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("needs_ip_adapter", "ip_adapter", "ipadapter"),
+    )
+    prompt_rewrite: str = Field(default="", validation_alias=AliasChoices("prompt_rewrite", "prompt"))
+    negative_prompt: str = Field(
+        default="blurry, low quality, deformed, bad anatomy",
+        validation_alias=AliasChoices("negative_prompt", "negative"),
+    )
+
+    @field_validator("mask_strategy", mode="before")
+    @classmethod
+    def _normalize_mask_strategy(cls, value: object) -> str:
+        raw_value = str(value or "").strip().lower()
+        if not raw_value:
+            return "full"
+        first_token = raw_value.split()[0].rstrip('→,;:()') if raw_value else ''
+        if first_token in ROUTER_VALID_MASKS or first_token.startswith("target:") or first_token.startswith("brush+"):
+            return first_token
+        for candidate in ROUTER_VALID_MASKS:
+            if candidate in raw_value.split()[0:3]:
+                return candidate
+        return first_token
+
+    @field_validator("needs_controlnet", "needs_ip_adapter", mode="before")
+    @classmethod
+    def _normalize_bool(cls, value: object) -> bool:
+        if isinstance(value, bool):
+            return value
+        return str(value or "").strip().lower() in {"1", "true", "yes", "oui"}
+
+    @field_validator("prompt_rewrite", "negative_prompt", mode="before")
+    @classmethod
+    def _normalize_prompt_text(cls, value: object) -> str:
+        text = str(value or "").strip().strip('"\'')
+        return text
 
 
 def _get_router_system_prompt() -> str:
@@ -142,8 +228,14 @@ def _find_text_model() -> str | None:
     return choice.name
 
 
-def _call_llm(prompt: str, image_b64: str = None, model: str = None, timeout: int = 90) -> str | None:
-    """Appelle le LLM (vision ou texte) et retourne la réponse brute."""
+def _call_llm(
+    prompt: str,
+    image_b64: str = None,
+    model: str = None,
+    timeout: int = 90,
+    structured: bool = False,
+) -> str | dict | None:
+    """Call the router LLM and optionally ask for schema-validated JSON."""
     if not model:
         return None
 
@@ -159,6 +251,19 @@ def _call_llm(prompt: str, image_b64: str = None, model: str = None, timeout: in
 
     messages.append(user_msg)
 
+    if structured:
+        structured_response = call_text_model_structured(
+            messages,
+            schema_model=SmartRouterStructuredResponse,
+            purpose="router",
+            model=model,
+            num_predict=220,
+            temperature=0.1,
+            timeout=timeout,
+        )
+        if structured_response:
+            return structured_response
+
     return call_text_model(
         messages,
         purpose="router",
@@ -169,8 +274,122 @@ def _call_llm(prompt: str, image_b64: str = None, model: str = None, timeout: in
     )
 
 
+def _base_router_result(original_prompt: str) -> dict:
+    return {
+        'intent': 'general_edit',
+        'mask_strategy': 'full',
+        'segformer_classes': None,
+        'strength': 0.75,
+        'needs_controlnet': False,
+        'needs_ip_adapter': False,
+        'prompt_rewrite': original_prompt,
+        'negative_prompt': 'blurry, low quality, deformed, bad anatomy',
+        'adjacent_classes': None,
+        'reason': 'LLM analysis'
+    }
+
+
+def _finalize_llm_route(result: dict, original_prompt: str, reason: str) -> dict:
+    if result.get('intent') == 'image_analysis':
+        return _make_image_analysis_result(
+            original_prompt,
+            f"{reason} → read-only image analysis",
+            prompt_rewrite=result.get('prompt_rewrite') or original_prompt,
+        )
+
+    if (
+        result.get('intent') == 'general_edit'
+        and float(result.get('strength') or 0.0) <= 0.05
+        and not result.get('needs_controlnet')
+        and not result.get('needs_ip_adapter')
+    ):
+        return _make_image_analysis_result(
+            original_prompt,
+            f"{reason} → no-op route treated as image analysis",
+            prompt_rewrite=result.get('prompt_rewrite') or original_prompt,
+        )
+
+    if result['intent'] == 'nudity':
+        result['adjacent_classes'] = [16]
+        if result['mask_strategy'] != 'brush_only' and result['mask_strategy'] != 'clothes':
+            old_strategy = result['mask_strategy']
+            result['mask_strategy'] = 'clothes'
+            result['segformer_classes'] = None
+            print(f"[ROUTER] Nudity: mask corrigé {old_strategy} → clothes (nudity = toujours masquer les vêtements)")
+
+        prompt_lower = result['prompt_rewrite'].lower()
+        explicit_words = ['nude', 'naked', 'topless']
+        has_explicit = any(w in prompt_lower for w in explicit_words)
+        if not has_explicit:
+            result['prompt_rewrite'] = "nude body, bare skin, natural anatomy"
+            print(f"[ROUTER] Nudity prompt was too vague, replaced with descriptive prompt")
+
+    if result['intent'] == 'clothing_change':
+        if result['mask_strategy'] not in ('brush_only', 'clothes', 'shoes', 'hat'):
+            old_strategy = result['mask_strategy']
+            result['mask_strategy'] = 'clothes'
+            result['segformer_classes'] = None
+            print(f"[ROUTER] Clothing: mask corrigé {old_strategy} → clothes (clothing_change = masquer les vêtements)")
+
+    if result['intent'] == 'pose_change':
+        if result['mask_strategy'] not in ('brush_only',):
+            old_strategy = result['mask_strategy']
+            result['mask_strategy'] = 'body'
+            result['segformer_classes'] = None
+            print(f"[ROUTER] Pose: mask corrigé {old_strategy} → body (pose = corps+membres, sans visage/cheveux)")
+
+    if result['intent'] == 'hair_change':
+        if result['mask_strategy'] not in ('brush_only', 'hair'):
+            old_strategy = result['mask_strategy']
+            result['mask_strategy'] = 'hair'
+            result['segformer_classes'] = None
+            print(f"[ROUTER] Hair: mask corrigé {old_strategy} → hair (hair_change = masquer les cheveux uniquement)")
+
+    apply_nudity_postprocess(result, original_prompt)
+
+    result['reason'] = reason
+    return result
+
+
+def _parse_structured_llm_response(response: dict | str, original_prompt: str) -> dict | None:
+    """Parse a structured router response using the schema contract first."""
+    if not response:
+        return None
+
+    payload = response if isinstance(response, dict) else None
+    if payload is None:
+        try:
+            from core.ai.text_model_router import _extract_json_object
+
+            payload = _extract_json_object(str(response))
+        except Exception:
+            payload = None
+    if not isinstance(payload, dict):
+        return None
+
+    try:
+        structured = SmartRouterStructuredResponse.model_validate(payload)
+    except Exception:
+        return None
+
+    result = _base_router_result(original_prompt)
+    result['intent'] = str(structured.intent)
+    result['mask_strategy'] = structured.mask_strategy
+    result['strength'] = float(structured.strength)
+    result['needs_controlnet'] = bool(structured.needs_controlnet)
+    result['needs_ip_adapter'] = bool(structured.needs_ip_adapter)
+    result['prompt_rewrite'] = structured.prompt_rewrite or original_prompt
+    result['negative_prompt'] = structured.negative_prompt or 'blurry, low quality, deformed, bad anatomy'
+
+    seg_classes = _get_seg_classes(result['mask_strategy'])
+    if seg_classes is not None:
+        result['segformer_classes'] = seg_classes
+
+    return _finalize_llm_route(result, original_prompt, "LLM analysis (JSON schema validated)")
+
+
 def _parse_llm_response(response: str, original_prompt: str) -> dict | None:
-    """Parse la réponse structurée du LLM."""
+    """Parse the legacy line-based router response."""
     if not response:
         return None
 
@@ -187,19 +406,6 @@ def _parse_llm_response(response: str, original_prompt: str) -> dict | None:
         'reason': 'LLM analysis'
     }
 
-    valid_intents = [
-        'nudity', 'pose_change', 'clothing_change', 'hair_change',
-        'expression_change', 'makeup_change', 'eye_change', 'accessory_change',
-        'body_modify', 'skin_change', 'age_change', 'lighting_change', 'style_transfer',
-        'scene_modify', 'text_edit', 'add_element', 'background_change',
-        'object_modify', 'image_analysis', 'general_edit', 'reframe', 'repose'
-    ]
-
-    valid_masks = [
-        'clothes', 'hair', 'shoes', 'hat', 'background', 'person',
-        'body', 'full', 'brush_only', 'none'
-    ]
-
     parsed_fields = 0
 
     for line in response.split('\n'):
@@ -209,7 +415,7 @@ def _parse_llm_response(response: str, original_prompt: str) -> dict | None:
 
         if line.upper().startswith('INTENT:'):
             value = line.split(':', 1)[1].strip().lower()
-            if value in valid_intents:
+            if value in ROUTER_VALID_INTENTS:
                 result['intent'] = value
                 parsed_fields += 1
 
@@ -218,17 +424,17 @@ def _parse_llm_response(response: str, original_prompt: str) -> dict | None:
             first_token = raw_value.split()[0].rstrip('→,;:()') if raw_value else ''
             if first_token.startswith('target:') or first_token.startswith('brush+'):
                 value = first_token
-            elif first_token in valid_masks:
+            elif first_token in ROUTER_VALID_MASKS:
                 value = first_token
             else:
                 value = None
-                for vm in valid_masks:
+                for vm in ROUTER_VALID_MASKS:
                     if vm in raw_value.split()[0:3]:
                         value = vm
                         break
                 if not value:
                     value = first_token
-            if value in valid_masks or value.startswith('target:') or value.startswith('brush+'):
+            if value in ROUTER_VALID_MASKS or value.startswith('target:') or value.startswith('brush+'):
                 result['mask_strategy'] = value
                 parsed_fields += 1
                 seg_classes = _get_seg_classes(value)
@@ -272,82 +478,8 @@ def _parse_llm_response(response: str, original_prompt: str) -> dict | None:
                 result['negative_prompt'] = value
                 parsed_fields += 1
 
-    # Need at least 3 parsed fields to consider it valid
     if parsed_fields >= 3:
-        if result['intent'] == 'image_analysis':
-            result = _make_image_analysis_result(
-                original_prompt,
-                f"LLM analysis ({parsed_fields} fields parsed) → read-only image analysis",
-                prompt_rewrite=result.get('prompt_rewrite') or original_prompt,
-            )
-            return result
-
-        # A route with strength 0 and no conditioning is not an edit. Older
-        # prompts could produce general_edit/full/0.0 for "analyze the image";
-        # stopping here prevents the diffusion pipeline from loading for a
-        # no-op generation.
-        if (
-            result.get('intent') == 'general_edit'
-            and float(result.get('strength') or 0.0) <= 0.05
-            and not result.get('needs_controlnet')
-            and not result.get('needs_ip_adapter')
-        ):
-            result = _make_image_analysis_result(
-                original_prompt,
-                f"LLM analysis ({parsed_fields} fields parsed) → no-op route treated as image analysis",
-                prompt_rewrite=result.get('prompt_rewrite') or original_prompt,
-            )
-            return result
-
-        # Post-process nudity: mask correction + prompt cleanup
-        if result['intent'] == 'nudity':
-            result['adjacent_classes'] = [16]
-            if result['mask_strategy'] != 'brush_only' and result['mask_strategy'] != 'clothes':
-                old_strategy = result['mask_strategy']
-                result['mask_strategy'] = 'clothes'
-                result['segformer_classes'] = None
-                print(f"[ROUTER] Nudity: mask corrigé {old_strategy} → clothes (nudity = toujours masquer les vêtements)")
-
-            prompt_lower = result['prompt_rewrite'].lower()
-            explicit_words = ['nude', 'naked', 'topless']
-            has_explicit = any(w in prompt_lower for w in explicit_words)
-            if not has_explicit:
-                result['prompt_rewrite'] = "nude body, bare skin, natural anatomy"
-                print(f"[ROUTER] Nudity prompt was too vague, replaced with descriptive prompt")
-
-        # Post-process clothing_change: force mask to 'clothes' (not 'full')
-        # Full mask regenerates the entire image (face, background, etc.)
-        if result['intent'] == 'clothing_change':
-            if result['mask_strategy'] not in ('brush_only', 'clothes', 'shoes', 'hat'):
-                old_strategy = result['mask_strategy']
-                result['mask_strategy'] = 'clothes'
-                result['segformer_classes'] = None
-                print(f"[ROUTER] Clothing: mask corrigé {old_strategy} → clothes (clothing_change = masquer les vêtements)")
-
-        # Post-process pose_change: force mask to 'body' (not 'person')
-        # 'body' = clothes + limbs (arms, legs) WITHOUT face and hair
-        # 'person' includes hair → hair gets regenerated = bad
-        if result['intent'] == 'pose_change':
-            if result['mask_strategy'] not in ('brush_only',):
-                old_strategy = result['mask_strategy']
-                result['mask_strategy'] = 'body'
-                result['segformer_classes'] = None
-                print(f"[ROUTER] Pose: mask corrigé {old_strategy} → body (pose = corps+membres, sans visage/cheveux)")
-
-        # Post-process hair_change: force mask to 'hair' (not 'full')
-        # Only the hair should be regenerated, not the face/body/background
-        if result['intent'] == 'hair_change':
-            if result['mask_strategy'] not in ('brush_only', 'hair'):
-                old_strategy = result['mask_strategy']
-                result['mask_strategy'] = 'hair'
-                result['segformer_classes'] = None
-                print(f"[ROUTER] Hair: mask corrigé {old_strategy} → hair (hair_change = masquer les cheveux uniquement)")
-
-        # ControlNet, IP-Adapter, réalisme nudity, controlnet_scale
-        apply_nudity_postprocess(result, original_prompt)
-
-        result['reason'] = f'LLM analysis ({parsed_fields} fields parsed)'
-        return result
+        return _finalize_llm_route(result, original_prompt, f'LLM analysis ({parsed_fields} fields parsed)')
 
     return None
 
@@ -649,10 +781,12 @@ def analyze_request(prompt: str, image_b64: str = None, has_brush_mask: bool = F
         if has_brush_mask:
             user_prompt += "\nNote: The user has drawn a brush mask on a specific area."
 
-        raw_response = _call_llm(user_prompt, None, model)
+        raw_response = _call_llm(user_prompt, None, model, structured=True)
 
         if raw_response:
-            llm_result = _parse_llm_response(raw_response, prompt)
+            llm_result = _parse_structured_llm_response(raw_response, prompt)
+            if llm_result is None and isinstance(raw_response, str):
+                llm_result = _parse_llm_response(raw_response, prompt)
 
     if llm_result:
         llm_result = _correct_pose_preservation_route(llm_result, prompt, has_brush_mask)

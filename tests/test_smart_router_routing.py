@@ -282,6 +282,62 @@ class SmartRouterRoutingTests(unittest.TestCase):
         self.assertEqual(result["mask_strategy"], "none")
         self.assertEqual(result["strength"], 0.0)
 
+    def test_structured_llm_dict_routes_clothing_change(self):
+        structured_response = {
+            "intent": "clothing_change",
+            "mask_strategy": "clothes",
+            "strength": 0.82,
+            "needs_controlnet": True,
+            "needs_ip_adapter": True,
+            "prompt_rewrite": "woman wearing a fitted red dress with realistic fabric folds",
+            "negative_prompt": "blurry, low quality, deformed",
+        }
+
+        with patch("core.ai.edit_directives._llm_extract_prompt", return_value={}):
+            with patch("core.ai.smart_router._find_text_model", return_value="fake-router"):
+                with patch("core.ai.smart_router._call_llm", return_value=structured_response):
+                    result = analyze_request(
+                        "change outfit to a fitted red dress",
+                        image_b64="data:image/png;base64,abc",
+                        has_brush_mask=False,
+                    )
+
+        self.assertEqual(result["intent"], "clothing_change")
+        self.assertEqual(result["mask_strategy"], "clothes")
+        self.assertTrue(result["needs_controlnet"])
+        self.assertTrue(result["needs_ip_adapter"])
+        self.assertIn("fitted red dress", result["prompt_rewrite"])
+        self.assertIn("JSON schema validated", result["reason"])
+
+    def test_structured_llm_json_string_routes_read_only_analysis(self):
+        structured_response = """```json
+{
+  "intent": "image_analysis",
+  "mask_strategy": "none",
+  "strength": 0.0,
+  "needs_controlnet": false,
+  "needs_ip_adapter": false,
+  "prompt_rewrite": "identify visible food and drink items",
+  "negative_prompt": "none"
+}
+```"""
+
+        with patch("core.ai.edit_directives._llm_extract_prompt", return_value={}):
+            with patch("core.ai.smart_router._find_text_model", return_value="fake-router"):
+                with patch("core.ai.smart_router._call_llm", return_value=structured_response):
+                    result = analyze_request(
+                        "dis moi ce que tu vois a manger sur l'image",
+                        image_b64="data:image/png;base64,abc",
+                        has_brush_mask=False,
+                    )
+
+        self.assertEqual(result["intent"], "image_analysis")
+        self.assertEqual(result["mask_strategy"], "none")
+        self.assertEqual(result["strength"], 0.0)
+        self.assertFalse(result["needs_controlnet"])
+        self.assertFalse(result["needs_ip_adapter"])
+        self.assertIn("JSON schema validated", result["reason"])
+
 
 if __name__ == "__main__":
     unittest.main()
