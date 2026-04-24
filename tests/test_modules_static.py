@@ -52,6 +52,9 @@ class ModulesStaticTests(unittest.TestCase):
                 self.assertIn("targetPlaceholder:", data)
                 self.assertIn("targetInvalid:", data)
                 self.assertIn("auditTimestampLabel:", data)
+                self.assertIn("profileHelp:", data)
+                self.assertIn("modelHelp:", data)
+                self.assertIn("compareModelHelp:", data)
                 self.assertIn("providerConfigured:", data)
                 self.assertIn("renderSummaryExecuted:", data)
                 self.assertIn("visibilityLabel_geo:", data)
@@ -77,6 +80,10 @@ class ModulesStaticTests(unittest.TestCase):
                 self.assertIn("kindPerfAtlas:", data)
                 self.assertIn("runAudit:", data)
                 self.assertIn("tabField:", data)
+                self.assertIn("progressFieldCopy:", data)
+                self.assertIn("progressLabCopy:", data)
+                self.assertIn("progressOwnerCopy:", data)
+                self.assertIn("clusterCount:", data)
 
     def test_modules_sidebar_label_is_bound_to_i18n(self):
         bindings = self.read("web/static/js/i18n.bindings.js")
@@ -96,6 +103,17 @@ class ModulesStaticTests(unittest.TestCase):
         self.assertIn("modules.restartRequired", modules_js)
         self.assertIn(".modules-card.is-locked", modules_css)
         self.assertIn(".modules-card:disabled", modules_css)
+
+    def test_perfatlas_reuses_shared_model_picker_logic_and_localized_provider_copy(self):
+        modules_js = self.read("web/static/js/modules.js")
+        self.assertIn("function auditModuleCurrentProfiles(modelContext)", modules_js)
+        self.assertIn("function perfAtlasCurrentProfiles()", modules_js)
+        self.assertIn("function buildPerfAtlasModelOptions(selectedValue = '')", modules_js)
+        self.assertIn("return buildPerfAtlasModelOptions(perfAtlasDraft.model || currentJoyBoyChatModel());", modules_js)
+        self.assertIn("fallbackPerfAtlasCompareModel()", modules_js)
+        self.assertIn("function perfAtlasProviderSummary(provider)", modules_js)
+        self.assertIn("escapeHtml(perfAtlasProviderSummary(provider))", modules_js)
+        self.assertIn("escapeHtml(perfAtlasProviderSummary(item))", modules_js)
 
 
 if __name__ == "__main__":

@@ -104,6 +104,14 @@ body.perfatlas-mode {
     gap: 14px;
 }
 
+.perfatlas-owner-strip .signalatlas-owner-card {
+    height: 100%;
+}
+
+.perfatlas-owner-strip .signalatlas-owner-note {
+    margin-top: 2px;
+}
+
 .perfatlas-lab-card {
     margin-bottom: 18px;
 }

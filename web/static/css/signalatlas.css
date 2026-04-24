@@ -1571,6 +1571,23 @@
     background: rgba(255, 255, 255, 0.03);
 }
 
+.signalatlas-owner-card-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+}
+
+.signalatlas-owner-card-top .signalatlas-tag {
+    flex-shrink: 0;
+}
+
+.signalatlas-owner-note {
+    margin: 0;
+    word-break: break-word;
+}
+
 .signalatlas-owner-name,
 .signalatlas-mini-finding-title {
     color: #f8fafc;

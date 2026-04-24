@@ -434,6 +434,59 @@ function signalAtlasProviderSummary(provider) {
     return moduleT('signalatlas.providerSummaryScaffolded', 'This integration is scaffolded in the architecture and will enrich later owner-mode passes.');
 }
 
+function perfAtlasOwnerConnectorSummary(provider) {
+    const name = provider?.name || provider?.id || 'Provider';
+    const status = String(provider?.status || '').trim().toLowerCase();
+    if (status === 'ready') {
+        return moduleT('perfatlas.providerSummaryOwnerReady', '{provider} matches this host and can enrich deployment or edge context right now.', { provider: name });
+    }
+    if (status === 'target_mismatch') {
+        return moduleT('perfatlas.providerSummaryOwnerMismatch', '{provider} is configured, but the saved project or zone does not match this host yet.', { provider: name });
+    }
+    if (status === 'configured') {
+        return moduleT('perfatlas.providerSummaryOwnerConfigured', '{provider} is configured and will enrich the audit when verified-owner mode is used on a matching host.', { provider: name });
+    }
+    if (status === 'scaffolded') {
+        return moduleT('perfatlas.providerSummaryOwnerScaffolded', '{provider} is available as an owner connector, but it is not configured yet.', { provider: name });
+    }
+    if (status === 'partial' || status === 'auth_error' || status === 'connector_missing' || status === 'error') {
+        return moduleT('perfatlas.providerSummaryLimited', '{provider} is only partially available in this runtime, so PerfAtlas will keep the owner context conservative.', { provider: name });
+    }
+    return signalAtlasProviderSummary(provider);
+}
+
+function perfAtlasProviderSummary(provider) {
+    const id = String(provider?.id || '').trim().toLowerCase();
+    const status = String(provider?.status || '').trim().toLowerCase();
+    if (id === 'google_search_console') {
+        return signalAtlasProviderSummary(provider);
+    }
+    if (id === 'crux_api') {
+        return status === 'configured' || status === 'confirmed'
+            ? moduleT('perfatlas.providerSummaryCruxReady', 'CrUX can enrich the audit with public field metrics when Google has enough real-user data for this target.')
+            : moduleT('perfatlas.providerSummaryCruxMissing', 'Add CRUX_API_KEY or GOOGLE_API_KEY to unlock stable CrUX field-metrics quota.');
+    }
+    if (id === 'crux_history_api') {
+        return status === 'configured' || status === 'confirmed'
+            ? moduleT('perfatlas.providerSummaryCruxHistoryReady', 'CrUX History can confirm whether Core Web Vitals are improving, stable, or regressing over time.')
+            : moduleT('perfatlas.providerSummaryCruxHistoryMissing', 'CrUX History uses the same Google API key as CrUX and stays unavailable until that key is configured.');
+    }
+    if (id === 'pagespeed_insights') {
+        return status === 'configured' || status === 'confirmed'
+            ? moduleT('perfatlas.providerSummaryPagespeedReady', 'PageSpeed Insights can add remote Lighthouse runs and opportunity hints when local lab probes are limited.')
+            : moduleT('perfatlas.providerSummaryPagespeedMissing', 'Add PAGESPEED_API_KEY or GOOGLE_API_KEY to stabilize PageSpeed Insights quota and richer lab checks.');
+    }
+    if (id === 'vercel' || id === 'netlify' || id === 'cloudflare') {
+        return perfAtlasOwnerConnectorSummary(provider);
+    }
+    if (status === 'partial' || status === 'auth_error' || status === 'connector_missing' || status === 'error') {
+        return moduleT('perfatlas.providerSummaryLimited', '{provider} is only partially available in this runtime, so PerfAtlas will keep the owner context conservative.', {
+            provider: provider?.name || provider?.id || 'Provider',
+        });
+    }
+    return signalAtlasProviderSummary(provider);
+}
+
 function signalAtlasRenderSummary(renderDetection = {}) {
     if (!renderDetection.render_js_requested) {
         return moduleT('signalatlas.renderSummaryNotRequested', 'Raw HTML baseline only.');
@@ -1461,8 +1514,28 @@ function signalAtlasSelectBadgeClass(option) {
     return 'fast';
 }
 
-function buildSignalAtlasModelOptions(selectedValue = '') {
-    const profiles = signalAtlasCurrentProfiles();
+function auditModuleCurrentProfiles(modelContext) {
+    const profiles = Array.isArray(modelContext?.terminal_model_profiles)
+        ? modelContext.terminal_model_profiles
+        : [];
+    const filtered = profiles.filter(profile => profile?.id);
+    const current = currentJoyBoyChatModel();
+    if (current && !filtered.some(profile => profile.id === current)) {
+        filtered.unshift({
+            id: current,
+            provider: current.includes(':') && !/^qwen|^llama|^mistral|^gemma|^deepseek|^dolphin|^tiny|^llava|^moondream/i.test(current)
+                ? current.split(':', 1)[0]
+                : 'ollama',
+            model: current.includes(':') ? current.split(':').slice(1).join(':') : current,
+            configured: true,
+            terminal_runtime: true,
+            label: current,
+        });
+    }
+    return filtered;
+}
+
+function buildAuditModelOptions(profiles, selectedValue = '') {
     return profiles.map(profile => {
         const description = describeSignalAtlasModel(profile);
         const provider = String(profile?.provider || 'ollama').toLowerCase();
@@ -1485,6 +1558,14 @@ function buildSignalAtlasModelOptions(selectedValue = '') {
             selected: String(profile.id) === String(selectedValue || ''),
         };
     });
+}
+
+function buildSignalAtlasModelOptions(selectedValue = '') {
+    return buildAuditModelOptions(signalAtlasCurrentProfiles(), selectedValue);
+}
+
+function buildPerfAtlasModelOptions(selectedValue = '') {
+    return buildAuditModelOptions(perfAtlasCurrentProfiles(), selectedValue);
 }
 
 function buildSignalAtlasSimpleOptions(items, selectedValue, tone = '') {
@@ -1653,10 +1734,10 @@ function perfAtlasPickerOptions(pickerId) {
         );
     }
     if (pickerId === 'model') {
-        return buildSignalAtlasModelOptions(perfAtlasDraft.model || currentJoyBoyChatModel());
+        return buildPerfAtlasModelOptions(perfAtlasDraft.model || currentJoyBoyChatModel());
     }
     if (pickerId === 'compare_model') {
-        return buildSignalAtlasModelOptions(perfAtlasDraft.compare_model || fallbackSignalAtlasCompareModel());
+        return buildPerfAtlasModelOptions(perfAtlasDraft.compare_model || fallbackPerfAtlasCompareModel());
     }
     if (pickerId === 'preset') {
         return buildSignalAtlasSimpleOptions((perfAtlasModelContext?.presets || []).map(preset => ({
@@ -1686,7 +1767,7 @@ async function selectPerfAtlasPickerOption(pickerId, value, event) {
     if (pickerId === 'model') perfAtlasDraft.model = String(value || currentJoyBoyChatModel());
     if (pickerId === 'preset') perfAtlasDraft.preset = String(value || 'balanced');
     if (pickerId === 'level') perfAtlasDraft.level = String(value || 'full_expert_analysis');
-    if (pickerId === 'compare_model') perfAtlasDraft.compare_model = String(value || fallbackSignalAtlasCompareModel());
+    if (pickerId === 'compare_model') perfAtlasDraft.compare_model = String(value || fallbackPerfAtlasCompareModel());
 
     const hiddenInputId = perfAtlasPickerInputId(pickerId);
     if (hiddenInputId) {
@@ -2195,7 +2276,7 @@ async function loadPerfAtlasBootstrap() {
         perfAtlasDraft.model = currentJoyBoyChatModel();
     }
     if (!perfAtlasDraft.compare_model) {
-        perfAtlasDraft.compare_model = fallbackSignalAtlasCompareModel();
+        perfAtlasDraft.compare_model = fallbackPerfAtlasCompareModel();
     }
 
     if (perfAtlasCurrentAuditId) {
@@ -2322,24 +2403,11 @@ function signalAtlasScoreTone(score) {
 }
 
 function signalAtlasCurrentProfiles() {
-    const profiles = Array.isArray(signalAtlasModelContext?.terminal_model_profiles)
-        ? signalAtlasModelContext.terminal_model_profiles
-        : [];
-    const filtered = profiles.filter(profile => profile?.id);
-    const current = currentJoyBoyChatModel();
-    if (current && !filtered.some(profile => profile.id === current)) {
-        filtered.unshift({
-            id: current,
-            provider: current.includes(':') && !/^qwen|^llama|^mistral|^gemma|^deepseek|^dolphin|^tiny|^llava|^moondream/i.test(current)
-                ? current.split(':', 1)[0]
-                : 'ollama',
-            model: current.includes(':') ? current.split(':').slice(1).join(':') : current,
-            configured: true,
-            terminal_runtime: true,
-            label: current,
-        });
-    }
-    return filtered;
+    return auditModuleCurrentProfiles(signalAtlasModelContext);
+}
+
+function perfAtlasCurrentProfiles() {
+    return auditModuleCurrentProfiles(perfAtlasModelContext);
 }
 
 function activePerfAtlasJobs() {
@@ -2615,11 +2683,21 @@ function describeSignalAtlasModel(profile) {
     };
 }
 
+function fallbackAuditCompareModel(profiles, currentModel) {
+    const alternative = (profiles || []).find(profile => profile.id !== currentModel && profile.configured !== false);
+    return alternative?.id || currentModel;
+}
+
 function fallbackSignalAtlasCompareModel() {
     const profiles = signalAtlasCurrentProfiles();
     const current = signalAtlasDraft.model || currentJoyBoyChatModel();
-    const alternative = profiles.find(profile => profile.id !== current && profile.configured !== false);
-    return alternative?.id || current;
+    return fallbackAuditCompareModel(profiles, current);
+}
+
+function fallbackPerfAtlasCompareModel() {
+    const profiles = perfAtlasCurrentProfiles();
+    const current = perfAtlasDraft.model || currentJoyBoyChatModel();
+    return fallbackAuditCompareModel(profiles, current);
 }
 
 function signalAtlasModelOptionsHtml(selectedValue) {
@@ -3601,7 +3679,7 @@ function renderPerfAtlasProviderStrip() {
                         <span class="signalatlas-owner-name">${escapeHtml(provider.name || provider.id || 'Provider')}</span>
                         <span class="signalatlas-tag ${signalAtlasProviderTone(provider.status)}">${escapeHtml(signalAtlasProviderStatusLabel(provider.status || 'unknown'))}</span>
                     </div>
-                    <div class="signalatlas-owner-note">${escapeHtml(provider.detail || signalAtlasProviderSummary(provider))}</div>
+                    <div class="signalatlas-owner-note">${escapeHtml(perfAtlasProviderSummary(provider))}</div>
                 </div>
             `).join('')}
         </section>
@@ -3906,7 +3984,7 @@ function renderPerfAtlasOwnerContext(audit) {
                         </div>
                         <span class="signalatlas-tag ${signalAtlasProviderTone(item.status)}">${escapeHtml(item.source || '')}</span>
                     </div>
-                    <div class="signalatlas-panel-copy">${escapeHtml(item.detail || '')}</div>
+                    <div class="signalatlas-panel-copy">${escapeHtml(perfAtlasProviderSummary(item))}</div>
                     ${item.context ? `
                         ${renderPerfAtlasOwnerKeyValueGrid(item.context)}
                         ${renderPerfAtlasOwnerPills(moduleT('perfatlas.ownerDomains', 'Domains'), item.context.domains)}
@@ -3929,7 +4007,7 @@ function renderPerfAtlasOwnerContext(audit) {
 
 function renderPerfAtlasAiTab(audit) {
     const latest = perfAtlasLatestInterpretation(audit);
-    const compareModel = perfAtlasDraft.compare_model || fallbackSignalAtlasCompareModel();
+    const compareModel = perfAtlasDraft.compare_model || fallbackPerfAtlasCompareModel();
     return `
         <div class="signalatlas-detail-grid">
             <section class="signalatlas-interpretation-card">
@@ -4411,7 +4489,7 @@ async function comparePerfAtlasAi() {
     if (!perfAtlasCurrentAuditId) return;
     syncPerfAtlasDraftFromDom();
     const leftModel = perfAtlasDraft.model || currentJoyBoyChatModel();
-    const rightModel = perfAtlasDraft.compare_model || fallbackSignalAtlasCompareModel();
+    const rightModel = perfAtlasDraft.compare_model || fallbackPerfAtlasCompareModel();
     const result = await apiPerfAtlas.compareAi(perfAtlasCurrentAuditId, {
         left_model: leftModel,
         right_model: rightModel,
