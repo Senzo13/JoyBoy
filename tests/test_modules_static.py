@@ -51,6 +51,7 @@ class ModulesStaticTests(unittest.TestCase):
                 self.assertIn("perfatlas: {", data)
                 self.assertIn("targetPlaceholder:", data)
                 self.assertIn("targetInvalid:", data)
+                self.assertIn("auditTimestampLabel:", data)
                 self.assertIn("providerConfigured:", data)
                 self.assertIn("renderSummaryExecuted:", data)
                 self.assertIn("visibilityLabel_geo:", data)

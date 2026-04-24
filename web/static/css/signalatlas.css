@@ -1286,6 +1286,7 @@
 }
 
 .signalatlas-history-meta,
+.signalatlas-history-timestamp,
 .signalatlas-history-model,
 .signalatlas-history-footer,
 .signalatlas-table-subtitle,
@@ -1306,6 +1307,10 @@
     align-items: center;
     gap: 8px;
     flex-wrap: wrap;
+}
+
+.signalatlas-history-timestamp {
+    margin-top: 6px;
 }
 
 .signalatlas-history-model-label {

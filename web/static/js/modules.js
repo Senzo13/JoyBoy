@@ -625,6 +625,43 @@ function signalAtlasModeLabel(value) {
         : moduleT('signalatlas.publicMode', 'Audit public');
 }
 
+function nativeAuditLocale() {
+    const raw = String(
+        window.currentLanguage
+        || document.documentElement?.lang
+        || navigator.language
+        || 'en'
+    ).trim();
+    if (/^fr\b/i.test(raw)) return 'fr-FR';
+    if (/^es\b/i.test(raw)) return 'es-ES';
+    if (/^it\b/i.test(raw)) return 'it-IT';
+    if (/^en\b/i.test(raw)) return 'en-US';
+    return raw || 'en-US';
+}
+
+function formatNativeAuditTimestamp(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    const parsed = new Date(raw);
+    if (Number.isNaN(parsed.getTime())) return '';
+    try {
+        return new Intl.DateTimeFormat(nativeAuditLocale(), {
+            dateStyle: 'medium',
+            timeStyle: 'short',
+        }).format(parsed);
+    } catch (error) {
+        return parsed.toLocaleString();
+    }
+}
+
+function nativeAuditTimestampLabel(namespace, audit) {
+    const formatted = formatNativeAuditTimestamp(audit?.updated_at || audit?.created_at);
+    if (!formatted) return '';
+    return moduleT(`${namespace}.auditTimestampLabel`, 'Audit run {timestamp}', {
+        timestamp: formatted,
+    });
+}
+
 function signalAtlasRenderingLabel(value) {
     const clean = String(value || '').trim().toLowerCase();
     if (clean === 'spa') return moduleT('signalatlas.renderingSpa', 'SPA');
@@ -2682,6 +2719,7 @@ function renderSignalAtlasHistory() {
         const canDelete = !progressState;
         const isLive = signalAtlasIsLiveProgressStatus(progressState?.status || '');
         const supportCopy = progressState ? signalAtlasProgressSupportCopy(progressState) : '';
+        const auditTimestamp = nativeAuditTimestampLabel('signalatlas', audit);
         return `
             <div
                 class="signalatlas-history-card${active ? ' active' : ''}"
@@ -2714,6 +2752,7 @@ function renderSignalAtlasHistory() {
                     <span>${escapeHtml(audit.host || '')}</span>
                     <span>${escapeHtml(signalAtlasModeLabel(audit.mode || 'public'))}</span>
                 </div>
+                ${auditTimestamp ? `<div class="signalatlas-history-timestamp">${escapeHtml(auditTimestamp)}</div>` : ''}
                 ${audit.report_model_label ? `
                     <div class="signalatlas-history-model">
                         <span class="signalatlas-history-model-label">${escapeHtml(audit.report_model_state === 'planned'
@@ -4025,6 +4064,7 @@ function renderPerfAtlasHistory() {
         const progressState = perfAtlasAuditProgressState(audit);
         const isLive = signalAtlasIsLiveProgressStatus(progressState?.status || '');
         const supportCopy = progressState ? perfAtlasProgressSupportCopy(progressState) : '';
+        const auditTimestamp = nativeAuditTimestampLabel('perfatlas', audit);
         return `
             <div
                 class="signalatlas-history-card${active ? ' active' : ''}"
@@ -4052,6 +4092,7 @@ function renderPerfAtlasHistory() {
                     <span>${escapeHtml(audit.host || '')}</span>
                     <span>${escapeHtml(audit.mode || 'public')}</span>
                 </div>
+                ${auditTimestamp ? `<div class="signalatlas-history-timestamp">${escapeHtml(auditTimestamp)}</div>` : ''}
                 <div class="signalatlas-history-footer">
                     <span>${escapeHtml(moduleT('perfatlas.scoreShort', 'Score'))}: ${escapeHtml(String(audit.global_score ?? '--'))}</span>
                     <span>${escapeHtml(String(audit.lab_pages_analyzed || 0))} ${escapeHtml(moduleT('perfatlas.labPagesShort', 'lab'))}</span>
