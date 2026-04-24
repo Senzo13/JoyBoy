@@ -26,6 +26,35 @@ DeerFlow is ahead mostly because it has a stricter agent runtime:
 The useful target is not to clone DeerFlow. The useful target is to harden
 JoyBoy's local workstation identity with the same runtime discipline.
 
+## Audit Baseline 2026-04-21
+
+This section is the durable checkpoint for the JoyBoy vs DeerFlow comparison.
+Keep it updated after each refactor pass so compaction or long sessions do not
+lose the actual target.
+
+### Scores
+
+| Project | Global score | What wins today |
+| --- | ---: | --- |
+| JoyBoy | 7.1 / 10 | Broader local product ambition: chat, terminal, image, video, packs, providers |
+| DeerFlow | 8.8 / 10 | Cleaner harness architecture, smaller modules, stronger runtime tests |
+
+### Product Code Metrics
+
+| Metric | JoyBoy | DeerFlow |
+| --- | ---: | ---: |
+| Product lines | 94,310 | 63,455 |
+| Product files | 217 | 531 |
+| Average lines per product file | 434 | 119 |
+| Product files over 1,000 lines | 22 | 4 |
+| Product files over 2,000 lines | 4 | 0 |
+
+Verdict: DeerFlow wins on architecture, harness boundaries, and tests. JoyBoy
+wins on product surface and local multimodal ambition. The realistic target for
+this pass is moving JoyBoy toward about 8.0 / 10 by making the terminal runtime
+more deterministic and reducing the largest modules without changing public
+routes, payloads, or the dark UI identity.
+
 ## What DeerFlow Does Better
 
 ### 1. Harness Boundary
