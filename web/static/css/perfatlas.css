@@ -1,0 +1,214 @@
+/* ===== PERFATLAS THEME OVERRIDES ===== */
+
+body.perfatlas-mode {
+    --perfatlas-accent: #f6c453;
+    --perfatlas-accent-strong: #f59e0b;
+    --perfatlas-accent-soft: rgba(245, 158, 11, 0.18);
+    --perfatlas-text-soft: #d7e1f3;
+}
+
+#perfatlas-view .signalatlas-hero-copy,
+#perfatlas-view .signalatlas-current-model-card,
+#perfatlas-view .signalatlas-control-surface,
+#perfatlas-view .signalatlas-history-panel,
+#perfatlas-view .signalatlas-report-panel,
+#perfatlas-view .signalatlas-drawer-panel,
+#perfatlas-view .signalatlas-owner-strip,
+#perfatlas-view .signalatlas-panel,
+#perfatlas-view .signalatlas-finding-card,
+#perfatlas-view .signalatlas-template-card,
+#perfatlas-view .signalatlas-interpretation-card,
+#perfatlas-view .signalatlas-model-used-card {
+    border-color: rgba(245, 158, 11, 0.16);
+    background:
+        linear-gradient(180deg, rgba(24, 18, 7, 0.86), rgba(12, 10, 5, 0.97));
+}
+
+#perfatlas-view .signalatlas-kicker,
+#perfatlas-view .signalatlas-panel-kicker,
+#perfatlas-view .signalatlas-help-btn:hover,
+#perfatlas-view .signalatlas-model-used-meta {
+    color: var(--perfatlas-accent);
+}
+
+#perfatlas-view .signalatlas-target-input:focus,
+#perfatlas-view .signalatlas-advanced-toggle:hover,
+#perfatlas-view .signalatlas-advanced-toggle.is-open,
+#perfatlas-view .signalatlas-picker-btn:hover,
+#perfatlas-view .signalatlas-picker.model-picker.open .signalatlas-picker-btn {
+    border-color: rgba(245, 158, 11, 0.34);
+    box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.12);
+}
+
+#perfatlas-view .signalatlas-btn,
+#perfatlas-view .perfatlas-export-btn:last-child {
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.94), rgba(251, 191, 36, 0.92));
+    color: #1b1406;
+    border-color: rgba(251, 191, 36, 0.38);
+}
+
+#perfatlas-view .signalatlas-btn.secondary,
+#perfatlas-view .perfatlas-export-btn {
+    background: rgba(245, 158, 11, 0.08);
+    color: #fff4d6;
+    border-color: rgba(245, 158, 11, 0.2);
+}
+
+#perfatlas-view .signalatlas-inline-chip,
+#perfatlas-view .signalatlas-summary-badges .signalatlas-inline-chip,
+#perfatlas-view .signalatlas-tag.is-warn,
+#perfatlas-view .signalatlas-tag.is-soft {
+    background: rgba(245, 158, 11, 0.1);
+    border-color: rgba(245, 158, 11, 0.22);
+    color: #ffe9b0;
+}
+
+#perfatlas-view .signalatlas-progress-fill,
+#perfatlas-view .signalatlas-history-progress-fill,
+#perfatlas-view .modules-card-runtime-fill {
+    background: linear-gradient(90deg, #f59e0b, #fcd34d);
+}
+
+#perfatlas-view .signalatlas-progress-spinner {
+    background: #f59e0b;
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.55);
+}
+
+#perfatlas-view .signalatlas-score-ring.is-good .signalatlas-score-ring-progress {
+    stroke: #f6c453;
+}
+
+#perfatlas-view .signalatlas-score-ring.is-warn .signalatlas-score-ring-progress {
+    stroke: #fb923c;
+}
+
+#perfatlas-view .signalatlas-score-ring.is-danger .signalatlas-score-ring-progress {
+    stroke: #f97316;
+}
+
+#perfatlas-view .signalatlas-score-card.is-good {
+    border-color: rgba(246, 196, 83, 0.36);
+}
+
+#perfatlas-view .signalatlas-score-card.is-warn {
+    border-color: rgba(251, 146, 60, 0.32);
+}
+
+#perfatlas-view .signalatlas-score-card.is-danger {
+    border-color: rgba(249, 115, 22, 0.3);
+}
+
+.perfatlas-owner-strip {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 14px;
+}
+
+.perfatlas-lab-card {
+    margin-bottom: 18px;
+}
+
+.perfatlas-owner-section {
+    margin-top: 14px;
+}
+
+.perfatlas-owner-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.perfatlas-owner-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 12px 14px;
+    border: 1px solid rgba(245, 158, 11, 0.16);
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.perfatlas-owner-row span {
+    color: rgba(255, 236, 187, 0.72);
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.perfatlas-owner-row strong {
+    color: #fff4d6;
+    font-size: 13px;
+    line-height: 1.5;
+    word-break: break-word;
+}
+
+.perfatlas-owner-pill-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.perfatlas-owner-deploy-list {
+    display: grid;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.perfatlas-owner-deploy-card {
+    padding: 14px;
+    border-radius: 14px;
+    border: 1px solid rgba(245, 158, 11, 0.16);
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.perfatlas-owner-deploy-top {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 6px;
+}
+
+.perfatlas-owner-deploy-top strong {
+    color: #fff4d6;
+}
+
+.perfatlas-owner-deploy-top span,
+.perfatlas-owner-deploy-meta {
+    color: rgba(255, 236, 187, 0.72);
+    font-size: 12px;
+}
+
+.perfatlas-owner-deploy-copy {
+    color: #f6ecd1;
+    font-size: 12px;
+    line-height: 1.5;
+    word-break: break-word;
+}
+
+.perfatlas-owner-warning {
+    margin-top: 10px;
+    color: #ffd9a1;
+}
+
+.perfatlas-export-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 14px;
+}
+
+.perfatlas-export-btn {
+    min-height: 48px;
+}
+
+@media (max-width: 880px) {
+    .perfatlas-owner-strip,
+    .perfatlas-export-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .perfatlas-owner-grid {
+        grid-template-columns: 1fr;
+    }
+}

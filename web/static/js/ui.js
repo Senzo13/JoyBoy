@@ -722,6 +722,7 @@ function showHome(options = {}) {
     document.body.classList.remove('models-mode');
     document.body.classList.remove('modules-mode');
     document.body.classList.remove('signalatlas-mode');
+    document.body.classList.remove('perfatlas-mode');
     document.querySelectorAll('.sidebar-hub-btn').forEach(btn => btn.classList.remove('active'));
 }
 
@@ -739,6 +740,7 @@ function showChat() {
     document.body.classList.remove('models-mode');
     document.body.classList.remove('modules-mode');
     document.body.classList.remove('signalatlas-mode');
+    document.body.classList.remove('perfatlas-mode');
     document.querySelectorAll('.sidebar-hub-btn').forEach(btn => btn.classList.remove('active'));
     updateChatPadding();
     scrollToBottom(true);

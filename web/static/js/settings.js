@@ -604,6 +604,7 @@ function openAddonsHub() {
     document.body.classList.remove('projects-mode');
     document.body.classList.remove('modules-mode');
     document.body.classList.remove('signalatlas-mode');
+    document.body.classList.remove('perfatlas-mode');
     document.querySelectorAll('.sidebar-hub-btn').forEach(btn => btn.classList.remove('active'));
     document.getElementById('sidebar-addons-btn')?.classList.add('active');
 
@@ -670,6 +671,7 @@ function openModelsHub() {
     document.body.classList.remove('projects-mode');
     document.body.classList.remove('modules-mode');
     document.body.classList.remove('signalatlas-mode');
+    document.body.classList.remove('perfatlas-mode');
     document.querySelectorAll('.sidebar-hub-btn').forEach(btn => btn.classList.remove('active'));
     document.getElementById('sidebar-models-btn')?.classList.add('active');
 

@@ -960,6 +960,7 @@ function runtimeJobLabel(job) {
     if (kind === 'terminal') return apiT('runtime.kindTerminal', 'Terminal');
     if (kind === 'model') return apiT('runtime.kindModel', 'Modèle');
     if (kind === 'signalatlas') return apiT('runtime.kindSignalAtlas', 'SignalAtlas');
+    if (kind === 'perfatlas') return apiT('runtime.kindPerfAtlas', 'PerfAtlas');
     return apiT('runtime.kindTask', 'Tâche');
 }
 
@@ -1043,8 +1044,9 @@ async function openRuntimeJob(jobId) {
         await loadChat(job.conversation_id);
         return;
     }
-    if (job?.metadata?.module_id === 'signalatlas' && typeof openSignalAtlasWorkspace === 'function') {
-        await openSignalAtlasWorkspace(job?.metadata?.audit_id || null);
+    const moduleId = String(job?.metadata?.module_id || '').trim().toLowerCase();
+    if (moduleId && typeof openAuditModuleWorkspace === 'function') {
+        await openAuditModuleWorkspace(moduleId, job?.metadata?.audit_id || null);
     }
 }
 
