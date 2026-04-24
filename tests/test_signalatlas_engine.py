@@ -368,6 +368,82 @@ class SignalAtlasEngineTests(unittest.TestCase):
         }
         return self._fixture_response(url, fixtures)
 
+    def fake_get_locale_alias_duplicate(self, url, timeout=None, headers=None, allow_redirects=True):
+        del timeout, headers, allow_redirects
+        shared_body = """
+            <h1>Accueil FR</h1>
+            <p>NevoMove accompagne tes pas quotidiens avec un compagnon virtuel, des défis, et une progression visible dès le premier écran.</p>
+            <a href="/fr/univers">Univers</a>
+            <a href="/fr/nevodex">Nevodex</a>
+        """
+        fixtures = {
+            "https://locale-dup.example.com/robots.txt": _FakeResponse(
+                "https://locale-dup.example.com/robots.txt",
+                text="User-agent: *\nAllow: /\nSitemap: https://locale-dup.example.com/sitemap.xml\n",
+                headers={"content-type": "text/plain; charset=utf-8"},
+            ),
+            "https://locale-dup.example.com/sitemap.xml": _FakeResponse(
+                "https://locale-dup.example.com/sitemap.xml",
+                text="""
+                <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+                  <url><loc>https://locale-dup.example.com/fr/</loc></url>
+                  <url><loc>https://locale-dup.example.com/en/</loc></url>
+                </urlset>
+                """,
+                headers={"content-type": "application/xml; charset=utf-8"},
+            ),
+            "https://locale-dup.example.com/": _FakeResponse(
+                "https://locale-dup.example.com/",
+                text=f"""
+                <html lang="fr">
+                  <head>
+                    <title>Locale duplicate root</title>
+                    <meta name="description" content="Root alias for French locale">
+                    <link rel="canonical" href="https://locale-dup.example.com/fr">
+                  </head>
+                  <body>
+                    {shared_body}
+                  </body>
+                </html>
+                """,
+                headers={"content-type": "text/html; charset=utf-8"},
+            ),
+            "https://locale-dup.example.com/fr/": _FakeResponse(
+                "https://locale-dup.example.com/fr/",
+                text=f"""
+                <html lang="fr">
+                  <head>
+                    <title>Locale duplicate FR</title>
+                    <meta name="description" content="French locale root">
+                    <link rel="canonical" href="https://locale-dup.example.com/fr/">
+                  </head>
+                  <body>
+                    {shared_body}
+                  </body>
+                </html>
+                """,
+                headers={"content-type": "text/html; charset=utf-8"},
+            ),
+            "https://locale-dup.example.com/en/": _FakeResponse(
+                "https://locale-dup.example.com/en/",
+                text="""
+                <html lang="en">
+                  <head>
+                    <title>Locale duplicate EN</title>
+                    <meta name="description" content="English locale root">
+                    <link rel="canonical" href="https://locale-dup.example.com/en/">
+                  </head>
+                  <body>
+                    <h1>Home EN</h1>
+                    <p>This page is intentionally distinct and only exists to confirm multilingual sitemap coverage.</p>
+                  </body>
+                </html>
+                """,
+                headers={"content-type": "text/html; charset=utf-8"},
+            ),
+        }
+        return self._fixture_response(url, fixtures)
+
     def fake_get_decorative_images(self, url, timeout=None, headers=None, allow_redirects=True):
         del timeout, headers, allow_redirects
         fixtures = {
@@ -396,6 +472,63 @@ class SignalAtlasEngineTests(unittest.TestCase):
                     <p>This page contains a decorative flourish with empty alt text and an informative hero image with descriptive alt text.</p>
                     <img src="/sparkles.png" alt="">
                     <img src="/hero.jpg" alt="Player walking with a virtual creature">
+                  </body>
+                </html>
+                """,
+                headers={"content-type": "text/html; charset=utf-8"},
+            ),
+        }
+        return self._fixture_response(url, fixtures)
+
+    def fake_get_same_host_homepage_canonical(self, url, timeout=None, headers=None, allow_redirects=True):
+        del timeout, headers, allow_redirects
+        fixtures = {
+            "https://policy.example.com/robots.txt": _FakeResponse(
+                "https://policy.example.com/robots.txt",
+                text="User-agent: *\nAllow: /\nSitemap: https://policy.example.com/sitemap.xml\n",
+                headers={"content-type": "text/plain; charset=utf-8"},
+            ),
+            "https://policy.example.com/sitemap.xml": _FakeResponse(
+                "https://policy.example.com/sitemap.xml",
+                text="""
+                <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+                  <url><loc>https://policy.example.com/</loc></url>
+                  <url><loc>https://policy.example.com/pricing</loc></url>
+                </urlset>
+                """,
+                headers={"content-type": "application/xml; charset=utf-8"},
+            ),
+            "https://policy.example.com/": _FakeResponse(
+                "https://policy.example.com/",
+                text="""
+                <html lang="fr">
+                  <head>
+                    <title>Policy root</title>
+                    <meta name="description" content="Homepage with same-host canonical mismatch">
+                    <link rel="canonical" href="https://policy.example.com/pricing">
+                  </head>
+                  <body>
+                    <h1>Policy root</h1>
+                    <p>This homepage points to another same-host URL so SignalAtlas can phrase the canonical issue as a policy problem, not a stale host problem.</p>
+                    <a href="/pricing">Pricing</a>
+                  </body>
+                </html>
+                """,
+                headers={"content-type": "text/html; charset=utf-8"},
+            ),
+            "https://policy.example.com/pricing": _FakeResponse(
+                "https://policy.example.com/pricing",
+                text="""
+                <html lang="fr">
+                  <head>
+                    <title>Pricing</title>
+                    <meta name="description" content="Pricing page">
+                    <link rel="canonical" href="https://policy.example.com/pricing">
+                  </head>
+                  <body>
+                    <h1>Pricing</h1>
+                    <p>This is the pricing page.</p>
+                    <a href="/">Home</a>
                   </body>
                 </html>
                 """,
@@ -1166,15 +1299,33 @@ class SignalAtlasEngineTests(unittest.TestCase):
         self.assertEqual(result["summary"]["sitemap_url_count"], 2)
 
     @patch("core.signalatlas.engine.requests.Session.get")
+    def test_locale_root_alias_duplicate_body_does_not_trigger_duplicate_content(self, mocked_get):
+        mocked_get.side_effect = self.fake_get_locale_alias_duplicate
+
+        result = run_public_audit("locale-dup.example.com", max_pages=4, render_js=False)
+
+        self.assertFalse(any(item["id"] == "duplicate-content" for item in result["findings"]))
+
+    @patch("core.signalatlas.engine.requests.Session.get")
     def test_decorative_empty_alt_does_not_trigger_missing_alt_finding(self, mocked_get):
         mocked_get.side_effect = self.fake_get_decorative_images
 
         result = run_public_audit("decorative.example.com", max_pages=2, render_js=False)
         homepage = result["snapshot"]["pages"][0]
+        audit = {
+            "summary": result["summary"],
+            "snapshot": result["snapshot"],
+            "findings": result["findings"],
+            "scores": result["scores"],
+            "interpretations": [],
+            "remediation_items": result["remediation_items"],
+        }
+        export = build_export_payload(audit, "markdown")
 
         self.assertEqual(homepage["image_missing_alt"], 0)
         self.assertEqual(homepage["image_empty_alt"], 1)
         self.assertFalse(any(item["id"] == "images-missing-alt" for item in result["findings"]))
+        self.assertIn("valid for decorative images", export["content"])
 
     @patch("core.signalatlas.engine.requests.Session.get")
     def test_system_routes_are_filtered_out_of_seo_findings(self, mocked_get):
@@ -1191,13 +1342,24 @@ class SignalAtlasEngineTests(unittest.TestCase):
 
         result = run_public_audit("cjk.example.com", max_pages=4, render_js=False)
         findings = {item["id"]: item for item in result["findings"]}
+        audit = {
+            "summary": result["summary"],
+            "snapshot": result["snapshot"],
+            "findings": result["findings"],
+            "scores": result["scores"],
+            "interpretations": [],
+            "remediation_items": result["remediation_items"],
+        }
+        export = build_export_payload(audit, "markdown")
         zh_page = next(
             page for page in result["snapshot"]["pages"] if page["final_url"] == "https://cjk.example.com/zh_cn/blog/a"
         )
 
         self.assertLess(zh_page["word_count"], 40)
         self.assertGreater(zh_page["content_units"], 180)
+        self.assertTrue(zh_page["cjk_adjusted"])
         self.assertNotIn("thin-content", findings)
+        self.assertIn("CJK-adjusted", export["content"])
 
     @patch("core.signalatlas.engine.requests.Session.get")
     def test_small_surface_adds_discovery_and_blog_advice(self, mocked_get):
@@ -1331,6 +1493,16 @@ class SignalAtlasEngineTests(unittest.TestCase):
 
         self.assertIn("relative-canonical-url", findings)
         self.assertIn("canonical-outside-head", findings)
+
+    @patch("core.signalatlas.engine.requests.Session.get")
+    def test_same_host_homepage_canonical_mismatch_is_framed_as_policy_issue(self, mocked_get):
+        mocked_get.side_effect = self.fake_get_same_host_homepage_canonical
+
+        result = run_public_audit("policy.example.com", max_pages=3, render_js=False)
+        finding = next(item for item in result["findings"] if item["id"] == "homepage-canonical-mismatch")
+
+        self.assertEqual(finding["severity"], "medium")
+        self.assertIn("homepage strategy", finding["probable_cause"])
 
 
 if __name__ == "__main__":

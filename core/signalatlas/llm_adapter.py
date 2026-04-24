@@ -67,6 +67,7 @@ def _audit_excerpt(audit: Dict[str, Any]) -> Dict[str, Any]:
                 "word_count": page.get("word_count"),
                 "content_units": page.get("content_units"),
                 "cjk_char_count": page.get("cjk_char_count"),
+                "cjk_adjusted": page.get("cjk_adjusted"),
                 "hreflang_count": len(page.get("hreflang") or []),
                 "image_missing_alt": page.get("image_missing_alt"),
                 "image_empty_alt": page.get("image_empty_alt"),
@@ -107,6 +108,8 @@ def generate_interpretation(
         "Never invent crawl data, indexing facts, or unsupported metrics. "
         "Use the provided confidence labels exactly as given. "
         "Separate root causes from downstream symptoms. "
+        "Do not describe alt='' on decorative images as missing alt text. "
+        "When content_units is higher than raw word_count because cjk_adjusted is true, trust content_units for content-depth judgment. "
         "When render_js_requested is true but render_js_executed is false, explicitly say that some heading, "
         "content-depth, duplicate, or internal-linking findings may be baseline-only symptoms of the initial HTML response."
     )

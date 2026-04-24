@@ -823,6 +823,7 @@ def _extract_page_snapshot(
         "word_count": 0,
         "content_units": 0,
         "cjk_char_count": 0,
+        "cjk_adjusted": False,
         "visible_text_length": 0,
         "visible_text_excerpt": "",
         "body_text_excerpt": "",
@@ -852,6 +853,7 @@ def _extract_page_snapshot(
     page["word_count"] = int(text_metrics["word_count"] or 0)
     page["content_units"] = int(text_metrics["content_units"] or 0)
     page["cjk_char_count"] = int(text_metrics["cjk_char_count"] or 0)
+    page["cjk_adjusted"] = bool(text_metrics["cjk_adjusted"])
     page["visible_text_length"] = len(plain_text)
     page["visible_text_excerpt"] = _excerpt(plain_text)
     page["text_hash"] = _hash_text(plain_text)
@@ -1053,7 +1055,32 @@ def _homepage_canonical_allowed_alias(
     if not LOCALE_ROOT_RE.fullmatch(canonical_path):
         return False
     sitemap_keys = {_comparison_url(url) for url in sitemaps.get("urls") or []}
-    return _comparison_url(final_url) not in sitemap_keys and _comparison_url(canonical_url) in sitemap_keys
+    locale_roots = {_lang_root(_path_locale_hint(url)) for url in sitemaps.get("urls") or [] if _path_locale_hint(url)}
+    hreflang_entries = homepage.get("hreflang") or []
+    hreflang_urls = {
+        _comparison_url(urljoin(final_url, str(item.get("href") or "").strip()))
+        for item in hreflang_entries
+        if str(item.get("href") or "").strip()
+    }
+    has_x_default = any(_normalize_lang_tag(item.get("lang")) == "x-default" for item in hreflang_entries)
+    canonical_locale = _lang_root(_path_locale_hint(canonical_url))
+    return (
+        _comparison_url(final_url) not in sitemap_keys
+        and _comparison_url(canonical_url) in sitemap_keys
+        and (
+            _comparison_url(canonical_url) in hreflang_urls
+            or has_x_default
+            or canonical_locale in locale_roots
+            or len(locale_roots) >= 2
+        )
+    )
+
+
+def _is_allowed_homepage_alias_page(page: Dict[str, Any], target_url: str, sitemaps: Dict[str, Any]) -> bool:
+    final_url = page.get("final_url") or page.get("url") or ""
+    if not _same_normalized_url(final_url, target_url):
+        return False
+    return bool(page.get("canonical")) and _homepage_canonical_allowed_alias(page, target_url, sitemaps)
 
 
 def _multilingual_roots(indexable_pages: List[Dict[str, Any]], sitemap_urls: List[str]) -> List[str]:
@@ -1653,10 +1680,15 @@ def _build_findings(
             ),
         ))
 
-    duplicates = Counter(page.get("text_hash") for page in indexable_pages if page.get("text_hash"))
+    duplicate_candidates = [
+        page
+        for page in indexable_pages
+        if _is_self_canonical_page(page) and not _is_allowed_homepage_alias_page(page, target_url, sitemaps)
+    ]
+    duplicates = Counter(page.get("text_hash") for page in duplicate_candidates if page.get("text_hash"))
     duplicate_hashes = {hash_value for hash_value, count in duplicates.items() if count > 1}
     if duplicate_hashes:
-        dup_pages = [page for page in indexable_pages if page.get("text_hash") in duplicate_hashes]
+        dup_pages = [page for page in duplicate_candidates if page.get("text_hash") in duplicate_hashes]
         sample = dup_pages[0]
         findings.append(_finding(
             "duplicate-content",
@@ -1672,22 +1704,22 @@ def _build_findings(
             diagnostic=(
                 "The sampled crawl surfaced repeated or near-repeated content in the initial HTML baseline."
                 if baseline_only and js_shell_root_active
-                else "The sampled crawl surfaced repeated or near-repeated content bodies."
+                else "The sampled crawl surfaced repeated extracted content bodies among self-canonical pages."
             ),
             probable_cause=(
                 "Repeated app-shell HTML or shared boilerplate may be masking true page uniqueness before hydration."
                 if baseline_only and js_shell_root_active
-                else "Duplicated templates, paginated clones, parameter variants, or copied boilerplate pages."
+                else "Duplicated templates, copied boilerplate pages, or genuinely repeated content may still be collapsing distinct URLs into the same extracted body."
             ),
             recommended_fix=(
                 "Fix initial HTML delivery first, then re-evaluate duplicate clusters that remain similar after rendered validation."
                 if baseline_only and js_shell_root_active
-                else "Consolidate duplicates with canonicals, redirects, or differentiated content."
+                else "Recheck the exact duplicate cluster, then consolidate true duplicates with canonicals or redirects and differentiate pages that should rank independently."
             ),
             acceptance=(
                 "Important templates remain materially distinct in initial HTML or are consolidated with canonicals or redirects."
                 if baseline_only and js_shell_root_active
-                else "Duplicate templates are consolidated and canonical targets are consistent."
+                else "Self-canonical pages meant to rank independently no longer collapse into the same extracted body, or they are intentionally consolidated."
             ),
             derived_from=["js-shell-risk"] if baseline_only and js_shell_root_active else [],
             validation_state="needs_render_validation" if baseline_only and js_shell_root_active else "confirmed",
@@ -1976,6 +2008,8 @@ def _build_findings(
         ))
 
     if homepage.get("canonical") and not _homepage_canonical_allowed_alias(homepage, target_url, sitemaps):
+        canonical_url = _clean_url(urljoin(homepage.get("final_url") or homepage.get("url") or target_url, homepage.get("canonical") or ""))
+        same_host_canonical = _same_host(canonical_url, urlparse(homepage.get("final_url") or target_url).netloc)
         findings.append(_finding(
             "homepage-canonical-mismatch",
             title="Homepage canonical points elsewhere",
@@ -1983,14 +2017,24 @@ def _build_findings(
             scope="page",
             category="canonical",
             bucket="indexability",
-            severity="high",
+            severity="medium" if same_host_canonical else "high",
             confidence="Confirmed",
-            impact="High",
+            impact="Medium" if same_host_canonical else "High",
             evidence=[homepage.get("canonical", "")],
-            diagnostic="The homepage canonical does not self-reference the sampled final URL and does not match a recognized locale-root alias pattern.",
-            probable_cause="Canonical logic is using a stale host, wrong locale root, or staging domain.",
-            recommended_fix="Point the homepage canonical to the preferred public homepage URL, or keep the locale-root alias strategy explicit and consistent with the sitemap.",
-            acceptance="Homepage canonical matches the intended live homepage or a deliberate locale-root alias without cross-domain drift.",
+            diagnostic=(
+                "The homepage canonical does not self-reference the sampled final URL and does not match a recognized locale-root alias pattern."
+            ),
+            probable_cause=(
+                "The canonical policy for the root URL is not fully aligned with the site's intended homepage strategy."
+                if same_host_canonical
+                else "Canonical logic may still reference an unintended host or environment."
+            ),
+            recommended_fix=(
+                "Decide whether the root URL itself should be indexable or whether a locale root should be the canonical homepage, then keep redirects, canonicals, and sitemap declarations consistent with that choice."
+            ),
+            acceptance=(
+                "Homepage canonical reflects a deliberate root-vs-locale homepage policy and remains consistent with redirects, sitemap URLs, and locale signals."
+            ),
         ))
 
     return findings
@@ -2214,6 +2258,7 @@ def run_site_audit(
                 "word_count": 0,
                 "content_units": 0,
                 "cjk_char_count": 0,
+                "cjk_adjusted": False,
                 "visible_text_length": 0,
                 "visible_text_excerpt": "",
                 "body_text_excerpt": "",

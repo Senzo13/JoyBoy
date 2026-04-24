@@ -249,10 +249,12 @@ def build_markdown_report(audit: Dict[str, Any]) -> str:
                 (
                     f"- Visible text length: `{page.get('visible_text_length', 0)}` characters / "
                     f"`{page.get('word_count', 0)}` raw words / `{page.get('content_units', page.get('word_count', 0))}` content units"
+                    f"{' (CJK-adjusted)' if page.get('cjk_adjusted') else ''}"
                 ),
                 (
                     f"- Missing image alt count: `{page.get('image_missing_alt', 0)}` of `{page.get('image_total', 0)}` image(s)"
                     f"; decorative empty-alt count: `{page.get('image_empty_alt', 0)}`"
+                    f"{' (valid for decorative images)' if page.get('image_empty_alt', 0) else ''}"
                 ),
                 f"- Cleaned body excerpt: {page.get('body_text_excerpt') or page.get('visible_text_excerpt') or '(empty)' }",
                 "",

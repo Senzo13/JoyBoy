@@ -62,6 +62,7 @@ class PageSnapshot:
     word_count: int = 0
     content_units: int = 0
     cjk_char_count: int = 0
+    cjk_adjusted: bool = False
     text_hash: str = ""
     content_hash: str = ""
     robots_meta: str = ""
