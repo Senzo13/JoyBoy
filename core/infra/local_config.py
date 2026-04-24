@@ -75,6 +75,37 @@ DEFAULT_LOCAL_CONFIG = {
             },
         },
     },
+    "perfatlas": {
+        "providers": {
+            "google_search_console": {
+                "site_url": "",
+                "service_account_json": "",
+                "service_account_file": "",
+                "oauth_json": "",
+                "oauth_file": "",
+            },
+            "pagespeed_insights": {
+                "api_key": "",
+            },
+            "crux_api": {
+                "api_key": "",
+            },
+            "vercel": {
+                "token": "",
+                "team_id": "",
+                "project_id": "",
+            },
+            "netlify": {
+                "token": "",
+                "site_id": "",
+            },
+            "cloudflare": {
+                "api_token": "",
+                "zone_id": "",
+                "account_id": "",
+            },
+        },
+    },
 }
 
 PROVIDER_ID_BY_KEY = {
@@ -748,21 +779,25 @@ def get_signalatlas_settings() -> dict:
     return deepcopy(load_local_config().get("signalatlas", {}))
 
 
-def get_signalatlas_provider_settings(provider_id: str) -> dict:
-    settings = get_signalatlas_settings()
+def _get_module_settings(module_key: str) -> dict:
+    return deepcopy(load_local_config().get(str(module_key or "").strip(), {}))
+
+
+def _get_module_provider_settings(module_key: str, provider_id: str) -> dict:
+    settings = _get_module_settings(module_key)
     providers = settings.get("providers", {})
     if not isinstance(providers, dict):
         return {}
     return deepcopy(providers.get(str(provider_id or "").strip(), {}))
 
 
-def set_signalatlas_provider_settings(provider_id: str, values: dict[str, Any]) -> dict:
+def _set_module_provider_settings(module_key: str, provider_id: str, values: dict[str, Any]) -> dict:
     config = load_local_config()
-    signalatlas = config.setdefault("signalatlas", {})
-    providers = signalatlas.setdefault("providers", {})
+    module_bucket = config.setdefault(str(module_key or "").strip(), {})
+    providers = module_bucket.setdefault("providers", {})
     provider_key = str(provider_id or "").strip()
     if not provider_key:
-        raise ValueError("SignalAtlas provider id required")
+        raise ValueError(f"{module_key} provider id required")
     current = providers.get(provider_key, {})
     if not isinstance(current, dict):
         current = {}
@@ -773,7 +808,27 @@ def set_signalatlas_provider_settings(provider_id: str, values: dict[str, Any]) 
     }
     providers[provider_key] = {**current, **clean_values}
     saved = save_local_config(config)
-    return deepcopy(saved.get("signalatlas", {}).get("providers", {}).get(provider_key, {}))
+    return deepcopy(saved.get(str(module_key or "").strip(), {}).get("providers", {}).get(provider_key, {}))
+
+
+def get_signalatlas_provider_settings(provider_id: str) -> dict:
+    return _get_module_provider_settings("signalatlas", provider_id)
+
+
+def set_signalatlas_provider_settings(provider_id: str, values: dict[str, Any]) -> dict:
+    return _set_module_provider_settings("signalatlas", provider_id, values)
+
+
+def get_perfatlas_settings() -> dict:
+    return _get_module_settings("perfatlas")
+
+
+def get_perfatlas_provider_settings(provider_id: str) -> dict:
+    return _get_module_provider_settings("perfatlas", provider_id)
+
+
+def set_perfatlas_provider_settings(provider_id: str, values: dict[str, Any]) -> dict:
+    return _set_module_provider_settings("perfatlas", provider_id, values)
 
 
 def mask_secret(value: str) -> str:

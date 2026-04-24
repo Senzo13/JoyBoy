@@ -45,6 +45,24 @@ class SignalAtlasStorageTests(unittest.TestCase):
             storage = SignalAtlasStorage(Path(tmp))
             self.assertFalse(storage.delete_audit("missing-audit"))
 
+    def test_index_record_keeps_planned_report_model(self):
+        with TemporaryDirectory() as tmp:
+            storage = SignalAtlasStorage(Path(tmp))
+            audit = storage.create_audit_stub(
+                target={
+                    "raw": "nevomove.com",
+                    "normalized_url": "https://nevomove.com/",
+                    "host": "nevomove.com",
+                    "mode": "public",
+                },
+                title="nevomove.com",
+                options={"max_pages": 12},
+                metadata={"ai": {"model": "openai:gpt-5.4"}},
+            )
+            listed = storage.list_audits(5)[0]
+            self.assertEqual(listed["report_model_label"], "openai:gpt-5.4")
+            self.assertEqual(listed["report_model_state"], "planned")
+
 
 if __name__ == "__main__":
     unittest.main()

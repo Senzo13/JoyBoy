@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import os
-import re
 from typing import Any, Dict, Tuple
-from urllib.parse import urlparse
 
 from flask import Blueprint, Response, jsonify, request
 
-from core.agent_runtime import get_llm_provider_catalog, get_terminal_model_profiles
+from core.audit_modules.model_context import get_audit_model_context
+from core.audit_modules.targets import normalize_public_target
 from core.signalatlas import (
     get_module_catalog,
     get_signalatlas_storage,
@@ -26,47 +25,10 @@ signalatlas_bp = Blueprint("signalatlas", __name__)
 SIGNALATLAS_DEFAULT_PAGE_BUDGET = 12
 SIGNALATLAS_MAX_PAGE_BUDGET = 1500
 SIGNALATLAS_UNLIMITED_PAGE_BUDGET_TOKENS = {"unlimited", "infinity", "infinite", "inf", "∞"}
-SIGNALATLAS_HOST_LABEL_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$", re.IGNORECASE)
-
-
-def _is_valid_signalatlas_public_host(hostname: str) -> bool:
-    clean = str(hostname or "").strip().lower().rstrip(".")
-    if not clean or "." not in clean:
-        return False
-
-    labels = [label for label in clean.split(".") if label]
-    if len(labels) < 2:
-        return False
-    if len(labels[-1]) < 2 or labels[-1].isdigit():
-        return False
-
-    return all(SIGNALATLAS_HOST_LABEL_RE.fullmatch(label) for label in labels)
 
 
 def _normalize_target(raw_value: str, mode: str) -> Dict[str, Any]:
-    value = str(raw_value or "").strip()
-    if not value:
-        raise ValueError("target required")
-    if "://" not in value:
-        value = f"https://{value}"
-    parsed = urlparse(value)
-    if parsed.scheme not in {"http", "https"}:
-        raise ValueError("invalid target url")
-    if parsed.username or parsed.password:
-        raise ValueError("invalid target url")
-    hostname = str(parsed.hostname or "").strip().lower()
-    if not hostname or not _is_valid_signalatlas_public_host(hostname):
-        raise ValueError("invalid target url")
-    netloc = hostname
-    if parsed.port:
-        netloc = f"{netloc}:{parsed.port}"
-    normalized = parsed._replace(netloc=netloc, path=parsed.path or "/", params="", query="", fragment="").geturl()
-    return {
-        "raw": raw_value,
-        "normalized_url": normalized,
-        "host": netloc,
-        "mode": mode,
-    }
+    return normalize_public_target(raw_value, mode)
 
 
 def _normalize_max_pages(raw_value: Any) -> int:
@@ -81,46 +43,7 @@ def _normalize_max_pages(raw_value: Any) -> int:
 
 
 def _model_context() -> Dict[str, Any]:
-    return {
-        "llm_providers": get_llm_provider_catalog(),
-        "terminal_model_profiles": get_terminal_model_profiles(configured_only=False, discover_remote=False),
-        "presets": [
-            {
-                "id": "fast",
-                "label": "Fast",
-                "summary": "Shortest turnaround, compact interpretation.",
-                "time_profile": "fast",
-                "privacy_profile": "depends_on_model",
-            },
-            {
-                "id": "balanced",
-                "label": "Balanced",
-                "summary": "Default JoyBoy balance between speed and depth.",
-                "time_profile": "balanced",
-                "privacy_profile": "depends_on_model",
-            },
-            {
-                "id": "expert",
-                "label": "Expert",
-                "summary": "Longer, deeper interpretation with stronger prioritization.",
-                "time_profile": "slower",
-                "privacy_profile": "depends_on_model",
-            },
-            {
-                "id": "local_private",
-                "label": "Local Private",
-                "summary": "Prefer privacy-preserving local models with terse output.",
-                "time_profile": "local",
-                "privacy_profile": "local_first",
-            },
-        ],
-        "levels": [
-            {"id": "no_ai", "label": "No AI interpretation"},
-            {"id": "basic_summary", "label": "Basic summary"},
-            {"id": "full_expert_analysis", "label": "Full expert analysis"},
-            {"id": "ai_remediation_pack", "label": "AI remediation pack"},
-        ],
-    }
+    return get_audit_model_context()
 
 
 @signalatlas_bp.route("/api/modules", methods=["GET"])

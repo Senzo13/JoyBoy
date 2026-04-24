@@ -5,6 +5,7 @@ from __future__ import annotations
 import threading
 from typing import Any, Dict
 
+from core.audit_modules.jobs import build_audit_job_id, update_module_progress
 from core.runtime import get_job_manager
 from core.runtime.storage import utc_now_iso
 
@@ -14,18 +15,11 @@ from .storage import get_signalatlas_storage
 
 
 def _job_id(prefix: str, audit_id: str) -> str:
-    return f"signalatlas-{prefix}-{audit_id}"
+    return build_audit_job_id("signalatlas", prefix, audit_id)
 
 
 def _update_progress(job_id: str, phase: str, progress: float, message: str) -> None:
-    get_job_manager().update(
-        job_id,
-        status="running",
-        phase=phase,
-        progress=progress,
-        message=message,
-        metadata={"module_id": "signalatlas"},
-    )
+    update_module_progress(job_id, "signalatlas", phase, progress, message)
 
 
 def _run_audit_job(job_id: str, audit_id: str, payload: Dict[str, Any]) -> None:
