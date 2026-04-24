@@ -6,6 +6,7 @@ import sys
 
 import torch
 
+from core.backends.sdnq_backend import register_sdnq_for_diffusers
 from core.models import IS_MAC, TORCH_DTYPE, VRAM_GB
 from core.models.manager_support import (
     DTYPE_NAME,
@@ -40,6 +41,7 @@ class ModelManagerFluxLoaderMixin:
         if self._inpaint_pipe is not None and self._current_inpaint_model == model_key:
             return
 
+        register_sdnq_for_diffusers()
         from diffusers import FluxPipeline, FluxTransformer2DModel
 
         if is_int8:
@@ -301,6 +303,7 @@ class ModelManagerFluxLoaderMixin:
         if self._inpaint_pipe is not None and self._current_inpaint_model == model_key:
             return
 
+        register_sdnq_for_diffusers()
         from core.models import IS_HIGH_END_GPU
         from diffusers import FluxFillPipeline
 
@@ -476,6 +479,7 @@ class ModelManagerFluxLoaderMixin:
         if self._inpaint_pipe is not None and self._current_inpaint_model == f"kontext_{model_id}{_model_key_suffix}":
             return
 
+        register_sdnq_for_diffusers()
         # FluxKontextPipeline disponible dans diffusers récent
         try:
             from diffusers import FluxKontextPipeline
@@ -621,5 +625,4 @@ class ModelManagerFluxLoaderMixin:
                 print(f"[MM] Warmup Flux skip: {e}")
         elif torch.cuda.is_available():
             print(f"[MM] Warmup Flux skip (pas de torch.compile)")
-
 

@@ -6,6 +6,11 @@ import sys
 
 import torch
 
+from core.backends.sdnq_backend import (
+    apply_sdnq_post_load_quant,
+    is_sdnq_quantized_model,
+    register_sdnq_for_diffusers,
+)
 from core.models import IS_MAC, TORCH_DTYPE, VRAM_GB
 from core.models.manager_support import (
     DTYPE_NAME,
@@ -102,6 +107,7 @@ class ModelManagerSDXLLoaderMixin:
         except Exception:
             pass
 
+        register_sdnq_for_diffusers()
         from diffusers import StableDiffusionInpaintPipeline, StableDiffusionXLInpaintPipeline, DPMSolverMultistepScheduler
 
         sdxl_keywords = ["SDXL", "Fluently", "Juggernaut", "epiCRealism", "CyberRealistic", "Illustrious", "Pony"]
@@ -161,8 +167,22 @@ class ModelManagerSDXLLoaderMixin:
             # Quantification selon le profil GPU + variante du modèle
             from core.models.gpu_profile import should_quantize
             do_quant, quant_type = should_quantize('sdxl', model_quant)
-            quantized_ok = False
-            if do_quant and not IS_MAC:
+            sdnq_quantized = is_sdnq_quantized_model(self._inpaint_pipe.unet)
+            quantized_ok = sdnq_quantized
+            if sdnq_quantized:
+                print("[MM] SDNQ pré-quantifié détecté sur le UNet SDXL")
+            elif do_quant and not IS_MAC:
+                self._inpaint_pipe.unet, quantized_ok, _sdnq_mode = apply_sdnq_post_load_quant(
+                    self._inpaint_pipe.unet,
+                    quant_type=quant_type,
+                    label=f"SDXL UNet ({model_name})",
+                    quant_conv=fooocus_applied,
+                    torch_dtype=TORCH_DTYPE,
+                )
+                if quantized_ok:
+                    sdnq_quantized = True
+                    print(f"[MM] {_sdnq_mode}")
+            if do_quant and not IS_MAC and not quantized_ok:
                 try:
                     from optimum.quanto import quantize, freeze, qint8, qint4
                 except ImportError:
@@ -245,7 +265,7 @@ class ModelManagerSDXLLoaderMixin:
                     from core.generation.fooocus_patch import reattach_fooocus_hook
                     reattach_fooocus_hook(self._inpaint_pipe.unet)
 
-            _place_sdxl_pipe(self._inpaint_pipe, model_name, quantized=quantized_ok)
+            _place_sdxl_pipe(self._inpaint_pipe, model_name, quantized=quantized_ok and not sdnq_quantized)
 
             # SageAttention pour le UNet SDXL (20-30% plus rapide)
             try:
@@ -347,6 +367,7 @@ class ModelManagerSDXLLoaderMixin:
         except Exception:
             pass
 
+        register_sdnq_for_diffusers()
         from diffusers import StableDiffusionXLPipeline, DPMSolverMultistepScheduler
 
         is_turbo = 'turbo' in model_name.lower()
@@ -437,9 +458,24 @@ class ModelManagerSDXLLoaderMixin:
             model_quant = sfm[2] if len(sfm) > 2 else model_quant
         from core.models.gpu_profile import should_quantize
         do_quant, quant_type = should_quantize('sdxl', model_quant)
-        quantized_ok = False
+        sdnq_quantized = is_sdnq_quantized_model(self._inpaint_pipe.unet)
+        quantized_ok = sdnq_quantized
+        if sdnq_quantized:
+            print("[MM] SDNQ pré-quantifié détecté sur le UNet Text2Img")
 
-        if do_quant and not IS_MAC:
+        if do_quant and not IS_MAC and not quantized_ok:
+            self._inpaint_pipe.unet, quantized_ok, _sdnq_mode = apply_sdnq_post_load_quant(
+                self._inpaint_pipe.unet,
+                quant_type=quant_type,
+                label=f"SDXL Text2Img UNet ({model_name})",
+                quant_conv=False,
+                torch_dtype=TORCH_DTYPE,
+            )
+            if quantized_ok:
+                sdnq_quantized = True
+                print(f"[MM] {_sdnq_mode}")
+
+        if do_quant and not IS_MAC and not quantized_ok:
             _publish_runtime_progress(
                 "quantize_model",
                 68,
@@ -521,7 +557,7 @@ class ModelManagerSDXLLoaderMixin:
             if not quantized_ok:
                 print(f"[MM] Text2img: quantification impossible, FP16")
 
-        _place_sdxl_pipe(self._inpaint_pipe, model_name, quantized=quantized_ok)
+        _place_sdxl_pipe(self._inpaint_pipe, model_name, quantized=quantized_ok and not sdnq_quantized)
         _publish_runtime_progress(
             "load_text2img_model",
             96,

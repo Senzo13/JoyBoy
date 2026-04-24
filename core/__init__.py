@@ -40,6 +40,7 @@ _ALIASES = {
     'core.utility_ai': 'core.ai.utility_ai',
     # Backends
     'core.gguf_backend': 'core.backends.gguf_backend',
+    'core.sdnq_backend': 'core.backends.sdnq_backend',
     'core.ollama_service': 'core.backends.ollama_service',
     'core.web_search': 'core.backends.web_search',
     'core.terminal_brain': 'core.backends.terminal_brain',

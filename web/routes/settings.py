@@ -836,6 +836,20 @@ def gguf_status():
         })
 
 
+@settings_bp.route('/api/backend/sdnq/status')
+def sdnq_status():
+    """Retourne le statut du backend SDNQ (Diffusers-native quantization)."""
+    try:
+        from core.sdnq_backend import get_sdnq_status
+        return jsonify(get_sdnq_status())
+    except ImportError:
+        return jsonify({
+            'available': False,
+            'enabled': False,
+            'error': 'Module sdnq_backend non trouvé'
+        })
+
+
 @settings_bp.route('/api/backend/set', methods=['POST'])
 def set_backend():
     """Change le backend actif (diffusers ou gguf)"""

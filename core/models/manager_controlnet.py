@@ -4,6 +4,11 @@ import sys
 
 import torch
 
+from core.backends.sdnq_backend import (
+    apply_sdnq_post_load_quant,
+    is_sdnq_quantized_model,
+    register_sdnq_for_diffusers,
+)
 from core.models import IS_MAC, TORCH_DTYPE, VRAM_GB
 from core.models.manager_support import (
     DTYPE_NAME,
@@ -559,6 +564,7 @@ class ModelManagerControlNetMixin:
             optimize_pipeline, custom_cache, _refresh_imported_model_registries
         )
         _refresh_imported_model_registries()
+        register_sdnq_for_diffusers()
         from diffusers import StableDiffusionXLControlNetInpaintPipeline, DPMSolverMultistepScheduler
 
         # Charger le ControlNet Depth + estimateur EN PARALLÈLE
@@ -748,9 +754,26 @@ class ModelManagerControlNetMixin:
             "Quantification et placement GPU...",
         )
         do_quant, quant_type = _sq('sdxl', model_quant)
-        quantized = False
+        sdnq_quantized = is_sdnq_quantized_model(self._inpaint_pipe.unet)
+        quantized = sdnq_quantized
         q_str = ""
-        if do_quant and not IS_MAC:
+        if sdnq_quantized:
+            q_str = " + sdnq"
+            print("[MM] SDNQ pré-quantifié détecté sur le UNet ControlNet")
+        elif do_quant and not IS_MAC:
+            self._inpaint_pipe.unet, quantized, _sdnq_mode = apply_sdnq_post_load_quant(
+                self._inpaint_pipe.unet,
+                quant_type=quant_type,
+                label=f"SDXL ControlNet UNet ({model_name})",
+                quant_conv=fooocus_applied,
+                torch_dtype=TORCH_DTYPE,
+            )
+            if quantized:
+                sdnq_quantized = True
+                q_str = " + sdnq"
+                print(f"[MM] {_sdnq_mode}")
+
+        if do_quant and not IS_MAC and not quantized:
             try:
                 from optimum.quanto import quantize, freeze, qint8, qint4
             except ImportError:
@@ -844,7 +867,12 @@ class ModelManagerControlNetMixin:
                 reattach_fooocus_hook(self._inpaint_pipe.unet)
 
         # Placement selon le profil GPU (quantification, offload_strategy du JSON)
-        _place_sdxl_pipe(self._inpaint_pipe, model_name, quantized=quantized, has_controlnet=True)
+        _place_sdxl_pipe(
+            self._inpaint_pipe,
+            model_name,
+            quantized=quantized and not sdnq_quantized,
+            has_controlnet=True,
+        )
 
         self._current_inpaint_model = model_name
         self._loras_loaded = {}
@@ -896,5 +924,4 @@ class ModelManagerControlNetMixin:
 
         # LoRAs chargés à la demande (lazy load) pour éviter perte de temps
         # self._load_all_loras()
-
 
