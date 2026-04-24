@@ -94,6 +94,18 @@ The Doctor reports whether the machine is ready for:
 - storage
 - packs
 
+## 7. Use the document gallery viewer
+
+Open `Settings > Storage`, then click any saved image or video card to open the gallery viewer.
+
+- Prompt and model metadata appear in the viewer sidebar under `Model` and `Prompt` when they were recorded for that file.
+- If a file was saved without metadata, the viewer shows `Not recorded`.
+- Supported shortcuts in the gallery viewer:
+  - `Escape` closes the viewer
+  - `Left Arrow` and `Right Arrow` move between saved items
+  - `Alt + mouse wheel` zooms the current image or video preview
+- Download and delete are available from the viewer buttons. There is no dedicated keyboard shortcut for those actions yet.
+
 ## FR
 
 Le chemin conseillé est simple:
@@ -104,3 +116,4 @@ Le chemin conseillé est simple:
 4. configurer les providers dans `Paramètres > Modèles`
 5. vérifier le Doctor avant d’ajouter des modèles
 6. utiliser `python scripts/bootstrap.py doctor` si tu veux un check terminal rapide
+7. ouvrir `Paramètres > Stockage` pour retrouver la galerie et voir les métadonnées `Modèle` et `Prompt` dans la visionneuse

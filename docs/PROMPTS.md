@@ -36,6 +36,10 @@ Good examples:
 - if identity matters, say `same person`
 - if location matters, say `same room` or `same background`
 
+## Reviewing saved prompt metadata
+
+If you want to check the prompt or model used for a generated image or video later, open `Settings > Storage` and click the file card. The gallery viewer sidebar shows the saved `Model` and `Prompt` when that metadata exists.
+
 ## Router behavior
 
 JoyBoy tries to detect:
