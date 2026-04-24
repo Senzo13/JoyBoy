@@ -234,13 +234,17 @@ def build_markdown_report(audit: Dict[str, Any]) -> str:
     evidence_pages = (snapshot.get("pages") or [])[:8]
     if evidence_pages:
         for page in evidence_pages:
-            lines.extend([
+            page_lines = [
                 f"### {page.get('final_url') or page.get('url')}",
                 "",
                 f"- Final URL: `{page.get('final_url') or page.get('url')}`",
                 f"- HTTP status: `{page.get('status_code', 0)}`",
                 f"- Title: `{page.get('title', '')}`",
                 f"- Canonical: `{page.get('canonical', '')}`",
+                (
+                    f"- HTML lang: `{page.get('html_lang', '') or 'unknown'}`"
+                    f"; hreflang entries: `{len(page.get('hreflang') or [])}`"
+                ),
                 f"- H1 count: `{page.get('h1_count', (page.get('heading_counts') or {}).get('h1', 0))}`",
                 (
                     f"- Visible text length: `{page.get('visible_text_length', 0)}` characters / "
@@ -252,7 +256,14 @@ def build_markdown_report(audit: Dict[str, Any]) -> str:
                 ),
                 f"- Cleaned body excerpt: {page.get('body_text_excerpt') or page.get('visible_text_excerpt') or '(empty)' }",
                 "",
-            ])
+            ]
+            if page.get("nosnippet") or page.get("max_snippet") is not None:
+                page_lines.insert(
+                    7,
+                    f"- Snippet directives: `nosnippet={bool(page.get('nosnippet'))}` / "
+                    f"`max-snippet={page.get('max_snippet') if page.get('max_snippet') is not None else 'default'}`",
+                )
+            lines.extend(page_lines)
     else:
         lines.extend([
             "- No page-level evidence snapshot was attached to this audit.",

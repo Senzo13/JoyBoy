@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 
 def _clean_mapping(values: Dict[str, Any]) -> Dict[str, Any]:
@@ -57,13 +57,18 @@ class PageSnapshot:
     h1: str = ""
     heading_counts: Dict[str, int] = field(default_factory=dict)
     html_lang: str = ""
+    canonical_in_head: bool = False
+    canonical_relative: bool = False
     word_count: int = 0
     content_units: int = 0
     cjk_char_count: int = 0
     text_hash: str = ""
     content_hash: str = ""
+    robots_meta: str = ""
     noindex: bool = False
     nofollow: bool = False
+    nosnippet: bool = False
+    max_snippet: Optional[int] = None
     x_robots_tag: str = ""
     hreflang: List[Dict[str, str]] = field(default_factory=list)
     structured_data_count: int = 0

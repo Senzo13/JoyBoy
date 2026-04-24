@@ -221,6 +221,10 @@ def _excerpt(value: str, limit: int = 500) -> str:
     return compact[:limit]
 
 
+def _normalized_text_key(value: str) -> str:
+    return re.sub(r"\s+", " ", str(value or "")).strip().lower()
+
+
 def _hash_text(value: str) -> str:
     return hashlib.sha1(value.encode("utf-8", errors="ignore")).hexdigest()
 
@@ -242,6 +246,67 @@ def _all_meta_contents(soup: Any, *names: str) -> Dict[str, str]:
         if name in lowered:
             values[name] = str(meta.get("content") or "").strip()
     return values
+
+
+def _parse_link_header_hreflang(header_value: str) -> List[Dict[str, str]]:
+    raw = str(header_value or "").strip()
+    if not raw:
+        return []
+    try:
+        parsed_links = requests.utils.parse_header_links(raw.rstrip(">").replace(">,<", ">, <"))
+    except Exception:
+        return []
+    entries: List[Dict[str, str]] = []
+    for item in parsed_links:
+        if not isinstance(item, dict):
+            continue
+        rel = str(item.get("rel") or "").strip().lower()
+        hreflang = str(item.get("hreflang") or "").strip()
+        href = str(item.get("url") or "").strip()
+        if "alternate" not in rel or not hreflang or not href:
+            continue
+        entries.append({"lang": hreflang, "href": href})
+    return entries
+
+
+def _merge_hreflang_entries(*groups: Iterable[Dict[str, str]]) -> List[Dict[str, str]]:
+    merged: List[Dict[str, str]] = []
+    seen = set()
+    for group in groups:
+        for item in group or []:
+            lang = str((item or {}).get("lang") or "").strip()
+            href = str((item or {}).get("href") or "").strip()
+            if not lang or not href:
+                continue
+            key = (_normalize_lang_tag(lang), href)
+            if key in seen:
+                continue
+            seen.add(key)
+            merged.append({"lang": lang, "href": href})
+    return merged
+
+
+def _is_absolute_http_url(url: str) -> bool:
+    parsed = urlparse(str(url or "").strip())
+    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+
+
+def _extract_robots_directives(robots_meta: str, x_robots: str) -> Dict[str, Any]:
+    robots_blob = f"{robots_meta},{x_robots}".lower()
+    max_snippet = None
+    snippet_match = re.search(r"max-snippet\s*:\s*(-?\d+)", robots_blob)
+    if snippet_match:
+        try:
+            max_snippet = int(snippet_match.group(1))
+        except ValueError:
+            max_snippet = None
+    return {
+        "robots_blob": robots_blob,
+        "noindex": "noindex" in robots_blob,
+        "nofollow": "nofollow" in robots_blob,
+        "nosnippet": "nosnippet" in robots_blob,
+        "max_snippet": max_snippet,
+    }
 
 
 def _extract_internal_links(soup: Any, page_url: str, host: str) -> Tuple[List[str], int]:
@@ -659,17 +724,18 @@ def _parse_robots(session: requests.Session, entry_url: str) -> Dict[str, Any]:
     return result
 
 
-def _parse_sitemap_xml(content: str) -> Tuple[List[str], List[str]]:
+def _parse_sitemap_xml(content: str) -> Tuple[List[str], List[str], int]:
     urls: List[str] = []
     indexes: List[str] = []
     if not content:
-        return urls, indexes
+        return urls, indexes, 0
     locs = re.findall(r"<loc>(.*?)</loc>", content, flags=re.I | re.S)
+    alternate_count = len(re.findall(r"hreflang\s*=", content, flags=re.I))
     if "<sitemapindex" in content.lower():
         indexes = [unescape(item.strip()) for item in locs]
     else:
         urls = [unescape(item.strip()) for item in locs]
-    return urls, indexes
+    return urls, indexes, alternate_count
 
 
 def _discover_sitemaps(session: requests.Session, entry_url: str, robots: Dict[str, Any]) -> Dict[str, Any]:
@@ -683,6 +749,7 @@ def _discover_sitemaps(session: requests.Session, entry_url: str, robots: Dict[s
     sitemap_urls: List[str] = []
     sitemap_indexes: List[str] = []
     fetched: List[Dict[str, Any]] = []
+    alternate_count = 0
 
     while candidates and len(fetched) < 8:
         url = _clean_url(candidates.pop(0))
@@ -693,11 +760,13 @@ def _discover_sitemaps(session: requests.Session, entry_url: str, robots: Dict[s
             response = session.get(url, timeout=DEFAULT_TIMEOUT, headers={"User-Agent": USER_AGENT})
             item = {"url": url, "status_code": response.status_code, "found": bool(response.ok)}
             if response.ok:
-                urls, indexes = _parse_sitemap_xml(response.text or "")
+                urls, indexes, alternates = _parse_sitemap_xml(response.text or "")
                 item["url_count"] = len(urls)
                 item["index_count"] = len(indexes)
+                item["alternate_count"] = alternates
                 sitemap_urls.extend(urls)
                 sitemap_indexes.extend(indexes)
+                alternate_count += alternates
                 for nested in indexes:
                     if nested not in seen:
                         candidates.append(nested)
@@ -719,6 +788,7 @@ def _discover_sitemaps(session: requests.Session, entry_url: str, robots: Dict[s
         "files": fetched,
         "urls": unique_urls,
         "indexes": sitemap_indexes,
+        "alternate_count": alternate_count,
     }
 
 
@@ -745,6 +815,8 @@ def _extract_page_snapshot(
         "heading_counts": {},
         "hreflang": [],
         "html_lang": "",
+        "canonical_in_head": False,
+        "canonical_relative": False,
         "structured_data_types": [],
         "open_graph": {},
         "twitter_cards": {},
@@ -755,6 +827,12 @@ def _extract_page_snapshot(
         "visible_text_excerpt": "",
         "body_text_excerpt": "",
         "body_html_excerpt": "",
+        "robots_meta": "",
+        "noindex": False,
+        "nofollow": False,
+        "nosnippet": False,
+        "max_snippet": None,
+        "x_robots_tag": "",
         "image_total": 0,
         "image_missing_alt": 0,
         "image_empty_alt": 0,
@@ -790,9 +868,14 @@ def _extract_page_snapshot(
     page["html_lang"] = _normalize_lang_tag(
         str((html_tag or {}).get("lang") or (html_tag or {}).get("xml:lang") or "").strip()
     )
+    head = soup.find("head")
     page["title"] = (soup.title.get_text(" ", strip=True) if soup.title else "")[:240]
     page["meta_description"] = _meta_content(soup, "description")
-    page["canonical"] = str((soup.find("link", rel=lambda rel: rel and "canonical" in str(rel).lower()) or {}).get("href") or "").strip()
+    canonical_in_head = head.find("link", rel=lambda rel: rel and "canonical" in str(rel).lower()) if head else None
+    canonical_tag = canonical_in_head or soup.find("link", rel=lambda rel: rel and "canonical" in str(rel).lower())
+    page["canonical"] = str((canonical_tag or {}).get("href") or "").strip()
+    page["canonical_in_head"] = bool(canonical_in_head and page["canonical"])
+    page["canonical_relative"] = bool(page["canonical"] and not _is_absolute_http_url(page["canonical"]))
 
     heading_counts = {}
     for level in ("h1", "h2", "h3", "h4"):
@@ -808,18 +891,22 @@ def _extract_page_snapshot(
 
     robots_meta = _meta_content(soup, "robots")
     x_robots = str(response.headers.get("x-robots-tag", "")).strip()
-    robots_blob = f"{robots_meta},{x_robots}".lower()
-    page["noindex"] = "noindex" in robots_blob
-    page["nofollow"] = "nofollow" in robots_blob
+    robots_directives = _extract_robots_directives(robots_meta, x_robots)
+    page["robots_meta"] = robots_meta
+    page["noindex"] = bool(robots_directives["noindex"])
+    page["nofollow"] = bool(robots_directives["nofollow"])
+    page["nosnippet"] = bool(robots_directives["nosnippet"])
+    page["max_snippet"] = robots_directives["max_snippet"]
     page["x_robots_tag"] = x_robots
 
-    hreflang = []
+    html_hreflang = []
     for tag in soup.find_all("link", rel=lambda rel: rel and "alternate" in str(rel).lower(), hreflang=True):
-        hreflang.append({
+        html_hreflang.append({
             "lang": str(tag.get("hreflang") or "").strip(),
             "href": str(tag.get("href") or "").strip(),
         })
-    page["hreflang"] = hreflang[:24]
+    header_hreflang = _parse_link_header_hreflang(response.headers.get("link", ""))
+    page["hreflang"] = _merge_hreflang_entries(html_hreflang, header_hreflang)[:24]
 
     structured_types = []
     for script in soup.find_all("script", attrs={"type": re.compile("ld\\+json", re.I)}):
@@ -937,6 +1024,15 @@ def _is_indexable_page(page: Dict[str, Any]) -> bool:
     return True
 
 
+def _is_self_canonical_page(page: Dict[str, Any]) -> bool:
+    final_url = page.get("final_url") or page.get("url") or ""
+    canonical = str(page.get("canonical") or "").strip()
+    if not final_url or not canonical:
+        return True
+    canonical_url = _clean_url(urljoin(final_url, canonical))
+    return _same_normalized_url(canonical_url, final_url)
+
+
 def _homepage_canonical_allowed_alias(
     homepage: Dict[str, Any],
     target_url: str,
@@ -958,6 +1054,20 @@ def _homepage_canonical_allowed_alias(
         return False
     sitemap_keys = {_comparison_url(url) for url in sitemaps.get("urls") or []}
     return _comparison_url(final_url) not in sitemap_keys and _comparison_url(canonical_url) in sitemap_keys
+
+
+def _multilingual_roots(indexable_pages: List[Dict[str, Any]], sitemap_urls: List[str]) -> List[str]:
+    roots = {
+        _lang_root(_page_language_hint(page))
+        for page in indexable_pages
+        if _page_language_hint(page)
+    }
+    roots.update(
+        _lang_root(_path_locale_hint(url))
+        for url in sitemap_urls
+        if _path_locale_hint(url)
+    )
+    return sorted(root for root in roots if root)
 
 
 def _geo_signal_snapshot(
@@ -1149,6 +1259,8 @@ def _build_findings(
     indexable_pages = [page for page in pages if _is_indexable_page(page)]
     target_host = urlparse(target_url).netloc.lower()
     target_tld = _host_tld(target_host)
+    sitemap_urls = [url for url in sitemaps.get("urls") or [] if not _is_system_url(url)]
+    multilingual_roots = _multilingual_roots(indexable_pages, sitemap_urls)
 
     if not robots.get("found"):
         findings.append(_finding(
@@ -1251,6 +1363,52 @@ def _build_findings(
             acceptance="Homepage HTML and headers no longer contain noindex and the page remains crawlable.",
         ))
 
+    snippet_restricted_pages = [
+        page
+        for page in indexable_pages
+        if page.get("nosnippet") or (
+            page.get("max_snippet") is not None and int(page.get("max_snippet") or 0) <= 0
+        )
+    ]
+    if snippet_restricted_pages:
+        sample = next(
+            (
+                page
+                for page in snippet_restricted_pages
+                if _same_normalized_url(page.get("final_url") or page.get("url") or "", target_url)
+            ),
+            snippet_restricted_pages[0],
+        )
+        evidence = [f"{len(snippet_restricted_pages)} sampled indexable page(s) emit nosnippet or max-snippet:0"]
+        if sample.get("robots_meta"):
+            evidence.append(f"meta robots: {sample.get('robots_meta')}")
+        if sample.get("x_robots_tag"):
+            evidence.append(f"X-Robots-Tag: {sample.get('x_robots_tag')}")
+        findings.append(_finding(
+            "snippet-controls-restrict-visibility",
+            title="Snippet controls restrict Search and AI visibility",
+            url=sample.get("final_url") or sample.get("url") or target_url,
+            scope="site" if len(snippet_restricted_pages) > 1 else "page",
+            category="search_appearance",
+            bucket="visibility_readiness",
+            severity="high" if _same_normalized_url(sample.get("final_url") or sample.get("url") or "", target_url) else "medium",
+            confidence="Confirmed",
+            impact="High",
+            evidence=evidence,
+            diagnostic=(
+                "Some sampled pages use page-level snippet restrictions. These directives can suppress normal search snippets and, in Google, also limit or prevent direct reuse in AI Overviews and AI Mode."
+            ),
+            probable_cause=(
+                "A conservative robots policy, legal default, or template-level SEO setting is applying nosnippet or max-snippet:0 to discovery pages."
+            ),
+            recommended_fix=(
+                "Remove nosnippet or max-snippet:0 from pages meant to earn search snippets or AI citations, and keep these directives only where suppression is intentional."
+            ),
+            acceptance=(
+                "Indexable pages intended for discovery no longer emit nosnippet or max-snippet:0 in meta robots or X-Robots-Tag."
+            ),
+        ))
+
     shell_like_pages = [page for page in pages if page.get("shell_like")]
     js_shell_root_active = bool(shell_like_pages)
     if shell_like_pages:
@@ -1304,6 +1462,35 @@ def _build_findings(
             acceptance="All sampled HTML documents contain a non-empty, route-specific title tag.",
         ))
 
+    self_canonical_pages = [page for page in indexable_pages if _is_self_canonical_page(page)]
+    duplicate_titles = Counter(
+        _normalized_text_key(page.get("title"))
+        for page in self_canonical_pages
+        if _normalized_text_key(page.get("title"))
+    )
+    duplicate_title_values = {value for value, count in duplicate_titles.items() if count >= 2}
+    duplicate_title_pages = [
+        page for page in self_canonical_pages if _normalized_text_key(page.get("title")) in duplicate_title_values
+    ]
+    if len(duplicate_title_pages) >= 2:
+        sample = duplicate_title_pages[0]
+        findings.append(_finding(
+            "duplicate-title-text",
+            title="Repeated title text weakens result differentiation",
+            url=sample.get("final_url") or sample.get("url") or target_url,
+            scope="template",
+            category="metadata",
+            bucket="metadata_semantics",
+            severity="medium",
+            confidence="Strong signal",
+            impact="Medium",
+            evidence=[f"{len(duplicate_title_pages)} sampled self-canonical page(s) share the same title text"],
+            diagnostic="Multiple sampled pages reuse the same or near-identical title text.",
+            probable_cause="Template defaults or CMS fallbacks are producing boilerplate titles instead of route-specific titles.",
+            recommended_fix="Generate concise, distinct title text for each indexable template or URL cluster.",
+            acceptance="Important sampled pages expose distinct titles that reflect their actual page content.",
+        ))
+
     pages_without_description = [page for page in indexable_pages if not page.get("meta_description")]
     if pages_without_description:
         sample = pages_without_description[0]
@@ -1322,6 +1509,36 @@ def _build_findings(
             probable_cause="Description fields are not generated or omitted on secondary pages.",
             recommended_fix="Add concise, route-specific descriptions to each indexable page type.",
             acceptance="All key templates return a non-empty meta description aligned with the page intent.",
+        ))
+
+    duplicate_descriptions = Counter(
+        _normalized_text_key(page.get("meta_description"))
+        for page in self_canonical_pages
+        if _normalized_text_key(page.get("meta_description"))
+    )
+    duplicate_description_values = {value for value, count in duplicate_descriptions.items() if count >= 2}
+    duplicate_description_pages = [
+        page
+        for page in self_canonical_pages
+        if _normalized_text_key(page.get("meta_description")) in duplicate_description_values
+    ]
+    if len(duplicate_description_pages) >= 2:
+        sample = duplicate_description_pages[0]
+        findings.append(_finding(
+            "duplicate-meta-description",
+            title="Repeated meta descriptions weaken snippet quality",
+            url=sample.get("final_url") or sample.get("url") or target_url,
+            scope="template",
+            category="metadata",
+            bucket="metadata_semantics",
+            severity="medium",
+            confidence="Strong signal",
+            impact="Medium",
+            evidence=[f"{len(duplicate_description_pages)} sampled self-canonical page(s) share the same meta description"],
+            diagnostic="Multiple sampled pages reuse the same or very similar meta description text.",
+            probable_cause="A site-wide fallback description or boilerplate metadata is overriding page-level summaries.",
+            recommended_fix="Generate unique meta descriptions for important pages, especially key landing pages, articles, and product/service URLs.",
+            acceptance="Important sampled pages expose distinct meta descriptions that summarize the specific page intent.",
         ))
 
     missing_h1 = [page for page in indexable_pages if not page.get("h1")]
@@ -1482,7 +1699,6 @@ def _build_findings(
             ),
         ))
 
-    sitemap_urls = [url for url in sitemaps.get("urls") or [] if not _is_system_url(url)]
     crawled_keys = {_comparison_url(page.get("final_url") or page.get("url") or "") for page in pages}
     internal_linked_keys = {
         _comparison_url(link)
@@ -1619,6 +1835,68 @@ def _build_findings(
                 ),
             ))
 
+    hreflang_pages = [page for page in indexable_pages if page.get("hreflang")]
+    sitemap_alternates = int(sitemaps.get("alternate_count") or 0)
+    relative_hreflang_pages = [
+        page
+        for page in hreflang_pages
+        if any(not _is_absolute_http_url(item.get("href") or "") for item in (page.get("hreflang") or []))
+    ]
+    missing_self_hreflang_pages = [
+        page
+        for page in hreflang_pages
+        if not any(
+            _same_normalized_url(
+                urljoin(page.get("final_url") or page.get("url") or "", item.get("href") or ""),
+                page.get("final_url") or page.get("url") or "",
+            )
+            for item in (page.get("hreflang") or [])
+            if item.get("href")
+        )
+    ]
+    missing_all_alternates = len(multilingual_roots) >= 2 and not hreflang_pages and sitemap_alternates == 0
+    if missing_all_alternates or relative_hreflang_pages or missing_self_hreflang_pages:
+        sample = (
+            relative_hreflang_pages
+            or missing_self_hreflang_pages
+            or indexable_pages
+            or pages
+            or [{"final_url": target_url}]
+        )[0]
+        evidence = [f"Detected multilingual roots: {', '.join(multilingual_roots) or 'none'}"]
+        if missing_all_alternates:
+            evidence.append("No hreflang annotations were detected in sampled HTML/HTTP responses or sitemap files.")
+        if relative_hreflang_pages:
+            evidence.append(f"{len(relative_hreflang_pages)} sampled page(s) use non-absolute hreflang URLs")
+        if missing_self_hreflang_pages:
+            evidence.append(f"{len(missing_self_hreflang_pages)} sampled page(s) omit a self-referencing alternate")
+        if sitemap_alternates:
+            evidence.append(f"{sitemap_alternates} sitemap alternate annotation(s) were discovered")
+        findings.append(_finding(
+            "hreflang-implementation-gaps",
+            title="Localized alternate signals are missing or inconsistent",
+            url=sample.get("final_url") or sample.get("url") or target_url,
+            scope="site",
+            category="internationalization",
+            bucket="indexability",
+            severity="high" if missing_all_alternates and len(multilingual_roots) >= 3 else "medium",
+            confidence="Strong signal" if missing_all_alternates else "Confirmed",
+            impact="High",
+            evidence=evidence,
+            diagnostic=(
+                "The site exposes multiple language variants, but the alternate-language implementation is missing or inconsistent in the sampled evidence."
+            ),
+            probable_cause=(
+                "Localized pages were published without a maintained hreflang cluster, or the chosen implementation is incomplete on some templates."
+            ),
+            recommended_fix=(
+                "Implement one maintained alternate-language method across localized pages (HTML link tags, HTTP Link headers, or sitemap alternates), and ensure each locale lists itself plus the other variants with fully-qualified URLs."
+            ),
+            acceptance=(
+                "Localized versions expose a consistent alternate-language cluster across the chosen method, with self-references and fully-qualified locale URLs."
+            ),
+        ))
+
     if not homepage.get("structured_data_count"):
         findings.append(_finding(
             "structured-data-missing",
@@ -1653,6 +1931,48 @@ def _build_findings(
             probable_cause="Social sharing metadata is not set by the main layout.",
             recommended_fix="Add core Open Graph and Twitter metadata to the main templates.",
             acceptance="Homepage and key templates expose OG title, description, and image metadata in HTML.",
+        ))
+
+    relative_canonical_pages = [page for page in indexable_pages if page.get("canonical_relative")]
+    if relative_canonical_pages:
+        sample = relative_canonical_pages[0]
+        findings.append(_finding(
+            "relative-canonical-url",
+            title="Canonical URLs use relative paths",
+            url=sample.get("final_url") or sample.get("url") or target_url,
+            scope="template",
+            category="canonical",
+            bucket="indexability",
+            severity="low",
+            confidence="Confirmed",
+            impact="Low",
+            evidence=[f"{len(relative_canonical_pages)} sampled page(s) emit a relative canonical", sample.get("canonical", "")],
+            diagnostic="Some sampled canonical annotations use relative paths instead of fully-qualified URLs.",
+            probable_cause="The canonical helper is outputting path-only values from the router or template layer.",
+            recommended_fix="Emit absolute canonical URLs in HTML and HTTP headers to avoid environment or host ambiguity.",
+            acceptance="Sampled canonical annotations use fully-qualified public URLs.",
+        ))
+
+    canonical_outside_head_pages = [
+        page for page in indexable_pages if page.get("canonical") and not page.get("canonical_in_head")
+    ]
+    if canonical_outside_head_pages:
+        sample = canonical_outside_head_pages[0]
+        findings.append(_finding(
+            "canonical-outside-head",
+            title="Canonical annotation is not anchored in the HTML head",
+            url=sample.get("final_url") or sample.get("url") or target_url,
+            scope="template",
+            category="canonical",
+            bucket="indexability",
+            severity="medium",
+            confidence="Confirmed",
+            impact="Medium",
+            evidence=[f"{len(canonical_outside_head_pages)} sampled page(s) expose canonical outside <head>"],
+            diagnostic="A sampled canonical link was not found in the HTML head, where Google expects it.",
+            probable_cause="The canonical element is being injected in the body, fragment, or an invalid document structure.",
+            recommended_fix="Render the rel=canonical link inside a valid head section, or use a canonical HTTP Link header where appropriate.",
+            acceptance="Sampled pages place canonical annotations in a valid HTML head or canonical HTTP header.",
         ))
 
     if homepage.get("canonical") and not _homepage_canonical_allowed_alias(homepage, target_url, sitemaps):
@@ -1748,11 +2068,17 @@ def _build_visibility_signals(
     if owner_mode and indexnow_provider.get("configured"):
         indexnow_status = "Strong signal"
         indexnow_confidence = "Confirmed"
-        indexnow_note = "Owner-side IndexNow key is configured in JoyBoy for this target workspace."
+        indexnow_note = (
+            "Owner-side IndexNow key is configured in JoyBoy for this target workspace. "
+            "This improves freshness signaling, but does not guarantee crawling or indexing."
+        )
     elif indexnow_public_hint:
         indexnow_status = "Strong signal"
         indexnow_confidence = "Estimated"
-        indexnow_note = "SignalAtlas found public IndexNow hints in the sampled host output."
+        indexnow_note = (
+            "SignalAtlas found public IndexNow hints in the sampled host output. "
+            "IndexNow can speed discovery, but it does not guarantee crawling or indexing."
+        )
     else:
         indexnow_status = "Unknown"
         indexnow_confidence = "Unknown"

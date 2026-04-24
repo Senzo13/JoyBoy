@@ -710,6 +710,311 @@ class SignalAtlasEngineTests(unittest.TestCase):
         }
         return self._fixture_response(url, fixtures)
 
+    def fake_get_multilingual_without_hreflang(self, url, timeout=None, headers=None, allow_redirects=True):
+        del timeout, headers, allow_redirects
+        fixtures = {
+            "https://multilang.example.com/robots.txt": _FakeResponse(
+                "https://multilang.example.com/robots.txt",
+                text="User-agent: *\nAllow: /\nSitemap: https://multilang.example.com/sitemap.xml\n",
+                headers={"content-type": "text/plain; charset=utf-8"},
+            ),
+            "https://multilang.example.com/sitemap.xml": _FakeResponse(
+                "https://multilang.example.com/sitemap.xml",
+                text="""
+                <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+                  <url><loc>https://multilang.example.com/</loc></url>
+                  <url><loc>https://multilang.example.com/fr/</loc></url>
+                  <url><loc>https://multilang.example.com/en/</loc></url>
+                </urlset>
+                """,
+                headers={"content-type": "application/xml; charset=utf-8"},
+            ),
+            "https://multilang.example.com/": _FakeResponse(
+                "https://multilang.example.com/",
+                text="""
+                <html lang="en">
+                  <head>
+                    <title>Global home</title>
+                    <meta name="description" content="Multilingual homepage">
+                    <link rel="canonical" href="https://multilang.example.com/">
+                  </head>
+                  <body>
+                    <h1>English homepage</h1>
+                    <p>This homepage links to multiple localized sections but does not publish alternate annotations yet.</p>
+                    <a href="/fr/">FR</a>
+                    <a href="/en/">EN</a>
+                  </body>
+                </html>
+                """,
+                headers={"content-type": "text/html; charset=utf-8"},
+            ),
+            "https://multilang.example.com/fr/": _FakeResponse(
+                "https://multilang.example.com/fr/",
+                text="""
+                <html lang="fr">
+                  <head>
+                    <title>Accueil FR</title>
+                    <meta name="description" content="Version française">
+                    <link rel="canonical" href="https://multilang.example.com/fr/">
+                  </head>
+                  <body>
+                    <h1>Version française</h1>
+                    <p>Cette version française existe sans cluster hreflang.</p>
+                    <a href="/en/">EN</a>
+                  </body>
+                </html>
+                """,
+                headers={"content-type": "text/html; charset=utf-8"},
+            ),
+            "https://multilang.example.com/en/": _FakeResponse(
+                "https://multilang.example.com/en/",
+                text="""
+                <html lang="en">
+                  <head>
+                    <title>Home EN</title>
+                    <meta name="description" content="English locale">
+                    <link rel="canonical" href="https://multilang.example.com/en/">
+                  </head>
+                  <body>
+                    <h1>English locale page</h1>
+                    <p>This English page also lacks explicit alternate-language annotations.</p>
+                    <a href="/fr/">FR</a>
+                  </body>
+                </html>
+                """,
+                headers={"content-type": "text/html; charset=utf-8"},
+            ),
+        }
+        return self._fixture_response(url, fixtures)
+
+    def fake_get_sitemap_hreflang(self, url, timeout=None, headers=None, allow_redirects=True):
+        del timeout, headers, allow_redirects
+        fixtures = {
+            "https://sitemap-hreflang.example.com/robots.txt": _FakeResponse(
+                "https://sitemap-hreflang.example.com/robots.txt",
+                text="User-agent: *\nAllow: /\nSitemap: https://sitemap-hreflang.example.com/sitemap.xml\n",
+                headers={"content-type": "text/plain; charset=utf-8"},
+            ),
+            "https://sitemap-hreflang.example.com/sitemap.xml": _FakeResponse(
+                "https://sitemap-hreflang.example.com/sitemap.xml",
+                text="""
+                <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">
+                  <url>
+                    <loc>https://sitemap-hreflang.example.com/fr/</loc>
+                    <xhtml:link rel="alternate" hreflang="fr" href="https://sitemap-hreflang.example.com/fr/" />
+                    <xhtml:link rel="alternate" hreflang="en" href="https://sitemap-hreflang.example.com/en/" />
+                  </url>
+                  <url>
+                    <loc>https://sitemap-hreflang.example.com/en/</loc>
+                    <xhtml:link rel="alternate" hreflang="fr" href="https://sitemap-hreflang.example.com/fr/" />
+                    <xhtml:link rel="alternate" hreflang="en" href="https://sitemap-hreflang.example.com/en/" />
+                  </url>
+                </urlset>
+                """,
+                headers={"content-type": "application/xml; charset=utf-8"},
+            ),
+            "https://sitemap-hreflang.example.com/": _FakeResponse(
+                "https://sitemap-hreflang.example.com/",
+                text="""
+                <html lang="en">
+                  <head>
+                    <title>Locale selector</title>
+                    <meta name="description" content="Root selector">
+                    <link rel="canonical" href="https://sitemap-hreflang.example.com/">
+                  </head>
+                  <body>
+                    <h1>Locale selector</h1>
+                    <p>This root page links to localized sections while alternates are maintained in sitemap annotations.</p>
+                    <a href="/fr/">FR</a>
+                    <a href="/en/">EN</a>
+                  </body>
+                </html>
+                """,
+                headers={"content-type": "text/html; charset=utf-8"},
+            ),
+            "https://sitemap-hreflang.example.com/fr/": _FakeResponse(
+                "https://sitemap-hreflang.example.com/fr/",
+                text="""
+                <html lang="fr">
+                  <head>
+                    <title>Page FR</title>
+                    <meta name="description" content="Version française">
+                    <link rel="canonical" href="https://sitemap-hreflang.example.com/fr/">
+                  </head>
+                  <body>
+                    <h1>Page FR</h1>
+                    <p>La locale FR s'appuie sur les annotations de sitemap.</p>
+                  </body>
+                </html>
+                """,
+                headers={"content-type": "text/html; charset=utf-8"},
+            ),
+            "https://sitemap-hreflang.example.com/en/": _FakeResponse(
+                "https://sitemap-hreflang.example.com/en/",
+                text="""
+                <html lang="en">
+                  <head>
+                    <title>Page EN</title>
+                    <meta name="description" content="English version">
+                    <link rel="canonical" href="https://sitemap-hreflang.example.com/en/">
+                  </head>
+                  <body>
+                    <h1>Page EN</h1>
+                    <p>The EN locale relies on sitemap alternate annotations.</p>
+                  </body>
+                </html>
+                """,
+                headers={"content-type": "text/html; charset=utf-8"},
+            ),
+        }
+        return self._fixture_response(url, fixtures)
+
+    def fake_get_snippet_restricted(self, url, timeout=None, headers=None, allow_redirects=True):
+        del timeout, headers, allow_redirects
+        fixtures = {
+            "https://snippet.example.com/robots.txt": _FakeResponse(
+                "https://snippet.example.com/robots.txt",
+                text="User-agent: *\nAllow: /\n",
+                headers={"content-type": "text/plain; charset=utf-8"},
+            ),
+            "https://snippet.example.com/sitemap.xml": _FakeResponse(
+                "https://snippet.example.com/sitemap.xml",
+                status_code=404,
+                text="not found",
+                headers={"content-type": "text/plain; charset=utf-8"},
+            ),
+            "https://snippet.example.com/": _FakeResponse(
+                "https://snippet.example.com/",
+                text="""
+                <html lang="en">
+                  <head>
+                    <title>Snippet restricted</title>
+                    <meta name="description" content="Homepage with restrictive snippet rules">
+                    <meta name="robots" content="index,follow,nosnippet,max-snippet:0">
+                    <link rel="canonical" href="https://snippet.example.com/">
+                  </head>
+                  <body>
+                    <h1>Snippet restricted homepage</h1>
+                    <p>This page intentionally uses snippet-restrictive robots directives for the regression test.</p>
+                  </body>
+                </html>
+                """,
+                headers={"content-type": "text/html; charset=utf-8"},
+            ),
+        }
+        return self._fixture_response(url, fixtures)
+
+    def fake_get_boilerplate_metadata(self, url, timeout=None, headers=None, allow_redirects=True):
+        del timeout, headers, allow_redirects
+        fixtures = {
+            "https://boilerplate.example.com/robots.txt": _FakeResponse(
+                "https://boilerplate.example.com/robots.txt",
+                text="User-agent: *\nAllow: /\nSitemap: https://boilerplate.example.com/sitemap.xml\n",
+                headers={"content-type": "text/plain; charset=utf-8"},
+            ),
+            "https://boilerplate.example.com/sitemap.xml": _FakeResponse(
+                "https://boilerplate.example.com/sitemap.xml",
+                text="""
+                <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+                  <url><loc>https://boilerplate.example.com/</loc></url>
+                  <url><loc>https://boilerplate.example.com/service-a</loc></url>
+                  <url><loc>https://boilerplate.example.com/service-b</loc></url>
+                </urlset>
+                """,
+                headers={"content-type": "application/xml; charset=utf-8"},
+            ),
+            "https://boilerplate.example.com/": _FakeResponse(
+                "https://boilerplate.example.com/",
+                text="""
+                <html lang="en">
+                  <head>
+                    <title>Acme Services</title>
+                    <meta name="description" content="Acme services for every customer">
+                    <link rel="canonical" href="https://boilerplate.example.com/">
+                  </head>
+                  <body>
+                    <h1>Acme homepage</h1>
+                    <p>This homepage links to several services but still reuses the same metadata as internal service pages.</p>
+                    <a href="/service-a">Service A</a>
+                    <a href="/service-b">Service B</a>
+                  </body>
+                </html>
+                """,
+                headers={"content-type": "text/html; charset=utf-8"},
+            ),
+            "https://boilerplate.example.com/service-a": _FakeResponse(
+                "https://boilerplate.example.com/service-a",
+                text="""
+                <html lang="en">
+                  <head>
+                    <title>Acme Services</title>
+                    <meta name="description" content="Acme services for every customer">
+                    <link rel="canonical" href="https://boilerplate.example.com/service-a">
+                  </head>
+                  <body>
+                    <h1>Service A</h1>
+                    <p>Service A has its own content, but the title and meta description are duplicated from the rest of the site.</p>
+                    <a href="/">Home</a>
+                  </body>
+                </html>
+                """,
+                headers={"content-type": "text/html; charset=utf-8"},
+            ),
+            "https://boilerplate.example.com/service-b": _FakeResponse(
+                "https://boilerplate.example.com/service-b",
+                text="""
+                <html lang="en">
+                  <head>
+                    <title>Acme Services</title>
+                    <meta name="description" content="Acme services for every customer">
+                    <link rel="canonical" href="https://boilerplate.example.com/service-b">
+                  </head>
+                  <body>
+                    <h1>Service B</h1>
+                    <p>Service B repeats the same boilerplate metadata instead of clearly differentiating itself in search results.</p>
+                    <a href="/">Home</a>
+                  </body>
+                </html>
+                """,
+                headers={"content-type": "text/html; charset=utf-8"},
+            ),
+        }
+        return self._fixture_response(url, fixtures)
+
+    def fake_get_invalid_canonical_markup(self, url, timeout=None, headers=None, allow_redirects=True):
+        del timeout, headers, allow_redirects
+        fixtures = {
+            "https://canonical-risk.example.com/robots.txt": _FakeResponse(
+                "https://canonical-risk.example.com/robots.txt",
+                text="User-agent: *\nAllow: /\n",
+                headers={"content-type": "text/plain; charset=utf-8"},
+            ),
+            "https://canonical-risk.example.com/sitemap.xml": _FakeResponse(
+                "https://canonical-risk.example.com/sitemap.xml",
+                status_code=404,
+                text="not found",
+                headers={"content-type": "text/plain; charset=utf-8"},
+            ),
+            "https://canonical-risk.example.com/": _FakeResponse(
+                "https://canonical-risk.example.com/",
+                text="""
+                <html lang="en">
+                  <head>
+                    <title>Canonical risk</title>
+                    <meta name="description" content="Page with invalid canonical placement">
+                  </head>
+                  <body>
+                    <link rel="canonical" href="/preferred-page">
+                    <h1>Canonical risk page</h1>
+                    <p>This page places a relative canonical in the body so SignalAtlas can verify both canonical checks.</p>
+                  </body>
+                </html>
+                """,
+                headers={"content-type": "text/html; charset=utf-8"},
+            ),
+        }
+        return self._fixture_response(url, fixtures)
+
     @patch("core.signalatlas.engine.requests.Session.get")
     def test_public_audit_returns_structured_deterministic_report(self, mocked_get):
         mocked_get.side_effect = self.fake_get
@@ -958,6 +1263,74 @@ class SignalAtlasEngineTests(unittest.TestCase):
         self.assertIn("## Search & AI visibility signals", export["content"])
         self.assertIn("IndexNow", export["content"])
         self.assertIn("GEO / AI visibility", export["content"])
+
+    @patch("core.signalatlas.engine.requests.Session.get")
+    def test_multilingual_pages_without_alternates_are_flagged(self, mocked_get):
+        mocked_get.side_effect = self.fake_get_multilingual_without_hreflang
+
+        result = run_public_audit("multilang.example.com", max_pages=4, render_js=False)
+        findings = {item["id"]: item for item in result["findings"]}
+        audit = {
+            "summary": result["summary"],
+            "snapshot": result["snapshot"],
+            "findings": result["findings"],
+            "scores": result["scores"],
+            "interpretations": [],
+            "remediation_items": result["remediation_items"],
+        }
+        export = build_export_payload(audit, "markdown")
+
+        self.assertIn("hreflang-implementation-gaps", findings)
+        self.assertIn("HTML lang", export["content"])
+        self.assertIn("hreflang entries", export["content"])
+
+    @patch("core.signalatlas.engine.requests.Session.get")
+    def test_sitemap_hreflang_prevents_false_missing_alternate_finding(self, mocked_get):
+        mocked_get.side_effect = self.fake_get_sitemap_hreflang
+
+        result = run_public_audit("sitemap-hreflang.example.com", max_pages=4, render_js=False)
+
+        self.assertFalse(any(item["id"] == "hreflang-implementation-gaps" for item in result["findings"]))
+        self.assertGreater(result["snapshot"]["sitemaps"]["alternate_count"], 0)
+
+    @patch("core.signalatlas.engine.requests.Session.get")
+    def test_snippet_restrictions_are_reported(self, mocked_get):
+        mocked_get.side_effect = self.fake_get_snippet_restricted
+
+        result = run_public_audit("snippet.example.com", max_pages=2, render_js=False)
+        findings = {item["id"]: item for item in result["findings"]}
+        audit = {
+            "summary": result["summary"],
+            "snapshot": result["snapshot"],
+            "findings": result["findings"],
+            "scores": result["scores"],
+            "interpretations": [],
+            "remediation_items": result["remediation_items"],
+        }
+        export = build_export_payload(audit, "markdown")
+
+        self.assertIn("snippet-controls-restrict-visibility", findings)
+        self.assertIn("Snippet directives", export["content"])
+
+    @patch("core.signalatlas.engine.requests.Session.get")
+    def test_duplicate_titles_and_descriptions_are_reported(self, mocked_get):
+        mocked_get.side_effect = self.fake_get_boilerplate_metadata
+
+        result = run_public_audit("boilerplate.example.com", max_pages=4, render_js=False)
+        findings = {item["id"]: item for item in result["findings"]}
+
+        self.assertIn("duplicate-title-text", findings)
+        self.assertIn("duplicate-meta-description", findings)
+
+    @patch("core.signalatlas.engine.requests.Session.get")
+    def test_relative_and_out_of_head_canonicals_are_reported(self, mocked_get):
+        mocked_get.side_effect = self.fake_get_invalid_canonical_markup
+
+        result = run_public_audit("canonical-risk.example.com", max_pages=2, render_js=False)
+        findings = {item["id"]: item for item in result["findings"]}
+
+        self.assertIn("relative-canonical-url", findings)
+        self.assertIn("canonical-outside-head", findings)
 
 
 if __name__ == "__main__":

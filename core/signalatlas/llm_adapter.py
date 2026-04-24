@@ -67,8 +67,11 @@ def _audit_excerpt(audit: Dict[str, Any]) -> Dict[str, Any]:
                 "word_count": page.get("word_count"),
                 "content_units": page.get("content_units"),
                 "cjk_char_count": page.get("cjk_char_count"),
+                "hreflang_count": len(page.get("hreflang") or []),
                 "image_missing_alt": page.get("image_missing_alt"),
                 "image_empty_alt": page.get("image_empty_alt"),
+                "nosnippet": page.get("nosnippet"),
+                "max_snippet": page.get("max_snippet"),
                 "shell_like": page.get("shell_like"),
                 "framework_signatures": page.get("framework_signatures"),
             }

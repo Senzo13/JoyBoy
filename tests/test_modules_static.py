@@ -51,6 +51,18 @@ class ModulesStaticTests(unittest.TestCase):
                 self.assertIn("findingFix_organic_surface_too_small:", data)
                 self.assertIn("findingTitle_cc_tld_language_mismatch:", data)
                 self.assertIn("findingFix_cc_tld_language_mismatch:", data)
+                self.assertIn("findingTitle_hreflang_implementation_gaps:", data)
+                self.assertIn("findingFix_hreflang_implementation_gaps:", data)
+                self.assertIn("findingTitle_snippet_controls_restrict_visibility:", data)
+                self.assertIn("findingFix_snippet_controls_restrict_visibility:", data)
+                self.assertIn("findingTitle_duplicate_title_text:", data)
+                self.assertIn("findingFix_duplicate_title_text:", data)
+                self.assertIn("findingTitle_duplicate_meta_description:", data)
+                self.assertIn("findingFix_duplicate_meta_description:", data)
+                self.assertIn("findingTitle_relative_canonical_url:", data)
+                self.assertIn("findingFix_relative_canonical_url:", data)
+                self.assertIn("findingTitle_canonical_outside_head:", data)
+                self.assertIn("findingFix_canonical_outside_head:", data)
                 self.assertIn("kindSignalAtlas:", data)
 
     def test_modules_sidebar_label_is_bound_to_i18n(self):
