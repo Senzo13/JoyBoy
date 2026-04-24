@@ -15,12 +15,15 @@ class ModulesStaticTests(unittest.TestCase):
 
         self.assertIn('/static/css/modules.css', html)
         self.assertIn('/static/css/signalatlas.css', html)
+        self.assertIn('/static/css/perfatlas.css', html)
         self.assertIn('/static/js/modules.js', html)
         self.assertIn('id="modules-view"', html)
         self.assertIn('id="signalatlas-view"', html)
+        self.assertIn('id="perfatlas-view"', html)
         self.assertIn('id="sidebar-modules-btn"', html)
         self.assertIn('#modules-view', layout)
         self.assertIn('#signalatlas-view', layout)
+        self.assertIn('#perfatlas-view', layout)
 
     def test_modules_blueprint_and_runtime_hooks_are_registered(self):
         app_py = self.read("web/app.py")
@@ -29,10 +32,14 @@ class ModulesStaticTests(unittest.TestCase):
         ui_js = self.read("web/static/js/ui.js")
 
         self.assertIn("signalatlas_bp", app_py)
+        self.assertIn("perfatlas_bp", app_py)
         self.assertIn("kindSignalAtlas", db_js)
-        self.assertIn("openSignalAtlasWorkspace", db_js)
+        self.assertIn("kindPerfAtlas", db_js)
+        self.assertIn("openAuditModuleWorkspace", db_js)
         self.assertIn("hideModulesWorkspaces", settings_js)
         self.assertIn("hideModulesWorkspaces", ui_js)
+        self.assertIn("perfatlas-mode", settings_js)
+        self.assertIn("perfatlas-mode", ui_js)
 
     def test_modules_translations_exist_for_all_locales(self):
         for locale in ("fr", "en", "es", "it"):
@@ -41,6 +48,7 @@ class ModulesStaticTests(unittest.TestCase):
                 self.assertIn("modules: {", data)
                 self.assertIn("sidebarLabel:", data)
                 self.assertIn("signalatlas: {", data)
+                self.assertIn("perfatlas: {", data)
                 self.assertIn("targetPlaceholder:", data)
                 self.assertIn("targetInvalid:", data)
                 self.assertIn("providerConfigured:", data)
@@ -65,11 +73,28 @@ class ModulesStaticTests(unittest.TestCase):
                 self.assertIn("findingTitle_canonical_outside_head:", data)
                 self.assertIn("findingFix_canonical_outside_head:", data)
                 self.assertIn("kindSignalAtlas:", data)
+                self.assertIn("kindPerfAtlas:", data)
+                self.assertIn("runAudit:", data)
+                self.assertIn("tabField:", data)
 
     def test_modules_sidebar_label_is_bound_to_i18n(self):
         bindings = self.read("web/static/js/i18n.bindings.js")
         self.assertIn("#sidebar-modules-label", bindings)
         self.assertIn("modules.sidebarLabel", bindings)
+
+    def test_modules_hub_refreshes_catalog_and_keeps_native_fallbacks(self):
+        modules_js = self.read("web/static/js/modules.js")
+        modules_css = self.read("web/static/css/modules.css")
+        self.assertIn("const NATIVE_AUDIT_MODULE_FALLBACK_CATALOG = [", modules_js)
+        self.assertIn("id: 'signalatlas'", modules_js)
+        self.assertIn("id: 'perfatlas'", modules_js)
+        self.assertIn("joyboyModulesCatalog = mergeCatalog(result.ok ? result.data?.modules : [], {", modules_js)
+        self.assertIn("backendSynchronized: result.ok", modules_js)
+        self.assertIn("await loadModulesCatalog();", modules_js)
+        self.assertIn("backend_ready: false", modules_js)
+        self.assertIn("modules.restartRequired", modules_js)
+        self.assertIn(".modules-card.is-locked", modules_css)
+        self.assertIn(".modules-card:disabled", modules_css)
 
 
 if __name__ == "__main__":
