@@ -52,6 +52,14 @@ class ProjectsStaticTests(unittest.TestCase):
                 self.assertIn("shell: {", data)
                 self.assertIn("sidebarToggle:", data)
                 self.assertIn("generationInProgress:", data)
+                self.assertIn("taskToolSearch:", data)
+                self.assertIn("taskUnderstandRequest:", data)
+                self.assertIn("taskAnalyzeRequest:", data)
+                self.assertIn("taskModifyWorkspace:", data)
+                self.assertIn("taskExecuteProject:", data)
+                self.assertIn("progressCorrecting:", data)
+                self.assertIn("progressRetrying:", data)
+                self.assertIn("progressRethinking:", data)
 
     def test_sidebar_shell_copy_is_bound_to_i18n(self):
         html = self.read("web/templates/index.html")

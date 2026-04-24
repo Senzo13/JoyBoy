@@ -57,6 +57,23 @@ class MarkdownRendererTests(unittest.TestCase):
         self.assertIn("npm install", rendered)
         self.assertNotIn('class="md-h2"', rendered)
 
+    def test_renderer_strips_leaked_tool_protocol_traces(self):
+        rendered = self.run_node_renderer(
+            "Je lis les fichiers source principaux.\n"
+            "to=read_file foo data={\"file_path\":\"/workspace/src/App.jsx\"}\n"
+            "● List(.)\n"
+            "⎿ Subagent code_explorer: completed\n"
+            "to=bash code=\"Get-Content -Path src/App.jsx\"\n"
+            "Voici une synthèse concrète du projet."
+        )
+
+        self.assertIn("Je lis les fichiers source principaux.", rendered)
+        self.assertIn("Voici une synthèse concrète du projet.", rendered)
+        self.assertNotIn("to=read_file", rendered)
+        self.assertNotIn("Get-Content -Path src/App.jsx", rendered)
+        self.assertNotIn("Subagent code_explorer", rendered)
+        self.assertNotIn("List(.)", rendered)
+
     def test_chat_prompt_mentions_longer_outer_fence_for_nested_markdown(self):
         config = (ROOT / "config.py").read_text(encoding="utf-8")
 

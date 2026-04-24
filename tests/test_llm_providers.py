@@ -338,6 +338,32 @@ class LLMProviderCatalogTest(unittest.TestCase):
         self.assertEqual(request_kwargs["headers"]["Authorization"], "Bearer sk-test")
         self.assertEqual(request_kwargs["json"]["tools"][0]["function"]["name"], "read_file")
 
+    def test_openai_compatible_chat_forwards_reasoning_effort(self) -> None:
+        os.environ["OPENAI_API_KEY"] = "sk-test"
+        fake_response = Mock()
+        fake_response.status_code = 200
+        fake_response.json.return_value = {
+            "choices": [
+                {
+                    "message": {
+                        "role": "assistant",
+                        "content": "ok",
+                    }
+                }
+            ],
+            "usage": {"prompt_tokens": 4, "completion_tokens": 2},
+        }
+
+        with patch("core.agent_runtime.model_client.requests.post", return_value=fake_response) as post:
+            self.model_client.chat_with_cloud_model(
+                "openai:gpt-test",
+                messages=[{"role": "user", "content": "hi"}],
+                reasoning_effort="moyen",
+            )
+
+        request_kwargs = post.call_args.kwargs
+        self.assertEqual(request_kwargs["json"]["reasoning_effort"], "medium")
+
     def test_openai_codex_cli_chat_uses_codex_responses_api(self) -> None:
         auth_path = Path(self.temp_home.name) / "codex-auth.json"
         auth_path.write_text(
@@ -399,6 +425,49 @@ class LLMProviderCatalogTest(unittest.TestCase):
         self.assertEqual(result["message"]["content"], "ok codex")
         self.assertEqual(result["prompt_eval_count"], 9)
         self.assertEqual(result["eval_count"], 4)
+
+    def test_openai_codex_cli_chat_forwards_reasoning_effort(self) -> None:
+        auth_path = Path(self.temp_home.name) / "codex-auth.json"
+        auth_path.write_text(
+            json.dumps({"tokens": {"access_token": "codex-token"}}),
+            encoding="utf-8",
+        )
+        os.environ["CODEX_AUTH_PATH"] = str(auth_path)
+        self.local_config.set_provider_auth_mode("openai", "codex_cli")
+
+        completed = {
+            "type": "response.completed",
+            "response": {
+                "model": "gpt-5.4",
+                "output": [],
+                "usage": {"input_tokens": 3, "output_tokens": 1, "total_tokens": 4},
+            },
+        }
+        output_item = {
+            "type": "response.output_item.done",
+            "output_index": 0,
+            "item": {
+                "type": "message",
+                "content": [{"type": "output_text", "text": "ok"}],
+            },
+        }
+        fake_response = Mock()
+        fake_response.status_code = 200
+        fake_response.iter_lines.return_value = [
+            f"data: {json.dumps(output_item)}",
+            f"data: {json.dumps(completed)}",
+        ]
+
+        with patch("core.agent_runtime.model_client.requests.post", return_value=fake_response) as post:
+            self.model_client.chat_with_cloud_model(
+                "openai:gpt-5.4",
+                messages=[{"role": "user", "content": "hi"}],
+                reasoning_effort="xhigh",
+            )
+
+        request_kwargs = post.call_args.kwargs
+        self.assertEqual(request_kwargs["json"]["reasoning"]["effort"], "xhigh")
+        self.assertEqual(request_kwargs["json"]["reasoning"]["summary"], "detailed")
 
     def test_anthropic_chat_translates_tools_and_tool_results(self) -> None:
         os.environ["ANTHROPIC_API_KEY"] = "anthropic-test"

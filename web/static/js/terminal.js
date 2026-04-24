@@ -629,6 +629,10 @@ function completeTerminalProgressPanel(success = true) {
     terminalProgressTimer = null;
     terminalProgressElement.classList.toggle('is-complete', success);
     terminalProgressElement.classList.toggle('is-error', !success);
+    if (success) {
+        terminalProgressElement.classList.add('is-collapsed');
+        if (terminalTasksElement) terminalTasksElement.classList.add('collapsed');
+    }
     updateTerminalProgressTimer(true);
     refreshTerminalProgressLayout();
 }
@@ -724,11 +728,37 @@ function describeTerminalToolCall(action, target = '', args = {}) {
     if (action === 'clear_workspace') return terminalT('terminal.taskClearWorkspace', 'Nettoyage du workspace');
     if (action === 'bash') return `${terminalT('terminal.taskRunCommand', 'Commande')} ${displayTarget}`.trim();
     if (action === 'read_file') return `${terminalT('terminal.taskReadFile', 'Lecture')} ${displayTarget}`.trim();
-    if (action === 'list_files') return `${terminalT('terminal.taskListFiles', 'Exploration')} ${displayTarget || '.'}`.trim();
+    if (action === 'list_files') return `${terminalT('terminal.taskListFiles', 'Exploration')} ${displayTarget || terminalT('terminal.taskCurrentWorkspace', 'du projet')}`.trim();
     if (action === 'search' || action === 'glob') return `${terminalT('terminal.taskSearchFiles', 'Recherche')} ${displayTarget}`.trim();
+    if (action === 'tool_search') return `${terminalT('terminal.taskToolSearch', 'Recherche d’outils')} ${displayTarget}`.trim();
     if (action === 'write_todos') return terminalT('terminal.taskPlan', 'Planification');
     if (action === 'delegate_subagent') return terminalT('terminal.taskSubagent', 'Vérification déléguée');
     return `${action}${displayTarget ? ` ${displayTarget}` : ''}`;
+}
+
+function describeTerminalToolNote(action, target = '', args = {}) {
+    const normalizedArgs = args && typeof args === 'object' ? args : {};
+    if (action === 'delegate_subagent') {
+        const agentType = String(normalizedArgs.agent_type || normalizedArgs.agentType || '').trim();
+        const task = String(normalizedArgs.task || '').trim();
+        return [agentType, task].filter(Boolean).join(' - ');
+    }
+    if (action === 'write_todos') {
+        const todos = Array.isArray(normalizedArgs.todos) ? normalizedArgs.todos.length : 0;
+        return todos ? terminalT('terminal.taskTodoCount', '{count} étape(s)', { count: todos }) : '';
+    }
+    if (action === 'tool_search') {
+        return String(normalizedArgs.query || normalizedArgs.intent || '').trim();
+    }
+    return '';
+}
+
+function describeTerminalIntentTask(intent = '', autonomous = false) {
+    if (autonomous) return terminalT('terminal.progressAutonomous', 'Mode autonome');
+    if (intent === 'read') return terminalT('terminal.taskAnalyzeRequest', 'Analyse du projet');
+    if (intent === 'write') return terminalT('terminal.taskModifyWorkspace', 'Modification du projet');
+    if (intent === 'execute') return terminalT('terminal.taskExecuteProject', 'Exécution du projet');
+    return terminalT('terminal.taskUnderstandRequest', 'Compréhension de la demande');
 }
 
 function shouldShowTerminalToolAsTask(action) {
@@ -738,6 +768,7 @@ function shouldShowTerminalToolAsTask(action) {
         'read_file',
         'search',
         'glob',
+        'tool_search',
         'write_file',
         'write_files',
         'edit_file',
@@ -974,8 +1005,11 @@ function addTerminalCodeBlock(code, lang = '') {
  * Filtre aussi la syntaxe des tool calls (affichée séparément par addToolCall)
  */
 function formatTerminalMarkdown(text) {
+    const cleanedText = typeof sanitizeAssistantToolTraceText === 'function'
+        ? sanitizeAssistantToolTraceText(text)
+        : String(text || '');
     // Échapper le HTML
-    let formatted = text
+    let formatted = cleanedText
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;');
@@ -2276,14 +2310,15 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
         const controller = new AbortController();
         currentController = controller;
 
-        // Afficher l'animation Thinking (pas de skeleton bubble)
-        showThinkingAnimation('Thinking');
+        // Afficher l'animation de travail (pas de skeleton bubble)
+        const analyzingLabel = terminalT('terminal.progressThinking', 'Analyse en cours');
+        showThinkingAnimation(analyzingLabel);
 
         // Réinitialiser les tâches pour cette requête
         hideTerminalProgressPanel();
         hideTerminalTasks();
         beginTerminalProgressSession();
-        addTerminalProgressLog(terminalT('terminal.progressThinking', 'En réflexion'), message, 'thinking');
+        addTerminalProgressLog(analyzingLabel, message, 'thinking');
         let taskCounter = 0;
 
         // Préparer l'image si présente (pour les modèles vision)
@@ -2381,6 +2416,7 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                             ? terminalT('terminal.progressAutonomous', 'Mode autonome')
                             : terminalT('terminal.progressIntent', 'Intention détectée');
                         addTerminalProgressLog(intentLabel, data.intent, 'info');
+                        addTerminalTask('terminal-intent', describeTerminalIntentTask(terminalProgressIntent, data.autonomous), 'running');
                         if (data.autonomous || ['write', 'execute'].includes(terminalProgressIntent)) {
                             scheduleTerminalProgressAutoReveal();
                         }
@@ -2402,9 +2438,11 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                     // Thinking - L'IA réfléchit (nouvelle itération)
                     if (data.thinking) {
                         console.log(`[TERMINAL] Iteration ${data.iteration}`);
-                        updateThinkingText(`Thinking (${data.iteration})`);
+                        updateThinkingText(
+                            terminalT('terminal.progressThinkingIteration', 'Analyse {iteration}', { iteration: data.iteration })
+                        );
                         addTerminalProgressLog(
-                            terminalT('terminal.progressThinkingIteration', 'Réflexion {iteration}', { iteration: data.iteration }),
+                            terminalT('terminal.progressThinkingIteration', 'Analyse {iteration}', { iteration: data.iteration }),
                             '',
                             'thinking',
                             { reveal: Number(data.iteration) > 1 }
@@ -2442,7 +2480,7 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                             'warning',
                             { reveal: true }
                         );
-                        showThinkingAnimation('Rethinking');
+                        showThinkingAnimation(terminalT('terminal.progressRethinking', 'Réévaluation'));
                         continue;
                     }
 
@@ -2463,7 +2501,7 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
 
                         // Style Claude Code: ● Action(target)
                         if (typeof addToolCall === 'function') {
-                            addToolCall(action, path);
+                            addToolCall(action, path, args);
                         } else {
                             console.error('[TERMINAL] addToolCall function not found!');
                         }
@@ -2475,7 +2513,7 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                             { reveal: true }
                         );
                         if (shouldShowTerminalToolAsTask(action)) {
-                            addTerminalTask(toolTaskId, taskLabel, 'running');
+                            addTerminalTask(toolTaskId, taskLabel, 'running', describeTerminalToolNote(action, path, args));
                         }
                         showThinkingAnimation(taskLabel || action);
                         continue;
@@ -2503,7 +2541,7 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                             if (window.lastToolCall?.taskId) {
                                 updateTerminalTask(window.lastToolCall.taskId, 'error', terminalT('terminal.writeBlockedShort', 'Écriture bloquée'));
                             }
-                            showThinkingAnimation('Analyzing');
+                            showThinkingAnimation(terminalT('terminal.progressThinking', 'Analyse en cours'));
                             continue;
                         }
 
@@ -2534,7 +2572,7 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                             if (window.lastToolCall?.taskId) {
                                 updateTerminalTask(window.lastToolCall.taskId, 'error', errorText);
                             }
-                            showThinkingAnimation('Retrying');
+                            showThinkingAnimation(terminalT('terminal.progressRetrying', 'Nouvelle tentative'));
                             continue;
                         }
 
@@ -2574,7 +2612,7 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                         );
                         // Sinon pas d'affichage (l'IA donnera la réponse à la fin)
 
-                        showThinkingAnimation('Analyzing');
+                        showThinkingAnimation(terminalT('terminal.progressThinking', 'Analyse en cours'));
                         continue;
                     }
 
@@ -2599,7 +2637,7 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                             'warning',
                             { reveal: true }
                         );
-                        updateThinkingText('Correcting...');
+                        updateThinkingText(terminalT('terminal.progressCorrecting', 'Correction en cours'));
                         continue;
                     }
 
@@ -2629,6 +2667,7 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                         const serverFinalText = (data.full_response || '').trim();
                         const isWaitingForApproval = approvalRequiredThisTurn || Boolean(data.approval_required);
                         completeTerminalProgressPanel(!isWaitingForApproval);
+                        updateTerminalTask('terminal-intent', isWaitingForApproval ? 'error' : 'done');
 
                         // Hide autonomous indicator
                         const autoIndicator = document.getElementById('autonomous-indicator');
@@ -2663,9 +2702,12 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
 
                         if (!isWaitingForApproval) {
                             finalizeTerminalOutput(responseTime, data.token_stats);
+                            const cleanFullResponse = typeof sanitizeAssistantToolTraceText === 'function'
+                                ? sanitizeAssistantToolTraceText(fullResponse)
+                                : fullResponse;
 
-                            if (fullResponse) {
-                                chatHistory.push({ role: 'assistant', content: fullResponse });
+                            if (cleanFullResponse) {
+                                chatHistory.push({ role: 'assistant', content: cleanFullResponse });
                             }
 
                             // Sauvegarder le chat
@@ -2679,6 +2721,7 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                     if (data.error) {
                         hideThinkingAnimation();
                         completeTerminalProgressPanel(false);
+                        updateTerminalTask('terminal-intent', 'error');
                         // Hide autonomous indicator on error
                         const autoIndicator = document.getElementById('autonomous-indicator');
                         if (autoIndicator) autoIndicator.style.display = 'none';
@@ -2696,6 +2739,7 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
         if (err.name !== 'AbortError') {
             console.error('[TERMINAL] Erreur chat:', err);
             completeTerminalProgressPanel(false);
+            updateTerminalTask('terminal-intent', 'error');
             addTerminalLine(`Erreur: ${err.message}`, 'error');
         }
     }

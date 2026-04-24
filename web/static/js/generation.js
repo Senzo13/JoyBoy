@@ -417,7 +417,10 @@ function buildChatStreamParams(prompt) {
  * Clean internal markers from AI response text
  */
 function cleanResponseMarkers(text) {
-    return text
+    const cleanedText = typeof sanitizeAssistantToolTraceText === 'function'
+        ? sanitizeAssistantToolTraceText(text)
+        : String(text || '');
+    return cleanedText
         .replace(/\[GENERATE_IMAGE:[^\]]+\]/gi, '')
         .replace(/\[LIST_FILES:[^\]]*\]/gi, '')
         .replace(/\[READ_FILE:[^\]]+\]/gi, '')

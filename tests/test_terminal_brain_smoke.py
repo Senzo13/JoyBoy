@@ -57,6 +57,44 @@ class TerminalBrainSmokeTests(unittest.TestCase):
         self.assertTrue(brain._is_repo_overview_request("analyse le projet"))
         self.assertFalse(brain._is_repo_overview_request("analyse core/backends/terminal_brain.py"))
 
+    @patch("core.backends.terminal_brain.chat_with_cloud_model")
+    def test_repo_overview_brief_reads_local_files_without_subagent(self, mock_chat):
+        mock_chat.return_value = {
+            "message": {"role": "assistant", "content": "Voici une synthèse du projet."},
+            "prompt_eval_count": 40,
+            "eval_count": 12,
+        }
+        brain = TerminalBrain()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            Path(tmp, "README.md").write_text("# Demo\n\nPetite app.\n", encoding="utf-8")
+            Path(tmp, "package.json").write_text('{"name":"demo-app"}\n', encoding="utf-8")
+            src_dir = Path(tmp, "src")
+            src_dir.mkdir()
+            Path(src_dir, "App.jsx").write_text(
+                "export default function App() {\n  return <main>demo</main>;\n}\n",
+                encoding="utf-8",
+            )
+
+            events = list(brain.run_agentic_loop("analyse le projet", tmp, model="openai:gpt-5.4"))
+
+        tool_names = [event.get("name") for event in events if event.get("type") == "tool_call"]
+        self.assertIn("list_files", tool_names)
+        self.assertIn("read_file", tool_names)
+        self.assertNotIn("delegate_subagent", tool_names)
+        self.assertEqual(mock_chat.call_count, 1)
+
+        messages = mock_chat.call_args.kwargs["messages"]
+        repo_context = next(
+            message.get("content", "")
+            for message in messages
+            if message.get("role") == "user"
+            and "REPO CONTEXT ALREADY EXPLORED BY JOYBOY:" in message.get("content", "")
+        )
+        self.assertIn("--- README.md", repo_context)
+        self.assertIn("--- package.json", repo_context)
+        self.assertNotIn("Explorer observations", repo_context)
+
     def test_budget_fallback_ends_without_another_model_call(self):
         brain = TerminalBrain()
         observed = [

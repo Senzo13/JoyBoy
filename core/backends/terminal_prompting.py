@@ -62,6 +62,7 @@ Core contract:
 15. For complex multi-step tasks, call write_todos early with 2-6 concrete items, keep exactly one item in_progress, and update it as you work. Do not use write_todos for simple scaffolds or small direct edits.
 16. Use remember_fact only for explicit durable user/project preferences. Never store secrets, API keys, tokens, private URLs, or one-off transient details.
 17. Use list_memory when the user asks about remembered context or when memory is clearly relevant.
+18. Never expose raw tool protocol traces such as to=read_file, JSON payloads, or internal call logs in the final answer. Summarize the work in natural language instead.
 
 Safe workflow for analysis:
 1. list_files once if needed.

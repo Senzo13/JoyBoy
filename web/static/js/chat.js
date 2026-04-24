@@ -25,6 +25,41 @@ function getChatMessages() {
     return _chatMessagesEl;
 }
 
+function sanitizeAssistantToolTraceText(text = '') {
+    const source = String(text ?? '').replace(/\r\n?/g, '\n');
+    if (!source) return '';
+    if (!/(?:\bto=|^[\t ]*[●⎿]|Subagent\(|\bdata=\{|\bcode=")/mi.test(source)) {
+        return source;
+    }
+
+    let cleaned = source;
+
+    // Strip raw tool protocol blobs that occasionally leak from provider output.
+    cleaned = cleaned.replace(/to=[\w.-]+[\s\S]{0,240}?(?:data=\{[^{}]{0,600}\}|code="[^"]{0,600}")/gi, '\n');
+    cleaned = cleaned.replace(/[ \t]*\b(?:data=\{[^{}]{0,600}\}|code="[^"]{0,600}")/gi, ' ');
+
+    cleaned = cleaned
+        .split('\n')
+        .filter(line => {
+            const trimmed = String(line || '').trim();
+            if (!trimmed) return true;
+            if (/^to=[\w.-]+/i.test(trimmed)) return false;
+            if (/^Subagent\([^)]*\)/i.test(trimmed)) return false;
+            if (/^[●•]\s*(?:Read|Write|Edit|Delete|Search|Glob|Bash|List|Plan|Subagent|ToolSearch|Explore|Open|UpdatePlan|Lecture|Exploration|Recherche|Écriture|Modification|Suppression|Planification|Vérification|Commande)\b/u.test(trimmed)) {
+                return false;
+            }
+            if (/^⎿\s+/u.test(trimmed)) return false;
+            return true;
+        })
+        .join('\n');
+
+    cleaned = cleaned.replace(/(?:^|\s)[●•]\s*(?:Read|Write|Edit|Delete|Search|Glob|Bash|List|Plan|Subagent|ToolSearch|Explore|Open)\([^)\n]{0,220}\)/g, ' ');
+    cleaned = cleaned.replace(/(?:^|\s)⎿\s*(?:Subagent|Finished|Terminé|[\w.-]+)[^\n]{0,220}/g, ' ');
+    cleaned = cleaned.replace(/\n{3,}/g, '\n\n');
+    cleaned = cleaned.replace(/[ \t]{2,}/g, ' ');
+    return cleaned.trim();
+}
+
 function sanitizeChatTranscriptHtml(html = '') {
     const tempDiv = document.createElement('div');
     tempDiv.innerHTML = String(html || '');
@@ -555,7 +590,7 @@ function appendToStreamingMessage(msgId, text) {
 // Formatage partiel pour le streaming (gère les blocs incomplets)
 function formatMarkdownPartial(text) {
     // Retirer les marqueurs [GENERATE_IMAGE: ...] (internes, pas pour l'utilisateur)
-    let cleaned = text.replace(/\[GENERATE_IMAGE:[^\]]*\]/gi, '');
+    let cleaned = sanitizeAssistantToolTraceText(text).replace(/\[GENERATE_IMAGE:[^\]]*\]/gi, '');
 
     // Nettoyer les doubles espaces/sauts de ligne
     cleaned = cleaned.replace(/\n{3,}/g, '\n\n');
@@ -604,7 +639,7 @@ function formatMarkdownPartial(text) {
 // Formatage markdown complet style Discord
 function formatMarkdown(text) {
     // Nettoyer les doubles espaces/sauts de ligne
-    let cleaned = text.replace(/\n{3,}/g, '\n\n');
+    let cleaned = sanitizeAssistantToolTraceText(text).replace(/\n{3,}/g, '\n\n');
 
     // Échapper le HTML d'abord
     let formatted = cleaned
@@ -1558,8 +1593,9 @@ function addTerminalLine(text, type = 'system') {
  * @param {string} target - Cible (fichier, commande, etc.)
  * @returns {HTMLElement} L'élément créé
  */
-function addToolCall(action, target) {
-    console.log(`%c[CHAT] addToolCall appelé: ${action}(${target})`, 'color: #3b82f6; font-weight: bold;');
+function addToolCall(action, target, args = {}) {
+    const resolvedTarget = target || args?.path || args?.pattern || args?.command || args?.task || args?.agent_type || '';
+    console.log(`%c[CHAT] addToolCall appelé: ${action}(${resolvedTarget})`, 'color: #3b82f6; font-weight: bold;');
 
     const messagesDiv = getChatMessages();
     if (!messagesDiv) {
@@ -1573,31 +1609,31 @@ function addToolCall(action, target) {
     // Formatter l'action: read_file -> Read, write_file -> Write, etc.
     const formatAction = (a) => {
         const map = {
-            'read_file': 'Read',
-            'write_file': 'Write',
-            'edit_file': 'Edit',
-            'delete_file': 'Delete',
-            'write_files': 'WriteFiles',
-            'clear_workspace': 'ClearWorkspace',
-            'write_todos': 'Plan',
-            'delegate_subagent': 'Subagent',
-            'tool_search': 'ToolSearch',
-            'list_files': 'List',
-            'search': 'Search',
-            'glob': 'Glob',
-            'bash': 'Bash',
-            'open_workspace': 'Open',
-            'explore': 'Explore',
-            'create_plan': 'Plan',
-            'update_plan': 'UpdatePlan'
+            'read_file': chatT('terminal.taskReadFile', 'Lecture'),
+            'write_file': chatT('terminal.taskWriteFile', 'Écriture'),
+            'edit_file': chatT('terminal.taskEditFile', 'Modification'),
+            'delete_file': chatT('terminal.taskDeleteFile', 'Suppression'),
+            'write_files': chatT('terminal.taskWriteFiles', 'Écriture de fichiers'),
+            'clear_workspace': chatT('terminal.taskClearWorkspace', 'Nettoyage du workspace'),
+            'write_todos': chatT('terminal.taskPlan', 'Planification'),
+            'delegate_subagent': chatT('terminal.taskSubagent', 'Vérification déléguée'),
+            'tool_search': chatT('terminal.taskToolSearch', 'Recherche d’outils'),
+            'list_files': chatT('terminal.taskListFiles', 'Exploration'),
+            'search': chatT('terminal.taskSearchFiles', 'Recherche'),
+            'glob': chatT('terminal.taskSearchFiles', 'Recherche'),
+            'bash': chatT('terminal.taskRunCommand', 'Commande'),
+            'open_workspace': chatT('terminal.taskListFiles', 'Exploration'),
+            'explore': chatT('terminal.taskListFiles', 'Exploration'),
+            'create_plan': chatT('terminal.taskPlan', 'Planification'),
+            'update_plan': chatT('terminal.taskPlan', 'Planification')
         };
         return map[a] || a.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join('');
     };
 
     // Tronquer le chemin si trop long
-    const displayTarget = target && target.length > 60
-        ? '...' + target.slice(-57)
-        : (target || '');
+    const displayTarget = resolvedTarget && resolvedTarget.length > 60
+        ? '...' + resolvedTarget.slice(-57)
+        : (resolvedTarget || '');
 
     const displayAction = formatAction(action);
     el.innerHTML = `<span class="tool-bullet">●</span> <span class="tool-action">${displayAction}</span>(<span class="tool-target">${escapeHtml(displayTarget)}</span>)`;

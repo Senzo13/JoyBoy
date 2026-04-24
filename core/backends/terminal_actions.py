@@ -235,7 +235,6 @@ class TerminalActionsMixin:
     def _build_repo_brief(self, workspace_path: str) -> tuple[str, List[Dict]]:
         """Build a bounded repo brief and emit normal tool events for the UI."""
         from core.workspace_tools import get_workspace_summary, list_files, read_file
-        from core.agent_runtime import run_subagent
 
         events: List[Dict] = []
         lines: List[str] = []
@@ -273,44 +272,25 @@ class TerminalActionsMixin:
             if root_dirs:
                 lines.append("Visible root directories: " + ", ".join(root_dirs[:18]))
 
-        explorer_args = {
-            "agent_type": "code_explorer",
-            "task": "Build a concise repository overview. Prefer README and configuration files, then likely app entrypoints.",
-            "max_files": 8,
-        }
-        events.append(runtime_event('tool_call', name='delegate_subagent', args=explorer_args))
-        explorer = run_subagent(
-            "code_explorer",
-            workspace_path,
-            explorer_args["task"],
-            max_files=explorer_args["max_files"],
-        )
-        events.append(runtime_event('tool_result', result={
-            'success': explorer.get('status') == 'completed',
-            'tool_name': 'delegate_subagent',
-            'data': explorer,
-            'error': explorer.get('error'),
-            'write_blocked': False,
-        }))
-        if explorer.get("status") == "completed":
-            observations = explorer.get("observations", [])
-            if observations:
-                lines.append("Explorer observations: " + " | ".join(str(item) for item in observations[:3]))
-            for item in explorer.get("files", [])[:6]:
-                path = item.get("path", "")
-                excerpt = item.get("excerpt", "")
-                if not path or not excerpt:
-                    continue
-                lines.append(
-                    f"\n--- {path} ({item.get('lines', 0)} lines, explorer) ---\n"
-                    f"{truncate_middle(excerpt, 1400)}"
-                )
-
         preferred = [
             "README.md", "readme.md", "pyproject.toml", "package.json",
-            "requirements.txt", "web/app.py", "app.py", "core/__init__.py",
-            "core/models/manager.py", "core/backends/terminal_brain.py",
+            "requirements.txt", "vite.config.ts", "vite.config.js", "next.config.js",
+            "web/app.py", "app.py", "main.py", "server.py",
+            "src/main.tsx", "src/main.jsx", "src/main.ts", "src/main.js",
+            "src/App.tsx", "src/App.jsx", "src/App.ts", "src/App.js",
+            "src/app/page.tsx", "src/app/page.jsx", "src/app/layout.tsx", "src/app/layout.jsx",
+            "core/__init__.py", "core/models/manager.py", "core/backends/terminal_brain.py",
         ]
+        if root_listing.get("success"):
+            items = root_listing.get("items", [])
+            dynamic_root_files = [
+                str(item.get("name") or "").strip()
+                for item in items
+                if item.get("type") == "file" and item.get("readable")
+            ]
+            preferred.extend(dynamic_root_files[:12])
+        seen_preferred = set()
+        preferred = [path for path in preferred if path and not (path in seen_preferred or seen_preferred.add(path))]
         read_count = 0
         for path in preferred:
             if read_count >= 5:
