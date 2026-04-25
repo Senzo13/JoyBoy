@@ -150,8 +150,31 @@ mkdir -p models/checkpoints
 download_hf_model() {
     local repo=$1
     local name=$2
+    local required=${3:-required}
+    if [ "$required" = "gated" ] && [ -z "${HF_TOKEN:-}" ] && [ -z "${HUGGINGFACE_TOKEN:-}" ]; then
+        echo -e "${YELLOW}[SKIP]${NC} $name requires Hugging Face access. Set HF_TOKEN and rerun to pre-download it."
+        return 0
+    fi
     echo -e "${YELLOW}[DL]${NC} $name..."
-    python3 -c "from huggingface_hub import snapshot_download; snapshot_download('$repo')" &
+    (
+        python3 - "$repo" "$name" <<'PY'
+import os
+import sys
+from huggingface_hub import snapshot_download
+
+repo = sys.argv[1]
+name = sys.argv[2]
+token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_TOKEN") or None
+snapshot_download(repo, token=token)
+print(f"[OK] Downloaded {name}")
+PY
+    ) || {
+        if [ "$required" = "optional" ] || [ "$required" = "gated" ]; then
+            echo -e "${YELLOW}[WARN]${NC} Optional model download failed: $name"
+            exit 0
+        fi
+        exit 1
+    } &
 }
 
 # ============================================================
@@ -160,7 +183,7 @@ download_hf_model() {
 echo -e "${GREEN}[IMAGE MODELS]${NC}"
 
 # Flux Kontext (editing intelligent, 12B)
-download_hf_model "black-forest-labs/FLUX.1-Kontext-dev" "Flux Kontext 12B"
+download_hf_model "black-forest-labs/FLUX.1-Kontext-dev" "Flux Kontext 12B" "gated"
 
 # SDXL stack (generic inpainting stack)
 echo -e "${YELLOW}[DL]${NC} epicRealismXL (CivitAI → downloaded at runtime)..."
