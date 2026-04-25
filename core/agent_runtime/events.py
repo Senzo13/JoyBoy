@@ -12,6 +12,7 @@ TERMINAL_EVENT_TYPES = {
     "warning",
     "thinking",
     "model_call",
+    "model_progress",
     "tool_call",
     "tool_progress",
     "tool_result",

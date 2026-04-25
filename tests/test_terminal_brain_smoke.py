@@ -215,6 +215,48 @@ Encore beaucoup de détail inutile.
         self.assertEqual("formatting", brain._model_progress_stage(25))
         self.assertEqual("finalizing", brain._model_progress_stage(45))
 
+    def test_terminal_help_command_lists_native_capabilities(self):
+        brain = TerminalBrain()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            events = list(brain.run_agentic_loop("/help", tmp, model="openai:gpt-5.4", locale="fr"))
+
+        text = "".join(event.get("text", "") for event in events if event.get("type") == "content")
+        tool_names = [event.get("name") for event in events if event.get("type") == "tool_call"]
+
+        self.assertIn("/ultrareview", text)
+        self.assertIn("/mcp", text)
+        self.assertIn("web_search + web_fetch", text)
+        self.assertIn("Playwright", text)
+        self.assertEqual([], tool_names)
+
+    @patch("core.backends.terminal_commands.chat_with_cloud_model")
+    def test_ultrareview_runs_native_reviewer_workflow(self, mock_chat):
+        mock_chat.return_value = {
+            "message": {"role": "assistant", "content": "Aucun bug confirmé."},
+            "prompt_eval_count": 120,
+            "eval_count": 12,
+        }
+        brain = TerminalBrain()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            Path(tmp, "README.md").write_text("# Demo\n", encoding="utf-8")
+            src_dir = Path(tmp, "src")
+            src_dir.mkdir()
+            Path(src_dir, "app.py").write_text("def add(a, b):\n    return a + b\n", encoding="utf-8")
+
+            events = list(brain.run_agentic_loop("/ultrareview", tmp, model="openai:gpt-5.4", locale="fr"))
+
+        tool_names = [event.get("name") for event in events if event.get("type") == "tool_call"]
+        text = "".join(event.get("text", "") for event in events if event.get("type") == "content")
+
+        self.assertGreaterEqual(tool_names.count("delegate_subagent"), 3)
+        self.assertIn("write_todos", tool_names)
+        self.assertNotIn("write_file", tool_names)
+        self.assertNotIn("edit_file", tool_names)
+        self.assertIn("Aucun bug confirmé", text)
+        self.assertEqual(mock_chat.call_count, 1)
+
     def test_budget_fallback_ends_without_another_model_call(self):
         brain = TerminalBrain()
         observed = [

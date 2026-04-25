@@ -93,6 +93,7 @@ def terminal_chat():
     reasoning_effort = data.get('reasoningEffort')
     permission_mode = data.get('permissionMode') or data.get('permission_mode') or 'default'
     chat_id = data.get('chatId') or data.get('conversation_id')
+    locale = data.get('locale') or data.get('language') or ''
 
     if not message:
         return jsonify({'error': 'Message requis'}), 400
@@ -273,6 +274,7 @@ def terminal_chat():
             reasoning_effort=reasoning_effort,
             permission_mode=permission_mode,
             job_id=terminal_job_id,
+            locale=locale,
         ):
             if job_manager and terminal_job_id and job_manager.is_cancel_requested(terminal_job_id):
                 job_manager.cancel(terminal_job_id, "Terminal request cancelled")

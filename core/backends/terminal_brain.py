@@ -44,6 +44,7 @@ from core.backends.terminal_tool_schemas import (
 )
 from core.backends.terminal_actions import TerminalActionsMixin
 from core.backends.terminal_cloud import TerminalCloudMixin
+from core.backends.terminal_commands import TerminalSlashCommandsMixin
 from core.backends.terminal_context import (
     MAX_DELEGATE_SUBAGENT_CALLS_PER_RESPONSE,
     TerminalContextMixin,
@@ -93,6 +94,7 @@ class TerminalBrain(
     TerminalCloudMixin,
     TerminalContextMixin,
     TerminalIntentMixin,
+    TerminalSlashCommandsMixin,
     TerminalDeferredToolMixin,
     TerminalGuardrailsMixin,
     TerminalPromptingMixin,
@@ -488,6 +490,7 @@ class TerminalBrain(
         reasoning_effort: str | None = None,
         permission_mode: str | None = None,
         job_id: str = None,
+        locale: str | None = None,
     ) -> Generator[Dict, None, None]:
         """
         Boucle agentique avec Native Tool Calling.
@@ -503,6 +506,20 @@ class TerminalBrain(
         model = model or self.default_model
         use_cloud_model = is_cloud_model_name(model)
         self.permission_mode = normalize_permission_mode(permission_mode)
+        self._active_context_size = self._normalize_context_size(context_size, cloud=use_cloud_model, model=model)
+        self._active_workspace_path = workspace_path
+
+        slash_command, slash_args = self._parse_terminal_slash_command(initial_message)
+        if slash_command in self.TERMINAL_SLASH_COMMANDS:
+            yield from self._run_terminal_slash_command(
+                slash_command,
+                slash_args,
+                workspace_path,
+                model=model,
+                reasoning_effort=reasoning_effort,
+                locale=locale,
+            )
+            return
 
         if self._is_casual_greeting_request(initial_message):
             self.current_intent = "question"
@@ -523,8 +540,6 @@ class TerminalBrain(
             yield runtime_event('error', message='Package ollama non installé. pip install ollama')
             return
 
-        self._active_context_size = self._normalize_context_size(context_size, cloud=use_cloud_model, model=model)
-        self._active_workspace_path = workspace_path
         resource_scheduler = None
         resource_lease_id = None
 

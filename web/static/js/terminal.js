@@ -1136,6 +1136,13 @@ function describeTerminalToolCall(action, target = '', args = {}) {
     if (action === 'list_files') return `${terminalT('terminal.taskListFiles', 'Exploration')} ${displayTarget || terminalT('terminal.taskCurrentWorkspace', 'du projet')}`.trim();
     if (action === 'search' || action === 'glob') return `${terminalT('terminal.taskSearchFiles', 'Recherche')} ${displayTarget}`.trim();
     if (action === 'tool_search') return `${terminalT('terminal.taskToolSearch', 'Recherche d’outils')} ${displayTarget}`.trim();
+    if (action === 'web_search') return `${terminalT('terminal.taskWebSearch', 'Recherche web')} ${displayTarget}`.trim();
+    if (action === 'web_fetch') return `${terminalT('terminal.taskWebFetch', 'Lecture web')} ${displayTarget}`.trim();
+    if (action === 'load_skill') return `${terminalT('terminal.taskLoadSkill', 'Chargement skill')} ${displayTarget}`.trim();
+    if (action === 'remember_fact') return terminalT('terminal.taskRememberFact', 'Mémoire');
+    if (action === 'list_memory') return terminalT('terminal.taskListMemory', 'Lecture mémoire');
+    if (action === 'open_workspace') return terminalT('terminal.taskOpenWorkspace', 'Ouverture du dossier');
+    if (action === 'think') return terminalT('terminal.taskThink', 'Raisonnement');
     if (action === 'write_todos') return terminalT('terminal.taskPlan', 'Planification');
     if (action === 'ask_clarification') return terminalT('terminal.taskClarification', 'Clarification');
     if (action === 'delegate_subagent') return terminalT('terminal.taskSubagent', 'Vérification déléguée');
@@ -1174,6 +1181,7 @@ function terminalToolProgressKey(action = '') {
 
 function describeTerminalIntentTask(intent = '', autonomous = false) {
     if (autonomous) return terminalT('terminal.progressAutonomous', 'Mode autonome');
+    if (intent === 'review') return terminalT('terminal.taskReviewProject', 'Ultrareview du projet');
     if (intent === 'read') return terminalT('terminal.taskAnalyzeRequest', 'Analyse du projet');
     if (intent === 'write') return terminalT('terminal.taskModifyWorkspace', 'Modification du projet');
     if (intent === 'execute') return terminalT('terminal.taskExecuteProject', 'Exécution du projet');
@@ -2888,6 +2896,7 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                 chatModel: modelToUse,
                 contextSize: effectiveContextSize,
                 reasoningEffort,
+                locale: window.JoyBoyI18n?.getLocale ? window.JoyBoyI18n.getLocale() : 'fr',
                 permissionMode: permissionModeForRequest
             }),
             signal: controller.signal
