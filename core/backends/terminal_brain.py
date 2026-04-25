@@ -14,6 +14,8 @@ Fonctionnement:
 
 import os
 import json
+import queue
+import threading
 import time
 from collections import defaultdict
 from typing import Dict, List, Optional, Any, Generator
@@ -684,6 +686,7 @@ class TerminalBrain(
 
         while iteration < iteration_budget:
             iteration += 1
+            streamed_content_for_call = ""
             yield runtime_event('thinking', iteration=iteration, max_iterations=iteration_budget)
 
             try:
@@ -718,19 +721,61 @@ class TerminalBrain(
                     circuit_block = self._cloud_circuit_block_reason(model)
                     if circuit_block:
                         raise CloudModelError(circuit_block)
+                    yield runtime_event(
+                        'model_call',
+                        model=model,
+                        provider='cloud',
+                        iteration=iteration,
+                        tools_count=len(tools_for_model),
+                        estimated_prompt_tokens=prompt_estimate,
+                    )
                     cloud_attempt = 1
                     cloud_max_attempts = 3
                     while True:
                         try:
                             print(f"[BRAIN] Calling cloud model={model}, tools={len(tools_for_model)} tools")
-                            response = chat_with_cloud_model(
-                                model,
-                                messages=provider_messages,
-                                tools=tools_for_model,
-                                max_tokens=response_token_limit,
-                                temperature=0.2,
-                                reasoning_effort=reasoning_effort,
-                            )
+                            stream_queue: "queue.Queue[tuple[str, Any]]" = queue.Queue()
+                            result_holder: Dict[str, Any] = {}
+
+                            def _on_cloud_delta(chunk: str) -> None:
+                                if chunk:
+                                    stream_queue.put(("content", chunk))
+
+                            def _call_cloud_model() -> None:
+                                try:
+                                    result_holder["response"] = chat_with_cloud_model(
+                                        model,
+                                        messages=provider_messages,
+                                        tools=tools_for_model,
+                                        max_tokens=response_token_limit,
+                                        temperature=0.2,
+                                        reasoning_effort=reasoning_effort,
+                                        stream_callback=_on_cloud_delta,
+                                    )
+                                except BaseException as exc:
+                                    result_holder["error"] = exc
+                                finally:
+                                    stream_queue.put(("done", None))
+
+                            worker = threading.Thread(target=_call_cloud_model, daemon=True)
+                            worker.start()
+                            while True:
+                                try:
+                                    stream_kind, stream_payload = stream_queue.get(timeout=0.25)
+                                except queue.Empty:
+                                    continue
+                                if stream_kind == "content":
+                                    chunk = str(stream_payload or "")
+                                    if chunk:
+                                        streamed_content_for_call += chunk
+                                        full_response += chunk
+                                        yield runtime_event('content', text=chunk, token_stats={})
+                                elif stream_kind == "done":
+                                    break
+                            worker.join(timeout=0)
+                            if result_holder.get("error"):
+                                raise result_holder["error"]
+                            response = result_holder.get("response") or {}
                             self._record_cloud_circuit_success(model)
                             break
                         except CloudModelError as exc:
@@ -862,10 +907,16 @@ class TerminalBrain(
                     and not force_final
                 )
 
-                # Si du texte, l'envoyer avec les stats
-                if content:
-                    full_response += content
-                    yield runtime_event('content', text=content, token_stats=token_stats)
+                # Si du texte n'a pas déjà été envoyé par le stream cloud, l'envoyer maintenant.
+                content_to_emit = content
+                if streamed_content_for_call and content:
+                    if content.startswith(streamed_content_for_call):
+                        content_to_emit = content[len(streamed_content_for_call):]
+                    elif content in streamed_content_for_call or streamed_content_for_call in content:
+                        content_to_emit = ""
+                if content_to_emit:
+                    full_response += content_to_emit
+                    yield runtime_event('content', text=content_to_emit, token_stats=token_stats)
 
                 if over_budget:
                     yield runtime_event(

@@ -1,7 +1,7 @@
 """LLM provider catalog and lightweight cloud chat client.
 
 The runtime stays local-first: Ollama remains the default path. Cloud models are
-opt-in by using a provider-prefixed model id such as `openai:gpt-5.4-mini` or
+opt-in by using a provider-prefixed model id such as `openai:gpt-5.5` or
 `openrouter:provider/model`.
 """
 
@@ -14,7 +14,7 @@ import socket
 import time
 import uuid
 from dataclasses import asdict, dataclass, field
-from typing import Any
+from typing import Any, Callable
 
 import requests
 
@@ -98,6 +98,7 @@ LLM_PROVIDER_CATALOG: tuple[LLMProviderDescriptor, ...] = (
         reasoning_efforts=("low", "medium", "high", "xhigh"),
         default_reasoning_effort="medium",
         default_models=(
+            "gpt-5.5",
             "gpt-5.4",
             "gpt-5.2-codex",
             "gpt-5.1-codex-max",
@@ -306,6 +307,7 @@ _MODEL_EXCLUDED_FRAGMENTS = (
 )
 _PROVIDER_MODEL_PREFERENCES: dict[str, tuple[str, ...]] = {
     "openai": (
+        "gpt-5.5",
         "gpt-5.4",
         "gpt-5.2-codex",
         "gpt-5.1-codex-max",
@@ -676,7 +678,7 @@ def _model_runtime_limits(provider: LLMProviderDescriptor, model: str) -> dict[s
 
     lower = str(model or "").strip().lower()
     if provider.id == "openai":
-        if lower == "gpt-5.4":
+        if lower in {"gpt-5.5", "gpt-5.4"}:
             context_size = 1_000_000
             max_output_tokens = 128_000
             reasoning_efforts = ("low", "medium", "high", "xhigh")
@@ -1298,7 +1300,12 @@ def _merge_codex_streamed_output(
     return merged_response
 
 
-def _stream_codex_response(headers: dict[str, str], payload: dict[str, Any], timeout_seconds: int) -> dict[str, Any]:
+def _stream_codex_response(
+    headers: dict[str, str],
+    payload: dict[str, Any],
+    timeout_seconds: int,
+    stream_callback: Callable[[str], None] | None = None,
+) -> dict[str, Any]:
     try:
         response = requests.post(
             f"{CODEX_CLI_BASE_URL}/responses",
@@ -1317,6 +1324,7 @@ def _stream_codex_response(headers: dict[str, str], payload: dict[str, Any], tim
 
         completed_response: dict[str, Any] | None = None
         streamed_output_items: dict[int, dict[str, Any]] = {}
+        streamed_text_indexes: set[int] = set()
         try:
             line_iter = response.iter_lines(decode_unicode=True)
         except TypeError:
@@ -1326,11 +1334,25 @@ def _stream_codex_response(headers: dict[str, str], payload: dict[str, Any], tim
             if not data:
                 continue
             event_type = data.get("type")
-            if event_type == "response.output_item.done":
+            if event_type == "response.output_text.delta":
+                output_index = data.get("output_index")
+                chunk = str(data.get("delta") or "")
+                if stream_callback and chunk:
+                    stream_callback(chunk)
+                    if isinstance(output_index, int):
+                        streamed_text_indexes.add(output_index)
+            elif event_type == "response.output_item.done":
                 output_index = data.get("output_index")
                 output_item = data.get("item")
                 if isinstance(output_index, int) and isinstance(output_item, dict):
                     streamed_output_items[output_index] = output_item
+                    if stream_callback and output_index not in streamed_text_indexes and output_item.get("type") == "message":
+                        for part in output_item.get("content") or []:
+                            part_dict = dict(part) if isinstance(part, dict) else {}
+                            if part_dict.get("type") in {"output_text", "text"}:
+                                chunk = str(part_dict.get("text") or "")
+                                if chunk:
+                                    stream_callback(chunk)
             elif event_type == "response.completed":
                 response_payload = data.get("response")
                 if isinstance(response_payload, dict):
@@ -1411,6 +1433,7 @@ def _chat_with_codex_cli(
     tools: list[dict[str, Any]] | None,
     timeout_seconds: int,
     reasoning_effort: str | None = None,
+    stream_callback: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
     credential = load_codex_cli_credential()
     access_token = str((credential or {}).get("access_token") or "").strip()
@@ -1440,8 +1463,118 @@ def _chat_with_codex_cli(
     if account_id:
         headers["ChatGPT-Account-ID"] = account_id
 
-    response = _stream_codex_response(headers, payload, timeout_seconds)
+    response = _stream_codex_response(headers, payload, timeout_seconds, stream_callback=stream_callback)
     return _parse_codex_response(provider_model, response)
+
+
+def _parse_openai_sse_data_line(line: Any) -> dict[str, Any] | None:
+    if isinstance(line, bytes):
+        line = line.decode("utf-8", errors="replace")
+    line = str(line or "").strip()
+    if not line.startswith("data:"):
+        return None
+    raw_data = line[5:].strip()
+    if not raw_data or raw_data == "[DONE]":
+        return None
+    try:
+        data = json.loads(raw_data)
+    except json.JSONDecodeError:
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _merge_openai_tool_call_delta(tool_calls: dict[int, dict[str, Any]], delta: dict[str, Any]) -> None:
+    index = int(delta.get("index") or 0)
+    current = tool_calls.setdefault(index, {
+        "id": delta.get("id") or f"call_{index}",
+        "type": delta.get("type") or "function",
+        "function": {"name": "", "arguments": ""},
+    })
+    if delta.get("id"):
+        current["id"] = delta.get("id")
+    if delta.get("type"):
+        current["type"] = delta.get("type")
+    function_delta = delta.get("function") if isinstance(delta.get("function"), dict) else {}
+    function = current.setdefault("function", {"name": "", "arguments": ""})
+    if function_delta.get("name"):
+        function["name"] = function_delta.get("name")
+    if "arguments" in function_delta:
+        function["arguments"] = str(function.get("arguments") or "") + str(function_delta.get("arguments") or "")
+
+
+def _chat_with_openai_compatible_stream(
+    provider: LLMProviderDescriptor,
+    url: str,
+    headers: dict[str, str],
+    payload: dict[str, Any],
+    timeout_seconds: int,
+    stream_callback: Callable[[str], None] | None,
+) -> dict[str, Any]:
+    stream_payload = dict(payload)
+    stream_payload["stream"] = True
+    if provider.id == "openai":
+        stream_payload["stream_options"] = {"include_usage": True}
+
+    try:
+        response = requests.post(url, headers=headers, json=stream_payload, stream=True, timeout=timeout_seconds)
+    except requests.RequestException as exc:
+        raise CloudModelError(f"{provider.label} request failed: {exc}") from exc
+
+    try:
+        if response.status_code >= 400:
+            detail = truncate_middle(response.text or response.reason or "", 800)
+            raise CloudModelError(f"{provider.label} API error {response.status_code}: {detail}")
+
+        content_parts: list[str] = []
+        tool_calls_by_index: dict[int, dict[str, Any]] = {}
+        usage: dict[str, Any] = {}
+
+        try:
+            line_iter = response.iter_lines(decode_unicode=True)
+        except TypeError:
+            line_iter = response.iter_lines()
+        for line in line_iter:
+            data = _parse_openai_sse_data_line(line)
+            if not data:
+                continue
+            if isinstance(data.get("usage"), dict):
+                usage = data.get("usage") or usage
+            choices = data.get("choices") or []
+            if not choices:
+                continue
+            delta = choices[0].get("delta") or {}
+            if not isinstance(delta, dict):
+                continue
+            content_delta = delta.get("content")
+            if content_delta:
+                chunk = str(content_delta)
+                content_parts.append(chunk)
+                if stream_callback:
+                    stream_callback(chunk)
+            for tool_delta in delta.get("tool_calls") or []:
+                if isinstance(tool_delta, dict):
+                    _merge_openai_tool_call_delta(tool_calls_by_index, tool_delta)
+
+        message: dict[str, Any] = {"role": "assistant", "content": "".join(content_parts)}
+        tool_calls = [
+            tool_calls_by_index[index]
+            for index in sorted(tool_calls_by_index)
+            if (tool_calls_by_index[index].get("function") or {}).get("name")
+        ]
+        if tool_calls:
+            message["tool_calls"] = _normalise_tool_calls(tool_calls)
+        return {
+            "message": message,
+            "prompt_eval_count": int(usage.get("prompt_tokens") or 0),
+            "eval_count": int(usage.get("completion_tokens") or 0),
+            "total_duration": 0,
+            "provider": provider.id,
+            "model": payload.get("model") or "",
+        }
+    finally:
+        close = getattr(response, "close", None)
+        if callable(close):
+            close()
 
 
 def _chat_with_openai_compatible(
@@ -1453,6 +1586,7 @@ def _chat_with_openai_compatible(
     temperature: float,
     timeout_seconds: int,
     reasoning_effort: str | None = None,
+    stream_callback: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
     _ensure_direct_api_auth(provider)
     api_key = get_provider_secret(provider.env_key) if provider.env_key else ""
@@ -1479,6 +1613,17 @@ def _chat_with_openai_compatible(
         headers["X-Title"] = "JoyBoy"
 
     url = f"{_provider_base_url(provider)}/chat/completions"
+    if stream_callback:
+        try:
+            return _chat_with_openai_compatible_stream(provider, url, headers, payload, timeout_seconds, stream_callback)
+        except CloudModelError as exc:
+            detail = str(exc)
+            if "reasoning_effort" in payload and ("reasoning" in detail.lower() or "unsupported" in detail.lower() or "unknown" in detail.lower()):
+                payload.pop("reasoning_effort", None)
+                return _chat_with_openai_compatible_stream(provider, url, headers, payload, timeout_seconds, stream_callback)
+            if not ("stream" in detail.lower() and ("unsupported" in detail.lower() or "unknown" in detail.lower() or "not support" in detail.lower())):
+                raise
+
     try:
         response = requests.post(url, headers=headers, json=payload, timeout=timeout_seconds)
     except requests.RequestException as exc:
@@ -1531,6 +1676,7 @@ def chat_with_cloud_model(
     temperature: float = 0.2,
     timeout_seconds: int = 120,
     reasoning_effort: str | None = None,
+    stream_callback: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
     provider_id, provider_model = split_cloud_model_name(model_name)
     if not provider_id:
@@ -1543,11 +1689,11 @@ def chat_with_cloud_model(
 
     auth_status = get_provider_auth_status(provider.id, provider.env_key)
     if provider.id == "openai" and auth_status["mode"] == "codex_cli":
-        return _chat_with_codex_cli(provider_model, messages, tools, timeout_seconds, reasoning_effort=reasoning_effort)
+        return _chat_with_codex_cli(provider_model, messages, tools, timeout_seconds, reasoning_effort=reasoning_effort, stream_callback=stream_callback)
     if provider.protocol == "anthropic":
         return _chat_with_anthropic(provider, provider_model, messages, tools, max_tokens, temperature, timeout_seconds)
     if provider.protocol == "gemini":
         return _chat_with_gemini(provider, provider_model, messages, tools, max_tokens, temperature, timeout_seconds)
     if provider.openai_compatible:
-        return _chat_with_openai_compatible(provider, provider_model, messages, tools, max_tokens, temperature, timeout_seconds, reasoning_effort=reasoning_effort)
+        return _chat_with_openai_compatible(provider, provider_model, messages, tools, max_tokens, temperature, timeout_seconds, reasoning_effort=reasoning_effort, stream_callback=stream_callback)
     raise CloudModelError(f"Provider {provider_id} protocol is not supported for terminal runtime")

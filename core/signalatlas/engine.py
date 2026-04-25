@@ -2273,6 +2273,8 @@ def run_site_audit(
                 "has_blog_signals": _is_blog_like(current, ""),
             })
 
+    crawl_budget_reached = bool(queue and len(pages) >= max_pages)
+    crawl_exhausted_early = bool(not queue and len(pages) < max_pages)
     emit("extract", 65, "Extracting technical signals")
     ensure_not_cancelled()
     classification = _classify_site(pages)
@@ -2322,6 +2324,9 @@ def run_site_audit(
         "pages_crawled": len(pages),
         "pages_sampled": len(pages),
         "page_budget": max_pages,
+        "requested_page_budget": max_pages,
+        "crawl_budget_reached": crawl_budget_reached,
+        "crawl_exhausted_early": crawl_exhausted_early,
         "pages_discovered": len(discovered_urls),
         "sitemap_url_count": len(sitemaps.get("urls") or []),
         "sitemap_index_count": len(sitemaps.get("indexes") or []),
@@ -2406,6 +2411,8 @@ def run_site_audit(
         "template_clusters": template_clusters,
         "page_count": len(pages),
         "duration_seconds": round(time.time() - start, 2),
+        "crawl_budget_reached": crawl_budget_reached,
+        "crawl_exhausted_early": crawl_exhausted_early,
     }
 
     remediation_items = [

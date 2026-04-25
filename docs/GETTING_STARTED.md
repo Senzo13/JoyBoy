@@ -59,6 +59,7 @@ Provider keys are optional at startup. Add them only when you need downloads tha
 - `HF_TOKEN`: useful for gated/private Hugging Face models or more reliable Hugging Face downloads.
 - `CIVITAI_API_KEY`: useful for importing CivitAI model sources.
 - `OLLAMA_BASE_URL`: optional if your Ollama server is not on `http://127.0.0.1:11434`.
+- SignalAtlas GSC CSV imports do not need credentials. Optional direct/provider enrichments use `SIGNALATLAS_GSC_*` settings and `SEMRUSH_API_KEY`.
 
 If you only use already-installed local models, you can skip keys and add them later.
 

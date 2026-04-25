@@ -20,6 +20,7 @@ let signalAtlasLastInteractionAt = 0;
 let signalAtlasDeferredRefreshTimer = null;
 let signalAtlasPendingRefresh = false;
 let signalAtlasInteractionTrackingReady = false;
+const signalAtlasCompletionNotifiedAuditIds = new Set();
 const signalAtlasAnimatedScoreRingKeys = new Set();
 const SIGNALATLAS_SERP_PAGE_SIZE = 10;
 const SIGNALATLAS_INTERACTION_IDLE_MS = 1400;
@@ -191,7 +192,7 @@ function signalAtlasValidateTarget(value) {
             valid: false,
             present: false,
             normalized: '',
-            message: moduleT('signalatlas.targetRequired', 'Add a real domain or public URL first, for example https://nevomove.com/.'),
+            message: moduleT('signalatlas.targetRequired', 'Ajoute d’abord un vrai domaine ou une URL publique, par exemple https://nevomove.com/.'),
         };
     }
 
@@ -203,7 +204,7 @@ function signalAtlasValidateTarget(value) {
         parsed = null;
     }
 
-    const invalidMessage = moduleT('signalatlas.targetInvalid', 'Use a real domain or full public URL, for example https://nevomove.com/.');
+    const invalidMessage = moduleT('signalatlas.targetInvalid', 'Utilise un vrai domaine ou une URL publique complète, par exemple https://nevomove.com/.');
     if (!parsed) {
         return { valid: false, present: true, normalized: '', message: invalidMessage };
     }
@@ -393,7 +394,7 @@ function signalAtlasProviderStatusLabel(status) {
     if (clean === 'configured') return moduleT('signalatlas.providerConfigured', 'Configured');
     if (clean === 'confirmed') return moduleT('signalatlas.providerConfirmed', 'Confirmed');
     if (clean === 'not_configured') return moduleT('signalatlas.providerNotConfigured', 'Not configured');
-    if (clean === 'target_mismatch') return moduleT('signalatlas.providerTargetMismatch', 'Target mismatch');
+    if (clean === 'target_mismatch') return moduleT('signalatlas.providerTargetMismatch', 'Cible non alignée');
     if (clean === 'property_unverified') return moduleT('signalatlas.providerUnverified', 'Property not verified');
     if (clean === 'connector_missing') return moduleT('signalatlas.providerConnectorMissing', 'Connector missing');
     if (clean === 'auth_error') return moduleT('signalatlas.providerAuthError', 'Auth error');
@@ -415,23 +416,28 @@ function signalAtlasProviderSummary(provider) {
     const status = String(provider?.status || '').trim().toLowerCase();
     if (id === 'google_search_console') {
         if (status === 'confirmed') {
-            return moduleT('signalatlas.providerSummaryGscConfirmed', 'Owner-mode confirmation is available for this target through Search Console.');
+            return moduleT('signalatlas.providerSummaryGscConfirmed', 'Une confirmation propriétaire est disponible pour cette cible via Search Console.');
         }
         if (status === 'configured') {
-            return moduleT('signalatlas.providerSummaryGscConfigured', 'Search Console is configured and ready for a verified-owner audit on a matching property.');
+            return moduleT('signalatlas.providerSummaryGscConfigured', 'Search Console est configuré et prêt pour un audit propriétaire vérifié sur une propriété correspondante.');
         }
         if (status === 'target_mismatch') {
-            return moduleT('signalatlas.providerSummaryGscMismatch', 'Search Console is configured, but the saved property does not match the current target yet.');
+            return moduleT('signalatlas.providerSummaryGscMismatch', 'Search Console est configuré, mais la propriété enregistrée ne correspond pas encore à la cible courante.');
         }
         if (status === 'connector_missing') {
-            return moduleT('signalatlas.providerSummaryConnectorMissing', 'The provider is configured, but the required Python client package is not available in this runtime.');
+            return moduleT('signalatlas.providerSummaryConnectorMissing', 'Le provider est configuré, mais le client Python requis n’est pas disponible dans ce runtime.');
         }
         return moduleT('signalatlas.providerSummaryGscMissing', 'Connect an official property to move Google-specific data from estimated to confirmed.');
     }
-    if (status === 'configured') {
-        return moduleT('signalatlas.providerSummaryConfigured', 'This integration is configured and can enrich relevant future audit layers.');
+    if (id === 'semrush') {
+        return status === 'configured'
+            ? moduleT('signalatlas.providerSummarySemrushReady', 'Semrush est configuré et pourra enrichir les prochaines passes potentiel organique avec de l’intelligence mots-clés externe.')
+            : moduleT('signalatlas.providerSummarySemrushLocked', 'Semrush est préparé comme provider optionnel verrouillé pour volume, difficulté, concurrents et pages organiques externes.');
     }
-    return moduleT('signalatlas.providerSummaryScaffolded', 'This integration is scaffolded in the architecture and will enrich later owner-mode passes.');
+    if (status === 'configured') {
+        return moduleT('signalatlas.providerSummaryConfigured', 'Cette intégration est configurée et peut enrichir de futures couches d’audit.');
+    }
+    return moduleT('signalatlas.providerSummaryScaffolded', 'Cette intégration est prévue dans l’architecture et enrichira de futures passes propriétaire.');
 }
 
 function perfAtlasOwnerConnectorSummary(provider) {
@@ -492,11 +498,11 @@ function signalAtlasRenderSummary(renderDetection = {}) {
         return moduleT('signalatlas.renderSummaryNotRequested', 'Raw HTML baseline only.');
     }
     if (renderDetection.render_js_executed) {
-        return moduleT('signalatlas.renderSummaryExecuted', 'JS render probes executed on {count} page(s).', {
+        return moduleT('signalatlas.renderSummaryExecuted', 'Sondes de rendu JS exécutées sur {count} page(s).', {
             count: renderDetection.executed_page_count || 0,
         });
     }
-    return moduleT('signalatlas.renderSummaryUnavailable', 'JS rendering was requested but could not run.');
+    return moduleT('signalatlas.renderSummaryUnavailable', 'Le rendu JS a été demandé mais n’a pas pu s’exécuter.');
 }
 
 function moduleT(key, fallback = '', params = {}) {
@@ -527,7 +533,7 @@ function signalAtlasProfileSummary(profileId) {
         return moduleT('signalatlas.auditProfileBasicDesc', 'Passe légère pour un premier diagnostic rapide.');
     }
     if (clean === 'ultra') {
-        return moduleT('signalatlas.auditProfileUltraDesc', 'Passe la plus poussée: crawl large, rendu JS et pack IA complet.');
+        return moduleT('signalatlas.auditProfileUltraDesc', 'Passe la plus poussée : crawl large intelligent, rendu JS et pack IA complet. Si le site est petit, SignalAtlas s’arrête dès que le graphe est épuisé.');
     }
     return moduleT('signalatlas.auditProfileElevatedDesc', 'Bon équilibre entre profondeur technique, rendu JS et restitution IA.');
 }
@@ -737,6 +743,87 @@ function signalAtlasScoreLabel(score) {
     return moduleT(`signalatlas.scoreCategory_${id}`, score?.label || id || moduleT('signalatlas.scoreLabel', 'Score'));
 }
 
+function auditTranslationKey(value) {
+    return String(value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '');
+}
+
+function perfAtlasScoreLabel(score) {
+    const id = auditTranslationKey(score?.id || score?.label);
+    return moduleT(`perfatlas.scoreCategory_${id}`, score?.label || id || moduleT('signalatlas.scoreLabel', 'Score'));
+}
+
+function perfAtlasFindingKey(item) {
+    return auditTranslationKey(item?.id || item?.title);
+}
+
+function perfAtlasFindingTitle(item) {
+    const key = perfAtlasFindingKey(item);
+    return moduleT(`perfatlas.findingTitle_${key}`, item?.title || moduleT('perfatlas.findingFallbackTitle', 'Finding'));
+}
+
+function perfAtlasFindingDiagnostic(item) {
+    const key = perfAtlasFindingKey(item);
+    return moduleT(`perfatlas.findingDiagnostic_${key}`, item?.diagnostic || '');
+}
+
+function perfAtlasFindingFix(item) {
+    const key = perfAtlasFindingKey(item);
+    return moduleT(`perfatlas.findingFix_${key}`, item?.recommended_fix || '');
+}
+
+function perfAtlasCategoryLabel(value) {
+    const key = auditTranslationKey(value);
+    return moduleT(`perfatlas.category_${key}`, String(value || '').replace(/_/g, ' '));
+}
+
+function perfAtlasRuntimeLabel(value) {
+    const key = auditTranslationKey(value);
+    if (!key) return moduleT('perfatlas.runtimeUnknown', 'Indisponible');
+    return moduleT(`perfatlas.runtime_${key}`, value || moduleT('perfatlas.runtimeUnknown', 'Indisponible'));
+}
+
+function perfAtlasAssetKindLabel(value) {
+    const key = auditTranslationKey(value || 'asset');
+    return moduleT(`perfatlas.assetKind_${key}`, value || moduleT('perfatlas.assetKind_asset', 'Ressource'));
+}
+
+function perfAtlasAvailabilityLabel(value) {
+    return value
+        ? moduleT('perfatlas.available', 'Disponible')
+        : moduleT('perfatlas.notAvailable', 'Absent');
+}
+
+function perfAtlasScoreGuardrailMessage(summary = {}) {
+    const guardrails = Array.isArray(summary.score_guardrails) ? summary.score_guardrails : [];
+    if (!guardrails.length) return '';
+    const hasGlobalCap = guardrails.some(item => String(item?.bucket || '') === 'global');
+    if (!hasGlobalCap) return '';
+    if (!summary.lab_data_available && !summary.field_data_available) {
+        return moduleT('perfatlas.scoreGuardrailNoLabField', 'Score capped because neither lab nor field evidence was available.');
+    }
+    if (!summary.lab_data_available) {
+        return moduleT('perfatlas.scoreGuardrailNoLab', 'Score capped because no reliable Lighthouse or PSI lab run was available.');
+    }
+    if (!summary.field_data_available) {
+        return moduleT('perfatlas.scoreGuardrailNoField', 'Score capped because public field data was not available.');
+    }
+    return moduleT('perfatlas.scoreGuardrailAnchored', 'Score anchored to the representative Lighthouse or PSI performance result.');
+}
+
+function perfAtlasTrendDirectionLabel(value) {
+    const key = auditTranslationKey(value || 'steady');
+    return moduleT(`perfatlas.trend_${key}`, value || moduleT('perfatlas.trend_steady', 'Stable'));
+}
+
+function perfAtlasOpportunityTitle(item) {
+    const key = auditTranslationKey(item?.id || item?.title);
+    return moduleT(`perfatlas.opportunityTitle_${key}`, item?.title || item?.id || moduleT('perfatlas.opportunityFallbackTitle', 'Opportunité'));
+}
+
 function signalAtlasVisibilityLabel(key) {
     const clean = String(key || '').trim().toLowerCase();
     return moduleT(`signalatlas.visibilityLabel_${clean}`, clean.replace(/_/g, ' '));
@@ -792,6 +879,12 @@ function signalAtlasOverviewFacts(audit) {
             count: Array.isArray(audit?.findings) ? audit.findings.length : 0,
         }),
     ];
+    if (summary.crawl_exhausted_early) {
+        facts.push(moduleT('signalatlas.overviewFactSmartCrawlDone', 'Crawl terminé automatiquement : SignalAtlas s’est arrêté à {sampled} page(s), car aucun autre lien utile n’était disponible malgré un budget de {budget}.', {
+            sampled: Number(snapshot.page_count || summary.pages_crawled || 0),
+            budget: Number(summary.page_budget || 0),
+        }));
+    }
     if (summary.owner_confirmed) {
         facts.push(moduleT('signalatlas.overviewFactOwnerConfirmed', 'Une source propriétaire officielle confirme une partie du contexte de visibilité.'));
     } else {
@@ -806,7 +899,7 @@ function signalAtlasOverviewFacts(audit) {
     } else {
         facts.push(moduleT('signalatlas.overviewFactRenderRaw', 'L’analyse de rendu repose uniquement sur le HTML brut de départ.'));
     }
-    return facts.slice(0, 4);
+    return facts.slice(0, 5);
 }
 
 function signalAtlasPriorityFindings(audit) {
@@ -858,12 +951,12 @@ function signalAtlasVisibilityNote(key, value = {}, audit) {
     if (cleanKey === 'geo') {
         const status = String(value?.status || '').trim().toLowerCase();
         if (status === 'strong signal' || status === 'confirmed') {
-            return moduleT('signalatlas.visibilityNote_geo_strong', 'The site exposes strong public AI-visibility signals such as llms.txt or rich structured data coverage.');
+            return moduleT('signalatlas.visibilityNote_geo_strong', 'Le site expose des signaux publics forts pour la visibilité IA, comme llms.txt ou une bonne couverture de données structurées.');
         }
         if (status === 'partial signal') {
-            return moduleT('signalatlas.visibilityNote_geo_partial', 'Some AI-visibility signals are present, but the public GEO surface is still partial.');
+            return moduleT('signalatlas.visibilityNote_geo_partial', 'Certains signaux de visibilité IA sont présents, mais la surface GEO publique reste partielle.');
         }
-        return moduleT('signalatlas.visibilityNote_geo_unknown', 'No strong public GEO signal was detected yet in this audit pass.');
+        return moduleT('signalatlas.visibilityNote_geo_unknown', 'Aucun signal GEO public fort n’a été détecté sur cette passe d’audit.');
     }
     if (cleanKey === 'crawlability') {
         return String(value?.status || '').toLowerCase() === 'blocked'
@@ -1130,7 +1223,7 @@ function renderSignalAtlasSerpPreview(audit, options = {}) {
                     <span>${escapeHtml(moduleT('signalatlas.positionLabel', 'Résultat'))} ${resultNumber}</span>
                     <span class="signalatlas-serp-score-badge ${escapeHtml(item.readiness.tone)}">${escapeHtml(moduleT('signalatlas.serpSeoScore', 'SEO'))} ${escapeHtml(String(item.score))}</span>
                     <span>${escapeHtml(item.readiness.label)}</span>
-                    <span>${escapeHtml(String(page.word_count || 0))} ${escapeHtml(moduleT('signalatlas.words', 'Words'))}</span>
+                    <span>${escapeHtml(String(page.word_count || 0))} ${escapeHtml(moduleT('signalatlas.words', 'mots'))}</span>
                 </div>
             </article>
         `;
@@ -1263,19 +1356,87 @@ function signalAtlasJobProgress(job) {
     return 0;
 }
 
+function signalAtlasFormatDuration(seconds) {
+    const value = Math.max(0, Number(seconds) || 0);
+    if (value < 45) return moduleT('signalatlas.etaLessThanMinute', 'moins d’une minute');
+    const minutes = Math.max(1, Math.round(value / 60));
+    if (minutes < 60) {
+        return moduleT('signalatlas.etaMinutes', 'env. {minutes} min', { minutes });
+    }
+    const hours = Math.floor(minutes / 60);
+    const rest = minutes % 60;
+    if (!rest) return moduleT('signalatlas.etaHours', 'env. {hours} h', { hours });
+    return moduleT('signalatlas.etaHoursMinutes', 'env. {hours} h {minutes} min', { hours, minutes: rest });
+}
+
+function signalAtlasEstimateSecondsForAudit(audit = null) {
+    const options = audit?.options || signalAtlasDraft || {};
+    const metadata = audit?.metadata || {};
+    const metadataEstimate = Number(metadata.estimated_seconds);
+    if (Number.isFinite(metadataEstimate) && metadataEstimate > 0) return metadataEstimate;
+    const maxPages = signalAtlasResolvedPageBudget(options.max_pages ?? signalAtlasDraft.max_pages, SIGNALATLAS_DEFAULT_PAGE_BUDGET);
+    const renderJs = options.render_js ?? signalAtlasDraft.render_js;
+    const aiLevel = String(metadata.ai?.level || signalAtlasDraft.level || 'basic_summary').toLowerCase();
+    const crawlSeconds = 12
+        + Math.min(maxPages, 40) * 1.5
+        + Math.max(0, Math.min(maxPages, 250) - 40) * 0.55
+        + Math.max(0, Math.min(maxPages, SIGNALATLAS_MAX_PAGE_BUDGET) - 250) * 0.18;
+    const renderSeconds = renderJs ? 30 : 0;
+    const aiSeconds = aiLevel === 'no_ai'
+        ? 0
+        : aiLevel === 'ai_remediation_pack'
+            ? 70
+            : aiLevel === 'full_expert_analysis'
+                ? 45
+                : 18;
+    return Math.max(35, Math.min(1200, crawlSeconds + renderSeconds + aiSeconds));
+}
+
+function signalAtlasJobStartedAt(job) {
+    const raw = String(job?.started_at || job?.created_at || '').trim();
+    if (!raw) return null;
+    const parsed = new Date(raw);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function signalAtlasProgressEtaLabel(progressState, audit = null) {
+    const status = String(progressState?.status || '').toLowerCase();
+    if (!progressState && signalAtlasLaunchPending) {
+        return moduleT('signalatlas.etaInitial', 'durée estimée {duration}', {
+            duration: signalAtlasFormatDuration(signalAtlasEstimateSecondsForAudit(audit)),
+        });
+    }
+    if (!progressState || !signalAtlasIsLiveProgressStatus(status)) return '';
+    const progress = signalAtlasJobProgress(progressState);
+    if (progress >= 96) return moduleT('signalatlas.etaFinalizing', 'finalisation');
+    const startedAt = signalAtlasJobStartedAt(progressState.job);
+    if (startedAt && progress >= 6) {
+        const elapsedSeconds = Math.max(1, (Date.now() - startedAt.getTime()) / 1000);
+        const remainingSeconds = elapsedSeconds * ((100 - progress) / Math.max(progress, 1));
+        if (Number.isFinite(remainingSeconds) && remainingSeconds > 0) {
+            return moduleT('signalatlas.etaRemaining', 'reste {duration}', {
+                duration: signalAtlasFormatDuration(Math.min(remainingSeconds, signalAtlasEstimateSecondsForAudit(audit) * 1.8)),
+            });
+        }
+    }
+    return moduleT('signalatlas.etaInitial', 'durée estimée {duration}', {
+        duration: signalAtlasFormatDuration(signalAtlasEstimateSecondsForAudit(audit)),
+    });
+}
+
 function signalAtlasJobPhaseLabel(phase) {
     const clean = String(phase || '').trim().toLowerCase();
     if (clean === 'crawl') return moduleT('signalatlas.phaseCrawl', 'Crawl');
-    if (clean === 'render') return moduleT('signalatlas.phaseRender', 'JS render');
+    if (clean === 'render') return moduleT('signalatlas.phaseRender', 'Rendu JS');
     if (clean === 'extract') return moduleT('signalatlas.phaseExtract', 'Extraction');
     if (clean === 'score') return moduleT('signalatlas.phaseScore', 'Scoring');
-    if (clean === 'report') return moduleT('signalatlas.phaseReport', 'Report');
-    if (clean === 'ai') return moduleT('signalatlas.phaseAi', 'AI interpretation');
-    if (clean === 'queued') return moduleT('signalatlas.phaseQueued', 'Queued');
-    if (clean === 'cancelling') return moduleT('signalatlas.phaseCancelling', 'Cancelling');
-    if (clean === 'cancelled') return moduleT('signalatlas.phaseCancelled', 'Cancelled');
-    if (clean === 'done') return moduleT('signalatlas.phaseDone', 'Done');
-    if (clean === 'error') return moduleT('signalatlas.phaseError', 'Error');
+    if (clean === 'report') return moduleT('signalatlas.phaseReport', 'Rapport');
+    if (clean === 'ai') return moduleT('signalatlas.phaseAi', 'Interprétation IA');
+    if (clean === 'queued') return moduleT('signalatlas.phaseQueued', 'En file');
+    if (clean === 'cancelling') return moduleT('signalatlas.phaseCancelling', 'Annulation');
+    if (clean === 'cancelled') return moduleT('signalatlas.phaseCancelled', 'Annulé');
+    if (clean === 'done') return moduleT('signalatlas.phaseDone', 'Terminé');
+    if (clean === 'error') return moduleT('signalatlas.phaseError', 'Erreur');
     return signalAtlasStatusLabel(clean || 'unknown');
 }
 
@@ -1368,7 +1529,7 @@ function signalAtlasProgressSupportCopy(progressState, fallbackHint = '') {
     if (clean === 'running') {
         return moduleT('signalatlas.progressWorkingCopy', 'SignalAtlas continue d’analyser la cible et mettra le rapport à jour dès que cette étape se termine.');
     }
-    return fallbackHint || moduleT('signalatlas.backgroundResumeHint', 'This audit keeps running if you leave the view.');
+    return fallbackHint || moduleT('signalatlas.backgroundResumeHint', 'Cet audit continue en arrière-plan si tu quittes cette vue.');
 }
 
 function signalAtlasAuditProgressState(audit) {
@@ -1393,8 +1554,8 @@ function signalAtlasAuditProgressState(audit) {
             phase: signalAtlasJobPhaseLabel(currentStatus),
             progress: currentStatus === 'running' ? 8 : 2,
             message: currentStatus === 'running'
-                ? moduleT('signalatlas.auditRunning', 'Audit running...')
-                : moduleT('signalatlas.phaseQueued', 'Queued'),
+                ? moduleT('signalatlas.auditRunning', 'Audit en cours...')
+                : moduleT('signalatlas.phaseQueued', 'En file'),
         };
     }
     return null;
@@ -1598,7 +1759,7 @@ function signalAtlasPickerOptions(pickerId) {
             {
                 value: 'ultra',
                 label: signalAtlasProfileLabel('ultra'),
-                description: moduleT('signalatlas.auditProfileUltraDesc', 'Passe la plus poussée: crawl large, rendu JS et pack IA complet.'),
+                description: moduleT('signalatlas.auditProfileUltraDesc', 'Passe la plus poussée : crawl large intelligent, rendu JS et pack IA complet. Si le site est petit, SignalAtlas s’arrête dès que le graphe est épuisé.'),
                 tone: 'expert',
             },
         ], signalAtlasDraft.profile || 'elevated');
@@ -1607,13 +1768,13 @@ function signalAtlasPickerOptions(pickerId) {
         return buildSignalAtlasSimpleOptions([
             {
                 value: 'public',
-                label: moduleT('signalatlas.publicMode', 'Public audit'),
-                description: moduleT('signalatlas.publicModeHint', 'Crawl, rendering and open signals only.'),
+                label: moduleT('signalatlas.publicMode', 'Audit public'),
+                description: moduleT('signalatlas.publicModeHint', 'Crawl, rendu et signaux ouverts uniquement.'),
             },
             {
                 value: 'verified_owner',
-                label: moduleT('signalatlas.ownerMode', 'Verified owner'),
-                description: moduleT('signalatlas.ownerModeHint', 'Enrich with official connected data when available.'),
+                label: moduleT('signalatlas.ownerMode', 'Propriétaire vérifié'),
+                description: moduleT('signalatlas.ownerModeHint', 'Enrichit l’audit avec des données officielles connectées quand elles sont disponibles.'),
             },
         ], signalAtlasDraft.mode);
     }
@@ -1621,14 +1782,14 @@ function signalAtlasPickerOptions(pickerId) {
         const budgetOptions = SIGNALATLAS_PAGE_BUDGET_STEPS.map(value => ({
             value,
             label: String(value),
-            description: moduleT('signalatlas.pageBudgetHint', 'Maximum number of pages sampled for this audit pass.'),
+            description: moduleT('signalatlas.pageBudgetHint', 'Nombre maximum de pages échantillonnées sur cette passe d’audit.'),
         }));
         budgetOptions.push({
             value: SIGNALATLAS_UNLIMITED_PAGE_BUDGET,
-            label: moduleT('signalatlas.pageBudgetUnlimited', '∞ Unlimited'),
+            label: moduleT('signalatlas.pageBudgetUnlimited', '∞ Illimité'),
             description: moduleT(
                 'signalatlas.pageBudgetUnlimitedHint',
-                `Uses the runtime ceiling for this pass (${SIGNALATLAS_MAX_PAGE_BUDGET} pages).`
+                `Utilise le plafond du runtime pour cette passe (${SIGNALATLAS_MAX_PAGE_BUDGET} pages), avec arrêt automatique si le site est plus petit.`
             ),
             tone: 'expert',
         });
@@ -1641,7 +1802,7 @@ function signalAtlasPickerOptions(pickerId) {
         return buildSignalAtlasSimpleOptions([1, 2, 3, 4, 5].map(value => ({
             value,
             label: String(value),
-            description: moduleT('signalatlas.depthHint', 'Controls how deep the deterministic crawler can follow internal links.'),
+            description: moduleT('signalatlas.depthHint', 'Contrôle jusqu’où le crawler déterministe peut suivre les liens internes.'),
         })), signalAtlasDraft.depth);
     }
     if (pickerId === 'model') {
@@ -1861,6 +2022,7 @@ function renderAuditProgressBanner({
     supportCopy,
     launchingLabel,
     launchingMessage,
+    etaLabel = '',
 }) {
     if (!progressState && !launchPending) return '';
     const progress = launchPending && !progressState ? 4 : signalAtlasJobProgress(progressState);
@@ -1885,13 +2047,14 @@ function renderAuditProgressBanner({
                     <span class="signalatlas-progress-chip">${escapeHtml(statusLabel(liveStatus || 'running'))}</span>
                     <span class="signalatlas-progress-chip is-phase">${escapeHtml(phase)}</span>
                     <span class="signalatlas-progress-chip is-percent">${escapeHtml(moduleT(`${namespace}.progressPercent`, '{value}%', { value: progress }))}</span>
+                    ${etaLabel ? `<span class="signalatlas-progress-chip is-eta">${escapeHtml(etaLabel)}</span>` : ''}
                 </div>
             </div>
             <div class="signalatlas-progress-bar${isLive ? ' is-live' : ''}" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${escapeHtml(String(progress))}">
                 <div class="signalatlas-progress-fill${isLive ? ' is-live' : ''}" style="width:${escapeHtml(String(progress))}%"></div>
             </div>
             <div class="signalatlas-progress-meta">
-                <span class="signalatlas-progress-meta-copy">${escapeHtml(targetLabel || moduleT(`${namespace}.backgroundResumeHint`, 'This audit keeps running if you leave the view.'))}</span>
+                <span class="signalatlas-progress-meta-copy">${escapeHtml(targetLabel || moduleT(`${namespace}.backgroundResumeHint`, 'Cet audit continue en arrière-plan si tu quittes cette vue.'))}</span>
             </div>
         </div>
     `;
@@ -1905,8 +2068,9 @@ function renderSignalAtlasProgressBanner(progressState, targetLabel = '') {
         targetLabel,
         statusLabel: signalAtlasStatusLabel,
         supportCopy: signalAtlasProgressSupportCopy(progressState, targetLabel),
-        launchingLabel: moduleT('signalatlas.launching', 'Launching'),
-        launchingMessage: moduleT('signalatlas.launchingAudit', 'Starting the audit runtime...'),
+        launchingLabel: moduleT('signalatlas.launching', 'Lancement'),
+        launchingMessage: moduleT('signalatlas.launchingAudit', 'Démarrage du runtime d’audit...'),
+        etaLabel: signalAtlasProgressEtaLabel(progressState, signalAtlasCurrentAudit),
     });
 }
 
@@ -2176,7 +2340,7 @@ async function loadSignalAtlasAudit(auditId, options = {}) {
     const result = await apiSignalAtlas.getAudit(auditId);
     if (!result.ok || !result.data?.audit) {
         if (!options.silent && typeof Toast !== 'undefined') {
-            Toast.error(result.data?.error || moduleT('signalatlas.loadError', 'Unable to load this audit.'));
+        Toast.error(result.data?.error || moduleT('signalatlas.loadError', 'Impossible de charger cet audit.'));
         }
         return null;
     }
@@ -2199,7 +2363,7 @@ function summarizeSignalAtlasAudit(audit) {
     const reportModel = signalAtlasReportModelInfo(audit);
     return {
         id: audit?.id,
-        title: audit?.title || target.host || target.normalized_url || moduleT('signalatlas.untitledAudit', 'Untitled audit'),
+        title: audit?.title || target.host || target.normalized_url || moduleT('signalatlas.untitledAudit', 'Audit sans titre'),
         status: audit?.status || 'unknown',
         updated_at: audit?.updated_at,
         created_at: audit?.created_at,
@@ -2370,7 +2534,7 @@ function seedAuditModuleRuntimeJob(job, moduleId, fallbackAuditId = '', launchMe
 }
 
 function seedSignalAtlasRuntimeJob(job, fallbackAuditId = '') {
-    seedAuditModuleRuntimeJob(job, 'signalatlas', fallbackAuditId, moduleT('signalatlas.launchingAudit', 'Starting the audit runtime...'));
+    seedAuditModuleRuntimeJob(job, 'signalatlas', fallbackAuditId, moduleT('signalatlas.launchingAudit', 'Démarrage du runtime d’audit...'));
 }
 
 function seedPerfAtlasRuntimeJob(job, fallbackAuditId = '') {
@@ -2379,12 +2543,12 @@ function seedPerfAtlasRuntimeJob(job, fallbackAuditId = '') {
 
 function signalAtlasStatusLabel(status) {
     const clean = String(status || '').trim().toLowerCase();
-    if (clean === 'queued') return moduleT('signalatlas.statusQueued', 'Queued');
-    if (clean === 'running') return moduleT('signalatlas.statusRunning', 'Running');
-    if (clean === 'done') return moduleT('signalatlas.statusDone', 'Ready');
-    if (clean === 'error') return moduleT('signalatlas.statusError', 'Error');
-    if (clean === 'cancelled') return moduleT('signalatlas.statusCancelled', 'Cancelled');
-    return clean || moduleT('signalatlas.statusUnknown', 'Unknown');
+    if (clean === 'queued') return moduleT('signalatlas.statusQueued', 'En file');
+    if (clean === 'running') return moduleT('signalatlas.statusRunning', 'En cours');
+    if (clean === 'done') return moduleT('signalatlas.statusDone', 'Prêt');
+    if (clean === 'error') return moduleT('signalatlas.statusError', 'Erreur');
+    if (clean === 'cancelled') return moduleT('signalatlas.statusCancelled', 'Annulé');
+    return clean || moduleT('signalatlas.statusUnknown', 'Inconnu');
 }
 
 function signalAtlasSeverityTone(value) {
@@ -2667,19 +2831,19 @@ function describeSignalAtlasModel(profile) {
     const provider = String(profile?.provider || 'ollama').toLowerCase();
     const isCloud = provider !== 'ollama';
     return {
-        label: profile?.label || profile?.display_name || profile?.name || profile?.id || 'Model',
+        label: profile?.label || profile?.display_name || profile?.name || profile?.id || 'Modèle',
         privacy: isCloud
-            ? moduleT('signalatlas.privacyCloud', 'Cloud processing')
-            : moduleT('signalatlas.privacyLocal', 'Local processing'),
+            ? moduleT('signalatlas.privacyCloud', 'Traitement cloud')
+            : moduleT('signalatlas.privacyLocal', 'Traitement local'),
         time: isCloud
-            ? moduleT('signalatlas.timeCloud', 'Fast, depends on provider latency')
-            : moduleT('signalatlas.timeLocal', 'Depends on local hardware'),
+            ? moduleT('signalatlas.timeCloud', 'Rapide, dépend de la latence provider')
+            : moduleT('signalatlas.timeLocal', 'Dépend du matériel local'),
         cost: isCloud
-            ? moduleT('signalatlas.costCloud', 'Provider/API cost may apply')
-            : moduleT('signalatlas.costLocal', 'No API cost'),
+            ? moduleT('signalatlas.costCloud', 'Coût provider/API possible')
+            : moduleT('signalatlas.costLocal', 'Aucun coût API'),
         capability: isCloud
-            ? moduleT('signalatlas.capabilityCloud', 'Great for deeper synthesis and long reports')
-            : moduleT('signalatlas.capabilityLocal', 'Best for private interpretation and local-only flows'),
+            ? moduleT('signalatlas.capabilityCloud', 'Idéal pour les synthèses profondes et les longs rapports')
+            : moduleT('signalatlas.capabilityLocal', 'Idéal pour une interprétation privée et des flux 100 % locaux'),
     };
 }
 
@@ -2726,6 +2890,7 @@ function renderModulesHub() {
     const host = document.getElementById('modules-view-content');
     if (!host) return;
     const cards = joyboyModulesCatalog.map(module => {
+        const moduleId = auditTranslationKey(module?.id || '');
         const activeJobs = activeAuditModuleJobs(module?.id || '');
         const featuredJob = activeJobs[0] || null;
         const isLocked = module.available === false || module.backend_ready === false;
@@ -2734,6 +2899,9 @@ function renderModulesHub() {
             : activeJobs.length
             ? signalAtlasStatusLabel(featuredJob?.status || 'running')
             : signalAtlasStatusLabel(module.status);
+        const name = moduleT(`modules.module_${moduleId}_name`, module.name || 'Module');
+        const tagline = moduleT(`modules.module_${moduleId}_tagline`, module.tagline || '');
+        const description = moduleT(`modules.module_${moduleId}_description`, module.description || '');
         const premium = module.premium ? `<span class="modules-chip premium">${escapeHtml(moduleT('modules.premium', 'Premium'))}</span>` : '';
         const lockedReason = module.locked_reason ? `<div class="modules-card-note">${escapeHtml(module.locked_reason)}</div>` : '';
         const runtimeNote = activeJobs.length ? `
@@ -2756,14 +2924,14 @@ function renderModulesHub() {
                 </div>
                 <div class="modules-card-title-row">
                     <div>
-                        <div class="modules-card-title">${escapeHtml(module.name || 'Module')}</div>
-                        <div class="modules-card-tagline">${escapeHtml(module.tagline || '')}</div>
+                        <div class="modules-card-title">${escapeHtml(name)}</div>
+                        <div class="modules-card-tagline">${escapeHtml(tagline)}</div>
                     </div>
                     ${premium}
                 </div>
-                <div class="modules-card-description">${escapeHtml(module.description || '')}</div>
+                <div class="modules-card-description">${escapeHtml(description)}</div>
                 <div class="modules-card-capabilities">
-                    ${(module.capabilities || []).slice(0, 4).map(cap => `<span class="modules-chip">${escapeHtml(cap.replace(/_/g, ' '))}</span>`).join('')}
+                    ${(module.capabilities || []).slice(0, 4).map(cap => `<span class="modules-chip">${escapeHtml(moduleT(`modules.capability_${auditTranslationKey(cap)}`, String(cap || '').replace(/_/g, ' ')))}</span>`).join('')}
                 </div>
                 ${runtimeNote}
                 ${lockedReason}
@@ -2788,7 +2956,7 @@ function renderModulesHub() {
 
 function renderSignalAtlasHistory() {
     if (!signalAtlasAudits.length) {
-        return `<div class="signalatlas-history-empty">${escapeHtml(moduleT('signalatlas.noAudits', 'No audits yet. Launch one to create your first deterministic report.'))}</div>`;
+        return `<div class="signalatlas-history-empty">${escapeHtml(moduleT('signalatlas.noAudits', 'Aucun audit pour le moment. Lance-en un pour créer ton premier rapport déterministe.'))}</div>`;
     }
     return signalAtlasAudits.map(audit => {
         const active = audit.id === signalAtlasCurrentAuditId;
@@ -2909,7 +3077,7 @@ function renderSignalAtlasOverview(audit) {
 function renderSignalAtlasTechnical(audit) {
     const findings = Array.isArray(audit?.findings) ? audit.findings : [];
     if (!findings.length) {
-        return `<div class="signalatlas-empty-panel">${escapeHtml(moduleT('signalatlas.noFindings', 'No findings yet for this audit.'))}</div>`;
+        return `<div class="signalatlas-empty-panel">${escapeHtml(moduleT('signalatlas.noFindings', 'Aucun finding pour cet audit.'))}</div>`;
     }
     return findings.map(item => `
         <article class="signalatlas-finding-card">
@@ -2925,9 +3093,9 @@ function renderSignalAtlasTechnical(audit) {
             </div>
             <div class="signalatlas-finding-url">${escapeHtml(item.url || item.scope || '')}</div>
             <p class="signalatlas-finding-copy">${escapeHtml(signalAtlasFindingSummary(item))}</p>
-            <div class="signalatlas-finding-detail"><strong>${escapeHtml(moduleT('signalatlas.probableCause', 'Probable cause'))}:</strong> ${escapeHtml(item.probable_cause || '')}</div>
-            <div class="signalatlas-finding-detail"><strong>${escapeHtml(moduleT('signalatlas.recommendedFix', 'Recommended fix'))}:</strong> ${escapeHtml(signalAtlasFindingSummary(item))}</div>
-            <div class="signalatlas-finding-detail"><strong>${escapeHtml(moduleT('signalatlas.acceptance', 'Acceptance'))}:</strong> ${escapeHtml(item.acceptance_criteria || '')}</div>
+            <div class="signalatlas-finding-detail"><strong>${escapeHtml(moduleT('signalatlas.probableCause', 'Cause probable'))}:</strong> ${escapeHtml(item.probable_cause || '')}</div>
+            <div class="signalatlas-finding-detail"><strong>${escapeHtml(moduleT('signalatlas.recommendedFix', 'Correctif recommandé'))}:</strong> ${escapeHtml(signalAtlasFindingSummary(item))}</div>
+            <div class="signalatlas-finding-detail"><strong>${escapeHtml(moduleT('signalatlas.acceptance', 'Critère d’acceptation'))}:</strong> ${escapeHtml(item.acceptance_criteria || '')}</div>
         </article>
     `).join('');
 }
@@ -2944,7 +3112,7 @@ function renderSignalAtlasCrawl(audit) {
                 <div class="signalatlas-panel-kicker">${escapeHtml(moduleT('signalatlas.crawlLayer', 'Couche crawl'))}</div>
                 <div class="signalatlas-metric-row"><span>robots.txt</span><strong>${escapeHtml(robots.found ? moduleT('signalatlas.confirmed', 'Confirmé') : moduleT('signalatlas.unknown', 'Inconnu'))}</strong></div>
                 <div class="signalatlas-metric-row"><span>Sitemap</span><strong>${escapeHtml(sitemaps.found ? moduleT('signalatlas.strongSignal', 'Signal fort') : moduleT('signalatlas.estimated', 'Estimé'))}</strong></div>
-                <div class="signalatlas-metric-row"><span>${escapeHtml(moduleT('signalatlas.pagesSampled', 'Pages sampled'))}</span><strong>${escapeHtml(String(snapshot.page_count || 0))}</strong></div>
+                <div class="signalatlas-metric-row"><span>${escapeHtml(moduleT('signalatlas.pagesSampled', 'Pages échantillonnées'))}</span><strong>${escapeHtml(String(snapshot.page_count || 0))}</strong></div>
                 <div class="signalatlas-metric-row"><span>${escapeHtml(moduleT('signalatlas.renderingProbe', 'Sonde de rendu JS'))}</span><strong>${escapeHtml(renderDetection.render_js_executed ? moduleT('signalatlas.confirmed', 'Confirmé') : signalAtlasProviderStatusLabel(renderDetection.reason || 'not_configured'))}</strong></div>
                 <div class="signalatlas-visibility-note">${escapeHtml(signalAtlasRenderSummary(renderDetection))}</div>
             </section>
@@ -3004,7 +3172,7 @@ function renderSignalAtlasVisibility(audit) {
 function renderSignalAtlasPages(audit) {
     const pages = Array.isArray(audit?.snapshot?.pages) ? audit.snapshot.pages : [];
     if (!pages.length) {
-        return `<div class="signalatlas-empty-panel">${escapeHtml(moduleT('signalatlas.noPages', 'No sampled pages yet.'))}</div>`;
+        return `<div class="signalatlas-empty-panel">${escapeHtml(moduleT('signalatlas.noPages', 'Aucune page échantillonnée pour le moment.'))}</div>`;
     }
     return `
         <div class="signalatlas-table-wrap">
@@ -3012,9 +3180,9 @@ function renderSignalAtlasPages(audit) {
                 <thead>
                     <tr>
                         <th>${escapeHtml(moduleT('signalatlas.page', 'Page'))}</th>
-                        <th>${escapeHtml(moduleT('signalatlas.status', 'Status'))}</th>
-                        <th>${escapeHtml(moduleT('signalatlas.words', 'Words'))}</th>
-                        <th>${escapeHtml(moduleT('signalatlas.rendering', 'Rendering'))}</th>
+                        <th>${escapeHtml(moduleT('signalatlas.status', 'Statut'))}</th>
+                        <th>${escapeHtml(moduleT('signalatlas.words', 'Mots'))}</th>
+                        <th>${escapeHtml(moduleT('signalatlas.rendering', 'Rendu'))}</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -3026,7 +3194,7 @@ function renderSignalAtlasPages(audit) {
                             </td>
                             <td>${escapeHtml(String(page.status_code || '--'))}</td>
                             <td>${escapeHtml(String(page.word_count || 0))}</td>
-                            <td>${escapeHtml(page.shell_like ? moduleT('signalatlas.jsRisk', 'JS risk') : moduleT('signalatlas.serverReady', 'Server-ready'))}</td>
+                            <td>${escapeHtml(page.shell_like ? moduleT('signalatlas.jsRisk', 'Risque JS') : moduleT('signalatlas.serverReady', 'Prêt côté serveur'))}</td>
                         </tr>
                     `).join('')}
                 </tbody>
@@ -3038,7 +3206,7 @@ function renderSignalAtlasPages(audit) {
 function renderSignalAtlasTemplates(audit) {
     const templates = Array.isArray(audit?.snapshot?.template_clusters) ? audit.snapshot.template_clusters : [];
     if (!templates.length) {
-        return `<div class="signalatlas-empty-panel">${escapeHtml(moduleT('signalatlas.noTemplates', 'No template clusters yet.'))}</div>`;
+        return `<div class="signalatlas-empty-panel">${escapeHtml(moduleT('signalatlas.noTemplates', 'Aucun cluster de template pour le moment.'))}</div>`;
     }
     return templates.map(template => `
         <article class="signalatlas-template-card">
@@ -3046,7 +3214,7 @@ function renderSignalAtlasTemplates(audit) {
                 <div class="signalatlas-template-signature">${escapeHtml(template.signature || '/')}</div>
                 <div class="signalatlas-inline-chip">${escapeHtml(moduleT('signalatlas.templatePages', '{count} page(s)', { count: template.count || 0 }))}</div>
             </div>
-            <div class="signalatlas-template-meta">${escapeHtml(moduleT('signalatlas.avgContentUnits', 'Average content units: {count}', { count: template.avg_content_units || template.avg_word_count || 0 }))}</div>
+            <div class="signalatlas-template-meta">${escapeHtml(moduleT('signalatlas.avgContentUnits', 'Unités de contenu moyennes : {count}', { count: template.avg_content_units || template.avg_word_count || 0 }))}</div>
             <div class="signalatlas-template-samples">
                 ${(template.sample_urls || []).map(url => `<span class="signalatlas-inline-chip">${escapeHtml(url)}</span>`).join('')}
             </div>
@@ -3063,14 +3231,14 @@ function renderSignalAtlasContent(audit) {
     return `
         <div class="signalatlas-detail-grid">
             <section class="signalatlas-panel compact">
-                <div class="signalatlas-panel-kicker">${escapeHtml(moduleT('signalatlas.contentSignals', 'Content & blog signals'))}</div>
-                <div class="signalatlas-metric-row"><span>${escapeHtml(moduleT('signalatlas.blogDetected', 'Blog detected'))}</span><strong>${escapeHtml(summary.blog_detected ? moduleT('common.ready', 'READY') : moduleT('signalatlas.no', 'No'))}</strong></div>
-                <div class="signalatlas-metric-row"><span>${escapeHtml(moduleT('signalatlas.topRisk', 'Top risk'))}</span><strong>${escapeHtml(signalAtlasRiskLabel(summary.top_risk || '--'))}</strong></div>
-                <div class="signalatlas-metric-row"><span>${escapeHtml(moduleT('signalatlas.platform', 'Platform'))}</span><strong>${escapeHtml(summary.platform || '--')}</strong></div>
+                <div class="signalatlas-panel-kicker">${escapeHtml(moduleT('signalatlas.contentSignals', 'Signaux contenu & blog'))}</div>
+                <div class="signalatlas-metric-row"><span>${escapeHtml(moduleT('signalatlas.blogDetected', 'Blog détecté'))}</span><strong>${escapeHtml(summary.blog_detected ? moduleT('common.ready', 'PRÊT') : moduleT('signalatlas.no', 'Non'))}</strong></div>
+                <div class="signalatlas-metric-row"><span>${escapeHtml(moduleT('signalatlas.topRisk', 'Risque principal'))}</span><strong>${escapeHtml(signalAtlasRiskLabel(summary.top_risk || '--'))}</strong></div>
+                <div class="signalatlas-metric-row"><span>${escapeHtml(moduleT('signalatlas.platform', 'Plateforme'))}</span><strong>${escapeHtml(summary.platform || '--')}</strong></div>
             </section>
             <section class="signalatlas-panel compact">
-                <div class="signalatlas-panel-kicker">${escapeHtml(moduleT('signalatlas.contentFindings', 'Content findings'))}</div>
-                ${(contentFindings.length ? contentFindings : [{ title: moduleT('signalatlas.noneDetected', 'No content-specific issue detected yet.'), diagnostic: '' }]).map(item => `
+                <div class="signalatlas-panel-kicker">${escapeHtml(moduleT('signalatlas.contentFindings', 'Findings contenu'))}</div>
+                ${(contentFindings.length ? contentFindings : [{ title: moduleT('signalatlas.noneDetected', 'Aucun problème contenu spécifique détecté pour l’instant.'), diagnostic: '' }]).map(item => `
                     <div class="signalatlas-mini-finding">
                         <div class="signalatlas-mini-finding-title">${escapeHtml(item.title || '')}</div>
                         <div class="signalatlas-mini-finding-copy">${escapeHtml(item.diagnostic || '')}</div>
@@ -3086,23 +3254,23 @@ function renderSignalAtlasAiTab(audit) {
     return `
         <div class="signalatlas-ai-grid">
             <section class="signalatlas-panel compact">
-                <div class="signalatlas-panel-kicker">${escapeHtml(moduleT('signalatlas.aiControls', 'AI interpretation'))}</div>
+                <div class="signalatlas-panel-kicker">${escapeHtml(moduleT('signalatlas.aiControls', 'Interprétation IA'))}</div>
                 <div class="signalatlas-control-stack">
-                    <div class="signalatlas-ai-note">${escapeHtml(moduleT('signalatlas.aiControlsHint', 'Use the controls above to keep the selected JoyBoy model, preset, and AI level in sync with this audit.'))}</div>
+                    <div class="signalatlas-ai-note">${escapeHtml(moduleT('signalatlas.aiControlsHint', 'Utilise les contrôles du haut pour garder le modèle JoyBoy, le preset et le niveau IA synchronisés avec cet audit.'))}</div>
                     <div class="signalatlas-actions">
-                        <button class="signalatlas-btn" type="button" onclick="rerunSignalAtlasAi()">${escapeHtml(moduleT('signalatlas.rerunAi', 'Re-run AI only'))}</button>
+                        <button class="signalatlas-btn" type="button" onclick="rerunSignalAtlasAi()">${escapeHtml(moduleT('signalatlas.rerunAi', 'Relancer l’IA seule'))}</button>
                     </div>
                 </div>
                 <div class="signalatlas-compare-box">
                     <div class="signalatlas-field">
-                        <label>${escapeHtml(moduleT('signalatlas.compareModelLabel', 'Compare with'))}</label>
+                        <label>${escapeHtml(moduleT('signalatlas.compareModelLabel', 'Comparer avec'))}</label>
                         ${renderSignalAtlasPicker('compare_model', 'signalatlas-compare-model-select', signalAtlasPickerOptions('compare_model'), signalAtlasDraft.compare_model || fallbackSignalAtlasCompareModel())}
                     </div>
-                    <button class="signalatlas-btn secondary" type="button" onclick="compareSignalAtlasAi()">${escapeHtml(moduleT('signalatlas.compareAi', 'Compare interpretations'))}</button>
+                    <button class="signalatlas-btn secondary" type="button" onclick="compareSignalAtlasAi()">${escapeHtml(moduleT('signalatlas.compareAi', 'Comparer les interprétations'))}</button>
                 </div>
             </section>
             <section class="signalatlas-panel">
-                <div class="signalatlas-panel-kicker">${escapeHtml(moduleT('signalatlas.interpretations', 'Interpretations'))}</div>
+                <div class="signalatlas-panel-kicker">${escapeHtml(moduleT('signalatlas.interpretations', 'Interprétations'))}</div>
                 ${interpretations.length ? interpretations.slice().reverse().map(item => `
                     <article class="signalatlas-interpretation-card">
                         <div class="signalatlas-interpretation-top">
@@ -3114,7 +3282,7 @@ function renderSignalAtlasAiTab(audit) {
                         </div>
                         <div class="signalatlas-markdown-lite">${escapeHtml(item.content || '')}</div>
                     </article>
-                `).join('') : `<div class="signalatlas-empty-panel">${escapeHtml(moduleT('signalatlas.noInterpretations', 'No AI interpretation yet.'))}</div>`}
+                `).join('') : `<div class="signalatlas-empty-panel">${escapeHtml(moduleT('signalatlas.noInterpretations', 'Aucune interprétation IA pour le moment.'))}</div>`}
             </section>
         </div>
     `;
@@ -3122,7 +3290,7 @@ function renderSignalAtlasAiTab(audit) {
 
 function renderSignalAtlasExports(audit) {
     if (!audit?.id) {
-        return `<div class="signalatlas-empty-panel">${escapeHtml(moduleT('signalatlas.noAuditSelected', 'Select an audit to export it.'))}</div>`;
+        return `<div class="signalatlas-empty-panel">${escapeHtml(moduleT('signalatlas.noAuditSelected', 'Sélectionne un audit pour l’exporter.'))}</div>`;
     }
     return `
         <div class="signalatlas-export-grid">
@@ -3132,31 +3300,261 @@ function renderSignalAtlasExports(audit) {
             </button>
             <button class="signalatlas-export-card" type="button" onclick="downloadSignalAtlasExport('${escapeHtml(audit.id)}', 'markdown')">
                 <div class="signalatlas-export-title">Markdown</div>
-                <div class="signalatlas-export-copy">${escapeHtml(moduleT('signalatlas.exportMarkdown', 'Readable report for humans or AI tools.'))}</div>
+                <div class="signalatlas-export-copy">${escapeHtml(moduleT('signalatlas.exportMarkdown', 'Rapport lisible pour humain ou outil IA.'))}</div>
             </button>
             <button class="signalatlas-export-card" type="button" onclick="downloadSignalAtlasExport('${escapeHtml(audit.id)}', 'prompt')">
-                <div class="signalatlas-export-title">${escapeHtml(moduleT('signalatlas.promptForAiFix', 'Prompt for AI fix'))}</div>
-                <div class="signalatlas-export-copy">${escapeHtml(moduleT('signalatlas.exportPrompt', 'One-shot handoff for a dev/content/SEO model.'))}</div>
+                <div class="signalatlas-export-title">${escapeHtml(moduleT('signalatlas.promptForAiFix', 'Prompt pour correction IA'))}</div>
+                <div class="signalatlas-export-copy">${escapeHtml(moduleT('signalatlas.exportPrompt', 'Handoff direct pour un modèle dev/contenu/SEO.'))}</div>
             </button>
             <button class="signalatlas-export-card" type="button" onclick="downloadSignalAtlasExport('${escapeHtml(audit.id)}', 'remediation')">
                 <div class="signalatlas-export-title">${escapeHtml(moduleT('signalatlas.remediationPack', 'AI remediation pack'))}</div>
-                <div class="signalatlas-export-copy">${escapeHtml(moduleT('signalatlas.exportRemediation', 'All findings with prompts and acceptance criteria.'))}</div>
+                <div class="signalatlas-export-copy">${escapeHtml(moduleT('signalatlas.exportRemediation', 'Tous les findings avec prompts et critères d’acceptation.'))}</div>
             </button>
             <button class="signalatlas-export-card" type="button" onclick="downloadSignalAtlasExport('${escapeHtml(audit.id)}', 'pdf')">
                 <div class="signalatlas-export-title">PDF</div>
-                <div class="signalatlas-export-copy">${escapeHtml(moduleT('signalatlas.exportPdf', 'Premium PDF rendered from the same report model.'))}</div>
+                <div class="signalatlas-export-copy">${escapeHtml(moduleT('signalatlas.exportPdf', 'PDF premium rendu à partir du même modèle de rapport.'))}</div>
             </button>
             <button class="signalatlas-export-card" type="button" onclick="openSignalAtlasPromptInChat('${escapeHtml(audit.id)}')">
                 <div class="signalatlas-export-title">${escapeHtml(moduleT('signalatlas.openInChat', 'Open in JoyBoy chat'))}</div>
-                <div class="signalatlas-export-copy">${escapeHtml(moduleT('signalatlas.exportToChat', 'Push the audit prompt into a normal JoyBoy conversation.'))}</div>
+                <div class="signalatlas-export-copy">${escapeHtml(moduleT('signalatlas.exportToChat', 'Injecter le prompt d’audit dans une conversation JoyBoy classique.'))}</div>
             </button>
+        </div>
+    `;
+}
+
+function signalAtlasOrganicFormatNumber(value, maximumFractionDigits = 0) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return '0';
+    try {
+        return new Intl.NumberFormat(nativeAuditLocale(), { maximumFractionDigits }).format(numeric);
+    } catch (error) {
+        return maximumFractionDigits > 0 ? numeric.toFixed(maximumFractionDigits) : String(Math.round(numeric));
+    }
+}
+
+function signalAtlasOrganicFormatPercent(value) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return '0%';
+    try {
+        return new Intl.NumberFormat(nativeAuditLocale(), {
+            style: 'percent',
+            minimumFractionDigits: 1,
+            maximumFractionDigits: 2,
+        }).format(numeric);
+    } catch (error) {
+        return `${(numeric * 100).toFixed(1)}%`;
+    }
+}
+
+function signalAtlasOrganicOpportunityLabel(value) {
+    const clean = String(value || '').trim().toLowerCase();
+    if (clean === 'quick_win') return moduleT('signalatlas.organicTypeQuickWin', 'Quick win');
+    if (clean === 'ctr_gap') return moduleT('signalatlas.organicTypeCtrGap', 'CTR à corriger');
+    if (clean === 'ranking_distance') return moduleT('signalatlas.organicTypeRankingDistance', 'Distance ranking');
+    if (clean === 'content_gap') return moduleT('signalatlas.organicTypeContentGap', 'Gap contenu');
+    if (clean === 'low_value') return moduleT('signalatlas.organicTypeLowValue', 'Faible priorité');
+    if (clean === 'brand_query') return moduleT('signalatlas.organicTypeBrandQuery', 'Brand');
+    if (clean === 'non_brand_query') return moduleT('signalatlas.organicTypeNonBrandQuery', 'Non-brand');
+    return value || moduleT('signalatlas.statusUnknown', 'Inconnu');
+}
+
+function signalAtlasOrganicCanImport(audit) {
+    return ['done', 'completed', 'ready'].includes(String(audit?.status || '').trim().toLowerCase());
+}
+
+function renderSignalAtlasOrganicImportControl(audit, compact = false) {
+    const canImport = signalAtlasOrganicCanImport(audit);
+    const auditId = String(audit?.id || '');
+    return `
+        <div class="signalatlas-organic-import">
+            <input id="signalatlas-organic-files" type="file" accept=".csv,text/csv" multiple hidden onchange="importSignalAtlasOrganicPotential('${escapeHtml(auditId)}', this)">
+            <button class="signalatlas-btn secondary" type="button" onclick="document.getElementById('signalatlas-organic-files')?.click()" ${canImport ? '' : 'disabled'}>
+                ${escapeHtml(compact ? moduleT('signalatlas.organicReimportButton', 'Réimporter GSC') : moduleT('signalatlas.organicImportButton', 'Importer GSC / Analyser le potentiel'))}
+            </button>
+            <div class="signalatlas-visibility-note">${escapeHtml(canImport
+                ? moduleT('signalatlas.organicImportHint', 'Accepte Chart, Pages, Queries, Devices, Countries, Search appearance et Filters exportés depuis Google Search Console.')
+                : moduleT('signalatlas.organicImportBlocked', 'Termine d’abord l’audit SignalAtlas, puis importe les exports Search Console.'))}</div>
+        </div>
+    `;
+}
+
+function renderSignalAtlasOrganicPotential(audit) {
+    if (!audit?.id) {
+        return `<div class="signalatlas-empty-panel">${escapeHtml(moduleT('signalatlas.noAuditSelected', 'Sélectionne un audit pour l’enrichir.'))}</div>`;
+    }
+    const organic = audit.organic_potential || null;
+    if (!organic) {
+        return `
+            <section class="signalatlas-panel">
+                <div class="signalatlas-panel-kicker">${escapeHtml(moduleT('signalatlas.organicPotentialKicker', 'Données réelles Google'))}</div>
+                <div class="signalatlas-panel-title">${escapeHtml(moduleT('signalatlas.organicPotentialTitle', 'Potentiel organique'))}</div>
+                <p class="signalatlas-panel-copy">${escapeHtml(moduleT('signalatlas.organicPotentialEmptyCopy', 'Importe les CSV Google Search Console pour transformer le crawl SignalAtlas en plan de croissance: pages prioritaires, requêtes à pousser, CTR anormal, clics manqués et cannibalisation probable.'))}</p>
+                ${renderSignalAtlasOrganicImportControl(audit)}
+            </section>
+        `;
+    }
+
+    const summary = organic.summary || {};
+    const opportunities = Array.isArray(organic.opportunities) ? organic.opportunities : [];
+    const pages = Array.isArray(organic.pages) ? organic.pages : [];
+    const queries = Array.isArray(organic.queries) ? organic.queries : [];
+    const cannibalization = Array.isArray(organic.cannibalization_candidates) ? organic.cannibalization_candidates : [];
+    const sourceFiles = Array.isArray(organic.source_files) ? organic.source_files : [];
+    const cardItems = [
+        [moduleT('signalatlas.organicClicks', 'Clics'), signalAtlasOrganicFormatNumber(summary.clicks), moduleT('signalatlas.organicConfirmed', 'Confirmé GSC')],
+        [moduleT('signalatlas.organicImpressions', 'Impressions'), signalAtlasOrganicFormatNumber(summary.impressions), moduleT('signalatlas.organicConfirmed', 'Confirmé GSC')],
+        ['CTR', signalAtlasOrganicFormatPercent(summary.ctr), moduleT('signalatlas.organicCtrMeta', 'Clics / impressions')],
+        [moduleT('signalatlas.organicPosition', 'Position'), signalAtlasOrganicFormatNumber(summary.average_position, 2), moduleT('signalatlas.organicWeighted', 'Pondérée impressions')],
+        [moduleT('signalatlas.organicMissedClicks', 'Clics manqués'), signalAtlasOrganicFormatNumber(summary.missed_clicks, 1), moduleT('signalatlas.organicEstimated', 'Estimé par CTR attendu')],
+        [moduleT('signalatlas.organicOpportunities', 'Opportunités'), signalAtlasOrganicFormatNumber(summary.opportunity_count), moduleT('signalatlas.organicPriorityRows', 'Lignes prioritaires')],
+    ];
+
+    return `
+        <div class="signalatlas-overview-stack">
+            <section class="signalatlas-panel">
+                <div class="signalatlas-section-top">
+                    <div>
+                        <div class="signalatlas-panel-kicker">${escapeHtml(moduleT('signalatlas.organicPotentialKicker', 'Données réelles Google'))}</div>
+                        <div class="signalatlas-panel-title">${escapeHtml(moduleT('signalatlas.organicPotentialTitle', 'Potentiel organique'))}</div>
+                        <p class="signalatlas-panel-copy">${escapeHtml(moduleT('signalatlas.organicPotentialReadyCopy', 'Analyse basée sur les exports GSC importés localement. Les rapprochements page/requête restent marqués inferred quand les CSV sont séparés.'))}</p>
+                    </div>
+                    ${renderSignalAtlasOrganicImportControl(audit, true)}
+                </div>
+                <div class="signalatlas-score-grid">
+                    ${cardItems.map(([label, value, meta]) => `
+                        <div class="signalatlas-score-card">
+                            <div class="signalatlas-score-label">${escapeHtml(label)}</div>
+                            <div class="signalatlas-score-value">${escapeHtml(String(value))}</div>
+                            <div class="signalatlas-score-meta">${escapeHtml(meta)}</div>
+                        </div>
+                    `).join('')}
+                </div>
+                <div class="signalatlas-visibility-note">
+                    ${escapeHtml(moduleT('signalatlas.organicMappingMode', 'Mode mapping'))}: ${escapeHtml(organic.mapping_mode || 'separate_gsc_exports')}
+                    ${sourceFiles.length ? ` · ${escapeHtml(sourceFiles.filter(item => item.accepted).map(item => item.filename).join(', '))}` : ''}
+                </div>
+            </section>
+
+            <section class="signalatlas-panel">
+                <div class="signalatlas-panel-kicker">${escapeHtml(moduleT('signalatlas.organicTopOpportunities', 'Priorités growth'))}</div>
+                ${opportunities.length ? `
+                    <div class="signalatlas-table-wrap">
+                        <table class="signalatlas-table">
+                            <thead>
+                                <tr>
+                                    <th>${escapeHtml(moduleT('signalatlas.kind', 'Type'))}</th>
+                                    <th>${escapeHtml(moduleT('signalatlas.organicTarget', 'Page / requête'))}</th>
+                                    <th>${escapeHtml(moduleT('signalatlas.organicOpportunity', 'Opportunité'))}</th>
+                                    <th>${escapeHtml(moduleT('signalatlas.organicPriority', 'Priorité'))}</th>
+                                    <th>${escapeHtml(moduleT('signalatlas.organicMissedClicks', 'Clics manqués'))}</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${opportunities.slice(0, 20).map(item => `
+                                    <tr>
+                                        <td>${escapeHtml(item.kind || '')}</td>
+                                        <td>
+                                            <div class="signalatlas-table-title">${escapeHtml(signalAtlasTrimText(item.label || '', 96))}</div>
+                                            <div class="signalatlas-table-subtitle">${escapeHtml(item.recommended_action || '')}</div>
+                                        </td>
+                                        <td>${escapeHtml(signalAtlasOrganicOpportunityLabel(item.opportunity_type))}</td>
+                                        <td>${escapeHtml(signalAtlasOrganicFormatNumber(item.priority_score, 1))}</td>
+                                        <td>${escapeHtml(signalAtlasOrganicFormatNumber(item.missed_clicks, 1))}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                ` : `<div class="signalatlas-empty-panel">${escapeHtml(moduleT('signalatlas.organicNoOpportunities', 'Aucune opportunité prioritaire détectée dans cet import.'))}</div>`}
+            </section>
+
+            <div class="signalatlas-detail-grid">
+                <section class="signalatlas-panel">
+                    <div class="signalatlas-panel-kicker">${escapeHtml(moduleT('signalatlas.organicPageTable', 'Pages à travailler'))}</div>
+                    ${renderSignalAtlasOrganicRows(pages, 'page')}
+                </section>
+                <section class="signalatlas-panel">
+                    <div class="signalatlas-panel-kicker">${escapeHtml(moduleT('signalatlas.organicQueryTable', 'Requêtes à pousser'))}</div>
+                    ${renderSignalAtlasOrganicRows(queries, 'query')}
+                </section>
+            </div>
+
+            ${cannibalization.length ? `
+                <section class="signalatlas-panel">
+                    <div class="signalatlas-panel-kicker">${escapeHtml(moduleT('signalatlas.organicCannibalization', 'Cannibalisation probable'))}</div>
+                    <div class="signalatlas-table-wrap">
+                        <table class="signalatlas-table">
+                            <thead>
+                                <tr>
+                                    <th>Signature</th>
+                                    <th>URLs</th>
+                                    <th>Impressions</th>
+                                    <th>${escapeHtml(moduleT('signalatlas.organicConfidence', 'Confiance'))}</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${cannibalization.slice(0, 10).map(item => `
+                                    <tr>
+                                        <td>${escapeHtml(item.signature || '')}</td>
+                                        <td>${escapeHtml(signalAtlasOrganicFormatNumber(item.url_count))}</td>
+                                        <td>${escapeHtml(signalAtlasOrganicFormatNumber(item.impressions))}</td>
+                                        <td>${escapeHtml(item.mapping_confidence || 'inferred')}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+            ` : ''}
+        </div>
+    `;
+}
+
+function renderSignalAtlasOrganicRows(items, kind) {
+    const rows = Array.isArray(items) ? items.slice(0, 18) : [];
+    if (!rows.length) {
+        return `<div class="signalatlas-empty-panel">${escapeHtml(moduleT('signalatlas.organicNoRows', 'Aucune ligne exploitable dans cet import.'))}</div>`;
+    }
+    return `
+        <div class="signalatlas-table-wrap">
+            <table class="signalatlas-table">
+                <thead>
+                    <tr>
+                        <th>${escapeHtml(kind === 'query' ? moduleT('signalatlas.query', 'Requête') : moduleT('signalatlas.page', 'Page'))}</th>
+                        <th>${escapeHtml(moduleT('signalatlas.organicClicks', 'Clics'))}</th>
+                        <th>${escapeHtml(moduleT('signalatlas.organicImpressions', 'Impr.'))}</th>
+                        <th>CTR</th>
+                        <th>${escapeHtml(moduleT('signalatlas.organicPositionShort', 'Pos.'))}</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${rows.map(item => {
+                        const label = kind === 'query' ? item.query : item.url;
+                        const subtitle = kind === 'query'
+                            ? `${signalAtlasOrganicOpportunityLabel(item.opportunity_type)} · ${signalAtlasOrganicOpportunityLabel(item.query_family || '')} · ${item.intent || ''}`
+                            : `${signalAtlasOrganicOpportunityLabel(item.opportunity_type)} · ${(item.content_flags || []).join(', ')}`;
+                        return `
+                            <tr>
+                                <td>
+                                    <div class="signalatlas-table-title">${escapeHtml(signalAtlasTrimText(label || '', 90))}</div>
+                                    <div class="signalatlas-table-subtitle">${escapeHtml(signalAtlasTrimText(subtitle, 120))}</div>
+                                </td>
+                                <td>${escapeHtml(signalAtlasOrganicFormatNumber(item.clicks))}</td>
+                                <td>${escapeHtml(signalAtlasOrganicFormatNumber(item.impressions))}</td>
+                                <td>${escapeHtml(signalAtlasOrganicFormatPercent(item.ctr))}</td>
+                                <td>${escapeHtml(signalAtlasOrganicFormatNumber(item.position, 2))}</td>
+                            </tr>
+                        `;
+                    }).join('')}
+                </tbody>
+            </table>
         </div>
     `;
 }
 
 function renderSignalAtlasTabContent(audit) {
     if (!audit) {
-        return `<div class="signalatlas-empty-panel">${escapeHtml(moduleT('signalatlas.emptyWorkspace', 'Choose a domain or pick a past audit to start.'))}</div>`;
+        return `<div class="signalatlas-empty-panel">${escapeHtml(moduleT('signalatlas.emptyWorkspace', 'Choisis un domaine ou un audit existant pour commencer.'))}</div>`;
     }
     switch (signalAtlasActiveTab) {
         case 'technical':
@@ -3171,6 +3569,8 @@ function renderSignalAtlasTabContent(audit) {
             return renderSignalAtlasContent(audit);
         case 'visibility':
             return renderSignalAtlasVisibility(audit);
+        case 'organic':
+            return renderSignalAtlasOrganicPotential(audit);
         case 'ai':
             return renderSignalAtlasAiTab(audit);
         case 'exports':
@@ -3200,7 +3600,8 @@ function renderSignalAtlasWorkspace() {
         ['pages', moduleT('signalatlas.tabPages', 'Pages')],
         ['templates', moduleT('signalatlas.tabTemplates', 'Templates')],
         ['content', moduleT('signalatlas.tabContent', 'Contenu & blog')],
-        ['visibility', moduleT('signalatlas.tabVisibility', 'Visibility')],
+        ['visibility', moduleT('signalatlas.tabVisibility', 'Visibilité')],
+        ['organic', moduleT('signalatlas.tabOrganicPotential', 'Potentiel organique')],
         ['ai', moduleT('signalatlas.tabAi', 'AI')],
         ['exports', moduleT('signalatlas.tabExports', 'Exports')],
     ];
@@ -3212,7 +3613,7 @@ function renderSignalAtlasWorkspace() {
         <div class="signalatlas-shell">
             <section class="signalatlas-control-surface">
                 <div class="signalatlas-input-row">
-                    <input id="signalatlas-target-input" class="signalatlas-target-input${targetValidation.present && !targetValidation.valid ? ' is-invalid' : ''}" type="text" value="${escapeHtml(signalAtlasDraft.target)}" placeholder="${escapeHtml(moduleT('signalatlas.targetPlaceholder', 'Example: https://nevomove.com/'))}" oninput="signalAtlasTargetInputChanged(event)" onblur="signalAtlasControlsChanged()" aria-invalid="${targetValidation.present && !targetValidation.valid ? 'true' : 'false'}" inputmode="url" autocapitalize="off" spellcheck="false">
+                    <input id="signalatlas-target-input" class="signalatlas-target-input${targetValidation.present && !targetValidation.valid ? ' is-invalid' : ''}" type="text" value="${escapeHtml(signalAtlasDraft.target)}" placeholder="${escapeHtml(moduleT('signalatlas.targetPlaceholder', 'Exemple : https://nevomove.com/'))}" oninput="signalAtlasTargetInputChanged(event)" onblur="signalAtlasControlsChanged()" aria-invalid="${targetValidation.present && !targetValidation.valid ? 'true' : 'false'}" inputmode="url" autocapitalize="off" spellcheck="false">
                     ${canCancelAudit ? `
                         <button
                             class="signalatlas-btn launch signalatlas-stop-btn"
@@ -3225,7 +3626,7 @@ function renderSignalAtlasWorkspace() {
                             <i data-lucide="square"></i>
                         </button>
                     ` : `
-                        <button id="signalatlas-launch-btn" class="signalatlas-btn launch" type="button" onclick="launchSignalAtlasAudit()" ${(signalAtlasLaunchPending || !targetValidation.valid) ? 'disabled' : ''}>${escapeHtml(signalAtlasLaunchPending ? moduleT('signalatlas.launching', 'Launching') : moduleT('signalatlas.runAudit', 'Run audit'))}</button>
+                        <button id="signalatlas-launch-btn" class="signalatlas-btn launch" type="button" onclick="launchSignalAtlasAudit()" ${(signalAtlasLaunchPending || !targetValidation.valid) ? 'disabled' : ''}>${escapeHtml(signalAtlasLaunchPending ? moduleT('signalatlas.launching', 'Lancement') : moduleT('signalatlas.runAudit', 'Lancer l’audit'))}</button>
                     `}
                     <div id="signalatlas-target-feedback" class="signalatlas-target-feedback${targetValidation.present && !targetValidation.valid ? ' is-visible' : ''}">${escapeHtml(targetValidation.present && !targetValidation.valid ? targetValidation.message : '')}</div>
                 </div>
@@ -3245,7 +3646,7 @@ function renderSignalAtlasWorkspace() {
                         </button>
                     </div>
                 </div>
-                ${renderSignalAtlasProgressBanner(progressState, moduleT('signalatlas.backgroundResumeHint', 'This audit keeps running if you leave the view.'))}
+                ${renderSignalAtlasProgressBanner(progressState, moduleT('signalatlas.backgroundResumeHint', 'Cet audit continue en arrière-plan si tu quittes cette vue.'))}
                 ${signalAtlasAdvancedVisible ? `
                     <div class="signalatlas-advanced-panel">
                         <div class="signalatlas-controls-grid">
@@ -3262,7 +3663,7 @@ function renderSignalAtlasWorkspace() {
                                 <label class="signalatlas-field-head">
                                     ${renderSignalAtlasFieldLabel(
                                         moduleT('signalatlas.maxPages', 'Page budget'),
-                                        moduleT('signalatlas.pageBudgetHint', 'Nombre maximum de pages échantillonnées sur cette passe d’audit.')
+                                        moduleT('signalatlas.pageBudgetHint', 'Nombre maximum de pages échantillonnées sur cette passe d’audit. Ultra s’arrête automatiquement si le site est plus petit que le budget.')
                                     )}
                                 </label>
                                 ${renderSignalAtlasPicker('max_pages', 'signalatlas-max-pages', signalAtlasPickerOptions('max_pages'), signalAtlasDraft.max_pages)}
@@ -3279,7 +3680,7 @@ function renderSignalAtlasWorkspace() {
                             <div class="signalatlas-field is-toggle">
                                 <label class="signalatlas-field-head">
                                     ${renderSignalAtlasFieldLabel(
-                                        moduleT('signalatlas.renderJs', 'Render JS (scaffolded)'),
+                                        moduleT('signalatlas.renderJs', 'Rendu JS'),
                                         moduleT('signalatlas.renderJsHelp', 'Active des sondes de rendu JavaScript pour mieux détecter les SPA, shells HTML vides et écarts entre HTML brut et rendu client.')
                                     )}
                                 </label>
@@ -3316,7 +3717,7 @@ function renderSignalAtlasWorkspace() {
                     <div class="signalatlas-report-heading-copy">
                         <div>
                             <div class="signalatlas-panel-kicker">${escapeHtml(moduleT('signalatlas.workspace', 'Rapport'))}</div>
-                            <div class="signalatlas-panel-title">${escapeHtml(audit?.title || moduleT('signalatlas.selectAudit', 'Select or launch an audit'))}</div>
+                            <div class="signalatlas-panel-title">${escapeHtml(audit?.title || moduleT('signalatlas.selectAudit', 'Sélectionner ou lancer un audit'))}</div>
                             ${audit ? `<div class="signalatlas-panel-copy signalatlas-report-heading-copytext">${escapeHtml(moduleT('signalatlas.reportHeaderCopy', 'Lis le rapport simple d’abord, puis ouvre les détails SEO uniquement quand tu veux aller plus loin.'))}</div>` : ''}
                         </div>
                     </div>
@@ -3410,6 +3811,36 @@ function setSignalAtlasTab(tabId) {
     renderSignalAtlasWorkspace();
 }
 
+async function importSignalAtlasOrganicPotential(auditId, input) {
+    const files = Array.from(input?.files || []);
+    if (input) input.value = '';
+    if (!auditId || !files.length) return;
+    const csvFiles = files.filter(file => /\.csv$/i.test(file.name || ''));
+    if (csvFiles.length !== files.length) {
+        Toast?.warning?.(moduleT('signalatlas.organicCsvOnly', 'Importe uniquement des fichiers CSV Google Search Console.'));
+        return;
+    }
+    const formData = new FormData();
+    csvFiles.forEach(file => formData.append('files', file, file.name));
+    Toast?.info?.(moduleT('signalatlas.organicImportRunning', 'Import GSC en cours...'));
+    const result = await apiSignalAtlas.importOrganicPotential(auditId, formData);
+    if (!result.ok || !result.data?.audit) {
+        Toast?.error?.(result.data?.error || moduleT('signalatlas.organicImportFailed', 'Impossible d’importer ces CSV GSC.'));
+        return;
+    }
+    signalAtlasCurrentAudit = result.data.audit;
+    signalAtlasCurrentAuditId = result.data.audit.id;
+    const existing = signalAtlasAudits.findIndex(item => item.id === signalAtlasCurrentAuditId);
+    const summaryCard = summarizeSignalAtlasAudit(signalAtlasCurrentAudit);
+    if (existing >= 0) signalAtlasAudits.splice(existing, 1, summaryCard);
+    else signalAtlasAudits.unshift(summaryCard);
+    signalAtlasActiveTab = 'organic';
+    signalAtlasSeoDetailsVisible = true;
+    signalAtlasAnimateSeoDrawer = false;
+    Toast?.success?.(moduleT('signalatlas.organicImportSuccess', 'Potentiel organique généré avec les données GSC.'));
+    renderSignalAtlasWorkspace();
+}
+
 async function openModulesHub() {
     hideModulesWorkspaces();
     applyModulesShellMode('sidebar-modules-btn', 'modules-mode');
@@ -3455,12 +3886,12 @@ async function launchSignalAtlasAudit() {
     syncSignalAtlasDraftFromDom();
     const targetValidation = signalAtlasValidateTarget(signalAtlasDraft.target);
     if (!targetValidation.present) {
-        Toast?.warning?.(moduleT('signalatlas.targetRequired', 'Add a real domain or public URL first, for example https://nevomove.com/.'));
+        Toast?.warning?.(moduleT('signalatlas.targetRequired', 'Ajoute d’abord un vrai domaine ou une URL publique, par exemple https://nevomove.com/.'));
         renderSignalAtlasTargetValidationUi();
         return;
     }
     if (!targetValidation.valid) {
-        Toast?.warning?.(moduleT('signalatlas.targetInvalid', 'Use a real domain or full public URL, for example https://nevomove.com/.'));
+        Toast?.warning?.(moduleT('signalatlas.targetInvalid', 'Utilise un vrai domaine ou une URL publique complète, par exemple https://nevomove.com/.'));
         renderSignalAtlasTargetValidationUi();
         return;
     }
@@ -3483,7 +3914,7 @@ async function launchSignalAtlasAudit() {
     try {
         const result = await apiSignalAtlas.createAudit(payload);
         if (!result.ok) {
-            Toast?.error?.(result.data?.error || moduleT('signalatlas.auditCreateFailed', 'Unable to launch the audit.'));
+            Toast?.error?.(result.data?.error || moduleT('signalatlas.auditCreateFailed', 'Impossible de lancer l’audit.'));
             return;
         }
         signalAtlasCurrentAuditId = result.data?.audit?.id || signalAtlasCurrentAuditId;
@@ -3493,9 +3924,10 @@ async function launchSignalAtlasAudit() {
         if (signalAtlasCurrentAuditId) {
             await loadSignalAtlasAudit(signalAtlasCurrentAuditId, { silent: true });
         }
+        notifySignalAtlasAuditCompleted(signalAtlasCurrentAudit, { status: 'running', hadProgress: true });
         renderSignalAtlasWorkspace();
         startSignalAtlasRefresh();
-        Toast?.success?.(moduleT('signalatlas.auditStarted', 'SignalAtlas audit started.'));
+        Toast?.success?.(moduleT('signalatlas.auditStarted', 'Audit SignalAtlas lancé.'));
     } finally {
         signalAtlasLaunchPending = false;
     }
@@ -3567,13 +3999,13 @@ async function rerunSignalAtlasAi() {
     };
     const result = await apiSignalAtlas.rerunAi(signalAtlasCurrentAuditId, payload);
     if (!result.ok) {
-        Toast?.error?.(result.data?.error || moduleT('signalatlas.rerunFailed', 'Unable to re-run the AI interpretation.'));
+        Toast?.error?.(result.data?.error || moduleT('signalatlas.rerunFailed', 'Impossible de relancer l’interprétation IA.'));
         return;
     }
     if (result.data?.job) seedSignalAtlasRuntimeJob(result.data.job, signalAtlasCurrentAuditId);
     renderSignalAtlasWorkspace();
     startSignalAtlasRefresh();
-    Toast?.success?.(moduleT('signalatlas.rerunStarted', 'AI interpretation started.'));
+    Toast?.success?.(moduleT('signalatlas.rerunStarted', 'Interprétation IA lancée.'));
 }
 
 async function compareSignalAtlasAi() {
@@ -3588,13 +4020,33 @@ async function compareSignalAtlasAi() {
         level: signalAtlasDraft.level === 'no_ai' ? 'full_expert_analysis' : signalAtlasDraft.level,
     });
     if (!result.ok) {
-        Toast?.error?.(result.data?.error || moduleT('signalatlas.compareFailed', 'Unable to compare interpretations.'));
+        Toast?.error?.(result.data?.error || moduleT('signalatlas.compareFailed', 'Impossible de comparer les interprétations.'));
         return;
     }
     if (result.data?.job) seedSignalAtlasRuntimeJob(result.data.job, signalAtlasCurrentAuditId);
     renderSignalAtlasWorkspace();
     startSignalAtlasRefresh();
-    Toast?.success?.(moduleT('signalatlas.compareStarted', 'SignalAtlas comparison started.'));
+    Toast?.success?.(moduleT('signalatlas.compareStarted', 'Comparaison SignalAtlas lancée.'));
+}
+
+function notifySignalAtlasAuditCompleted(audit, previousState = {}) {
+    const auditId = String(audit?.id || '').trim();
+    if (!auditId || signalAtlasCompletionNotifiedAuditIds.has(auditId)) return;
+    const status = String(audit?.status || '').trim().toLowerCase();
+    if (status !== 'done') return;
+    const previousStatus = String(previousState.status || '').trim().toLowerCase();
+    const wasActive = previousState.hadProgress || ['queued', 'running', 'cancelling'].includes(previousStatus);
+    if (!wasActive) return;
+    signalAtlasCompletionNotifiedAuditIds.add(auditId);
+    const summary = audit.summary || {};
+    const crawlCopy = summary.crawl_exhausted_early
+        ? moduleT('signalatlas.auditCompleteSmallSite', 'Crawl terminé proprement : le site n’avait plus d’URLs utiles à suivre, donc Ultra s’est arrêté sans attendre le budget maximal.')
+        : moduleT('signalatlas.auditCompleteReadyCopy', 'Le rapport est prêt avec le crawl, les priorités SEO, les exports et la couche IA demandée.');
+    Toast?.success?.(
+        moduleT('signalatlas.auditCompleteToastTitle', 'Audit SignalAtlas terminé'),
+        crawlCopy,
+        9000
+    );
 }
 
 async function refreshSignalAtlasWorkspace(options = {}) {
@@ -3604,10 +4056,18 @@ async function refreshSignalAtlasWorkspace(options = {}) {
         scheduleSignalAtlasDeferredRefresh();
         return;
     }
+    const previousState = {
+        auditId: signalAtlasCurrentAuditId,
+        status: signalAtlasCurrentAudit?.status || '',
+        hadProgress: !!(signalAtlasCurrentAuditId && signalAtlasAuditProgressState(signalAtlasCurrentAuditId)),
+    };
     signalAtlasPendingRefresh = false;
     await loadSignalAtlasBootstrap();
     if (signalAtlasCurrentAuditId) {
         await loadSignalAtlasAudit(signalAtlasCurrentAuditId, { silent: true });
+    }
+    if (previousState.auditId && String(previousState.auditId) === String(signalAtlasCurrentAudit?.id || '')) {
+        notifySignalAtlasAuditCompleted(signalAtlasCurrentAudit, previousState);
     }
     renderSignalAtlasWorkspace();
 }
@@ -3654,7 +4114,7 @@ async function openSignalAtlasPromptInChat(auditId) {
     if (!auditId) return;
     const result = await apiSignalAtlas.fetchExportText(auditId, 'prompt');
     if (!result.ok) {
-        Toast?.error?.(moduleT('signalatlas.promptLoadFailed', 'Unable to load the AI-fix prompt.'));
+        Toast?.error?.(moduleT('signalatlas.promptLoadFailed', 'Impossible de charger le prompt de correction IA.'));
         return;
     }
     if (typeof createNewChat === 'function') {
@@ -3690,7 +4150,7 @@ function renderPerfAtlasScoreCards(audit) {
     const scores = Array.isArray(audit?.scores) ? audit.scores : [];
     return scores.map(score => `
         <div class="signalatlas-score-card ${signalAtlasScoreTone(score.score)}">
-            <div class="signalatlas-score-label">${escapeHtml(score.label || score.id || 'Score')}</div>
+            <div class="signalatlas-score-label">${escapeHtml(perfAtlasScoreLabel(score))}</div>
             <div class="signalatlas-score-value">${escapeHtml(String(score.score ?? '--'))}</div>
             <div class="signalatlas-score-meta">${escapeHtml(signalAtlasConfidenceLabel(score.confidence || ''))}</div>
         </div>
@@ -3706,14 +4166,14 @@ function renderPerfAtlasFindings(audit, limit = 6) {
         <article class="signalatlas-finding-card">
             <div class="signalatlas-finding-top">
                 <div>
-                    <div class="signalatlas-finding-title">${escapeHtml(item.title || 'Finding')}</div>
-                    <div class="signalatlas-finding-copy">${escapeHtml(item.diagnostic || '')}</div>
+                    <div class="signalatlas-finding-title">${escapeHtml(perfAtlasFindingTitle(item))}</div>
+                    <div class="signalatlas-finding-copy">${escapeHtml(perfAtlasFindingDiagnostic(item))}</div>
                 </div>
                 <span class="signalatlas-tag ${signalAtlasSeverityTone(item.severity)}">${escapeHtml(signalAtlasSeverityLabel(item.severity || ''))}</span>
             </div>
-            <div class="signalatlas-mini-finding-copy">${escapeHtml(item.recommended_fix || '')}</div>
+            <div class="signalatlas-mini-finding-copy">${escapeHtml(perfAtlasFindingFix(item))}</div>
             <div class="signalatlas-finding-meta">
-                <span>${escapeHtml(item.category || '')}</span>
+                <span>${escapeHtml(perfAtlasCategoryLabel(item.category || ''))}</span>
                 <span>${escapeHtml(signalAtlasConfidenceLabel(item.confidence || ''))}</span>
                 <span>${escapeHtml(item.url || item.scope || '')}</span>
             </div>
@@ -3749,7 +4209,7 @@ function renderPerfAtlasFieldData(audit) {
                             ${Object.entries(item.history).map(([metricKey, trend]) => `
                                 <div class="signalatlas-mini-finding-card">
                                     <div class="signalatlas-mini-finding-title">${escapeHtml(metricKey)}</div>
-                                    <div class="signalatlas-mini-finding-copy">${escapeHtml(String(trend.direction || 'steady'))} · ${escapeHtml(String(trend.earliest ?? 'n/a'))} → ${escapeHtml(String(trend.latest ?? 'n/a'))}</div>
+                                    <div class="signalatlas-mini-finding-copy">${escapeHtml(perfAtlasTrendDirectionLabel(trend.direction || 'steady'))} · ${escapeHtml(String(trend.earliest ?? 'n/a'))} → ${escapeHtml(String(trend.latest ?? 'n/a'))}</div>
                                 </div>
                             `).join('')}
                         </div>
@@ -3770,26 +4230,26 @@ function renderPerfAtlasLabRuns(audit) {
         <section class="signalatlas-panel perfatlas-lab-card">
             <div class="signalatlas-section-top">
                 <div>
-                    <div class="signalatlas-panel-kicker">${escapeHtml(item.runner || 'lab')}</div>
+                    <div class="signalatlas-panel-kicker">${escapeHtml(perfAtlasRuntimeLabel(item.runner || 'lab'))}</div>
                     <div class="signalatlas-panel-title">${escapeHtml(item.url || '')}</div>
                 </div>
                 <div class="signalatlas-summary-badges">
                     <span class="signalatlas-inline-chip">${escapeHtml(moduleT('perfatlas.scoreShort', 'Score'))}: ${escapeHtml(String(item.score ?? 'n/a'))}</span>
-                    <span class="signalatlas-inline-chip">${escapeHtml(item.strategy || 'mobile')}</span>
+                    <span class="signalatlas-inline-chip">${escapeHtml(moduleT(`perfatlas.strategy_${auditTranslationKey(item.strategy || 'mobile')}`, item.strategy || 'mobile'))}</span>
                 </div>
             </div>
             <div class="signalatlas-metric-grid">
                 <div class="signalatlas-metric-card"><span>LCP</span><strong>${escapeHtml(perfAtlasFormatMs(item.largest_contentful_paint_ms))}</strong></div>
                 <div class="signalatlas-metric-card"><span>TBT</span><strong>${escapeHtml(perfAtlasFormatMs(item.total_blocking_time_ms))}</strong></div>
-                <div class="signalatlas-metric-card"><span>Req</span><strong>${escapeHtml(String(item.request_count ?? 'n/a'))}</strong></div>
-                <div class="signalatlas-metric-card"><span>Weight</span><strong>${escapeHtml(perfAtlasFormatBytes(item.total_byte_weight))}</strong></div>
+                <div class="signalatlas-metric-card"><span>${escapeHtml(moduleT('perfatlas.requestShort', 'Req'))}</span><strong>${escapeHtml(String(item.request_count ?? 'n/a'))}</strong></div>
+                <div class="signalatlas-metric-card"><span>${escapeHtml(moduleT('perfatlas.weightLabel', 'Weight'))}</span><strong>${escapeHtml(perfAtlasFormatBytes(item.total_byte_weight))}</strong></div>
             </div>
             ${item.note ? `<div class="signalatlas-panel-copy">${escapeHtml(item.note)}</div>` : ''}
             ${(item.opportunities || []).length ? `
                 <div class="signalatlas-finding-list">
                     ${(item.opportunities || []).slice(0, 5).map(opp => `
                         <div class="signalatlas-mini-finding-card">
-                            <div class="signalatlas-mini-finding-title">${escapeHtml(opp.title || opp.id || 'Opportunity')}</div>
+                            <div class="signalatlas-mini-finding-title">${escapeHtml(perfAtlasOpportunityTitle(opp))}</div>
                             <div class="signalatlas-mini-finding-copy">${escapeHtml(String(opp.display_value || opp.numeric_value || ''))}</div>
                         </div>
                     `).join('')}
@@ -3810,7 +4270,7 @@ function renderPerfAtlasDelivery(audit) {
                     ${pages.length ? pages.map(page => `
                         <div class="signalatlas-mini-finding-card">
                             <div class="signalatlas-mini-finding-title">${escapeHtml(page.final_url || page.url || '')}</div>
-                            <div class="signalatlas-mini-finding-copy">${escapeHtml(perfAtlasFormatMs(page.ttfb_ms))} · ${escapeHtml(String(page.script_count || 0))} JS · ${escapeHtml(String(page.stylesheet_count || 0))} CSS · ${escapeHtml(String(page.image_count || 0))} img</div>
+                            <div class="signalatlas-mini-finding-copy">${escapeHtml(perfAtlasFormatMs(page.ttfb_ms))} · ${escapeHtml(String(page.script_count || 0))} JS · ${escapeHtml(String(page.stylesheet_count || 0))} CSS · ${escapeHtml(String(page.image_count || 0))} ${escapeHtml(moduleT('perfatlas.imageShort', 'img'))}</div>
                         </div>
                     `).join('') : `<div class="signalatlas-empty-panel">${escapeHtml(moduleT('perfatlas.noSampledPages', 'No sampled page snapshot is available.'))}</div>`}
                 </div>
@@ -3821,7 +4281,7 @@ function renderPerfAtlasDelivery(audit) {
                     ${assets.length ? assets.map(asset => `
                         <div class="signalatlas-mini-finding-card">
                             <div class="signalatlas-mini-finding-title">${escapeHtml(asset.url || '')}</div>
-                            <div class="signalatlas-mini-finding-copy">${escapeHtml(asset.kind || 'asset')} · cache ${escapeHtml(asset.cache_control || 'none')} · encoding ${escapeHtml(asset.content_encoding || 'none')}</div>
+                            <div class="signalatlas-mini-finding-copy">${escapeHtml(perfAtlasAssetKindLabel(asset.kind || 'asset'))} · ${escapeHtml(moduleT('perfatlas.cacheHeader', 'cache'))} ${escapeHtml(asset.cache_control || moduleT('perfatlas.noHeaderValue', 'aucun'))} · ${escapeHtml(moduleT('perfatlas.encodingHeader', 'encodage'))} ${escapeHtml(asset.content_encoding || moduleT('perfatlas.noHeaderValue', 'aucun'))}</div>
                         </div>
                     `).join('') : `<div class="signalatlas-empty-panel">${escapeHtml(moduleT('perfatlas.noAssets', 'No sampled asset headers were collected.'))}</div>`}
                 </div>
@@ -4064,6 +4524,7 @@ function renderPerfAtlasExports(audit) {
 function renderPerfAtlasOverview(audit) {
     const summary = audit?.summary || {};
     const reportModelInfo = perfAtlasReportModelInfo(audit);
+    const scoreGuardrailMessage = perfAtlasScoreGuardrailMessage(summary);
     return `
         <div class="signalatlas-overview-stack">
             <div class="signalatlas-detail-grid">
@@ -4073,15 +4534,16 @@ function renderPerfAtlasOverview(audit) {
                     <div class="signalatlas-panel-copy">${escapeHtml(summary.target || '')}</div>
                     <div class="signalatlas-summary-badges">
                         <span class="signalatlas-inline-chip">${escapeHtml(summary.platform || 'Custom')}</span>
-                        <span class="signalatlas-inline-chip">${escapeHtml(summary.runtime_runner || 'unavailable')}</span>
-                        <span class="signalatlas-inline-chip">${escapeHtml(summary.mode || 'public')}</span>
+                        <span class="signalatlas-inline-chip">${escapeHtml(perfAtlasRuntimeLabel(summary.runtime_runner || 'unavailable'))}</span>
+                        <span class="signalatlas-inline-chip">${escapeHtml(signalAtlasModeLabel(summary.mode || 'public'))}</span>
                     </div>
                     <div class="signalatlas-metric-grid">
                         <div class="signalatlas-metric-card"><span>${escapeHtml(moduleT('perfatlas.pagesSampled', 'Pages sampled'))}</span><strong>${escapeHtml(String(summary.pages_crawled || 0))}</strong></div>
                         <div class="signalatlas-metric-card"><span>${escapeHtml(moduleT('perfatlas.labPagesAnalyzed', 'Lab pages'))}</span><strong>${escapeHtml(String(summary.lab_pages_analyzed || 0))}</strong></div>
-                        <div class="signalatlas-metric-card"><span>${escapeHtml(moduleT('perfatlas.fieldReady', 'Field ready'))}</span><strong>${escapeHtml(summary.field_data_available ? moduleT('common.ok', 'OK') : moduleT('common.none', 'None'))}</strong></div>
-                        <div class="signalatlas-metric-card"><span>${escapeHtml(moduleT('perfatlas.labReady', 'Lab ready'))}</span><strong>${escapeHtml(summary.lab_data_available ? moduleT('common.ok', 'OK') : moduleT('common.none', 'None'))}</strong></div>
+                        <div class="signalatlas-metric-card"><span>${escapeHtml(moduleT('perfatlas.fieldReady', 'Field ready'))}</span><strong>${escapeHtml(perfAtlasAvailabilityLabel(summary.field_data_available))}</strong></div>
+                        <div class="signalatlas-metric-card"><span>${escapeHtml(moduleT('perfatlas.labReady', 'Lab ready'))}</span><strong>${escapeHtml(perfAtlasAvailabilityLabel(summary.lab_data_available))}</strong></div>
                     </div>
+                    ${scoreGuardrailMessage ? `<div class="signalatlas-panel-copy">${escapeHtml(scoreGuardrailMessage)}</div>` : ''}
                 </section>
                 <aside class="signalatlas-panel signalatlas-report-score-panel">
                     ${renderSignalAtlasScoreRing(summary.global_score, perfAtlasStatusLabel(audit?.status), `${audit?.id || 'perfatlas'}:${summary.global_score ?? '--'}`)}

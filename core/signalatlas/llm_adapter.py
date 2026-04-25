@@ -23,6 +23,7 @@ def _audit_excerpt(audit: Dict[str, Any]) -> Dict[str, Any]:
     snapshot = audit.get("snapshot") or {}
     pages = snapshot.get("pages") or []
     render_detection = snapshot.get("render_detection") or {}
+    organic = audit.get("organic_potential") or {}
     return {
         "summary": summary,
         "top_findings": findings[:10],
@@ -58,6 +59,15 @@ def _audit_excerpt(audit: Dict[str, Any]) -> Dict[str, Any]:
         },
         "visibility_signals": snapshot.get("visibility_signals") or {},
         "template_clusters": (snapshot.get("template_clusters") or [])[:6],
+        "organic_potential": {
+            "summary": organic.get("summary") or {},
+            "mapping_mode": organic.get("mapping_mode", ""),
+            "query_page_mapping": organic.get("query_page_mapping", ""),
+            "top_opportunities": (organic.get("opportunities") or [])[:10],
+            "top_pages": (organic.get("pages") or [])[:8],
+            "top_queries": (organic.get("queries") or [])[:12],
+            "cannibalization_candidates": (organic.get("cannibalization_candidates") or [])[:6],
+        } if organic else {},
         "sample_pages": [
             {
                 "url": page.get("final_url") or page.get("url"),
@@ -108,6 +118,8 @@ def generate_interpretation(
         "Never invent crawl data, indexing facts, or unsupported metrics. "
         "Use the provided confidence labels exactly as given. "
         "Separate root causes from downstream symptoms. "
+        "When organic_potential is present, treat Search Console clicks, impressions, CTR, and positions as real demand data; "
+        "keep page-query joins marked inferred unless an explicit joined export exists. "
         "Do not describe alt='' on decorative images as missing alt text. "
         "When content_units is higher than raw word_count because cjk_adjusted is true, trust content_units for content-depth judgment. "
         "When render_js_requested is true but render_js_executed is false, explicitly say that some heading, "

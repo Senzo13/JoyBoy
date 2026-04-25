@@ -498,6 +498,20 @@ function createAuditModuleApi(moduleId) {
             return apiGet(`/api/${cleanId}/providers/status${query ? `?${query}` : ''}`);
         },
 
+        async importOrganicPotential(auditId, formData) {
+            try {
+                const response = await fetch(`/api/${cleanId}/audits/${encodeURIComponent(auditId)}/organic-potential/import`, {
+                    method: 'POST',
+                    body: formData,
+                });
+                const result = await response.json();
+                return { data: result, ok: response.ok, status: response.status };
+            } catch (error) {
+                console.error(`[API] ${cleanId} organic potential import failed:`, error);
+                return { data: null, ok: false, error: error.message };
+            }
+        },
+
         async fetchExportText(auditId, formatName = 'prompt') {
             try {
                 const response = await fetch(`/api/${cleanId}/audits/${encodeURIComponent(auditId)}/export/${encodeURIComponent(formatName)}`);

@@ -292,6 +292,22 @@ def get_signalatlas_provider_status(target_url: str = "", mode: str = "public") 
             "package_reason": "",
             "detail": "",
         },
+        {
+            "id": "semrush",
+            "name": "Semrush",
+            "status": "configured" if bool(os.environ.get("SEMRUSH_API_KEY")) else "scaffolded",
+            "configured": bool(os.environ.get("SEMRUSH_API_KEY")),
+            "available": True,
+            "priority": 5,
+            "owner_required": False,
+            "source": "env" if bool(os.environ.get("SEMRUSH_API_KEY")) else "missing",
+            "auth_mode": "api_key",
+            "site_url": "",
+            "target_match": False,
+            "package_available": True,
+            "package_reason": "",
+            "detail": "Optional future provider for keyword volume, difficulty, competitors, and external organic pages.",
+        },
     ]
 
 

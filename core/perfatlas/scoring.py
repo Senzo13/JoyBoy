@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 
 CATEGORY_DEFS: List[Tuple[str, str, float]] = [
@@ -49,11 +49,46 @@ def _confidence_label(findings: List[Dict[str, Any]]) -> str:
     return "Unknown"
 
 
+def _bounded_score(value: Any) -> Optional[float]:
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return None
+    if numeric < 0 or numeric > 100:
+        return None
+    return numeric
+
+
+def _cap_bucket(
+    buckets: Dict[str, Dict[str, Any]],
+    bucket_id: str,
+    cap: float,
+    reason: str,
+    guardrails: List[Dict[str, Any]],
+) -> None:
+    bucket = buckets.get(bucket_id)
+    if not bucket:
+        return
+    current = float(bucket["score"])
+    if current <= cap:
+        return
+    bucket["score"] = max(0.0, min(100.0, cap))
+    bucket.setdefault("guardrails", []).append(reason)
+    guardrails.append({
+        "bucket": bucket_id,
+        "cap": round(float(cap), 1),
+        "reason": reason,
+    })
+
+
 def score_findings(
     findings: List[Dict[str, Any]],
     *,
     pages_analyzed: int,
     page_budget: int,
+    lab_score: Any = None,
+    lab_available: Optional[bool] = None,
+    field_available: Optional[bool] = None,
 ) -> Dict[str, Any]:
     buckets: Dict[str, Dict[str, Any]] = {
         category_id: {
@@ -62,6 +97,7 @@ def score_findings(
             "weight": weight,
             "score": 100.0,
             "issues": [],
+            "guardrails": [],
         }
         for category_id, label, weight in CATEGORY_DEFS
     }
@@ -75,6 +111,27 @@ def score_findings(
         bucket["score"] = max(0.0, float(bucket["score"]) - penalty)
         bucket["issues"].append(finding)
 
+    finding_ids = {str(item.get("id") or "") for item in findings}
+    if lab_available is None:
+        lab_available = "lab-runtime-unavailable" not in finding_ids
+    if field_available is None:
+        field_available = "field-data-unavailable" not in finding_ids
+    normalized_lab_score = _bounded_score(lab_score)
+
+    guardrails: List[Dict[str, Any]] = []
+    if not lab_available:
+        _cap_bucket(buckets, "lab_startup", 50.0, "Lab runtime unavailable; startup score capped until Lighthouse or PSI data is available.", guardrails)
+        _cap_bucket(buckets, "interactivity", 55.0, "Lab runtime unavailable; interactivity score capped until TBT/INP-style lab evidence is available.", guardrails)
+        _cap_bucket(buckets, "asset_efficiency", 70.0, "Lab runtime unavailable; asset efficiency score capped because payload opportunities could not be measured.", guardrails)
+        _cap_bucket(buckets, "ux_resilience", 80.0, "Lab runtime unavailable; confidence is degraded for the pass.", guardrails)
+    elif normalized_lab_score is not None:
+        _cap_bucket(buckets, "lab_startup", min(100.0, normalized_lab_score + 12.0), "Anchored to the representative Lighthouse/PSI performance score.", guardrails)
+        _cap_bucket(buckets, "interactivity", min(100.0, normalized_lab_score + 18.0), "Anchored to the representative Lighthouse/PSI performance score.", guardrails)
+        _cap_bucket(buckets, "asset_efficiency", min(100.0, normalized_lab_score + 35.0), "Anchored to the representative Lighthouse/PSI performance score.", guardrails)
+
+    if not field_available:
+        _cap_bucket(buckets, "field_readiness", 75.0, "CrUX field data unavailable; field readiness is capped until real-user data is confirmed.", guardrails)
+
     coverage = 0.0
     if page_budget > 0:
         coverage = min(1.0, float(pages_analyzed) / float(page_budget))
@@ -85,8 +142,20 @@ def score_findings(
     for category_id, label, weight in CATEGORY_DEFS:
         bucket = buckets[category_id]
         issues = bucket["issues"]
+        category_guardrails = bucket.get("guardrails") or []
         weighted_total += bucket["score"] * weight
         total_weight += weight
+        confidence = _confidence_label(issues)
+        if category_guardrails and confidence == "Unknown":
+            confidence = "Estimated"
+        if issues:
+            summary = f"{len(issues)} issue(s) contribute to this category."
+            if category_guardrails:
+                summary += f" {category_guardrails[0]}"
+        elif category_guardrails:
+            summary = category_guardrails[0]
+        else:
+            summary = "No blocking issues detected in the sampled coverage."
         score_rows.append(
             {
                 "id": category_id,
@@ -94,18 +163,38 @@ def score_findings(
                 "score": round(float(bucket["score"]), 1),
                 "weight": weight,
                 "coverage": round(coverage, 2),
-                "confidence": _confidence_label(issues),
+                "confidence": confidence,
                 "issues_count": len(issues),
-                "summary": (
-                    f"{len(issues)} issue(s) contribute to this category."
-                    if issues
-                    else "No blocking issues detected in the sampled coverage."
-                ),
+                "summary": summary,
                 "finding_ids": [item.get("id") for item in issues if item.get("id")],
             }
         )
 
-    global_score = round(weighted_total / total_weight, 1) if total_weight else 0.0
+    raw_global_score = weighted_total / total_weight if total_weight else 0.0
+    global_cap: Optional[float] = None
+    global_cap_reason = ""
+    if normalized_lab_score is not None:
+        lab_weighted_score = (raw_global_score * 0.55) + (normalized_lab_score * 0.45)
+        global_cap = min(lab_weighted_score, normalized_lab_score + 28.0, 100.0)
+        global_cap_reason = "Global score anchored to the representative Lighthouse/PSI performance score."
+    elif not lab_available and not field_available:
+        global_cap = 65.0
+        global_cap_reason = "Global score capped because both lab and field evidence are unavailable."
+    elif not lab_available:
+        global_cap = 72.0
+        global_cap_reason = "Global score capped because lab evidence is unavailable."
+    elif not field_available:
+        global_cap = 88.0
+        global_cap_reason = "Global score capped because field evidence is unavailable."
+
+    if global_cap is not None and raw_global_score > global_cap:
+        guardrails.append({
+            "bucket": "global",
+            "cap": round(float(global_cap), 1),
+            "reason": global_cap_reason,
+        })
+        raw_global_score = global_cap
+    global_score = round(raw_global_score, 1)
     ranked = sorted(
         findings,
         key=lambda item: (
@@ -146,4 +235,5 @@ def score_findings(
             "ratio": round(coverage, 2),
         },
         "blocking_risk": blocking_risk,
+        "guardrails": guardrails,
     }

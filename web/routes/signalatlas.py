@@ -9,6 +9,7 @@ from flask import Blueprint, Response, jsonify, request
 
 from core.audit_modules.model_context import get_audit_model_context
 from core.audit_modules.targets import normalize_public_target
+from core.runtime.storage import utc_now_iso
 from core.signalatlas import (
     get_module_catalog,
     get_signalatlas_storage,
@@ -16,6 +17,7 @@ from core.signalatlas import (
     start_signalatlas_ai_rerun,
     start_signalatlas_audit,
 )
+from core.signalatlas.organic_potential import analyze_gsc_csv_exports
 from core.signalatlas.providers import get_signalatlas_provider_status
 from core.signalatlas.reporting import build_export_payload, render_pdf_bytes
 
@@ -25,6 +27,7 @@ signalatlas_bp = Blueprint("signalatlas", __name__)
 SIGNALATLAS_DEFAULT_PAGE_BUDGET = 12
 SIGNALATLAS_MAX_PAGE_BUDGET = 1500
 SIGNALATLAS_UNLIMITED_PAGE_BUDGET_TOKENS = {"unlimited", "infinity", "infinite", "inf", "∞"}
+SIGNALATLAS_GSC_CSV_MAX_BYTES = 5 * 1024 * 1024
 
 
 def _normalize_target(raw_value: str, mode: str) -> Dict[str, Any]:
@@ -115,6 +118,71 @@ def signalatlas_audit_detail(audit_id: str):
     if not audit:
         return jsonify({"success": False, "error": "Audit introuvable"}), 404
     return jsonify({"success": True, "audit": audit})
+
+
+@signalatlas_bp.route("/api/signalatlas/audits/<audit_id>/organic-potential", methods=["GET"])
+def signalatlas_organic_potential_detail(audit_id: str):
+    storage = get_signalatlas_storage()
+    audit = storage.get_audit(audit_id)
+    if not audit:
+        return jsonify({"success": False, "error": "Audit introuvable"}), 404
+    return jsonify({
+        "success": True,
+        "audit_id": audit_id,
+        "organic_potential": audit.get("organic_potential") or None,
+    })
+
+
+@signalatlas_bp.route("/api/signalatlas/audits/<audit_id>/organic-potential/import", methods=["POST"])
+def signalatlas_organic_potential_import(audit_id: str):
+    storage = get_signalatlas_storage()
+    audit = storage.get_audit(audit_id)
+    if not audit:
+        return jsonify({"success": False, "error": "Audit introuvable"}), 404
+    if str(audit.get("status") or "").strip().lower() != "done":
+        return jsonify({"success": False, "error": "L’audit doit être terminé avant l’import GSC."}), 409
+
+    uploaded_files = request.files.getlist("files")
+    if not uploaded_files and request.files:
+        uploaded_files = list(request.files.values())
+    if not uploaded_files:
+        return jsonify({"success": False, "error": "Ajoute au moins un export CSV Google Search Console."}), 400
+
+    file_payloads = []
+    for uploaded in uploaded_files:
+        filename = str(uploaded.filename or "").strip()
+        if not filename.lower().endswith(".csv"):
+            return jsonify({"success": False, "error": f"Fichier non CSV refusé: {filename or 'sans nom'}"}), 400
+        content = uploaded.read(SIGNALATLAS_GSC_CSV_MAX_BYTES + 1)
+        if len(content) > SIGNALATLAS_GSC_CSV_MAX_BYTES:
+            return jsonify({"success": False, "error": f"Fichier trop volumineux: {filename}"}), 413
+        file_payloads.append({"filename": filename, "content": content})
+
+    organic_potential = analyze_gsc_csv_exports(
+        file_payloads,
+        audit=audit,
+        semrush_configured=bool(os.environ.get("SEMRUSH_API_KEY")),
+    )
+    if not any(item.get("accepted") for item in (organic_potential.get("source_files") or [])):
+        return jsonify({"success": False, "error": "Aucun export GSC reconnu dans les CSV fournis."}), 400
+    audit["organic_potential"] = organic_potential
+    summary = dict(audit.get("summary") or {})
+    organic_summary = organic_potential.get("summary") or {}
+    summary.update({
+        "organic_potential_ready": True,
+        "organic_clicks": organic_summary.get("clicks", 0),
+        "organic_impressions": organic_summary.get("impressions", 0),
+        "organic_missed_clicks": organic_summary.get("missed_clicks", 0),
+        "organic_opportunity_count": organic_summary.get("opportunity_count", 0),
+    })
+    audit["summary"] = summary
+    audit["updated_at"] = utc_now_iso()
+    saved = storage.save_audit(audit)
+    return jsonify({
+        "success": True,
+        "audit": saved,
+        "organic_potential": organic_potential,
+    })
 
 
 @signalatlas_bp.route("/api/signalatlas/audits/<audit_id>/rerun-ai", methods=["POST"])

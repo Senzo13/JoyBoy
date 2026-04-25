@@ -35,6 +35,10 @@ function sanitizeAssistantToolTraceText(text = '') {
     let cleaned = source;
 
     // Strip raw tool protocol blobs that occasionally leak from provider output.
+    cleaned = cleaned.replace(/([^\n]{0,220}?)\s*\.?\s*to=[\w.-]+[^\n]*/gi, (_, prefix = '') => {
+        const kept = String(prefix || '').trim();
+        return kept ? `${kept}.\n` : '\n';
+    });
     cleaned = cleaned.replace(/to=[\w.-]+[\s\S]{0,240}?(?:data=\{[^{}]{0,600}\}|code="[^"]{0,600}")/gi, '\n');
     cleaned = cleaned.replace(/[ \t]*\b(?:data=\{[^{}]{0,600}\}|code="[^"]{0,600}")/gi, ' ');
 
@@ -44,6 +48,9 @@ function sanitizeAssistantToolTraceText(text = '') {
             const trimmed = String(line || '').trim();
             if (!trimmed) return true;
             if (/^to=[\w.-]+/i.test(trimmed)) return false;
+            if (/\b(?:code_path|start_line|end_line)=/i.test(trimmed)) return false;
+            if (/^[\[{]?\s*"?content"?\s*:/i.test(trimmed)) return false;
+            if (/^[\]}{]*\s*(?:json|data:|\{|\})/i.test(trimmed)) return false;
             if (/^Subagent\([^)]*\)/i.test(trimmed)) return false;
             if (/^[●•]\s*(?:Read|Write|Edit|Delete|Search|Glob|Bash|List|Plan|Subagent|ToolSearch|Explore|Open|UpdatePlan|Lecture|Exploration|Recherche|Écriture|Modification|Suppression|Planification|Vérification|Commande)\b/u.test(trimmed)) {
                 return false;
@@ -1631,12 +1638,21 @@ function addToolCall(action, target, args = {}) {
     };
 
     // Tronquer le chemin si trop long
-    const displayTarget = resolvedTarget && resolvedTarget.length > 60
-        ? '...' + resolvedTarget.slice(-57)
-        : (resolvedTarget || '');
+    let displayAction = formatAction(action);
+    let normalizedTarget = String(resolvedTarget || '').trim();
+    if (['list_files', 'open_workspace', 'explore'].includes(action) && (!normalizedTarget || normalizedTarget === '.' || normalizedTarget === './')) {
+        displayAction = chatT('terminal.taskRepoAnalysis', 'Analyse du repository');
+        normalizedTarget = '';
+    }
 
-    const displayAction = formatAction(action);
-    el.innerHTML = `<span class="tool-bullet">●</span> <span class="tool-action">${displayAction}</span>(<span class="tool-target">${escapeHtml(displayTarget)}</span>)`;
+    const displayTarget = normalizedTarget && normalizedTarget.length > 60
+        ? '...' + resolvedTarget.slice(-57)
+        : normalizedTarget;
+
+    const targetHtml = displayTarget
+        ? `(<span class="tool-target">${escapeHtml(displayTarget)}</span>)`
+        : '';
+    el.innerHTML = `<span class="tool-bullet">●</span> <span class="tool-action">${displayAction}</span>${targetHtml}`;
     messagesDiv.appendChild(el);
     scrollToBottom(document.body.classList.contains('terminal-mode'));
     return el;

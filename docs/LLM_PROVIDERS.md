@@ -40,6 +40,7 @@ CLI bridge, so JoyBoy does not expose a fake Gemini CLI mode.
 Cloud models use a provider-prefixed model id in chat and terminal mode:
 
 ```text
+openai:gpt-5.5
 openai:gpt-5.4-mini
 openai:gpt-5.4
 openai:gpt-5.4-nano

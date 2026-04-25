@@ -22,6 +22,25 @@ def _update_progress(job_id: str, phase: str, progress: float, message: str) -> 
     update_module_progress(job_id, "signalatlas", phase, progress, message)
 
 
+def _estimate_audit_seconds(options: Dict[str, Any], ai_config: Dict[str, Any]) -> int:
+    try:
+        max_pages = max(1, int(options.get("max_pages") or 12))
+    except (TypeError, ValueError):
+        max_pages = 12
+    crawl_seconds = 12 + min(max_pages, 40) * 1.5
+    crawl_seconds += max(0, min(max_pages, 250) - 40) * 0.55
+    crawl_seconds += max(0, min(max_pages, 1500) - 250) * 0.18
+    render_seconds = 30 if options.get("render_js") else 0
+    level = str(ai_config.get("level") or "basic_summary").strip().lower()
+    ai_seconds = {
+        "no_ai": 0,
+        "basic_summary": 18,
+        "full_expert_analysis": 45,
+        "ai_remediation_pack": 70,
+    }.get(level, 35)
+    return int(max(35, min(1200, crawl_seconds + render_seconds + ai_seconds)))
+
+
 def _run_audit_job(job_id: str, audit_id: str, payload: Dict[str, Any]) -> None:
     storage = get_signalatlas_storage()
     manager = get_job_manager()
@@ -93,13 +112,18 @@ def start_signalatlas_audit(payload: Dict[str, Any]) -> Dict[str, Any]:
     storage = get_signalatlas_storage()
     target = payload.get("target") or {}
     title = payload.get("title") or (target.get("host") or target.get("normalized_url") or "SignalAtlas audit")
+    options = payload.get("options") or {}
+    ai_config = payload.get("ai") or {}
+    estimated_seconds = _estimate_audit_seconds(options, ai_config)
     audit = storage.create_audit_stub(
         target=target,
         title=title,
-        options=payload.get("options") or {},
+        options=options,
         metadata={
             "module_id": "signalatlas",
-            "ai": payload.get("ai") or {},
+            "ai": ai_config,
+            "estimated_seconds": estimated_seconds,
+            "smart_crawl": True,
         },
     )
     job_id = _job_id("audit", audit["id"])
@@ -107,7 +131,15 @@ def start_signalatlas_audit(payload: Dict[str, Any]) -> Dict[str, Any]:
         "signalatlas",
         job_id=job_id,
         prompt=audit["target"]["normalized_url"],
-        metadata={"module_id": "signalatlas", "audit_id": audit["id"]},
+        metadata={
+            "module_id": "signalatlas",
+            "audit_id": audit["id"],
+            "estimated_seconds": estimated_seconds,
+            "requested_max_pages": options.get("max_pages"),
+            "render_js": bool(options.get("render_js")),
+            "ai_level": ai_config.get("level") or "",
+            "smart_crawl": True,
+        },
     )
     thread = threading.Thread(target=_run_audit_job, args=(job_id, audit["id"], payload), daemon=True)
     thread.start()

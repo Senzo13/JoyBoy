@@ -761,6 +761,21 @@ function describeTerminalIntentTask(intent = '', autonomous = false) {
     return terminalT('terminal.taskUnderstandRequest', 'Compréhension de la demande');
 }
 
+function describeTerminalModelCall(data = {}) {
+    const iteration = Number(data.iteration || 1);
+    const toolsCount = Number(data.tools_count || 0);
+    if (iteration > 1 && toolsCount > 0) {
+        return terminalT('terminal.taskContinueAfterTools', 'Analyse des résultats et prochaine action');
+    }
+    if (iteration > 1) {
+        return terminalT('terminal.taskFinalSynthesis', 'Synthèse finale de la réponse');
+    }
+    if (toolsCount > 0) {
+        return terminalT('terminal.taskRepoAnalysis', 'Analyse des fichiers du repository');
+    }
+    return terminalT('terminal.taskPrepareAnswer', 'Préparation de la réponse');
+}
+
 function shouldShowTerminalToolAsTask(action) {
     return [
         'write_todos',
@@ -1041,6 +1056,18 @@ function formatTerminalMarkdown(text) {
     formatted = formatted.replace(/\[WRITE_FILE:\s*[^\]]*\][\s\S]*$/gi, '');
     formatted = formatted.replace(/\[EDIT_FILE:\s*[^\]]*\][\s\S]*$/gi, '');
 
+    const codeBlocks = [];
+    formatted = formatted.replace(/```([a-zA-Z0-9_+-]*)[ \t]*\n?([\s\S]*?)```/g, (_, lang = '', code = '') => {
+        const token = `@@TERMINAL_CODE_BLOCK_${codeBlocks.length}@@`;
+        const safeLang = String(lang || '').trim().replace(/[^a-zA-Z0-9_+-]/g, '');
+        const classAttr = safeLang ? ` class="language-${safeLang}"` : '';
+        codeBlocks.push({
+            token,
+            html: `<pre><code${classAttr}>${String(code || '').replace(/^\n|\n$/g, '')}</code></pre>`
+        });
+        return token;
+    });
+
     // Virer les ● que l'IA met dans son texte (réservé aux tool calls système)
     formatted = formatted.replace(/^●\s*/gm, '');
     formatted = formatted.replace(/\n●\s*/g, '\n');
@@ -1052,13 +1079,11 @@ function formatTerminalMarkdown(text) {
     // Garder **gras** -> <strong>
     formatted = formatted.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
 
-    // Virer le reste du markdown
-    // Code blocks ```lang\ncode``` -> juste le code
-    formatted = formatted.replace(/```\w*\n?/g, '');
+    // Virer le reste du markdown, en gardant les vrais blocs/inline code lisibles.
     // *italic* -> texte normal
     formatted = formatted.replace(/\*([^*]+)\*/g, '$1');
-    // `code` -> texte normal
-    formatted = formatted.replace(/`([^`]+)`/g, '$1');
+    // `code` -> badge code inline
+    formatted = formatted.replace(/`([^`]+)`/g, '<code>$1</code>');
     // # headers -> texte
     formatted = formatted.replace(/^#{1,6}\s+/gm, '');
     // > quotes -> texte
@@ -1076,6 +1101,10 @@ function formatTerminalMarkdown(text) {
 
     // Line breaks
     formatted = formatted.replace(/\n/g, '<br>');
+
+    for (const block of codeBlocks) {
+        formatted = formatted.replace(block.token, block.html);
+    }
 
     return formatted;
 }
@@ -2439,10 +2468,10 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                     if (data.thinking) {
                         console.log(`[TERMINAL] Iteration ${data.iteration}`);
                         updateThinkingText(
-                            terminalT('terminal.progressThinkingIteration', 'Analyse {iteration}', { iteration: data.iteration })
+                            terminalT('terminal.progressThinkingIteration', 'Préparation du tour {iteration}', { iteration: data.iteration })
                         );
                         addTerminalProgressLog(
-                            terminalT('terminal.progressThinkingIteration', 'Analyse {iteration}', { iteration: data.iteration }),
+                            terminalT('terminal.progressThinkingIteration', 'Préparation du tour {iteration}', { iteration: data.iteration }),
                             '',
                             'thinking',
                             { reveal: Number(data.iteration) > 1 }
@@ -2465,6 +2494,21 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                                 }
                             }
                         }
+                        continue;
+                    }
+
+                    // Model call - le backend vient d'appeler le modèle cloud/local.
+                    if (data.model_call) {
+                        const modelCallLabel = describeTerminalModelCall(data.model_call);
+                        const modelName = data.model_call.model || '';
+                        updateThinkingText(modelCallLabel);
+                        addTerminalProgressLog(
+                            modelCallLabel,
+                            modelName,
+                            'thinking',
+                            { reveal: true }
+                        );
+                        addTerminalTask('model-call', modelCallLabel, 'running', modelName);
                         continue;
                     }
 
@@ -2513,6 +2557,7 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                             { reveal: true }
                         );
                         if (shouldShowTerminalToolAsTask(action)) {
+                            updateTerminalTask('model-call', 'done', terminalT('terminal.taskToolSelected', 'Outil choisi'));
                             addTerminalTask(toolTaskId, taskLabel, 'running', describeTerminalToolNote(action, path, args));
                         }
                         showThinkingAnimation(taskLabel || action);
@@ -2647,6 +2692,7 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                         if (!firstContentReceived) {
                             firstContentReceived = true;
                             terminalProgressContentStarted = true;
+                            updateTerminalTask('model-call', 'done', terminalT('terminal.taskAnswerStarted', 'Réponse commencée'));
                             if (!terminalProgressElement) {
                                 clearTimeout(terminalProgressRevealTimer);
                                 terminalProgressRevealTimer = null;

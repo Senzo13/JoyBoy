@@ -11,6 +11,7 @@ TERMINAL_EVENT_TYPES = {
     "intent",
     "warning",
     "thinking",
+    "model_call",
     "tool_call",
     "tool_result",
     "approval_required",

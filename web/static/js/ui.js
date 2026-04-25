@@ -1067,7 +1067,7 @@ function getTerminalEffectiveContextSize(modelId = null) {
         const cloudContext = Number.parseInt(profile?.contextSize || profile?.context_size, 10);
         if (Number.isFinite(cloudContext) && cloudContext > 0) return cloudContext;
         const lower = String(activeModel || '').trim().toLowerCase();
-        if (lower === 'openai:gpt-5.4') return 1000000;
+        if (lower === 'openai:gpt-5.5' || lower === 'openai:gpt-5.4') return 1000000;
         if (lower.startsWith('openai:gpt-5')) return 400000;
         if (lower.startsWith('gemini:')) return 1000000;
         return DEFAULT_CLOUD_CONTEXT_SIZE;

@@ -479,8 +479,9 @@ def _parse_lighthouse_result(
     lhr = data.get("lhr") if isinstance(data.get("lhr"), dict) else data.get("lighthouseResult") or data
     categories = lhr.get("categories") or {}
     audits = lhr.get("audits") or {}
-    performance_score = _safe_float(((categories.get("performance") or {}).get("score")), 0.0)
-    score = round(performance_score * 100, 1) if performance_score else None
+    raw_performance_score = (categories.get("performance") or {}).get("score")
+    performance_score = _safe_float(raw_performance_score, 0.0)
+    score = round(performance_score * 100, 1) if raw_performance_score is not None else None
 
     def audit_numeric(audit_id: str) -> Optional[float]:
         value = (audits.get(audit_id) or {}).get("numericValue")
@@ -1976,13 +1977,21 @@ def run_site_audit(
     findings.extend(_resource_findings(pages, entry_url))
     findings.extend(_owner_context_findings(owner_context, pages, asset_samples, entry_url))
     findings.sort(key=lambda item: ({"critical": 4, "high": 3, "medium": 2, "low": 1, "info": 0}.get(str(item.get("severity")).lower(), 0)), reverse=True)
-    scores = score_findings(findings, pages_analyzed=len(pages), page_budget=profile["sample_pages"])
+    lab_ready = any(item.get("score") is not None for item in lab_runs)
+    field_ready = bool(field_data)
+    representative_lab = next((item for item in lab_runs if item.get("score") is not None), {})
+    scores = score_findings(
+        findings,
+        pages_analyzed=len(pages),
+        page_budget=profile["sample_pages"],
+        lab_score=representative_lab.get("score"),
+        lab_available=lab_ready,
+        field_available=field_ready,
+    )
     remediation_items = _build_remediation_items(findings)
     platform = _detect_platform(page_html.get(pages[0].get("final_url") or "", ""), pages[0].get("headers") or {})
     template_clusters = _aggregate_template_clusters(pages)
 
-    lab_ready = any(item.get("score") is not None for item in lab_runs)
-    field_ready = bool(field_data)
     blocking_risk = scores.get("blocking_risk") or {}
     summary = {
         "target": entry_url,
@@ -2000,6 +2009,7 @@ def run_site_audit(
         "lab_data_available": lab_ready,
         "top_risk": findings[0]["title"] if findings else "",
         "blocking_risk": blocking_risk,
+        "score_guardrails": scores.get("guardrails") or [],
         "owner_integrations_count": len(owner_context.get("integrations") or []),
     }
     snapshot = {

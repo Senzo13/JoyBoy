@@ -267,6 +267,21 @@ def terminal_chat():
                 yield f"data: {json.dumps({'thinking': True, 'iteration': event['iteration'], 'max_iterations': event.get('max_iterations', 24)})}\n\n"
                 print(f"[TERMINAL] Iteration {event['iteration']}")
 
+            elif event_type == 'model_call':
+                tools_count = int(event.get('tools_count') or 0)
+                label = "Analyse avec le modèle"
+                if tools_count:
+                    label = f"Analyse avec le modèle ({tools_count} outils disponibles)"
+                if job_manager and terminal_job_id:
+                    job_manager.update(
+                        terminal_job_id,
+                        status="running",
+                        phase="model_call",
+                        progress=None,
+                        message=label,
+                    )
+                yield f"data: {json.dumps({'model_call': {'model': event.get('model', ''), 'provider': event.get('provider', ''), 'iteration': event.get('iteration', 1), 'tools_count': tools_count, 'estimated_prompt_tokens': event.get('estimated_prompt_tokens', 0)}})}\n\n"
+
             elif event_type == 'content':
                 if job_manager and terminal_job_id:
                     job_manager.update(

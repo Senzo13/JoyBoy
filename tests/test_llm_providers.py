@@ -187,6 +187,7 @@ class LLMProviderCatalogTest(unittest.TestCase):
         profile_ids = {profile["id"] for profile in profiles}
 
         self.assertIn("qwen3.5:2b", profile_ids)
+        self.assertIn("openai:gpt-5.5", profile_ids)
         self.assertIn("openai:gpt-5.4-mini", profile_ids)
         self.assertIn("openai:gpt-5.4", profile_ids)
         self.assertIn("openai:gpt-5.2-codex", profile_ids)
@@ -208,6 +209,7 @@ class LLMProviderCatalogTest(unittest.TestCase):
         fake_response.json.return_value = {
             "data": [
                 {"id": "text-embedding-3-large"},
+                {"id": "gpt-5.5"},
                 {"id": "gpt-5.2-codex"},
                 {"id": "gpt-5.4"},
                 {"id": "gpt-image-1"},
@@ -221,7 +223,7 @@ class LLMProviderCatalogTest(unittest.TestCase):
             )
 
         openai_profiles = [profile for profile in profiles if profile["provider"] == "openai"]
-        self.assertEqual([profile["model"] for profile in openai_profiles], ["gpt-5.4", "gpt-5.2-codex"])
+        self.assertEqual([profile["model"] for profile in openai_profiles], ["gpt-5.5", "gpt-5.4", "gpt-5.2-codex"])
         self.assertTrue(all(profile["discovered"] for profile in openai_profiles))
         self.assertEqual(openai_profiles[0]["model_source"], "remote")
         self.assertEqual(get.call_args.args[0], "https://api.openai.com/v1/models")
@@ -234,6 +236,7 @@ class LLMProviderCatalogTest(unittest.TestCase):
         fake_response.json.return_value = {
             "data": [
                 {"id": "gpt-4.1-mini"},
+                {"id": "gpt-5.5", "created": 700},
                 {"id": "gpt-5.4"},
                 {"id": "gpt-5.4-mini", "created": 500},
                 {"id": "gpt-5.3", "created": 400},
@@ -257,6 +260,7 @@ class LLMProviderCatalogTest(unittest.TestCase):
         gpt_5_models = [model for model in openai_models if model.startswith("gpt-5") and "codex" not in model]
 
         self.assertEqual(len(gpt_5_models), 5)
+        self.assertIn("gpt-5.5", gpt_5_models)
         self.assertIn("gpt-5.4-mini", gpt_5_models)
         self.assertNotIn("gpt-5-old", gpt_5_models)
         self.assertIn("gpt-5.2-codex", openai_models)
@@ -277,6 +281,7 @@ class LLMProviderCatalogTest(unittest.TestCase):
 
         openai_profiles = [profile for profile in profiles if profile["provider"] == "openai"]
         profile_ids = {profile["id"] for profile in openai_profiles}
+        self.assertIn("openai:gpt-5.5", profile_ids)
         self.assertIn("openai:gpt-5.4", profile_ids)
         self.assertIn("openai:gpt-5.4-mini", profile_ids)
         self.assertTrue(all(not profile["discovered"] for profile in openai_profiles))
@@ -363,6 +368,32 @@ class LLMProviderCatalogTest(unittest.TestCase):
 
         request_kwargs = post.call_args.kwargs
         self.assertEqual(request_kwargs["json"]["reasoning_effort"], "medium")
+
+    def test_openai_compatible_chat_streams_content_callback(self) -> None:
+        os.environ["OPENAI_API_KEY"] = "sk-test"
+        fake_response = Mock()
+        fake_response.status_code = 200
+        fake_response.iter_lines.return_value = [
+            'data: {"choices":[{"delta":{"content":"Bon"}}]}',
+            'data: {"choices":[{"delta":{"content":"jour"}}]}',
+            'data: {"choices":[],"usage":{"prompt_tokens":4,"completion_tokens":2}}',
+            'data: [DONE]',
+        ]
+        chunks: list[str] = []
+
+        with patch("core.agent_runtime.model_client.requests.post", return_value=fake_response) as post:
+            result = self.model_client.chat_with_cloud_model(
+                "openai:gpt-test",
+                messages=[{"role": "user", "content": "hi"}],
+                stream_callback=chunks.append,
+            )
+
+        self.assertEqual(chunks, ["Bon", "jour"])
+        self.assertEqual(result["message"]["content"], "Bonjour")
+        self.assertEqual(result["prompt_eval_count"], 4)
+        self.assertEqual(result["eval_count"], 2)
+        self.assertTrue(post.call_args.kwargs["stream"])
+        self.assertTrue(post.call_args.kwargs["json"]["stream"])
 
     def test_openai_codex_cli_chat_uses_codex_responses_api(self) -> None:
         auth_path = Path(self.temp_home.name) / "codex-auth.json"

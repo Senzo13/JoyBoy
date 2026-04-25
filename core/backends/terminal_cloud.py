@@ -19,7 +19,7 @@ class TerminalCloudMixin:
 
     def _default_cloud_context_size(self, model: str | None = None) -> int:
         model_id = str(model or "").strip().lower()
-        if model_id == "openai:gpt-5.4":
+        if model_id in {"openai:gpt-5.5", "openai:gpt-5.4"}:
             return 1_000_000
         if model_id.startswith("openai:gpt-5"):
             return 400_000

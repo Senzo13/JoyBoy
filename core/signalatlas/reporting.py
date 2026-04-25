@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from html import escape as html_escape
 from typing import Any, Dict, List
 
 
@@ -45,12 +46,172 @@ def _signal_label(value: str) -> str:
     return labels.get(str(value or "").strip(), str(value or "").replace("_", " ").title())
 
 
+def _fmt_int(value: Any) -> str:
+    try:
+        return f"{int(round(float(value or 0))):,}"
+    except (TypeError, ValueError):
+        return "0"
+
+
+def _fmt_float(value: Any, digits: int = 1) -> str:
+    try:
+        return f"{float(value):.{digits}f}"
+    except (TypeError, ValueError):
+        return "n/a"
+
+
+def _fmt_percent(value: Any) -> str:
+    try:
+        return f"{float(value or 0) * 100:.2f}%"
+    except (TypeError, ValueError):
+        return "0.00%"
+
+
+def _organic_type_label(value: str) -> str:
+    labels = {
+        "quick_win": "Quick win",
+        "ctr_gap": "CTR gap",
+        "ranking_distance": "Ranking distance",
+        "content_gap": "Content gap",
+        "low_value": "Low value",
+        "brand_query": "Brand query",
+        "non_brand_query": "Non-brand query",
+    }
+    return labels.get(str(value or "").strip().lower(), str(value or "").replace("_", " ").title())
+
+
+def _organic_potential_markdown(audit: Dict[str, Any]) -> List[str]:
+    organic = audit.get("organic_potential") or {}
+    if not organic:
+        return [
+            "## Organic Potential",
+            "",
+            "- No Google Search Console CSV import is attached to this audit yet.",
+            "",
+        ]
+
+    summary = organic.get("summary") or {}
+    lines = [
+        "## Organic Potential",
+        "",
+        "- Source: `Google Search Console CSV`",
+        f"- Mapping mode: `{organic.get('mapping_mode', 'separate_gsc_exports')}`",
+        f"- Clicks: `{_fmt_int(summary.get('clicks'))}`",
+        f"- Impressions: `{_fmt_int(summary.get('impressions'))}`",
+        f"- CTR: `{_fmt_percent(summary.get('ctr'))}`",
+        f"- Average position: `{_fmt_float(summary.get('average_position'), 2)}`",
+        f"- Estimated missed clicks: `{_fmt_float(summary.get('missed_clicks'), 1)}`",
+        f"- Pages analyzed: `{_fmt_int(summary.get('page_count'))}`",
+        f"- Queries analyzed: `{_fmt_int(summary.get('query_count'))}`",
+        "",
+        "SignalAtlas treats GSC clicks, impressions, CTR, and positions as confirmed demand data. "
+        "Page/query joins are marked as inferred when the imported CSV files are separate GSC exports.",
+        "",
+    ]
+
+    opportunities = organic.get("opportunities") or []
+    if opportunities:
+        lines.extend(["### Highest-priority opportunities", ""])
+        for item in opportunities[:10]:
+            lines.append(
+                f"- **{item.get('kind')}** `{item.get('label')}` — "
+                f"{_organic_type_label(item.get('opportunity_type'))}, "
+                f"priority `{_fmt_float(item.get('priority_score'), 1)}`, "
+                f"missed clicks `{_fmt_float(item.get('missed_clicks'), 1)}`. "
+                f"{item.get('recommended_action') or ''}"
+            )
+        lines.append("")
+
+    pages = organic.get("pages") or []
+    if pages:
+        lines.extend(["### Top page opportunities", ""])
+        for page in pages[:8]:
+            flags = ", ".join(page.get("content_flags") or []) or "none"
+            lines.append(
+                f"- `{page.get('url')}` — impressions `{_fmt_int(page.get('impressions'))}`, "
+                f"clicks `{_fmt_int(page.get('clicks'))}`, CTR `{_fmt_percent(page.get('ctr'))}`, "
+                f"position `{_fmt_float(page.get('position'), 2)}`, flags `{flags}`."
+            )
+        lines.append("")
+
+    queries = organic.get("queries") or []
+    if queries:
+        lines.extend(["### Top query opportunities", ""])
+        for query in queries[:12]:
+            types = ", ".join(_organic_type_label(item) for item in (query.get("opportunity_types") or []))
+            lines.append(
+                f"- `{query.get('query')}` — {types}; impressions `{_fmt_int(query.get('impressions'))}`, "
+                f"clicks `{_fmt_int(query.get('clicks'))}`, position `{_fmt_float(query.get('position'), 2)}`."
+            )
+        lines.append("")
+
+    cannibalization = organic.get("cannibalization_candidates") or []
+    if cannibalization:
+        lines.extend(["### Probable cannibalization / URL variants", ""])
+        for item in cannibalization[:6]:
+            lines.append(
+                f"- `{item.get('signature')}` — {item.get('url_count')} URL(s), "
+                f"`{_fmt_int(item.get('impressions'))}` impressions, confidence `{item.get('mapping_confidence')}`."
+            )
+        lines.append("")
+
+    return lines
+
+
+def _organic_potential_html(audit: Dict[str, Any]) -> str:
+    organic = audit.get("organic_potential") or {}
+    if not organic:
+        return (
+            "<h2>Organic Potential</h2>"
+            "<p class='muted'>No Google Search Console CSV import is attached to this audit yet.</p>"
+        )
+
+    summary = organic.get("summary") or {}
+    cards = [
+        ("Clicks", _fmt_int(summary.get("clicks")), "Confirmed GSC clicks"),
+        ("Impressions", _fmt_int(summary.get("impressions")), "Confirmed GSC impressions"),
+        ("CTR", _fmt_percent(summary.get("ctr")), "Clicks divided by impressions"),
+        ("Average position", _fmt_float(summary.get("average_position"), 2), "Weighted by impressions"),
+        ("Missed clicks", _fmt_float(summary.get("missed_clicks"), 1), "Estimated from position-based CTR"),
+        ("Opportunities", _fmt_int(summary.get("opportunity_count")), "Rows above priority threshold"),
+    ]
+    card_html = "".join(
+        "<div class='score-card'>"
+        f"<div class='label'>{html_escape(label)}</div>"
+        f"<div class='value'>{html_escape(value)}</div>"
+        f"<div class='meta'>{html_escape(meta)}</div>"
+        "</div>"
+        for label, value, meta in cards
+    )
+    rows = "".join(
+        "<tr>"
+        f"<td>{html_escape(str(item.get('kind') or ''))}</td>"
+        f"<td>{html_escape(str(item.get('label') or ''))}</td>"
+        f"<td>{html_escape(_organic_type_label(item.get('opportunity_type')))}</td>"
+        f"<td>{html_escape(_fmt_float(item.get('priority_score'), 1))}</td>"
+        f"<td>{html_escape(_fmt_int(item.get('impressions')))}</td>"
+        f"<td>{html_escape(_fmt_float(item.get('missed_clicks'), 1))}</td>"
+        "</tr>"
+        for item in (organic.get("opportunities") or [])[:12]
+    )
+    return (
+        "<h2>Organic Potential</h2>"
+        "<p class='muted'>Confirmed Google Search Console CSV metrics, with page/query joins marked inferred when exports are separate.</p>"
+        f"<div class='scores'>{card_html}</div>"
+        "<table>"
+        "<thead><tr><th>Kind</th><th>Page / query</th><th>Type</th><th>Priority</th><th>Impressions</th><th>Missed clicks</th></tr></thead>"
+        f"<tbody>{rows}</tbody>"
+        "</table>"
+    )
+
+
 def build_executive_summary(audit: Dict[str, Any]) -> str:
     summary = audit.get("summary") or {}
     findings = audit.get("findings") or []
     owner_context = audit.get("owner_context") or {}
     render_detection = (audit.get("snapshot") or {}).get("render_detection") or {}
     visibility_signals = (audit.get("snapshot") or {}).get("visibility_signals") or {}
+    organic_summary = (audit.get("organic_potential") or {}).get("summary") or {}
     grouped = _group_findings(findings)
     primary_root = grouped["root_causes"][0] if grouped["root_causes"] else {}
     top_findings = findings[:5]
@@ -94,6 +255,14 @@ def build_executive_summary(audit: Dict[str, Any]) -> str:
         lines.append(f"IndexNow: {visibility_signals.get('indexnow', {}).get('note')}")
     if visibility_signals.get("geo", {}).get("status") in {"Strong signal", "Confirmed"}:
         lines.append(f"GEO / AI visibility: {visibility_signals.get('geo', {}).get('note')}")
+    if organic_summary:
+        lines.append(
+            "Organic potential from GSC CSV: "
+            f"{_fmt_int(organic_summary.get('clicks'))} click(s), "
+            f"{_fmt_int(organic_summary.get('impressions'))} impression(s), "
+            f"CTR {_fmt_percent(organic_summary.get('ctr'))}, "
+            f"estimated missed clicks {_fmt_float(organic_summary.get('missed_clicks'), 1)}."
+        )
     if grouped["derived"] and summary.get("baseline_only"):
         lines.append(
             f"{len(grouped['derived'])} downstream symptom(s) are currently treated as raw-HTML baseline signals and should be revalidated after rendered-browser probing."
@@ -180,6 +349,8 @@ def build_markdown_report(audit: Dict[str, Any]) -> str:
             "- No visibility signals were attached to this audit.",
             "",
         ])
+
+    lines.extend(_organic_potential_markdown(audit))
 
     lines.extend([
         "## Root Cause Snapshot",
@@ -376,6 +547,7 @@ def build_report_html(audit: Dict[str, Any]) -> str:
         for key, payload in visibility_signals.items()
         if isinstance(payload, dict)
     )
+    organic_section = _organic_potential_html(audit)
     finding_rows = "".join(
         "<tr>"
         f"<td>{item.get('title')}</td>"
@@ -429,6 +601,7 @@ def build_report_html(audit: Dict[str, Any]) -> str:
   <div class="owner-grid">
     {visibility_cards or "<div class='owner-card'><div class='label'>signals</div><div class='value'>none</div><div class='meta'>No visibility signals were attached to this audit.</div></div>"}
   </div>
+  {organic_section}
   <h2>Findings</h2>
   <table>
     <thead><tr><th>Issue</th><th>Severity</th><th>Confidence</th><th>Scope</th></tr></thead>

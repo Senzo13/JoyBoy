@@ -80,6 +80,11 @@ class ModulesStaticTests(unittest.TestCase):
                 self.assertIn("kindPerfAtlas:", data)
                 self.assertIn("runAudit:", data)
                 self.assertIn("tabField:", data)
+                self.assertIn("tabOrganicPotential:", data)
+                self.assertIn("etaRemaining:", data)
+                self.assertIn("auditCompleteToastTitle:", data)
+                self.assertIn("auditCompleteSmallSite:", data)
+                self.assertIn("overviewFactSmartCrawlDone:", data)
                 self.assertIn("progressFieldCopy:", data)
                 self.assertIn("progressLabCopy:", data)
                 self.assertIn("progressOwnerCopy:", data)
@@ -114,6 +119,23 @@ class ModulesStaticTests(unittest.TestCase):
         self.assertIn("function perfAtlasProviderSummary(provider)", modules_js)
         self.assertIn("escapeHtml(perfAtlasProviderSummary(provider))", modules_js)
         self.assertIn("escapeHtml(perfAtlasProviderSummary(item))", modules_js)
+
+    def test_signalatlas_organic_potential_ui_is_registered(self):
+        modules_js = self.read("web/static/js/modules.js")
+        api_js = self.read("web/static/js/api.js")
+        routes_py = self.read("web/routes/signalatlas.py")
+        reporting_py = self.read("core/signalatlas/reporting.py")
+
+        self.assertIn("tabOrganicPotential", modules_js)
+        self.assertIn("renderSignalAtlasOrganicPotential", modules_js)
+        self.assertIn("signalAtlasProgressEtaLabel", modules_js)
+        self.assertIn("notifySignalAtlasAuditCompleted", modules_js)
+        self.assertIn("auditCompleteSmallSite", modules_js)
+        self.assertIn("signalatlas-organic-files", modules_js)
+        self.assertIn("importSignalAtlasOrganicPotential", modules_js)
+        self.assertIn("organic-potential/import", api_js)
+        self.assertIn("organic-potential/import", routes_py)
+        self.assertIn("## Organic Potential", reporting_py)
 
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch
 
-from core.perfatlas.engine import run_site_audit
+from core.perfatlas.engine import _parse_lighthouse_result, run_site_audit
 
 
 class _FakeSession:
@@ -43,6 +43,18 @@ def _sample_page(final_url="https://nevomove.com/"):
 
 
 class PerfAtlasEngineTests(unittest.TestCase):
+    def test_parse_lighthouse_keeps_zero_performance_score(self):
+        parsed = _parse_lighthouse_result(
+            "https://example.com/",
+            "lighthouse_local",
+            "mobile",
+            {"categories": {"performance": {"score": 0}}, "audits": {}},
+            runs_attempted=1,
+            runs_completed=1,
+        )
+
+        self.assertEqual(parsed["score"], 0)
+
     def test_run_site_audit_reports_degraded_runtime_honestly(self):
         pages = [_sample_page()]
         assets = [
@@ -88,6 +100,8 @@ class PerfAtlasEngineTests(unittest.TestCase):
         self.assertEqual(result["summary"]["runtime_runner"], "unavailable")
         self.assertFalse(result["summary"]["field_data_available"])
         self.assertFalse(result["summary"]["lab_data_available"])
+        self.assertLessEqual(result["summary"]["global_score"], 65)
+        self.assertTrue(result["summary"]["score_guardrails"])
         self.assertEqual(result["summary"]["owner_integrations_count"], 1)
         titles = {item["title"] for item in result["findings"]}
         self.assertIn("No field data confirmed for this target yet", titles)
