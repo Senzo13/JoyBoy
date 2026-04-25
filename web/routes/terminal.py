@@ -57,6 +57,23 @@ def terminal_tools():
     })
 
 
+@terminal_bp.route('/terminal/commands/catalog', methods=['POST'])
+def terminal_commands_catalog():
+    """Return native slash commands for proactive terminal command suggestions."""
+    from core.terminal_brain import get_brain
+
+    data = request.json or {}
+    workspace = data.get('workspace') if isinstance(data.get('workspace'), dict) else {}
+    workspace_path = workspace.get('path') or data.get('workspace_path') or ''
+    locale = data.get('locale') or data.get('language') or ''
+    brain = get_brain()
+    catalog = brain._build_terminal_help_catalog(workspace_path, locale)
+    return jsonify({
+        'success': True,
+        'catalog': catalog,
+    })
+
+
 @terminal_bp.route('/terminal/select-workspace', methods=['POST'])
 def terminal_select_workspace():
     """Utilise l'IA pour sélectionner le bon workspace"""

@@ -122,6 +122,9 @@ function updateTokensMaxDisplay() {
 let lastToolResults = [];  // Stocke les derniers résultats d'outils
 let terminalToolResultSeq = 0;
 let terminalRunMetrics = null;
+let terminalCommandCatalogCacheKey = '';
+let terminalCommandCatalogCache = null;
+let terminalCommandCatalogRequest = null;
 
 function formatTerminalCompactNumber(value) {
     const number = Number(value || 0);
@@ -403,6 +406,66 @@ function addWriteFilesResult(result = {}, storedItem = null) {
 function closeTerminalCommandCatalog() {
     document.querySelectorAll('.terminal-command-catalog-popover').forEach(panel => panel.remove());
     refreshTerminalProgressLayout();
+}
+
+function terminalCommandCatalogKey() {
+    const locale = window.JoyBoyI18n?.getLocale ? window.JoyBoyI18n.getLocale() : 'fr';
+    const workspacePath = terminalWorkspace?.path || '';
+    return `${locale}|${workspacePath}`;
+}
+
+async function fetchTerminalCommandCatalog() {
+    const key = terminalCommandCatalogKey();
+    if (terminalCommandCatalogCache && terminalCommandCatalogCacheKey === key) {
+        return terminalCommandCatalogCache;
+    }
+    if (terminalCommandCatalogRequest && terminalCommandCatalogCacheKey === key) {
+        return terminalCommandCatalogRequest;
+    }
+
+    terminalCommandCatalogCacheKey = key;
+    terminalCommandCatalogRequest = fetch('/terminal/commands/catalog', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            workspace: terminalWorkspace,
+            locale: window.JoyBoyI18n?.getLocale ? window.JoyBoyI18n.getLocale() : 'fr'
+        })
+    })
+        .then(response => response.json())
+        .then(data => {
+            if (!data?.success || !data.catalog) throw new Error(data?.error || 'command catalog unavailable');
+            terminalCommandCatalogCache = data.catalog;
+            return terminalCommandCatalogCache;
+        })
+        .catch(error => {
+            console.warn('[TERMINAL] Command catalog preload failed:', error);
+            return null;
+        })
+        .finally(() => {
+            terminalCommandCatalogRequest = null;
+        });
+    return terminalCommandCatalogRequest;
+}
+
+function shouldShowTerminalCommandCatalogForInput(value = '') {
+    const text = String(value || '').trimStart().toLowerCase();
+    if (!text.startsWith('/')) return false;
+    if (/\s/.test(text)) return false;
+    return text === '/' || '/help'.startsWith(text) || text.startsWith('/');
+}
+
+async function maybeShowTerminalCommandCatalogFromInput(input) {
+    if (!terminalMode || terminalWorking || !input) return;
+    if (input.id !== 'prompt-input' && input.id !== 'chat-prompt') return;
+    if (!shouldShowTerminalCommandCatalogForInput(input.value)) {
+        closeTerminalCommandCatalog();
+        return;
+    }
+    const catalog = await fetchTerminalCommandCatalog();
+    if (!catalog) return;
+    if (!shouldShowTerminalCommandCatalogForInput(input.value)) return;
+    showTerminalCommandCatalog(catalog);
 }
 
 function showTerminalCommandCatalog(catalog = {}) {
@@ -695,6 +758,11 @@ function handleTerminalKeydown(e) {
     const input = e.target;
     if (input.id !== 'prompt-input' && input.id !== 'chat-prompt') return;
 
+    if (e.key === 'Escape') {
+        closeTerminalCommandCatalog();
+        return;
+    }
+
     // Flèche haut - historique précédent
     if (e.key === 'ArrowUp') {
         e.preventDefault();
@@ -719,11 +787,16 @@ function handleTerminalKeydown(e) {
     }
 }
 
+function handleTerminalInput(e) {
+    maybeShowTerminalCommandCatalogFromInput(e.target);
+}
+
 // Charger l'historique au démarrage
 loadTerminalHistory();
 
 // Ajouter le listener global pour les touches
 document.addEventListener('keydown', handleTerminalKeydown);
+document.addEventListener('input', handleTerminalInput);
 
 // ===== THINKING ANIMATION =====
 // Animation "Thinking..." avec dots animés comme Claude Code

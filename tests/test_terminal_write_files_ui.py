@@ -59,6 +59,11 @@ class TerminalWriteFilesUiTests(unittest.TestCase):
         self.assertIn("terminal-command-catalog-popover", terminal_js)
         self.assertIn("terminal-command-catalog-popover", components_css)
         self.assertIn("'command_catalog'", terminal_route)
+        self.assertIn("/terminal/commands/catalog", terminal_route)
+        self.assertIn("function fetchTerminalCommandCatalog", terminal_js)
+        self.assertIn("function maybeShowTerminalCommandCatalogFromInput", terminal_js)
+        self.assertIn("document.addEventListener('input', handleTerminalInput)", terminal_js)
+        self.assertIn("shouldShowTerminalCommandCatalogForInput(input.value)", terminal_js)
 
 
 if __name__ == "__main__":
