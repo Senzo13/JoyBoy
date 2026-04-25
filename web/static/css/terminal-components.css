@@ -931,16 +931,14 @@ body.terminal-mode .input-bar.terminal-progress-active {
     "attach permission spacer model video send" !important;
   row-gap: 8px !important;
   position: relative;
-  overflow: hidden;
+  overflow: visible;
   border-color: rgba(255, 255, 255, 0.1) !important;
-  background:
-    radial-gradient(circle at 18% 0%, rgba(96, 165, 250, 0.08), transparent 34%),
-    linear-gradient(180deg, rgba(24, 24, 27, 0.98) 0%, #141414 62%) !important;
+  background: #141414 !important;
   box-shadow: 0 18px 54px rgba(0, 0, 0, 0.42) !important;
 }
 
 body.terminal-mode .input-bar.terminal-progress-active::before {
-  content: "";
+  content: none;
   position: absolute;
   left: 0;
   right: 0;
@@ -978,6 +976,10 @@ body.terminal-mode .input-bar.terminal-progress-active > .video-btn,
 body.terminal-mode .input-bar.terminal-progress-active > .send-btn {
   position: relative;
   z-index: 2;
+}
+
+body.terminal-mode .input-bar.terminal-progress-active > .terminal-permission-picker.open {
+  z-index: 30;
 }
 
 .terminal-progress-panel {

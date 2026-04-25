@@ -29,6 +29,13 @@ class TerminalIntentMixin:
         else:
             names = list(READ_CORE_TOOL_ORDER)
 
+        if self._should_force_write_surface_after_passive_context(
+            initial_message,
+            executed_tools,
+            autonomous=autonomous,
+        ):
+            names = self._write_focused_tool_order(initial_message)
+
         self._active_promoted_tool_names.update(self._auto_promoted_deferred_tools(initial_message, executed_tools))
 
         priority_promoted: List[str] = []
@@ -118,6 +125,11 @@ class TerminalIntentMixin:
             names = [name for name in names if name not in {"glob", "tool_search"}]
         return names
 
+    def _write_focused_tool_order(self, initial_message: str) -> List[str]:
+        if self._is_scaffold_write_request(initial_message):
+            return ["write_files", "write_file", "edit_file", "bash", "ask_clarification"]
+        return ["edit_file", "write_files", "write_file", "bash", "ask_clarification"]
+
     def _consecutive_passive_tools(self, executed_tools: List[Dict]) -> int:
         passive_tools = {"list_files", "read_file", "glob", "search", "tool_search", "write_todos", "think"}
         count = 0
@@ -138,6 +150,22 @@ class TerminalIntentMixin:
             and not self._has_successful_mutation(executed_tools)
             and self._consecutive_passive_tools(executed_tools) >= 3
         )
+
+    def _should_force_write_surface_after_passive_context(
+        self,
+        initial_message: str,
+        executed_tools: List[Dict],
+        autonomous: bool = False,
+    ) -> bool:
+        if self.current_intent not in {"write", "execute"}:
+            return False
+        if self._has_successful_mutation(executed_tools) or self._has_attempted_mutation(executed_tools):
+            return False
+        passive_count = self._consecutive_passive_tools(executed_tools)
+        threshold = 6 if autonomous else 4
+        if passive_count < threshold:
+            return False
+        return autonomous or self.current_plan is not None or self._is_scaffold_write_request(initial_message)
 
     def _is_repo_overview_request(self, message: str) -> bool:
         msg = self._intent_text(message)

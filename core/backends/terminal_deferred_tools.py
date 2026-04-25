@@ -191,6 +191,8 @@ class TerminalDeferredToolMixin:
             "delegate", "mcp", "outil", "tool",
         )
         explicit_deferred_request = any(marker in msg for marker in deferred_markers)
+        if self._should_force_write_surface_after_passive_context(message, executed_tools, autonomous=False):
+            return False
         if self._should_force_step_focus(message, executed_tools) and not explicit_deferred_request:
             return False
         if explicit_deferred_request:

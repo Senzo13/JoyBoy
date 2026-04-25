@@ -1553,6 +1553,7 @@ class TerminalBrain(
 
                 # Exécuter chaque tool call
                 guidance_applied_this_iteration = False
+                guard_requested_write_progress = False
                 for tc in tool_calls:
                     # Gérer objet ou dict
                     if hasattr(tc, 'function'):
@@ -1590,12 +1591,15 @@ class TerminalBrain(
                         if tool_call_id:
                             guard_message["tool_call_id"] = tool_call_id
                         messages.append(guard_message)
-                        if self._should_continue_write_after_guard(tool_name, executed_tools) and guard_hits < 3:
-                            messages.append({
-                                'role': 'user',
-                                'content': self._write_progress_nudge(initial_message),
-                            })
-                            continue
+                        if self._should_continue_write_after_guard(tool_name, executed_tools):
+                            if write_progress_nudges < 2:
+                                write_progress_nudges += 1
+                                messages.append({
+                                    'role': 'user',
+                                    'content': self._write_progress_nudge(initial_message),
+                                })
+                            guard_requested_write_progress = True
+                            break
 
                         force_final = True
                         if guard_hits >= 2:
@@ -1767,6 +1771,9 @@ class TerminalBrain(
                             break
 
                 if guidance_applied_this_iteration:
+                    continue
+
+                if guard_requested_write_progress:
                     continue
 
                 if (

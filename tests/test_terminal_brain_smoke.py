@@ -1659,6 +1659,87 @@ Encore beaucoup de détail inutile.
         self.assertFalse(any(event.get("action") == "iteration_limit" for event in events))
 
     @patch("core.backends.terminal_brain.chat_with_cloud_model")
+    def test_autonomous_read_guard_pushes_model_to_write_instead_of_stopping(self, mock_chat):
+        read_calls = [
+            {
+                "id": f"call_read_{index}",
+                "type": "function",
+                "function": {
+                    "name": "read_file",
+                    "arguments": {"path": f"file_{index}.jsx"},
+                },
+            }
+            for index in range(10)
+        ]
+        mock_chat.side_effect = [
+            {
+                "message": {"role": "assistant", "content": "", "tool_calls": read_calls},
+                "prompt_eval_count": 100,
+                "eval_count": 25,
+            },
+            {
+                "message": {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [
+                        {
+                            "id": "call_write",
+                            "type": "function",
+                            "function": {
+                                "name": "write_files",
+                                "arguments": {
+                                    "files": [
+                                        {
+                                            "path": "src/App.jsx",
+                                            "content": "export default function App(){return <main>Modern SaaS</main>}\n",
+                                        },
+                                    ]
+                                },
+                            },
+                        }
+                    ],
+                },
+                "prompt_eval_count": 120,
+                "eval_count": 30,
+            },
+            {
+                "message": {
+                    "role": "assistant",
+                    "content": "C'est fait. J'ai appliqué une base SaaS moderne.",
+                    "tool_calls": [],
+                },
+                "prompt_eval_count": 120,
+                "eval_count": 30,
+            },
+        ]
+        brain = TerminalBrain()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            for index in range(10):
+                Path(tmp, f"file_{index}.jsx").write_text(
+                    f"export const item{index} = true\n",
+                    encoding="utf-8",
+                )
+            events = list(
+                brain.run_agentic_loop(
+                    "/auto analyse le projet puis améliore le a ta guise pour faire un site frontend moderne pour un SAAS",
+                    tmp,
+                    model="openai:gpt-5.4",
+                    autonomous=True,
+                )
+            )
+
+        done = [event for event in events if event.get("type") == "done"][-1]
+        self.assertEqual(mock_chat.call_count, 3)
+        self.assertIn("base SaaS moderne", done.get("full_response", ""))
+        self.assertTrue(any(
+            event.get("type") == "tool_result"
+            and (event.get("result") or {}).get("tool_name") == "write_files"
+            for event in events
+        ))
+        self.assertFalse(any(event.get("action") == "iteration_limit" for event in events))
+
+    @patch("core.backends.terminal_brain.chat_with_cloud_model")
     def test_full_access_clear_then_scaffold_finishes_in_one_model_call(self, mock_chat):
         mock_chat.return_value = {
             "message": {
@@ -1762,6 +1843,7 @@ Encore beaucoup de détail inutile.
         brain.current_intent = "write"
 
         self.assertTrue(brain._should_continue_write_after_guard("glob", []))
+        self.assertTrue(brain._should_continue_write_after_guard("read_file", []))
         self.assertFalse(
             brain._has_attempted_mutation([
                 {"tool": "bash", "args": {"command": "git ls-files"}, "success": True},
@@ -2030,6 +2112,28 @@ Encore beaucoup de détail inutile.
 
         self.assertLess(names.index("write_files"), names.index("list_files"))
         self.assertLess(names.index("write_file"), names.index("list_files"))
+        self.assertNotIn("tool_search", names)
+
+    def test_autonomous_write_surface_drops_read_tools_after_passive_context(self):
+        brain = TerminalBrain()
+        brain.current_intent = "write"
+
+        names = brain._select_tool_names_for_turn(
+            "/auto analyse le projet puis améliore le pour faire un site frontend moderne",
+            executed_tools=[
+                {"tool": "read_file", "success": True, "summary": "package.json (40 lines)"},
+                {"tool": "read_file", "success": True, "summary": "index.html (20 lines)"},
+                {"tool": "read_file", "success": True, "summary": "vite.config.js (30 lines)"},
+                {"tool": "read_file", "success": True, "summary": "src/main.jsx (15 lines)"},
+                {"tool": "read_file", "success": True, "summary": "src/App.jsx (20 lines)"},
+                {"tool": "read_file", "success": True, "summary": "src/Home.jsx (160 lines)"},
+            ],
+            autonomous=True,
+        )
+
+        self.assertLess(names.index("write_files"), names.index("ask_clarification"))
+        self.assertIn("edit_file", names)
+        self.assertNotIn("read_file", names)
         self.assertNotIn("tool_search", names)
 
     def test_active_verify_step_prioritizes_verification_tools(self):
