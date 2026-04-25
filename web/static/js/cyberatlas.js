@@ -1352,12 +1352,16 @@
         const tls = snapshot.tls || {};
         const blockingRisk = summary.blocking_risk || {};
         const score = summary.global_score ?? '--';
+        const scoreStatus = [
+            summary.security_grade ? `${cyberAtlasText('cyberatlas.securityGrade', 'Grade')} ${summary.security_grade}` : '',
+            cyberAtlasRiskLabel(summary.risk_level || 'unknown'),
+        ].filter(Boolean).join(' · ');
         const ring = typeof renderSignalAtlasScoreRing === 'function'
-            ? renderSignalAtlasScoreRing(summary.global_score, cyberAtlasText('cyberatlas.scoreShort', 'Score'), `cyberatlas-${audit.id}`)
+            ? renderSignalAtlasScoreRing(summary.global_score, scoreStatus || cyberAtlasText('cyberatlas.scoreShort', 'Score'), `cyberatlas-${audit.id}`)
             : `<div class="signalatlas-score-value">${cyberAtlasEscape(String(score))}</div>`;
         return `
             <div class="signalatlas-overview-stack">
-                <section class="signalatlas-panel">
+                <section class="signalatlas-panel cyberatlas-summary-panel">
                     <div class="signalatlas-section-top">
                         <div>
                             <div class="signalatlas-panel-kicker">${cyberAtlasEscape(cyberAtlasText('cyberatlas.quickRead', 'Quick read'))}</div>
@@ -1372,7 +1376,7 @@
                         <div class="signalatlas-score-wrap">${ring}</div>
                         <div class="signalatlas-summary-copy">
                             <p>${cyberAtlasEscape(cyberAtlasBlockingRiskSummary(summary))}</p>
-                            <div class="signalatlas-metric-grid">
+                            <div class="signalatlas-metric-grid cyberatlas-metric-grid">
                                 <div class="signalatlas-metric-card"><span>${cyberAtlasEscape(cyberAtlasText('cyberatlas.securityGrade', 'Grade'))}</span><strong>${cyberAtlasEscape(summary.security_grade || '--')}</strong></div>
                                 <div class="signalatlas-metric-card"><span>${cyberAtlasEscape(cyberAtlasText('cyberatlas.pagesSampled', 'Pages'))}</span><strong>${cyberAtlasEscape(String(summary.pages_crawled || 0))}</strong></div>
                                 <div class="signalatlas-metric-card"><span>${cyberAtlasEscape(cyberAtlasText('cyberatlas.exposures', 'Exposures'))}</span><strong>${cyberAtlasEscape(String(summary.exposure_count || 0))}</strong></div>
@@ -1386,7 +1390,7 @@
                         </div>
                     </div>
                 </section>
-                <section class="signalatlas-panel">
+                <section class="signalatlas-panel cyberatlas-action-panel">
                     <div class="signalatlas-panel-kicker">${cyberAtlasEscape(cyberAtlasText('cyberatlas.actionPlan', 'Action plan'))}</div>
                     <div class="signalatlas-finding-list">${renderCyberAtlasActionPlan(audit, 4)}</div>
                 </section>
@@ -1879,7 +1883,11 @@
         }
         const audit = cyberAtlasAudits.find(item => String(item?.id || '') === targetAuditId);
         const title = audit?.title || audit?.host || cyberAtlasText('cyberatlas.auditItem', 'this audit');
-        if (!window.confirm(cyberAtlasText('cyberatlas.deleteAuditConfirm', 'Delete {title} permanently?', { title }))) return;
+        const confirmed = await JoyDialog.confirm(
+            cyberAtlasText('cyberatlas.deleteAuditConfirm', 'Delete {title} permanently?', { title }),
+            { variant: 'danger' }
+        );
+        if (!confirmed) return;
         const result = await apiCyberAtlas.deleteAudit(targetAuditId);
         if (!result.ok) {
             Toast?.error?.(result.data?.error || cyberAtlasText('cyberatlas.deleteAuditFailed', 'Unable to delete this audit.'));

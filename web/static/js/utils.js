@@ -84,6 +84,15 @@ const JoyDialog = (() => {
             cancelBtn: document.getElementById('joy-dialog-cancel-btn'),
             confirmBtn: document.getElementById('joy-dialog-confirm-btn'),
         };
+        elements.inputWrap = document.createElement('label');
+        elements.inputWrap.className = 'joy-dialog-input-wrap';
+        elements.inputWrap.hidden = true;
+        elements.input = document.createElement('input');
+        elements.input.className = 'joy-dialog-input';
+        elements.input.type = 'text';
+        elements.input.autocomplete = 'off';
+        elements.inputWrap.appendChild(elements.input);
+        elements.message?.insertAdjacentElement('afterend', elements.inputWrap);
 
         elements.cancelBtn?.addEventListener('click', () => close(false));
         elements.confirmBtn?.addEventListener('click', () => close(true));
@@ -147,6 +156,9 @@ const JoyDialog = (() => {
                 options.variant === 'danger' ? 'Delete' : 'Confirm'
             );
         }
+        if (options.type === 'prompt') {
+            return translate('common.save', 'Save');
+        }
         return translate('common.ok', 'OK');
     }
 
@@ -155,12 +167,23 @@ const JoyDialog = (() => {
         if (!refs) return;
 
         const isConfirm = options.type === 'confirm';
+        const isPrompt = options.type === 'prompt';
         const title = getDefaultTitle(options);
 
         refs.title.textContent = title || '';
         refs.title.classList.toggle('is-hidden', !title);
         refs.message.textContent = options.message || '';
-        refs.cancelBtn.hidden = !isConfirm;
+        refs.inputWrap.hidden = !isPrompt;
+        if (isPrompt) {
+            refs.input.value = String(options.defaultValue || '');
+            refs.input.placeholder = options.placeholder || '';
+            refs.input.maxLength = Number(options.maxLength || 0) > 0 ? Number(options.maxLength) : 1000;
+        } else {
+            refs.input.value = '';
+            refs.input.placeholder = '';
+            refs.input.removeAttribute('maxLength');
+        }
+        refs.cancelBtn.hidden = !(isConfirm || isPrompt);
         refs.cancelBtn.textContent = options.cancelLabel || translate('common.cancel', 'Cancel');
         refs.confirmBtn.textContent = getConfirmLabel(options);
         refs.confirmBtn.classList.toggle('is-danger', options.variant === 'danger');
@@ -175,7 +198,9 @@ const JoyDialog = (() => {
 
         const refs = ensureElements();
         if (!refs) {
-            const fallbackResult = activeRequest.options.type === 'confirm' ? false : true;
+            const fallbackResult = activeRequest.options.type === 'confirm'
+                ? false
+                : activeRequest.options.type === 'prompt' ? null : true;
             activeRequest.resolve(fallbackResult);
             activeRequest = null;
             showNext();
@@ -188,8 +213,11 @@ const JoyDialog = (() => {
         refs.root.setAttribute('aria-hidden', 'false');
 
         requestAnimationFrame(() => {
-            const target = activeRequest.options.type === 'confirm' ? refs.cancelBtn : refs.confirmBtn;
+            const target = activeRequest.options.type === 'prompt'
+                ? refs.input
+                : activeRequest.options.type === 'confirm' ? refs.cancelBtn : refs.confirmBtn;
             target?.focus();
+            if (activeRequest.options.type === 'prompt') refs.input?.select?.();
         });
     }
 
@@ -213,6 +241,8 @@ const JoyDialog = (() => {
 
         if (options.type === 'confirm') {
             resolve(Boolean(result));
+        } else if (options.type === 'prompt') {
+            resolve(result ? (refs?.input?.value ?? '') : null);
         } else {
             resolve(true);
         }
@@ -233,6 +263,9 @@ const JoyDialog = (() => {
         },
         confirm(message, options = {}) {
             return enqueue({ ...options, type: 'confirm', message });
+        },
+        prompt(message, options = {}) {
+            return enqueue({ ...options, type: 'prompt', message });
         },
     };
 })();

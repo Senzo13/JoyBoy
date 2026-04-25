@@ -22,7 +22,6 @@ let signalAtlasPendingRefresh = false;
 let signalAtlasInteractionTrackingReady = false;
 let signalAtlasRefreshInFlight = false;
 const signalAtlasCompletionNotifiedAuditIds = new Set();
-const signalAtlasAnimatedScoreRingKeys = new Set();
 const auditProgressDisplayState = new Map();
 const SIGNALATLAS_SERP_PAGE_SIZE = 10;
 const SIGNALATLAS_INTERACTION_IDLE_MS = 1400;
@@ -657,6 +656,9 @@ function renderSignalAtlasScoreRing(scoreValue, statusLabel = '', ringKey = '') 
     const hasScore = Number.isFinite(numeric);
     const safeValue = hasScore ? Math.max(0, Math.min(100, Math.round(numeric))) : 0;
     const circumference = signalAtlasCircularCircumference();
+    const dashOffset = hasScore
+        ? circumference - (circumference * safeValue / 100)
+        : circumference;
     return `
         <div class="signalatlas-score-ring-wrap">
             <div class="signalatlas-score-ring ${hasScore ? signalAtlasScoreTone(scoreValue) : 'is-empty'}" data-score="${hasScore ? safeValue : ''}" data-has-score="${hasScore ? 'true' : 'false'}" data-ring-key="${escapeHtml(hasScore ? (ringKey || String(safeValue)) : '')}">
@@ -668,6 +670,7 @@ function renderSignalAtlasScoreRing(scoreValue, statusLabel = '', ringKey = '') 
                         cy="60"
                         r="46"
                         data-circumference="${escapeHtml(String(circumference))}"
+                        style="stroke-dasharray:${escapeHtml(String(circumference))};stroke-dashoffset:${escapeHtml(String(dashOffset))}"
                     ></circle>
                 </svg>
                 <div class="signalatlas-score-ring-center">
@@ -2393,7 +2396,6 @@ function hydrateSignalAtlasMotion(scope) {
         root.querySelectorAll('.signalatlas-score-ring').forEach(node => {
             const hasScore = String(node.dataset.hasScore || '').toLowerCase() === 'true';
             const progress = Math.max(0, Math.min(100, Number(node.dataset.score || 0)));
-            const ringKey = String(node.dataset.ringKey || node.dataset.score || '');
             const circle = node.querySelector('.signalatlas-score-ring-progress');
             const circumference = Number(circle?.dataset?.circumference || 0);
             if (!circle || !Number.isFinite(circumference) || circumference <= 0) return;
@@ -2403,15 +2405,7 @@ function hydrateSignalAtlasMotion(scope) {
                 return;
             }
             const target = circumference - (circumference * progress / 100);
-            if (signalAtlasAnimatedScoreRingKeys.has(ringKey)) {
-                circle.style.strokeDashoffset = String(target);
-                return;
-            }
-            circle.style.strokeDashoffset = String(circumference);
-            requestAnimationFrame(() => {
-                circle.style.strokeDashoffset = String(target);
-                signalAtlasAnimatedScoreRingKeys.add(ringKey);
-            });
+            circle.style.strokeDashoffset = String(target);
         });
     });
 }
@@ -4508,8 +4502,9 @@ async function deleteSignalAtlasAudit(auditId = '', event = null) {
     }
     const audit = (signalAtlasAudits || []).find(item => String(item?.id || '') === targetAuditId);
     const title = audit?.title || audit?.host || moduleT('signalatlas.auditItem', 'cet audit');
-    const confirmed = window.confirm(
-        moduleT('signalatlas.deleteAuditConfirm', 'Supprimer définitivement {title} ?', { title })
+    const confirmed = await JoyDialog.confirm(
+        moduleT('signalatlas.deleteAuditConfirm', 'Supprimer définitivement {title} ?', { title }),
+        { variant: 'danger' }
     );
     if (!confirmed) return;
     const result = await apiSignalAtlas.deleteAudit(targetAuditId);
@@ -5674,7 +5669,10 @@ async function deletePerfAtlasAudit(auditId = '', event = null) {
     }
     const audit = (perfAtlasAudits || []).find(item => String(item?.id || '') === targetAuditId);
     const title = audit?.title || audit?.host || moduleT('perfatlas.auditItem', 'this audit');
-    const confirmed = window.confirm(moduleT('perfatlas.deleteAuditConfirm', 'Delete {title} permanently?', { title }));
+    const confirmed = await JoyDialog.confirm(
+        moduleT('perfatlas.deleteAuditConfirm', 'Delete {title} permanently?', { title }),
+        { variant: 'danger' }
+    );
     if (!confirmed) return;
     const result = await apiPerfAtlas.deleteAudit(targetAuditId);
     if (!result.ok) {

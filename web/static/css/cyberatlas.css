@@ -53,6 +53,7 @@ body.cyberatlas-mode {
 #cyberatlas-view .signalatlas-interpretation-card,
 #cyberatlas-view .signalatlas-model-used-card {
     border-color: rgba(239, 68, 68, 0.22);
+    border-radius: 26px;
     background:
         radial-gradient(circle at 4% 0%, rgba(251, 113, 133, 0.11), transparent 24%),
         radial-gradient(circle at 100% 0%, rgba(239, 68, 68, 0.10), transparent 30%),
@@ -60,6 +61,67 @@ body.cyberatlas-mode {
     box-shadow:
         0 24px 70px rgba(0, 0, 0, 0.38),
         inset 0 1px 0 rgba(255, 255, 255, 0.035);
+}
+
+#cyberatlas-view .signalatlas-tabs {
+    gap: 10px;
+    margin-top: 20px;
+}
+
+#cyberatlas-view .signalatlas-tab {
+    border-radius: 999px;
+    padding: 9px 14px;
+}
+
+#cyberatlas-view .cyberatlas-summary-panel {
+    padding: 28px;
+}
+
+#cyberatlas-view .cyberatlas-summary-panel .signalatlas-section-top {
+    padding-bottom: 18px;
+    border-bottom: 1px solid rgba(239, 68, 68, 0.14);
+}
+
+#cyberatlas-view .cyberatlas-summary-panel .signalatlas-summary-grid {
+    grid-template-columns: minmax(126px, auto) minmax(0, 1fr);
+    gap: 28px;
+}
+
+#cyberatlas-view .cyberatlas-summary-panel .signalatlas-score-wrap {
+    display: flex;
+}
+
+#cyberatlas-view .cyberatlas-summary-panel .signalatlas-score-ring {
+    width: 124px;
+    height: 124px;
+}
+
+#cyberatlas-view .cyberatlas-summary-panel .signalatlas-score-ring-wrap {
+    align-items: center;
+    gap: 20px;
+}
+
+#cyberatlas-view .cyberatlas-summary-panel .signalatlas-score-ring-copy {
+    justify-content: center;
+}
+
+#cyberatlas-view .cyberatlas-metric-grid {
+    grid-template-columns: repeat(auto-fit, minmax(138px, 1fr));
+}
+
+#cyberatlas-view .cyberatlas-metric-grid .signalatlas-metric-card {
+    border-color: rgba(239, 68, 68, 0.18);
+    background:
+        radial-gradient(circle at 100% 0%, rgba(239, 68, 68, 0.13), transparent 42%),
+        rgba(2, 6, 23, 0.54);
+}
+
+#cyberatlas-view .cyberatlas-metric-grid .signalatlas-metric-card span {
+    color: #fda4af;
+}
+
+#cyberatlas-view .cyberatlas-action-panel {
+    padding: 26px;
 }
 
 #cyberatlas-view .signalatlas-kicker,
@@ -150,6 +212,7 @@ body.cyberatlas-mode {
     flex-direction: column;
     gap: 14px;
     padding: 20px;
+    border-radius: 22px;
 }
 
 #cyberatlas-view .signalatlas-finding-top > div {
@@ -258,13 +321,14 @@ body.cyberatlas-mode {
 .cyberatlas-action-card {
     position: relative;
     overflow: hidden;
+    padding-left: 26px !important;
 }
 
 .cyberatlas-action-card::before {
     content: "";
     position: absolute;
     inset: 0 auto 0 0;
-    width: 3px;
+    width: 4px;
     background: linear-gradient(180deg, #ef4444, #fb7185 48%, #f59e0b);
     opacity: 0.8;
 }

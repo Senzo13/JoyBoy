@@ -243,6 +243,83 @@
     filter: brightness(1.05);
 }
 
+.project-delete-modal {
+    background:
+        radial-gradient(circle at 50% 18%, rgba(239, 68, 68, 0.20), transparent 34%),
+        rgba(0, 0, 0, 0.70);
+}
+
+.project-delete-panel {
+    border-color: rgba(248, 113, 113, 0.30);
+    background:
+        radial-gradient(circle at 0 0, rgba(239, 68, 68, 0.16), transparent 36%),
+        linear-gradient(145deg, rgba(32, 11, 18, 0.98), rgba(8, 8, 14, 0.98)),
+        #12070b;
+}
+
+.project-delete-icon {
+    color: #fecaca;
+    border-color: rgba(248, 113, 113, 0.30);
+    background: rgba(239, 68, 68, 0.14);
+}
+
+.project-delete-name {
+    margin-bottom: 14px;
+    padding: 13px 14px;
+    color: #fff7f7;
+    border: 1px solid rgba(248, 113, 113, 0.18);
+    border-radius: 16px;
+    background: rgba(127, 29, 29, 0.16);
+    font-weight: 750;
+    overflow-wrap: anywhere;
+}
+
+.project-delete-option {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 12px;
+    align-items: flex-start;
+    padding: 14px;
+    border: 1px solid rgba(248, 113, 113, 0.18);
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.045);
+    cursor: pointer;
+}
+
+.project-delete-option input {
+    width: 18px;
+    height: 18px;
+    margin: 2px 0 0;
+    accent-color: #ef4444;
+}
+
+.project-delete-option span {
+    display: grid;
+    gap: 4px;
+}
+
+.project-delete-option strong {
+    color: #ffe4e6;
+    font-size: 13px;
+}
+
+.project-delete-option small {
+    color: rgba(254, 202, 202, 0.72);
+    line-height: 1.45;
+}
+
+.project-create-btn.danger {
+    color: #fff1f2;
+    border-color: rgba(248, 113, 113, 0.40);
+    background: linear-gradient(135deg, #dc2626, #ef4444 55%, #fb7185);
+    box-shadow: 0 14px 34px rgba(220, 38, 38, 0.24);
+}
+
+.project-create-btn.danger:hover,
+.project-create-btn.danger:focus-visible {
+    filter: brightness(1.05);
+}
+
 @keyframes projectCreateIn {
     from {
         opacity: 0;

@@ -213,16 +213,32 @@ async function createProjectFromSidebar() {
 }
 
 function closeProjectCreateModal() {
-    document.querySelector('.project-create-modal')?.remove();
+    document.querySelector('.project-create-modal:not(.project-delete-modal)')?.remove();
     document.removeEventListener('keydown', handleProjectCreateModalKeydown);
+}
+
+function closeProjectDeleteModal() {
+    document.querySelector('.project-delete-modal')?.remove();
+    document.removeEventListener('keydown', handleProjectDeleteModalKeydown);
 }
 
 function handleProjectCreateModalKeydown(event) {
     if (event.key === 'Escape') closeProjectCreateModal();
 }
 
+function handleProjectDeleteModalKeydown(event) {
+    if (event.key === 'Escape') closeProjectDeleteModal();
+}
+
 function setProjectCreateModalError(message = '') {
     const error = document.getElementById('project-create-error');
+    if (!error) return;
+    error.textContent = message;
+    error.hidden = !message;
+}
+
+function setProjectDeleteModalError(message = '') {
+    const error = document.getElementById('project-delete-error');
     if (!error) return;
     error.textContent = message;
     error.hidden = !message;
@@ -257,6 +273,7 @@ async function submitProjectCreateModal(event = null) {
 
 function openProjectCreateModal() {
     closeProjectCreateModal();
+    closeProjectDeleteModal();
     const modal = document.createElement('div');
     modal.className = 'project-create-modal';
     modal.setAttribute('role', 'presentation');
@@ -304,6 +321,78 @@ function openProjectCreateModal() {
     document.addEventListener('keydown', handleProjectCreateModalKeydown);
     if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [modal] });
     requestAnimationFrame(() => document.getElementById('project-create-name-input')?.focus());
+}
+
+function openProjectDeleteModal(projectId) {
+    const project = projectById(projectId);
+    if (!project) return;
+    closeProjectCreateModal();
+    closeProjectDeleteModal();
+
+    const projectIdArg = escapeHtml(JSON.stringify(projectId));
+    const projectName = project.name || projectT('projects.untitled', 'Projet sans nom');
+    const modal = document.createElement('div');
+    modal.className = 'project-create-modal project-delete-modal';
+    modal.setAttribute('role', 'presentation');
+    modal.addEventListener('click', (event) => {
+        if (event.target === modal) closeProjectDeleteModal();
+    });
+    modal.innerHTML = `
+        <form class="project-create-panel project-delete-panel" role="dialog" aria-modal="true" aria-labelledby="project-delete-title" onsubmit="submitProjectDeleteModal(event, ${projectIdArg})">
+            <div class="project-create-header">
+                <div class="project-create-icon project-delete-icon" aria-hidden="true">
+                    <i data-lucide="trash-2"></i>
+                </div>
+                <div>
+                    <h2 id="project-delete-title">${escapeHtml(projectT('projects.deleteTitle', 'Supprimer le projet'))}</h2>
+                    <p>${escapeHtml(projectT('projects.deleteCopy', 'Le projet "{project}" sera retiré de ta sidebar.', { project: projectName }))}</p>
+                </div>
+                <button class="project-create-close" type="button" onclick="closeProjectDeleteModal()" aria-label="${escapeHtml(projectT('common.close', 'Fermer'))}">
+                    <i data-lucide="x"></i>
+                </button>
+            </div>
+            <div class="project-delete-name">${escapeHtml(projectName)}</div>
+            <label class="project-delete-option">
+                <input id="project-delete-chats-input" type="checkbox">
+                <span>
+                    <strong>${escapeHtml(projectT('projects.deleteChatsLabel', 'Supprimer aussi les chats du projet'))}</strong>
+                    <small>${escapeHtml(projectT('projects.deleteChatsHint', 'Sinon, les chats restent disponibles dans Récents.'))}</small>
+                </span>
+            </label>
+            <div class="project-create-error" id="project-delete-error" hidden></div>
+            <div class="project-create-actions">
+                <button class="project-create-btn secondary" type="button" onclick="closeProjectDeleteModal()">
+                    ${escapeHtml(projectT('common.cancel', 'Annuler'))}
+                </button>
+                <button class="project-create-btn danger" id="project-delete-submit" type="submit">
+                    ${escapeHtml(projectT('projects.deleteConfirmButton', 'Supprimer le projet'))}
+                </button>
+            </div>
+        </form>
+    `;
+
+    document.body.appendChild(modal);
+    document.addEventListener('keydown', handleProjectDeleteModalKeydown);
+    if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [modal] });
+    requestAnimationFrame(() => document.getElementById('project-delete-submit')?.focus());
+}
+
+async function submitProjectDeleteModal(event = null, projectId) {
+    event?.preventDefault?.();
+    const submit = document.getElementById('project-delete-submit');
+    const deleteChats = Boolean(document.getElementById('project-delete-chats-input')?.checked);
+    setProjectDeleteModalError('');
+    if (submit) submit.disabled = true;
+    try {
+        await deleteProject(projectId, { deleteChats });
+        closeProjectDeleteModal();
+        if (activeProjectViewId === projectId && typeof showHome === 'function') showHome();
+        if (typeof Toast !== 'undefined') Toast.success(projectT('projects.projectDeleted', 'Projet supprimé'));
+    } catch (error) {
+        console.error('[projects] delete project failed', error);
+        if (submit) submit.disabled = false;
+        setProjectDeleteModalError(projectT('projects.deleteFailed', 'Impossible de supprimer le projet.'));
+    }
 }
 
 function hideProjectView() {
@@ -509,12 +598,7 @@ async function openProjectActionMenu(projectId, event) {
     });
     popover.querySelector('[data-action="delete"]')?.addEventListener('click', async () => {
         closeChatListPopover();
-        const confirmed = window.confirm(projectT('projects.deleteProjectConfirm', 'Supprimer ce projet ?'));
-        if (!confirmed) return;
-        const deleteChats = window.confirm(projectT('projects.deleteProjectChatsConfirm', 'Supprimer aussi les chats du projet ? Choisis Annuler pour les garder dans Récents.'));
-        await deleteProject(projectId, { deleteChats });
-        if (activeProjectViewId === projectId && typeof showHome === 'function') showHome();
-        if (typeof Toast !== 'undefined') Toast.success(projectT('projects.projectDeleted', 'Projet supprimé'));
+        openProjectDeleteModal(projectId);
     });
 
     document.body.appendChild(popover);
@@ -680,6 +764,9 @@ window.createProjectFromSidebar = createProjectFromSidebar;
 window.openProjectCreateModal = openProjectCreateModal;
 window.closeProjectCreateModal = closeProjectCreateModal;
 window.submitProjectCreateModal = submitProjectCreateModal;
+window.openProjectDeleteModal = openProjectDeleteModal;
+window.closeProjectDeleteModal = closeProjectDeleteModal;
+window.submitProjectDeleteModal = submitProjectDeleteModal;
 window.createChatInProject = createChatInProject;
 window.toggleProjectExpanded = toggleProjectExpanded;
 window.openProjectActionMenu = openProjectActionMenu;

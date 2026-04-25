@@ -1139,12 +1139,18 @@ function useEditPreset(id) {
 /**
  * Édite un preset (clic droit)
  */
-function editEditPreset(id, event) {
+async function editEditPreset(id, event) {
     event.preventDefault();
     const preset = editPresets.find(p => p.id === id);
     if (!preset) return;
 
-    const newText = prompt(editT('editor.editPresetPrompt', 'Texte du preset :'), preset.text || '');
+    const newText = await JoyDialog.prompt(editT('editor.editPresetPrompt', 'Texte du preset :'), {
+        title: editT('editor.editPresetTitle', 'Modifier le preset'),
+        defaultValue: preset.text || '',
+        confirmLabel: editT('common.save', 'Enregistrer'),
+        cancelLabel: editT('common.cancel', 'Annuler'),
+        maxLength: 600,
+    });
     if (newText !== null) {
         preset.text = newText;
         saveEditPresets();

@@ -3,7 +3,7 @@
     const MESSAGES = window.JoyBoyI18nData.messages;
 
 Object.assign(MESSAGES.it, {
-        common: { loading: 'Caricamento...', save: 'Salva', clear: 'Cancella', refresh: 'Aggiorna', import: 'Importa', activate: 'Attiva', deactivate: 'Disattiva', ready: 'PRONTO', action: 'AZIONE', copy: 'Copia', ok: 'OK', cancel: 'Annulla', confirm: 'Conferma', delete: 'Elimina', stop: 'Ferma', notice: 'Informazione', warning: 'Attenzione', error: 'Errore' },
+        common: { loading: 'Caricamento...', save: 'Salva', clear: 'Cancella', refresh: 'Aggiorna', import: 'Importa', activate: 'Attiva', deactivate: 'Disattiva', ready: 'PRONTO', action: 'AZIONE', copy: 'Copia', ok: 'OK', cancel: 'Annulla', close: 'Chiudi', confirm: 'Conferma', delete: 'Elimina', stop: 'Ferma', notice: 'Informazione', warning: 'Attenzione', error: 'Errore' },
         shell: {
             restartBackend: 'Riavvia backend',
             vramDetails: 'Mostra dettagli VRAM',
@@ -114,6 +114,12 @@ Object.assign(MESSAGES.it, {
             deleteProject: 'Elimina progetto',
             deleteProjectConfirm: 'Eliminare questo progetto?',
             deleteProjectChatsConfirm: 'Eliminare anche le chat del progetto? Scegli Annulla per mantenerle nei Recenti.',
+            deleteTitle: 'Elimina progetto',
+            deleteCopy: 'Il progetto "{project}" verrà rimosso dalla barra laterale.',
+            deleteChatsLabel: 'Elimina anche le chat del progetto',
+            deleteChatsHint: 'Altrimenti le chat restano disponibili nei Recenti.',
+            deleteConfirmButton: 'Elimina progetto',
+            deleteFailed: 'Impossibile eliminare il progetto.',
             moveToProject: 'Sposta nel progetto',
             noProject: 'Nessun progetto',
             chatMovedToProject: 'Chat spostata in {project}',
@@ -1034,6 +1040,7 @@ Object.assign(MESSAGES.it, {
             addPresetTooltip: 'Aggiungi un prompt rapido',
             editPresetHint: 'Clic destro per modificare',
             deletePresetTooltip: 'Elimina questo prompt rapido',
+            editPresetTitle: 'Modifica preset',
             editPresetPrompt: 'Testo del preset:',
         },
         viewer: {
