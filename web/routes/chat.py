@@ -19,6 +19,22 @@ _CHAT_COPY = {
 }
 
 
+def _apply_chat_response_style(system_content):
+    """Add a compact, Codex-like response contract to normal chat turns."""
+    style_contract = (
+        "\n\n=== RESPONSE STYLE ===\n"
+        "- Match the user's language.\n"
+        "- Prefer concise, high-signal answers. Do not write a long audit/report unless the user asks for exhaustive detail.\n"
+        "- Lead with the answer or verdict, then only the concrete evidence that matters.\n"
+        "- Do not narrate internal routing, checks, or tool/protocol details.\n"
+        "- For web-backed answers, use the fetched context, mention sources briefly when useful, and avoid dumping page content.\n"
+    )
+    text = str(system_content or "")
+    if "=== RESPONSE STYLE ===" in text:
+        return text
+    return text + style_contract
+
+
 def _normalize_chat_locale(locale):
     raw = str(locale or "").split(",", 1)[0].strip().replace("_", "-").lower()
     lang = raw.split("-", 1)[0]
@@ -517,11 +533,17 @@ def chat():
             profile_name = str(profile.get('name', '') or '').strip() or None
             base_system = get_system_prompt(profile_type, profile_name)
 
-        system_content = ollama_service.get_enhanced_system_prompt(base_system)
+        system_content = _apply_chat_response_style(ollama_service.get_enhanced_system_prompt(base_system))
 
         # Ajouter les résultats de recherche web si disponibles
         if web_context:
-            system_content += f"\n\n=== RÉSULTATS DE RECHERCHE WEB ===\n{web_context}\n\nIMPORTANT: Utilise ces informations pour répondre à l'utilisateur. La recherche a été faite en anglais pour plus de résultats, mais tu DOIS répondre EN FRANÇAIS. Donne une réponse complète et détaillée basée sur le contenu des pages consultées."
+            system_content += (
+                f"\n\n=== RÉSULTATS DE RECHERCHE WEB ===\n{web_context}\n\n"
+                "IMPORTANT: Utilise ces informations pour répondre à l'utilisateur. "
+                "La recherche peut avoir été faite en anglais pour obtenir plus de résultats, "
+                "mais réponds dans la langue de l'utilisateur. Reste concret et évite le rapport long "
+                "sauf demande explicite."
+            )
 
         if image is not None:
             image_context = _build_image_context(image, message)
@@ -812,7 +834,7 @@ def chat_stream():
             profile_name = str(profile.get('name', '') or '').strip() or None
             base_system = get_system_prompt(profile_type, profile_name)
 
-        system_content = ollama_service.get_enhanced_system_prompt(base_system)
+        system_content = _apply_chat_response_style(ollama_service.get_enhanced_system_prompt(base_system))
 
         # Ajouter les infos workspace si actif
         if workspace and workspace.get('path'):

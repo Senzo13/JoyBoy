@@ -447,6 +447,8 @@ let terminalProgressBufferedLogs = [];
 let terminalProgressSessionActive = false;
 let terminalProgressContentStarted = false;
 let terminalProgressIntent = '';
+let terminalProgressLogKeyElements = new Map();
+let terminalContextActivity = null;
 const TERMINAL_PROGRESS_AUTO_REVEAL_MS = 3500;
 
 let terminalActivityCounters = null;
@@ -559,6 +561,8 @@ function beginTerminalProgressSession() {
     terminalProgressStartedAt = Date.now();
     terminalProgressLogCount = 0;
     terminalProgressBufferedLogs = [];
+    terminalProgressLogKeyElements = new Map();
+    resetTerminalContextActivity();
 }
 
 function scheduleTerminalProgressAutoReveal(delay = TERMINAL_PROGRESS_AUTO_REVEAL_MS) {
@@ -576,27 +580,51 @@ function revealTerminalProgressPanel() {
     if (!panel) return null;
 
     const bufferedLogs = terminalProgressBufferedLogs.splice(0);
-    bufferedLogs.forEach(entry => appendTerminalProgressLog(entry.label, entry.detail, entry.type));
+    bufferedLogs.forEach(entry => appendTerminalProgressLog(entry.label, entry.detail, entry.type, entry.key));
     refreshTerminalProgressLayout();
     return panel;
 }
 
-function appendTerminalProgressLog(label, detail = '', type = 'info') {
-    if (!terminalProgressLogElement) return;
-
-    terminalProgressLogCount += 1;
-    const entry = document.createElement('div');
+function renderTerminalProgressLogEntry(entry, label, detail = '', type = 'info') {
     entry.className = `terminal-progress-log-line is-${type}`;
     const safeDetail = detail ? `<span class="terminal-progress-log-detail">${escapeHtml(detail)}</span>` : '';
+    const index = entry.dataset.progressIndex || '';
     entry.innerHTML = `
-        <span class="terminal-progress-log-index">${terminalProgressLogCount}</span>
+        <span class="terminal-progress-log-index">${escapeHtml(index)}</span>
         <span class="terminal-progress-log-text">${escapeHtml(label)}</span>
         ${safeDetail}
     `;
+}
+
+function appendTerminalProgressLog(label, detail = '', type = 'info', key = '') {
+    if (!terminalProgressLogElement) return;
+
+    const normalizedKey = String(key || '').trim();
+    if (normalizedKey) {
+        const existing = terminalProgressLogKeyElements.get(normalizedKey);
+        if (existing && existing.isConnected) {
+            renderTerminalProgressLogEntry(existing, label, detail, type);
+            terminalProgressLogElement.scrollTop = terminalProgressLogElement.scrollHeight;
+            refreshTerminalProgressLayout();
+            return;
+        }
+    }
+
+    terminalProgressLogCount += 1;
+    const entry = document.createElement('div');
+    entry.dataset.progressIndex = String(terminalProgressLogCount);
+    if (normalizedKey) {
+        entry.dataset.progressKey = normalizedKey;
+        terminalProgressLogKeyElements.set(normalizedKey, entry);
+    }
+    renderTerminalProgressLogEntry(entry, label, detail, type);
     terminalProgressLogElement.appendChild(entry);
 
     while (terminalProgressLogElement.children.length > 8) {
-        terminalProgressLogElement.removeChild(terminalProgressLogElement.firstElementChild);
+        const removed = terminalProgressLogElement.firstElementChild;
+        const removedKey = removed?.dataset?.progressKey;
+        if (removedKey) terminalProgressLogKeyElements.delete(removedKey);
+        terminalProgressLogElement.removeChild(removed);
     }
 
     terminalProgressLogElement.scrollTop = terminalProgressLogElement.scrollHeight;
@@ -605,19 +633,29 @@ function appendTerminalProgressLog(label, detail = '', type = 'info') {
 
 function addTerminalProgressLog(label, detail = '', type = 'info', options = {}) {
     const shouldReveal = Boolean(options.reveal);
+    const key = String(options.key || '').trim();
     if (shouldReveal) {
         revealTerminalProgressPanel();
     }
 
     if (!terminalProgressElement) {
-        terminalProgressBufferedLogs.push({ label, detail, type });
+        if (key) {
+            const existing = terminalProgressBufferedLogs.find(entry => entry.key === key);
+            if (existing) {
+                existing.label = label;
+                existing.detail = detail;
+                existing.type = type;
+                return;
+            }
+        }
+        terminalProgressBufferedLogs.push({ label, detail, type, key });
         if (terminalProgressBufferedLogs.length > 10) {
             terminalProgressBufferedLogs.shift();
         }
         return;
     }
 
-    appendTerminalProgressLog(label, detail, type);
+    appendTerminalProgressLog(label, detail, type, key);
 }
 
 function completeTerminalProgressPanel(success = true) {
@@ -659,11 +697,13 @@ function hideTerminalProgressPanel() {
     terminalProgressStartedAt = 0;
     terminalProgressLogCount = 0;
     terminalProgressBufferedLogs = [];
+    terminalProgressLogKeyElements = new Map();
     terminalProgressSessionActive = false;
     terminalProgressContentStarted = false;
     terminalProgressIntent = '';
     terminalTasksElement = null;
     terminalTasks = [];
+    terminalContextActivity = null;
     refreshTerminalProgressLayout();
 }
 
@@ -677,6 +717,7 @@ function resetTerminalActivitySummaries() {
         searches: 0
     };
     terminalActivityElements = {};
+    resetTerminalContextActivity();
 }
 
 function terminalPlural(count, singular, plural = null) {
@@ -691,6 +732,122 @@ function getTerminalActivityKind(action = '') {
     if (['write_file', 'write_files', 'edit_file', 'delete_file', 'clear_workspace'].includes(action)) return 'fileWrites';
     if (['search', 'glob', 'list_files', 'tool_search'].includes(action)) return 'searches';
     return '';
+}
+
+const TERMINAL_CONTEXT_ACTIVITY_TOOLS = new Set([
+    'list_files',
+    'read_file',
+    'search',
+    'glob',
+    'tool_search'
+]);
+
+function resetTerminalContextActivity() {
+    terminalContextActivity = {
+        counts: {
+            list: 0,
+            read: 0,
+            search: 0,
+            toolSearch: 0
+        },
+        latestHint: '',
+        hadError: false
+    };
+}
+
+function isTerminalContextGatheringTool(action = '') {
+    return TERMINAL_CONTEXT_ACTIVITY_TOOLS.has(String(action || ''));
+}
+
+function terminalContextCountKey(action = '') {
+    if (action === 'list_files') return 'list';
+    if (action === 'read_file') return 'read';
+    if (action === 'tool_search') return 'toolSearch';
+    if (action === 'search' || action === 'glob') return 'search';
+    return '';
+}
+
+function getTerminalContextHint(action = '', target = '', args = {}, result = {}) {
+    const normalizedArgs = args && typeof args === 'object' ? args : {};
+    const normalizedResult = result && typeof result === 'object' ? result : {};
+    const hint = target
+        || normalizedResult.path
+        || normalizedArgs.path
+        || normalizedArgs.pattern
+        || normalizedArgs.query
+        || normalizedArgs.intent
+        || '';
+    return String(hint || '').trim();
+}
+
+function formatTerminalContextActivitySummary(activity = terminalContextActivity) {
+    if (!activity) return '';
+    const counts = activity.counts || {};
+    const parts = [];
+    if (counts.list) parts.push(terminalPlural(counts.list, 'exploration', 'explorations'));
+    if (counts.read) parts.push(terminalPlural(counts.read, 'fichier lu', 'fichiers lus'));
+    if (counts.search) parts.push(terminalPlural(counts.search, 'recherche', 'recherches'));
+    if (counts.toolSearch) parts.push(terminalPlural(counts.toolSearch, 'outil chargé', 'outils chargés'));
+    return parts.join(', ');
+}
+
+function hasTerminalContextActivity(activity = terminalContextActivity) {
+    if (!activity || !activity.counts) return false;
+    return Object.values(activity.counts).some(count => Number(count || 0) > 0);
+}
+
+function updateTerminalContextActivity(action = '', target = '', args = {}, state = 'running', result = {}) {
+    if (!isTerminalContextGatheringTool(action)) return false;
+    if (!terminalContextActivity) resetTerminalContextActivity();
+
+    const countKey = terminalContextCountKey(action);
+    if (state === 'running' && countKey) {
+        terminalContextActivity.counts[countKey] += 1;
+    }
+    if (state === 'error') {
+        terminalContextActivity.hadError = true;
+    }
+
+    const hint = getTerminalContextHint(action, target, args, result);
+    if (hint) terminalContextActivity.latestHint = hint;
+
+    const summary = formatTerminalContextActivitySummary();
+    if (!summary) return true;
+    const detailParts = [summary];
+    if (terminalContextActivity.latestHint) {
+        detailParts.push(terminalContextActivity.latestHint);
+    }
+    const detail = detailParts.join(' · ');
+    const label = terminalT('terminal.contextActivity', 'Contexte');
+    const progressType = state === 'error'
+        ? 'error'
+        : state === 'done'
+            ? 'success'
+            : 'running';
+
+    addTerminalProgressLog(label, detail, progressType, { key: 'context-gathering' });
+
+    if (!isTerminalReadOnlyTurn()) {
+        const taskStatus = state === 'error' ? 'error' : 'running';
+        const taskLabel = terminalT('terminal.taskGatherContext', 'Lecture du contexte');
+        const existing = terminalTasks.find(task => task.id === 'context-gathering');
+        if (existing) {
+            updateTerminalTask('context-gathering', taskStatus, detail, taskLabel);
+        } else {
+            addTerminalTask('context-gathering', taskLabel, taskStatus, detail);
+        }
+    }
+    return true;
+}
+
+function completeTerminalContextActivity() {
+    if (!hasTerminalContextActivity()) return;
+    const summary = formatTerminalContextActivitySummary();
+    if (!summary) return;
+    const detail = terminalContextActivity.latestHint ? `${summary} · ${terminalContextActivity.latestHint}` : summary;
+    const type = terminalContextActivity.hadError ? 'warning' : 'success';
+    addTerminalProgressLog(terminalT('terminal.contextActivity', 'Contexte'), detail, type, { key: 'context-gathering' });
+    updateTerminalTask('context-gathering', terminalContextActivity.hadError ? 'error' : 'done', detail);
 }
 
 function isTerminalReadOnlyTurn() {
@@ -851,6 +1008,7 @@ function describeTerminalModelCall(data = {}) {
 }
 
 function shouldShowTerminalToolAsTask(action) {
+    if (isTerminalContextGatheringTool(action)) return false;
     if (isTerminalPassiveReadOnlyTool(action)) return false;
     return [
         'write_todos',
@@ -884,6 +1042,7 @@ function shouldRevealTerminalProgressForModelCall(data = {}) {
 }
 
 function shouldRevealTerminalProgressForTool(action = '') {
+    if (isTerminalContextGatheringTool(action)) return false;
     if (isTerminalPassiveReadOnlyTool(action)) return false;
     if (!isTerminalReadOnlyTurn()) return true;
     return !isTerminalPassiveReadOnlyTool(action);
@@ -891,10 +1050,13 @@ function shouldRevealTerminalProgressForTool(action = '') {
 
 function shouldShowTerminalToolResult(result = {}) {
     if (!result || !result.success) return true;
-    return !isTerminalPassiveReadOnlyTool(result.action || result.tool_name);
+    const action = result.action || result.tool_name;
+    if (isTerminalContextGatheringTool(action)) return false;
+    return !isTerminalPassiveReadOnlyTool(action);
 }
 
 function shouldShowTerminalToolCallLine(action = '') {
+    if (isTerminalContextGatheringTool(action)) return false;
     return !isTerminalPassiveReadOnlyTool(action);
 }
 
@@ -2610,6 +2772,9 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                     if (data.model_call) {
                         const modelCallLabel = describeTerminalModelCall(data.model_call);
                         const modelName = data.model_call.model || '';
+                        if (Number(data.model_call.iteration || 1) > 1) {
+                            completeTerminalContextActivity();
+                        }
                         updateThinkingText(modelCallLabel);
                         addTerminalProgressLog(
                             modelCallLabel,
@@ -2653,6 +2818,7 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
 
                         console.log(`%c[TERMINAL] ● Tool call reçu: ${action} → ${path}`, 'color: #3b82f6; font-weight: bold;');
                         hideThinkingAnimation();
+                        updateTerminalContextActivity(action, path, args, 'running');
                         addOrUpdateTerminalActivitySummary(action);
 
                         // Style Claude Code: ● Action(target)
@@ -2707,6 +2873,7 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
 
                         // Erreur
                         if (!result.success) {
+                            updateTerminalContextActivity(result.action, result.path || window.lastToolCall?.path || '', window.lastToolCall?.args || {}, 'error', result);
                             if (result.permission?.requires_confirmation) {
                                 addToolResult(terminalT('terminal.approvalRequiredLine', 'Autorisation requise'), 'warning');
                                 addTerminalProgressLog(
@@ -2737,6 +2904,7 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                         }
 
                         // Succès - afficher un résumé compact style Claude Code
+                        updateTerminalContextActivity(result.action, result.path || window.lastToolCall?.path || '', window.lastToolCall?.args || {}, 'done', result);
                         if (result.action === 'write_todos' && Array.isArray(result.todos)) {
                             applyTerminalTodos(result.todos);
                         }
@@ -2813,6 +2981,7 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                         if (!firstContentReceived) {
                             firstContentReceived = true;
                             terminalProgressContentStarted = true;
+                            completeTerminalContextActivity();
                             updateTerminalTask('model-call', 'done', terminalT('terminal.taskAnswerStarted', 'Réponse commencée'));
                             if (isTerminalReadOnlyTurn()) {
                                 hideTerminalProgressPanel();
