@@ -716,6 +716,8 @@ function showHome(options = {}) {
     if (addonsView) addonsView.style.display = 'none';
     const extensionsView = document.getElementById('extensions-view');
     if (extensionsView) extensionsView.style.display = 'none';
+    const deployAtlasView = document.getElementById('deployatlas-view');
+    if (deployAtlasView) deployAtlasView.style.display = 'none';
     const modelsView = document.getElementById('models-view');
     if (modelsView) modelsView.style.display = 'none';
     if (typeof hideModulesWorkspaces === 'function') hideModulesWorkspaces();
@@ -731,6 +733,7 @@ function showHome(options = {}) {
     document.body.classList.remove('signalatlas-mode');
     document.body.classList.remove('perfatlas-mode');
     document.body.classList.remove('cyberatlas-mode');
+    document.body.classList.remove('deployatlas-mode');
     document.querySelectorAll('.sidebar-hub-btn').forEach(btn => btn.classList.remove('active'));
 }
 
@@ -742,6 +745,8 @@ function showChat() {
     if (addonsView) addonsView.style.display = 'none';
     const extensionsView = document.getElementById('extensions-view');
     if (extensionsView) extensionsView.style.display = 'none';
+    const deployAtlasView = document.getElementById('deployatlas-view');
+    if (deployAtlasView) deployAtlasView.style.display = 'none';
     const modelsView = document.getElementById('models-view');
     if (modelsView) modelsView.style.display = 'none';
     if (typeof hideModulesWorkspaces === 'function') hideModulesWorkspaces();
@@ -752,6 +757,8 @@ function showChat() {
     document.body.classList.remove('modules-mode');
     document.body.classList.remove('signalatlas-mode');
     document.body.classList.remove('perfatlas-mode');
+    document.body.classList.remove('cyberatlas-mode');
+    document.body.classList.remove('deployatlas-mode');
     document.querySelectorAll('.sidebar-hub-btn').forEach(btn => btn.classList.remove('active'));
     updateChatPadding();
     scrollToBottom(true);

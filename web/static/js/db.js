@@ -962,6 +962,7 @@ function runtimeJobLabel(job) {
     if (kind === 'signalatlas') return apiT('runtime.kindSignalAtlas', 'SignalAtlas');
     if (kind === 'perfatlas') return apiT('runtime.kindPerfAtlas', 'PerfAtlas');
     if (kind === 'cyberatlas') return apiT('runtime.kindCyberAtlas', 'CyberAtlas');
+    if (kind === 'deployatlas') return apiT('runtime.kindDeployAtlas', 'DeployAtlas');
     return apiT('runtime.kindTask', 'Tâche');
 }
 
@@ -1047,7 +1048,7 @@ async function openRuntimeJob(jobId) {
     }
     const moduleId = String(job?.metadata?.module_id || '').trim().toLowerCase();
     if (moduleId && typeof openAuditModuleWorkspace === 'function') {
-        await openAuditModuleWorkspace(moduleId, job?.metadata?.audit_id || null);
+        await openAuditModuleWorkspace(moduleId, job?.metadata?.audit_id || job?.metadata?.deployment_id || null);
     }
 }
 

@@ -17,17 +17,21 @@ class ModulesStaticTests(unittest.TestCase):
         self.assertIn('/static/css/signalatlas.css', html)
         self.assertIn('/static/css/perfatlas.css', html)
         self.assertIn('/static/css/cyberatlas.css', html)
+        self.assertIn('/static/css/deployatlas.css', html)
         self.assertIn('/static/js/modules.js', html)
         self.assertIn('/static/js/cyberatlas.js', html)
+        self.assertIn('/static/js/deployatlas.js', html)
         self.assertIn('id="modules-view"', html)
         self.assertIn('id="signalatlas-view"', html)
         self.assertIn('id="perfatlas-view"', html)
         self.assertIn('id="cyberatlas-view"', html)
+        self.assertIn('id="deployatlas-view"', html)
         self.assertIn('id="sidebar-modules-btn"', html)
         self.assertIn('#modules-view', layout)
         self.assertIn('#signalatlas-view', layout)
         self.assertIn('#perfatlas-view', layout)
         self.assertIn('#cyberatlas-view', layout)
+        self.assertIn('#deployatlas-view', layout)
 
     def test_modules_blueprint_and_runtime_hooks_are_registered(self):
         app_py = self.read("web/app.py")
@@ -38,6 +42,7 @@ class ModulesStaticTests(unittest.TestCase):
         self.assertIn("signalatlas_bp", app_py)
         self.assertIn("perfatlas_bp", app_py)
         self.assertIn("cyberatlas_bp", app_py)
+        self.assertIn("deployatlas_bp", app_py)
         self.assertIn("kindSignalAtlas", db_js)
         self.assertIn("kindPerfAtlas", db_js)
         self.assertIn("openAuditModuleWorkspace", db_js)
@@ -47,6 +52,7 @@ class ModulesStaticTests(unittest.TestCase):
         self.assertIn("perfatlas-mode", settings_js)
         self.assertIn("perfatlas-mode", ui_js)
         self.assertIn("cyberatlas-mode", ui_js)
+        self.assertIn("deployatlas-mode", ui_js)
 
     def test_modules_translations_exist_for_all_locales(self):
         for locale in ("fr", "en", "es", "it"):
@@ -86,6 +92,7 @@ class ModulesStaticTests(unittest.TestCase):
                 self.assertIn("kindSignalAtlas:", data)
                 self.assertIn("kindPerfAtlas:", data)
                 self.assertIn("module_cyberatlas_name:", data)
+                self.assertIn("module_deployatlas_name:", data)
                 self.assertIn("runAudit:", data)
                 self.assertIn("tabField:", data)
                 self.assertIn("tabIntelligence:", data)
@@ -101,6 +108,7 @@ class ModulesStaticTests(unittest.TestCase):
                 self.assertIn("progressLabCopy:", data)
                 self.assertIn("progressOwnerCopy:", data)
                 self.assertIn("clusterCount:", data)
+                self.assertIn("kindDeployAtlas:", data)
 
     def test_modules_sidebar_label_is_bound_to_i18n(self):
         bindings = self.read("web/static/js/i18n.bindings.js")
@@ -121,6 +129,12 @@ class ModulesStaticTests(unittest.TestCase):
         self.assertIn("function openExtensionsHub()", extensions_js)
         self.assertIn("JOYBOY_EXTENSION_CATALOG", extensions_js)
         self.assertIn("mcp-template", extensions_js)
+        self.assertIn("template: 'cloudflare-browser'", extensions_js)
+        self.assertIn("template: 'netlify'", extensions_js)
+        self.assertIn("template: 'vercel'", extensions_js)
+        self.assertIn("template: 'cloudflare'", extensions_js)
+        self.assertIn("template: 'figma'", extensions_js)
+        self.assertIn("template: 'linear'", extensions_js)
         self.assertIn("openExtensionModal", extensions_js)
 
         bindings = self.read("web/static/js/i18n.bindings.js")
@@ -137,6 +151,31 @@ class ModulesStaticTests(unittest.TestCase):
                 self.assertIn("github:", data)
                 self.assertIn("'browser-use':", data)
 
+    def test_mcp_server_templates_include_official_connectors(self):
+        mcp_runtime = self.read("core/agent_runtime/mcp_runtime.py")
+        for template in (
+            '"filesystem"',
+            '"github"',
+            '"netlify"',
+            '"vercel"',
+            '"cloudflare"',
+            '"cloudflare-docs"',
+            '"cloudflare-browser"',
+            '"figma"',
+            '"linear"',
+            '"postgres"',
+        ):
+            with self.subTest(template=template):
+                self.assertIn(template, mcp_runtime)
+
+        self.assertIn("@netlify/mcp", mcp_runtime)
+        self.assertIn("mcp-remote", mcp_runtime)
+        self.assertIn("https://mcp.vercel.com", mcp_runtime)
+        self.assertIn("https://mcp.cloudflare.com/mcp", mcp_runtime)
+        self.assertIn("https://browser.mcp.cloudflare.com/mcp", mcp_runtime)
+        self.assertIn("https://mcp.figma.com/mcp", mcp_runtime)
+        self.assertIn("https://mcp.linear.app/mcp", mcp_runtime)
+
     def test_modules_hub_refreshes_catalog_and_keeps_native_fallbacks(self):
         modules_js = self.read("web/static/js/modules.js")
         modules_css = self.read("web/static/css/modules.css")
@@ -144,6 +183,7 @@ class ModulesStaticTests(unittest.TestCase):
         self.assertIn("id: 'signalatlas'", modules_js)
         self.assertIn("id: 'perfatlas'", modules_js)
         self.assertIn("id: 'cyberatlas'", modules_js)
+        self.assertIn("id: 'deployatlas'", modules_js)
         self.assertIn("joyboyModulesCatalog = mergeCatalog(result.ok ? result.data?.modules : [], {", modules_js)
         self.assertIn("backendSynchronized: result.ok", modules_js)
         self.assertIn("await loadModulesCatalog();", modules_js)
@@ -152,6 +192,7 @@ class ModulesStaticTests(unittest.TestCase):
         self.assertIn(".modules-card.is-locked", modules_css)
         self.assertIn(".modules-card:disabled", modules_css)
         self.assertIn(".modules-card-cyberatlas", modules_css)
+        self.assertIn(".modules-card-deployatlas", modules_css)
 
     def test_perfatlas_reuses_shared_model_picker_logic_and_localized_provider_copy(self):
         modules_js = self.read("web/static/js/modules.js")
@@ -232,6 +273,26 @@ class ModulesStaticTests(unittest.TestCase):
         self.assertIn("## Evidence Graph", reporting_py)
         self.assertIn("## Audit Coverage", reporting_py)
         self.assertIn("# CyberAtlas Audit", reporting_py)
+
+    def test_deployatlas_module_ui_and_routes_are_registered(self):
+        modules_js = self.read("web/static/js/modules.js")
+        deploy_js = self.read("web/static/js/deployatlas.js")
+        api_js = self.read("web/static/js/api.js")
+        routes_py = self.read("web/routes/deployatlas.py")
+        catalog_py = self.read("core/audit_modules/catalog.py")
+
+        self.assertIn("apiDeployAtlas", api_js)
+        self.assertIn("openDeployAtlasWorkspace", modules_js)
+        self.assertIn("deployatlas-mode", modules_js)
+        self.assertIn("function renderDeployAtlasWorkspace()", deploy_js)
+        self.assertIn("function launchDeployAtlasDeployment()", deploy_js)
+        self.assertIn("toggleDeployAtlasSecret", deploy_js)
+        self.assertIn("webkitdirectory", deploy_js)
+        self.assertIn("/api/deployatlas/servers", routes_py)
+        self.assertIn("/api/deployatlas/projects/analyze", routes_py)
+        self.assertIn("/api/deployatlas/deployments", routes_py)
+        self.assertIn("DeployAtlas", catalog_py)
+        self.assertIn("server-cog", catalog_py)
 
 
 if __name__ == "__main__":

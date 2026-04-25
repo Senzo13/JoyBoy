@@ -2038,6 +2038,7 @@ Object.assign(MESSAGES.fr, {
             },
             status: {
                 installed: 'Installé',
+                loading: 'Vérification MCP',
                 configured: 'Configuré, désactivé',
                 available: 'Disponible',
                 needsTemplate: 'Template manquant',
@@ -2148,7 +2149,7 @@ Object.assign(MESSAGES.fr, {
             catalog: {
                 'web-research': { desc: 'Recherche web locale via SearXNG quand disponible, puis fetch lisible des pages publiques.' },
                 github: { desc: 'Expose repos, issues, pull requests et CI via un serveur MCP configurable.' },
-                'browser-use': { desc: 'Contrôle de navigateur à brancher pour cliquer, saisir, inspecter et capturer des pages.' },
+                'browser-use': { desc: 'Template Cloudflare Browser Run pour récupérer des pages, produire du Markdown et prendre des captures. Le contrôle in-app complet reste à brancher.' },
                 spreadsheets: { desc: 'Création et édition de fichiers tableur à brancher comme connecteur spécialisé.' },
                 presentations: { desc: 'Création et édition de présentations à brancher comme connecteur spécialisé.' },
                 documents: { desc: 'Création, révision et annotation de documents à brancher comme connecteur spécialisé.' },
@@ -2156,9 +2157,9 @@ Object.assign(MESSAGES.fr, {
                 'local-packs': { desc: 'Packs locaux hors git pour ajouter prompts, routing, modèles ou surfaces UI privées.' },
                 filesystem: { desc: 'Template MCP pour exposer seulement des dossiers autorisés au runtime agent.' },
                 postgres: { desc: 'Template MCP pour explorer schémas et requêtes SQL sur PostgreSQL ou Neon.' },
-                netlify: { desc: 'Connecteur de déploiement à préparer pour sites, logs, forms et releases Netlify.' },
-                vercel: { desc: 'Connecteur de déploiement à préparer pour projets, builds, logs et agents Vercel.' },
-                cloudflare: { desc: 'Connecteur à préparer pour Workers, Pages, DNS et la plateforme Cloudflare.' },
+                netlify: { desc: 'Template MCP officiel Netlify pour sites, déploiements, logs, forms et releases.' },
+                vercel: { desc: 'Template MCP officiel Vercel pour projets, déploiements, logs et agents.' },
+                cloudflare: { desc: 'Template MCP officiel Cloudflare pour Workers, Pages, DNS et API plateforme.' },
                 'hugging-face': { desc: 'Accès modèles et téléchargements déjà centralisé dans les providers JoyBoy.' },
                 'code-review': { desc: 'Review IA native via /ultrareview : correctness, sécurité, qualité et vérifications.' },
                 circleci: { desc: 'Connecteur CI à préparer pour builds, pipelines et artifacts.' },
@@ -2166,11 +2167,11 @@ Object.assign(MESSAGES.fr, {
                 'build-web-apps': { desc: 'Workflow pack local pour construire, tester et livrer des apps web.' },
                 'game-studio': { desc: 'Workflow pack local pour prototyper des jeux navigateur, assets et playtests.' },
                 expo: { desc: 'Connecteur mobile à préparer pour Expo et React Native.' },
-                figma: { desc: 'Connecteur design-to-code à préparer pour frames, tokens et specs Figma.' },
+                figma: { desc: 'Template MCP Figma pour design-to-code, frames, tokens et specs, sous réserve d’auth/allowlist Figma.' },
                 canva: { desc: 'Connecteur design à préparer pour créer, chercher et exporter des visuels.' },
                 remotion: { desc: 'Connecteur motion à préparer pour générer et rendre des vidéos par code.' },
                 'image-lab': { desc: 'Génération image, inpainting, références visage/style et expérimentation vidéo natives.' },
-                linear: { desc: 'Connecteur productivité à préparer pour issues, projets et roadmap Linear.' },
+                linear: { desc: 'Template MCP officiel Linear pour issues, projets, commentaires et roadmap.' },
                 'google-drive': { desc: 'Connecteur fichiers à préparer pour Drive, Docs, Sheets et Slides.' },
                 gmail: { desc: 'Connecteur email à préparer pour lire, trier et rédiger des brouillons.' },
                 slack: { desc: 'Connecteur équipe à préparer pour résumer des canaux et rédiger des réponses.' },
@@ -2822,14 +2823,37 @@ Object.assign(MESSAGES.fr.modules, {
         module_cyberatlas_use_1: 'Repérer les protections navigateur et TLS manquantes',
         module_cyberatlas_use_2: 'Trouver les expositions publiques et surfaces API sensibles',
         module_cyberatlas_use_3: 'Exporter un rapport sécurité défensif actionnable',
+        module_deployatlas_name: 'DeployAtlas',
+        module_deployatlas_tagline: 'Déploiement VPS assisté par IA, SSH, HTTPS et rollback',
+        module_deployatlas_description: 'Analyse projet, serveurs enregistrés, preuve SSH, terminal visuel, runbooks HTTPS et rollback.',
+        module_deployatlas_outcome: 'Analyse projet, SSH, HTTPS et runbook de déploiement.',
+        module_deployatlas_point_1: 'Serveurs VPS enregistrés avec fingerprint SSH',
+        module_deployatlas_point_2: 'Terminal visuel, HTTPS et rollback guidé',
+        module_deployatlas_use_1: 'Analyser un projet avant livraison',
+        module_deployatlas_use_2: 'Déployer sur VPS avec preuve SSH',
+        module_deployatlas_use_3: 'Préparer HTTPS et rollback',
         capability_tls_security: 'TLS et transport',
         capability_security_headers: 'headers sécurité',
         capability_exposure_mapping: 'exposition publique',
         capability_api_surface: 'surface API',
+        capability_vps_inventory: 'inventaire VPS',
+        capability_ssh_fingerprint: 'fingerprint SSH',
+        capability_project_analysis: 'analyse projet',
+        capability_deployment_plan: 'plan de déploiement',
+        capability_https_ssl: 'HTTPS / SSL',
+        capability_rollback: 'rollback',
     });
 
 Object.assign(MESSAGES.fr.runtime, {
         kindCyberAtlas: 'CyberAtlas',
+        kindDeployAtlas: 'DeployAtlas',
+    });
+
+Object.assign(MESSAGES.fr, {
+        deployatlas: {
+            title: 'Déployer un projet sur VPS',
+            subtitle: 'Analyse ton projet, valide le serveur, prépare HTTPS et suis chaque étape dans un terminal visuel propre.',
+        },
     });
 
 Object.assign(MESSAGES.fr, {

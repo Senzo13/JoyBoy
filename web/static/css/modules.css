@@ -3,7 +3,8 @@
 #modules-view,
 #signalatlas-view,
 #perfatlas-view,
-#cyberatlas-view {
+#cyberatlas-view,
+#deployatlas-view {
     display: none;
 }
 
@@ -78,11 +79,19 @@
 }
 
 .modules-card-cyberatlas {
-    border-color: rgba(34, 211, 238, 0.42);
+    border-color: rgba(239, 68, 68, 0.46);
     background:
-        radial-gradient(circle at 8% 0%, rgba(251, 79, 147, 0.17), transparent 30%),
-        radial-gradient(circle at 92% 10%, rgba(34, 211, 238, 0.14), transparent 28%),
-        linear-gradient(180deg, rgba(2, 28, 40, 0.94), rgba(1, 8, 17, 0.97));
+        radial-gradient(circle at 8% 0%, rgba(248, 113, 113, 0.18), transparent 30%),
+        radial-gradient(circle at 92% 10%, rgba(251, 113, 133, 0.13), transparent 28%),
+        linear-gradient(180deg, rgba(43, 8, 14, 0.94), rgba(12, 4, 8, 0.97));
+}
+
+.modules-card-deployatlas {
+    border-color: rgba(52, 211, 153, 0.42);
+    background:
+        radial-gradient(circle at 8% 0%, rgba(59, 130, 246, 0.14), transparent 30%),
+        radial-gradient(circle at 92% 10%, rgba(52, 211, 153, 0.14), transparent 28%),
+        linear-gradient(180deg, rgba(5, 32, 36, 0.94), rgba(2, 10, 18, 0.97));
 }
 
 .modules-card:hover {
@@ -105,11 +114,19 @@
 }
 
 .modules-card-cyberatlas:hover {
-    border-color: rgba(34, 211, 238, 0.72);
+    border-color: rgba(248, 113, 113, 0.76);
     background:
-        radial-gradient(circle at 8% 0%, rgba(251, 79, 147, 0.24), transparent 32%),
-        radial-gradient(circle at 92% 10%, rgba(163, 230, 53, 0.14), transparent 30%),
-        linear-gradient(180deg, rgba(2, 48, 68, 0.96), rgba(1, 12, 22, 0.98));
+        radial-gradient(circle at 8% 0%, rgba(239, 68, 68, 0.24), transparent 32%),
+        radial-gradient(circle at 92% 10%, rgba(251, 113, 133, 0.16), transparent 30%),
+        linear-gradient(180deg, rgba(69, 10, 10, 0.96), rgba(17, 4, 9, 0.98));
+}
+
+.modules-card-deployatlas:hover {
+    border-color: rgba(52, 211, 153, 0.68);
+    background:
+        radial-gradient(circle at 8% 0%, rgba(59, 130, 246, 0.20), transparent 32%),
+        radial-gradient(circle at 92% 10%, rgba(16, 185, 129, 0.20), transparent 30%),
+        linear-gradient(180deg, rgba(6, 50, 48, 0.96), rgba(3, 13, 23, 0.98));
 }
 
 .modules-card:disabled,
@@ -143,8 +160,13 @@
 }
 
 .modules-card-cyberatlas.featured {
-    border-color: rgba(34, 211, 238, 0.58);
-    box-shadow: 0 18px 40px rgba(6, 182, 212, 0.18), 0 0 0 1px rgba(163, 230, 53, 0.10);
+    border-color: rgba(239, 68, 68, 0.62);
+    box-shadow: 0 18px 40px rgba(127, 29, 29, 0.24), 0 0 0 1px rgba(251, 113, 133, 0.10);
+}
+
+.modules-card-deployatlas.featured {
+    border-color: rgba(52, 211, 153, 0.58);
+    box-shadow: 0 18px 40px rgba(6, 78, 59, 0.22), 0 0 0 1px rgba(59, 130, 246, 0.08);
 }
 
 .modules-card-main {
@@ -176,8 +198,13 @@
 }
 
 .modules-card-cyberatlas .modules-card-icon {
-    background: linear-gradient(135deg, rgba(34, 211, 238, 0.18), rgba(163, 230, 53, 0.14));
-    color: #cffafe;
+    background: linear-gradient(135deg, rgba(239, 68, 68, 0.22), rgba(251, 113, 133, 0.14));
+    color: #fee2e2;
+}
+
+.modules-card-deployatlas .modules-card-icon {
+    background: linear-gradient(135deg, rgba(52, 211, 153, 0.20), rgba(59, 130, 246, 0.14));
+    color: #d1fae5;
 }
 
 .modules-card-status {
@@ -197,7 +224,11 @@
 }
 
 .modules-card-cyberatlas .modules-card-status {
-    color: #22d3ee;
+    color: #f87171;
+}
+
+.modules-card-deployatlas .modules-card-status {
+    color: #34d399;
 }
 
 .modules-card-copy {
@@ -267,6 +298,10 @@
     color: #f59e0b;
 }
 
+.modules-card-cyberatlas .modules-card-point i {
+    color: #fb7185;
+}
+
 .modules-card-signalatlas .modules-card-outcome {
     border-left-color: #38bdf8;
     background: rgba(12, 74, 110, 0.28);
@@ -278,8 +313,8 @@
 }
 
 .modules-card-cyberatlas .modules-card-outcome {
-    border-left-color: #22d3ee;
-    background: rgba(8, 145, 178, 0.20);
+    border-left-color: #ef4444;
+    background: rgba(127, 29, 29, 0.24);
 }
 
 .modules-card-usecases {
@@ -341,7 +376,16 @@
 }
 
 .modules-card-cyberatlas .modules-card-usecase i {
-    color: #a3e635;
+    color: #fb7185;
+}
+
+.modules-card-deployatlas .modules-card-usecase i,
+.modules-card-deployatlas .modules-card-point i {
+    color: #34d399;
+}
+
+.modules-card-deployatlas .modules-card-action {
+    color: #a7f3d0;
 }
 
 .modules-card-capabilities {
@@ -364,9 +408,15 @@
 }
 
 .modules-card-cyberatlas .modules-chip:not(.premium) {
-    border-color: rgba(34, 211, 238, 0.30);
-    background: rgba(34, 211, 238, 0.10);
-    color: #cffafe;
+    border-color: rgba(239, 68, 68, 0.30);
+    background: rgba(127, 29, 29, 0.18);
+    color: #fecaca;
+}
+
+.modules-card-deployatlas .modules-chip:not(.premium) {
+    border-color: rgba(52, 211, 153, 0.30);
+    background: rgba(5, 150, 105, 0.10);
+    color: #d1fae5;
 }
 
 .modules-chip,

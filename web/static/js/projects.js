@@ -323,6 +323,7 @@ function showProjectView(projectId) {
     const modalView = document.getElementById('modal-view');
     const addonsView = document.getElementById('addons-view');
     const extensionsView = document.getElementById('extensions-view');
+    const deployAtlasView = document.getElementById('deployatlas-view');
     const modelsView = document.getElementById('models-view');
     const projectsView = document.getElementById('projects-view');
     if (homeView) homeView.style.display = 'none';
@@ -330,12 +331,18 @@ function showProjectView(projectId) {
     if (modalView) modalView.style.display = 'none';
     if (addonsView) addonsView.style.display = 'none';
     if (extensionsView) extensionsView.style.display = 'none';
+    if (deployAtlasView) deployAtlasView.style.display = 'none';
     if (modelsView) modelsView.style.display = 'none';
     if (projectsView) projectsView.style.display = 'flex';
 
     document.body.classList.remove('addons-mode');
     document.body.classList.remove('extensions-mode');
     document.body.classList.remove('models-mode');
+    document.body.classList.remove('modules-mode');
+    document.body.classList.remove('signalatlas-mode');
+    document.body.classList.remove('perfatlas-mode');
+    document.body.classList.remove('cyberatlas-mode');
+    document.body.classList.remove('deployatlas-mode');
     document.body.classList.add('projects-mode');
     document.querySelectorAll('.sidebar-hub-btn').forEach(btn => btn.classList.remove('active'));
 

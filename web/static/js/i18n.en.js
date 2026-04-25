@@ -2028,6 +2028,7 @@ Object.assign(MESSAGES.en, {
             },
             status: {
                 installed: 'Installed',
+                loading: 'Checking MCP',
                 configured: 'Configured, disabled',
                 available: 'Available',
                 needsTemplate: 'Missing template',
@@ -2137,7 +2138,7 @@ Object.assign(MESSAGES.en, {
             catalog: {
                 'web-research': { desc: 'Local web search through SearXNG when available, then readable fetches of public pages.' },
                 github: { desc: 'Expose repos, issues, pull requests, and CI through a configurable MCP server.' },
-                'browser-use': { desc: 'Browser control connector to wire for clicking, typing, inspecting, and capturing pages.' },
+                'browser-use': { desc: 'Cloudflare Browser Run MCP template for fetching pages, producing Markdown, and taking screenshots. Full in-app browser control still needs a native tool.' },
                 spreadsheets: { desc: 'Spreadsheet creation and editing to wire as a specialized connector.' },
                 presentations: { desc: 'Presentation creation and editing to wire as a specialized connector.' },
                 documents: { desc: 'Document creation, redlining, and commenting to wire as a specialized connector.' },
@@ -2145,9 +2146,9 @@ Object.assign(MESSAGES.en, {
                 'local-packs': { desc: 'Local packs outside git for private prompts, routing, models, or UI surfaces.' },
                 filesystem: { desc: 'MCP template for exposing only allowed folders to the agent runtime.' },
                 postgres: { desc: 'MCP template for exploring schemas and SQL queries on PostgreSQL or Neon.' },
-                netlify: { desc: 'Deployment connector to prepare for Netlify sites, logs, forms, and releases.' },
-                vercel: { desc: 'Deployment connector to prepare for Vercel projects, builds, logs, and agents.' },
-                cloudflare: { desc: 'Connector to prepare for Workers, Pages, DNS, and the Cloudflare platform.' },
+                netlify: { desc: 'Official Netlify MCP template for sites, deploys, logs, forms, and releases.' },
+                vercel: { desc: 'Official Vercel MCP template for projects, deployments, logs, and agents.' },
+                cloudflare: { desc: 'Official Cloudflare MCP template for Workers, Pages, DNS, and platform APIs.' },
                 'hugging-face': { desc: 'Model access and downloads already centralized in JoyBoy providers.' },
                 'code-review': { desc: 'Native AI review through /ultrareview: correctness, security, quality, and checks.' },
                 circleci: { desc: 'CI connector to prepare for builds, pipelines, and artifacts.' },
@@ -2155,11 +2156,11 @@ Object.assign(MESSAGES.en, {
                 'build-web-apps': { desc: 'Local pack workflow for building, testing, and shipping web apps.' },
                 'game-studio': { desc: 'Local pack workflow for prototyping browser games, assets, and playtests.' },
                 expo: { desc: 'Mobile connector to prepare for Expo and React Native.' },
-                figma: { desc: 'Design-to-code connector to prepare for Figma frames, tokens, and specs.' },
+                figma: { desc: 'Figma MCP template for design-to-code, frames, tokens, and specs, subject to Figma auth/client allowlisting.' },
                 canva: { desc: 'Design connector to prepare for creating, searching, and exporting visuals.' },
                 remotion: { desc: 'Motion connector to prepare for generating and rendering video with code.' },
                 'image-lab': { desc: 'Native image generation, inpainting, face/style references, and video experiments.' },
-                linear: { desc: 'Productivity connector to prepare for Linear issues, projects, and roadmaps.' },
+                linear: { desc: 'Official Linear MCP template for issues, projects, comments, and roadmaps.' },
                 'google-drive': { desc: 'File connector to prepare for Drive, Docs, Sheets, and Slides.' },
                 gmail: { desc: 'Email connector to prepare for reading, triage, and drafting.' },
                 slack: { desc: 'Team connector to prepare for channel summaries and response drafts.' },
@@ -2793,14 +2794,37 @@ Object.assign(MESSAGES.en.modules, {
         module_cyberatlas_use_1: 'Spot missing browser and TLS protections',
         module_cyberatlas_use_2: 'Find public exposure and sensitive API surfaces',
         module_cyberatlas_use_3: 'Export an actionable defensive security report',
+        module_deployatlas_name: 'DeployAtlas',
+        module_deployatlas_tagline: 'AI-assisted VPS deployment with SSH, HTTPS and rollback',
+        module_deployatlas_description: 'Project analysis, saved servers, SSH evidence, visual terminal, HTTPS runbooks, and rollback.',
+        module_deployatlas_outcome: 'Project analysis, SSH, HTTPS, and deployment runbook.',
+        module_deployatlas_point_1: 'Saved VPS profiles with SSH fingerprints',
+        module_deployatlas_point_2: 'Visual terminal, HTTPS, and guided rollback',
+        module_deployatlas_use_1: 'Analyze a project before shipping',
+        module_deployatlas_use_2: 'Deploy to VPS with SSH evidence',
+        module_deployatlas_use_3: 'Prepare HTTPS and rollback',
         capability_tls_security: 'TLS and transport',
         capability_security_headers: 'security headers',
         capability_exposure_mapping: 'public exposure',
         capability_api_surface: 'API surface',
+        capability_vps_inventory: 'VPS inventory',
+        capability_ssh_fingerprint: 'SSH fingerprint',
+        capability_project_analysis: 'project analysis',
+        capability_deployment_plan: 'deployment plan',
+        capability_https_ssl: 'HTTPS / SSL',
+        capability_rollback: 'rollback',
     });
 
 Object.assign(MESSAGES.en.runtime, {
         kindCyberAtlas: 'CyberAtlas',
+        kindDeployAtlas: 'DeployAtlas',
+    });
+
+Object.assign(MESSAGES.en, {
+        deployatlas: {
+            title: 'Deploy a project to a VPS',
+            subtitle: 'Analyze the project, validate the server, prepare HTTPS, and follow every step in a clean visual terminal.',
+        },
     });
 
 Object.assign(MESSAGES.en, {

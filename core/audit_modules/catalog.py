@@ -84,5 +84,30 @@ def get_module_catalog() -> List[dict]:
             theme="cyberatlas",
             category="audit",
         ),
+        ModuleDescriptor(
+            id="deployatlas",
+            name="DeployAtlas",
+            tagline="AI-assisted VPS deployment with SSH, HTTPS and rollback",
+            description=(
+                "Project analysis, saved server profiles, SSH evidence, guided remote "
+                "deployment plans, live terminal progress, HTTPS runbooks, and rollback snapshots."
+            ),
+            icon="server-cog",
+            status="active",
+            entry_view="deployatlas-view",
+            capabilities=[
+                "vps_inventory",
+                "ssh_fingerprint",
+                "project_analysis",
+                "deployment_plan",
+                "https_ssl",
+                "rollback",
+            ],
+            premium=True,
+            available=True,
+            featured=True,
+            theme="deployatlas",
+            category="deployment",
+        ),
     ]
     return [module.to_dict() for module in modules]

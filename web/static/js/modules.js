@@ -158,6 +158,22 @@ const NATIVE_AUDIT_MODULE_FALLBACK_CATALOG = [
         theme: 'cyberatlas',
         category: 'audit',
     },
+    {
+        id: 'deployatlas',
+        name: 'DeployAtlas',
+        tagline: 'AI-assisted VPS deployment with SSH, HTTPS and rollback',
+        description: 'Project analysis, saved server profiles, SSH evidence, guided deployment plans, live terminal progress, HTTPS runbooks, and rollback snapshots.',
+        icon: 'server-cog',
+        status: 'active',
+        entry_view: 'deployatlas-view',
+        capabilities: ['vps_inventory', 'ssh_fingerprint', 'project_analysis', 'deployment_plan', 'https_ssl', 'rollback'],
+        premium: true,
+        available: true,
+        locked_reason: '',
+        featured: true,
+        theme: 'deployatlas',
+        category: 'deployment',
+    },
 ];
 
 function signalAtlasNormalizePageBudget(value, fallback = SIGNALATLAS_DEFAULT_PAGE_BUDGET) {
@@ -2434,7 +2450,7 @@ function currentJoyBoyChatModel() {
 }
 
 function moduleViewIds() {
-    return ['modules-view', 'signalatlas-view', 'perfatlas-view', 'cyberatlas-view'];
+    return ['modules-view', 'signalatlas-view', 'perfatlas-view', 'cyberatlas-view', 'deployatlas-view'];
 }
 
 function hideModulesWorkspaces() {
@@ -2473,7 +2489,7 @@ function applyModulesShellMode(activeButtonId, bodyClass) {
     hideOtherJoyBoyViews();
     clearActiveHubButtons();
     document.getElementById(activeButtonId)?.classList.add('active');
-    document.body.classList.remove('addons-mode', 'extensions-mode', 'models-mode', 'projects-mode', 'modules-mode', 'signalatlas-mode', 'perfatlas-mode', 'cyberatlas-mode');
+    document.body.classList.remove('addons-mode', 'extensions-mode', 'models-mode', 'projects-mode', 'modules-mode', 'signalatlas-mode', 'perfatlas-mode', 'cyberatlas-mode', 'deployatlas-mode');
     document.body.classList.add(bodyClass);
 }
 
@@ -3315,6 +3331,9 @@ function moduleHubOutcome(moduleId) {
     if (moduleId === 'cyberatlas') {
         return moduleT('modules.module_cyberatlas_outcome', 'Cartographie TLS, headers, exposition publique et surface API.');
     }
+    if (moduleId === 'deployatlas') {
+        return moduleT('modules.module_deployatlas_outcome', 'Analyse projet, SSH, HTTPS et runbook de déploiement.');
+    }
     return moduleT('modules.module_signalatlas_outcome', 'Analyse crawl, indexation et visibilité SEO.');
 }
 
@@ -3329,6 +3348,12 @@ function moduleHubPoints(moduleId) {
         return [
             moduleT('modules.module_cyberatlas_point_1', 'Preuves sécurité défensives et score de posture'),
             moduleT('modules.module_cyberatlas_point_2', 'Pack de remédiation prêt pour dev ou IA'),
+        ];
+    }
+    if (moduleId === 'deployatlas') {
+        return [
+            moduleT('modules.module_deployatlas_point_1', 'Serveurs VPS enregistrés avec fingerprint SSH'),
+            moduleT('modules.module_deployatlas_point_2', 'Terminal visuel, HTTPS et rollback guidé'),
         ];
     }
     return [
@@ -4363,6 +4388,10 @@ async function openAuditModuleWorkspace(moduleId, auditId = null) {
     }
     if (clean === 'cyberatlas') {
         await window.openCyberAtlasWorkspace?.(auditId);
+        return;
+    }
+    if (clean === 'deployatlas') {
+        await window.openDeployAtlasWorkspace?.(auditId);
     }
 }
 
@@ -5772,6 +5801,7 @@ window.addEventListener('joyboy:locale-changed', () => {
     if (isSignalAtlasVisible()) renderSignalAtlasWorkspace();
     if (isPerfAtlasVisible()) renderPerfAtlasWorkspace();
     window.renderCyberAtlasWorkspace?.();
+    window.renderDeployAtlasWorkspace?.();
 });
 
 window.addEventListener('click', (event) => {
@@ -5797,6 +5827,7 @@ window.addEventListener('joyboy:runtime-jobs-updated', () => {
         startPerfAtlasRefresh();
     }
     window.handleCyberAtlasRuntimeJobsUpdated?.();
+    if (document.body.classList.contains('deployatlas-mode')) window.refreshDeployAtlasWorkspace?.();
 });
 
 window.openModulesHub = openModulesHub;

@@ -529,6 +529,52 @@ const apiSignalAtlas = createAuditModuleApi('signalatlas');
 const apiPerfAtlas = createAuditModuleApi('perfatlas');
 const apiCyberAtlas = createAuditModuleApi('cyberatlas');
 
+const apiDeployAtlas = {
+    async listServers() {
+        return apiGet('/api/deployatlas/servers');
+    },
+    async saveServer(payload = {}) {
+        return apiPost('/api/deployatlas/servers', payload);
+    },
+    async deleteServer(serverId) {
+        return apiDelete(`/api/deployatlas/servers/${encodeURIComponent(serverId)}`);
+    },
+    async testServer(serverId, payload = {}) {
+        return apiPost(`/api/deployatlas/servers/${encodeURIComponent(serverId || 'new')}/test`, payload);
+    },
+    async analyzeProject(formData) {
+        try {
+            const response = await fetch('/api/deployatlas/projects/analyze', {
+                method: 'POST',
+                body: formData,
+            });
+            const result = await response.json();
+            return { data: result, ok: response.ok, status: response.status };
+        } catch (error) {
+            console.error('[API] DeployAtlas project analysis failed:', error);
+            return { data: null, ok: false, error: error.message };
+        }
+    },
+    async listDeployments(limit = 40) {
+        return apiGet(`/api/deployatlas/deployments?limit=${encodeURIComponent(limit)}`);
+    },
+    async createDeployment(payload = {}) {
+        return apiPost('/api/deployatlas/deployments', payload);
+    },
+    async getDeployment(deploymentId) {
+        return apiGet(`/api/deployatlas/deployments/${encodeURIComponent(deploymentId)}`);
+    },
+    async cancelDeployment(deploymentId) {
+        return apiPost(`/api/deployatlas/deployments/${encodeURIComponent(deploymentId)}/cancel`, {});
+    },
+    async getModelContext() {
+        return apiGet('/api/deployatlas/models/context');
+    },
+    async getProviderStatus() {
+        return apiGet('/api/deployatlas/providers/status');
+    }
+};
+
 // ===== TERMINAL API =====
 
 const apiTerminal = {

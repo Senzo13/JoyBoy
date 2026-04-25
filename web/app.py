@@ -114,6 +114,8 @@ from web.routes.perfatlas import perfatlas_bp
 app.register_blueprint(perfatlas_bp)
 from web.routes.cyberatlas import cyberatlas_bp
 app.register_blueprint(cyberatlas_bp)
+from web.routes.deployatlas import deployatlas_bp
+app.register_blueprint(deployatlas_bp)
 
 # Désactiver les logs de requêtes HTTP (werkzeug)
 logging.getLogger('werkzeug').setLevel(logging.ERROR)

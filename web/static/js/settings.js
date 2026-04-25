@@ -591,12 +591,14 @@ function openAddonsHub() {
     const modalView = document.getElementById('modal-view');
     const modelsView = document.getElementById('models-view');
     const extensionsView = document.getElementById('extensions-view');
+    const deployAtlasView = document.getElementById('deployatlas-view');
     const projectsView = document.getElementById('projects-view');
     if (homeView) homeView.style.display = 'none';
     if (chatView) chatView.style.display = 'none';
     if (modalView) modalView.style.display = 'none';
     if (modelsView) modelsView.style.display = 'none';
     if (extensionsView) extensionsView.style.display = 'none';
+    if (deployAtlasView) deployAtlasView.style.display = 'none';
     if (typeof hideModulesWorkspaces === 'function') hideModulesWorkspaces();
     if (typeof hideProjectView === 'function') hideProjectView();
     else if (projectsView) projectsView.style.display = 'none';
@@ -608,6 +610,8 @@ function openAddonsHub() {
     document.body.classList.remove('modules-mode');
     document.body.classList.remove('signalatlas-mode');
     document.body.classList.remove('perfatlas-mode');
+    document.body.classList.remove('cyberatlas-mode');
+    document.body.classList.remove('deployatlas-mode');
     document.querySelectorAll('.sidebar-hub-btn').forEach(btn => btn.classList.remove('active'));
     document.getElementById('sidebar-addons-btn')?.classList.add('active');
 
@@ -661,12 +665,14 @@ function openModelsHub() {
     const modalView = document.getElementById('modal-view');
     const addonsView = document.getElementById('addons-view');
     const extensionsView = document.getElementById('extensions-view');
+    const deployAtlasView = document.getElementById('deployatlas-view');
     const projectsView = document.getElementById('projects-view');
     if (homeView) homeView.style.display = 'none';
     if (chatView) chatView.style.display = 'none';
     if (modalView) modalView.style.display = 'none';
     if (addonsView) addonsView.style.display = 'none';
     if (extensionsView) extensionsView.style.display = 'none';
+    if (deployAtlasView) deployAtlasView.style.display = 'none';
     if (typeof hideModulesWorkspaces === 'function') hideModulesWorkspaces();
     if (typeof hideProjectView === 'function') hideProjectView();
     else if (projectsView) projectsView.style.display = 'none';
@@ -678,6 +684,8 @@ function openModelsHub() {
     document.body.classList.remove('modules-mode');
     document.body.classList.remove('signalatlas-mode');
     document.body.classList.remove('perfatlas-mode');
+    document.body.classList.remove('cyberatlas-mode');
+    document.body.classList.remove('deployatlas-mode');
     document.querySelectorAll('.sidebar-hub-btn').forEach(btn => btn.classList.remove('active'));
     document.getElementById('sidebar-models-btn')?.classList.add('active');
 
