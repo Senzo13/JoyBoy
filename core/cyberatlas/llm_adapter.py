@@ -26,6 +26,20 @@ def _audit_excerpt(audit: Dict[str, Any]) -> Dict[str, Any]:
         "security_headers": snapshot.get("security_headers") or {},
         "exposure_probes": (snapshot.get("exposure_probes") or [])[:18],
         "openapi": snapshot.get("openapi") or {},
+        "api_inventory": snapshot.get("api_inventory") or {},
+        "coverage": audit.get("coverage") or snapshot.get("coverage") or {},
+        "owner_verification_plan": (audit.get("owner_verification_plan") or snapshot.get("owner_verification_plan") or [])[:10],
+        "attack_paths": (audit.get("attack_paths") or snapshot.get("attack_paths") or [])[:8],
+        "standard_map": [
+            item for item in (audit.get("standard_map") or snapshot.get("standard_map") or [])
+            if item.get("status") != "clear"
+        ][:12],
+        "security_tickets": (audit.get("security_tickets") or snapshot.get("security_tickets") or [])[:12],
+        "evidence_graph": {
+            "nodes": ((audit.get("evidence_graph") or snapshot.get("evidence_graph") or {}).get("nodes") or [])[:18],
+            "edges": ((audit.get("evidence_graph") or snapshot.get("evidence_graph") or {}).get("edges") or [])[:24],
+        },
+        "action_plan": (audit.get("action_plan") or [])[:10],
         "forms": (snapshot.get("forms") or [])[:10],
         "pages": (snapshot.get("pages") or [])[:6],
     }
@@ -73,7 +87,7 @@ def generate_interpretation(
         f"Task: {prompt_goal}\n"
         f"Preset: {preset}\n"
         f"Model note: {_preset_note(preset)}\n"
-        "Return markdown with sections: Executive summary, Confirmed risks, Risk signals, Prioritized remediation, Validation checklist, Prompt for implementation.\n"
+        "Return markdown with sections: Executive summary, Confirmed risks, Standards map, Risk paths, Owner verification plan, Security tickets, Validation checklist, Prompt for implementation.\n"
         "Keep the output directly usable by another AI or developer fixing the site.\n\n"
         f"AUDIT EXCERPT:\n{excerpt}"
     )

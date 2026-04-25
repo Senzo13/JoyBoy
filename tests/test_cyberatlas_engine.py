@@ -4,8 +4,10 @@ from pathlib import Path
 
 from core.cyberatlas.engine import _extract_api_references
 from core.cyberatlas.engine import _build_recommendations, _build_surface_matrix
+from core.cyberatlas.engine import _build_owner_verification_plan, _build_coverage_summary
+from core.cyberatlas.engine import _build_evidence_graph, _build_security_tickets, _build_standard_map
 from core.cyberatlas.jobs import _build_audit_comparison
-from core.cyberatlas.reporting import build_export_payload, build_security_gate_payload
+from core.cyberatlas.reporting import build_evidence_pack, build_export_payload, build_security_gate_payload
 from core.cyberatlas.scoring import score_findings
 from core.cyberatlas.storage import CyberAtlasStorage
 
@@ -36,6 +38,14 @@ class CyberAtlasEngineTests(unittest.TestCase):
                 "reachable_source_map_count": 1,
                 "frontend_api_reference_count": 2,
                 "third_party_script_without_sri_count": 1,
+                "coverage_confidence": 68,
+                "owner_verification_count": 2,
+                "attack_path_count": 1,
+                "standard_attention_count": 1,
+                "standard_owner_review_count": 0,
+                "security_ticket_count": 2,
+                "evidence_graph_node_count": 8,
+                "dangerous_method_count": 1,
                 "waf_detected": True,
                 "rate_limit_detected": False,
                 "critical_count": 0,
@@ -80,7 +90,9 @@ class CyberAtlasEngineTests(unittest.TestCase):
                             "status_code": 200,
                             "response_type": "json",
                             "requires_auth": False,
-                            "allowed_methods": ["GET"],
+                            "allowed_methods": ["GET", "PUT"],
+                            "category": "admin_internal",
+                            "risk_reasons": ["sensitive_name_public", "state_changing_methods_public"],
                         }
                     ],
                 },
@@ -124,6 +136,77 @@ class CyberAtlasEngineTests(unittest.TestCase):
                         "next_action": "Review access control.",
                     }
                 ],
+                "coverage": {
+                    "confidence_score": 68,
+                    "confirmed_findings": 1,
+                    "strong_signal_findings": 0,
+                    "estimated_findings": 0,
+                    "public_mode_limit": "Public mode is intentionally non-invasive.",
+                    "checks": [
+                        {
+                            "id": "api_contract",
+                            "label": "OpenAPI and endpoint inventory",
+                            "status": "covered",
+                            "evidence_count": 3,
+                            "limit": "Public metadata only.",
+                        }
+                    ],
+                },
+                "owner_verification_plan": [
+                    {
+                        "id": "owner-api-access-control-matrix",
+                        "priority": "high",
+                        "category": "api_access_control",
+                        "title": "Build an endpoint-by-endpoint access-control matrix",
+                        "why": "Sensitive public endpoints need owner-side proof.",
+                        "safe_steps": ["Map every sensitive route to auth policy."],
+                        "validation": "Protected routes reject unauthenticated requests.",
+                        "owner_mode_required": True,
+                    }
+                ],
+                "attack_paths": [
+                    {
+                        "id": "endpoint-map-to-access-control-review",
+                        "severity": "high",
+                        "title": "Endpoint discovery increases the need for access-control proof",
+                        "chain": ["Endpoint map discovered", "Sensitive route exposed"],
+                        "breakpoints": ["Verify auth per route"],
+                    }
+                ],
+                "standard_map": [
+                    {
+                        "framework": "OWASP Top 10 2021",
+                        "id": "A03",
+                        "label": "Injection",
+                        "status": "attention",
+                        "severity": "high",
+                        "finding_count": 1,
+                        "finding_ids": ["missing-csp"],
+                        "action": "Ship CSP/CORS/CSRF/input-validation controls and test fail-closed behavior.",
+                    }
+                ],
+                "security_tickets": [
+                    {
+                        "id": "cyberatlas-remediate-api-access-control-review",
+                        "type": "remediation",
+                        "priority": "high",
+                        "effort": "M",
+                        "title": "Review API access control endpoint by endpoint",
+                        "summary": "Sensitive public endpoints need review.",
+                        "implementation": "Map each route to auth policy.",
+                        "implementation_prompt": "Map each route to auth policy.",
+                        "acceptance_criteria": "Protected routes reject unauthenticated requests.",
+                        "validation_steps": ["Protected routes reject unauthenticated requests."],
+                        "related_finding_ids": ["missing-csp"],
+                        "standards": ["OWASP Top 10 2021 A03"],
+                        "owner_mode_required": False,
+                    }
+                ],
+                "evidence_graph": {
+                    "nodes": [{"id": "target", "label": "Target", "kind": "entry", "weight": 1}],
+                    "edges": [{"from": "target", "to": "headers", "label": "browser policy"}],
+                    "note": "Graph is an explanatory evidence map, not an exploit chain.",
+                },
             },
             "recommendations": [
                 {
@@ -162,6 +245,77 @@ class CyberAtlasEngineTests(unittest.TestCase):
                 "new_finding_ids": ["missing-csp"],
                 "fixed_finding_ids": ["public-git-metadata"],
             },
+            "owner_verification_plan": [
+                {
+                    "id": "owner-api-access-control-matrix",
+                    "priority": "high",
+                    "category": "api_access_control",
+                    "title": "Build an endpoint-by-endpoint access-control matrix",
+                    "why": "Sensitive public endpoints need owner-side proof.",
+                    "safe_steps": ["Map every sensitive route to auth policy."],
+                    "validation": "Protected routes reject unauthenticated requests.",
+                    "owner_mode_required": True,
+                }
+            ],
+            "attack_paths": [
+                {
+                    "id": "endpoint-map-to-access-control-review",
+                    "severity": "high",
+                    "title": "Endpoint discovery increases the need for access-control proof",
+                    "chain": ["Endpoint map discovered", "Sensitive route exposed"],
+                    "breakpoints": ["Verify auth per route"],
+                }
+            ],
+            "coverage": {
+                "confidence_score": 68,
+                "confirmed_findings": 1,
+                "strong_signal_findings": 0,
+                "estimated_findings": 0,
+                "public_mode_limit": "Public mode is intentionally non-invasive.",
+                "checks": [
+                    {
+                        "id": "api_contract",
+                        "label": "OpenAPI and endpoint inventory",
+                        "status": "covered",
+                        "evidence_count": 3,
+                        "limit": "Public metadata only.",
+                    }
+                ],
+            },
+            "standard_map": [
+                {
+                    "framework": "OWASP Top 10 2021",
+                    "id": "A03",
+                    "label": "Injection",
+                    "status": "attention",
+                    "severity": "high",
+                    "finding_count": 1,
+                    "finding_ids": ["missing-csp"],
+                    "action": "Ship CSP/CORS/CSRF/input-validation controls and test fail-closed behavior.",
+                }
+            ],
+            "security_tickets": [
+                {
+                    "id": "cyberatlas-remediate-api-access-control-review",
+                    "type": "remediation",
+                    "priority": "high",
+                    "effort": "M",
+                    "title": "Review API access control endpoint by endpoint",
+                    "summary": "Sensitive public endpoints need review.",
+                    "implementation": "Map each route to auth policy.",
+                    "implementation_prompt": "Map each route to auth policy.",
+                    "acceptance_criteria": "Protected routes reject unauthenticated requests.",
+                    "validation_steps": ["Protected routes reject unauthenticated requests."],
+                    "related_finding_ids": ["missing-csp"],
+                    "standards": ["OWASP Top 10 2021 A03"],
+                    "owner_mode_required": False,
+                }
+            ],
+            "evidence_graph": {
+                "nodes": [{"id": "target", "label": "Target", "kind": "entry", "weight": 1}],
+                "edges": [{"from": "target", "to": "headers", "label": "browser policy"}],
+                "note": "Graph is an explanatory evidence map, not an exploit chain.",
+            },
             "interpretations": [],
             "remediation_items": [],
             "metadata": {"module_id": "cyberatlas"},
@@ -192,20 +346,38 @@ class CyberAtlasEngineTests(unittest.TestCase):
         audit = self.sample_audit()
         markdown = build_export_payload(audit, "markdown")
         prompt = build_export_payload(audit, "prompt")
+        tickets = build_export_payload(audit, "tickets")
+        standards = build_export_payload(audit, "standards")
         gate = build_security_gate_payload(audit)
+        evidence = build_evidence_pack(audit)
 
         self.assertIn("# CyberAtlas Audit", markdown["content"])
         self.assertIn("## Action Plan", markdown["content"])
+        self.assertIn("## Standards Map", markdown["content"])
+        self.assertIn("## Security Tickets", markdown["content"])
         self.assertIn("## Attack Surface Matrix", markdown["content"])
+        self.assertIn("## Owner Verification Plan", markdown["content"])
+        self.assertIn("## Likely Risk Paths", markdown["content"])
+        self.assertIn("## Evidence Graph", markdown["content"])
+        self.assertIn("## Audit Coverage", markdown["content"])
         self.assertIn("## Previous Audit Comparison", markdown["content"])
         self.assertIn("## Discovered API Inventory", markdown["content"])
         self.assertIn("## Frontend Code Hints", markdown["content"])
         self.assertIn("deterministic source of truth", prompt["content"])
+        self.assertIn("cyberatlas-remediate-api-access-control-review", tickets["content"])
+        self.assertIn("OWASP Top 10 2021", standards["content"])
         self.assertEqual("joyboy.cyberatlas.security_gate.v1", gate["schema"])
         self.assertEqual("High", gate["risk_level"])
         self.assertEqual("C", gate["security_grade"])
         self.assertEqual(1, gate["public_sensitive_endpoint_count"])
         self.assertEqual(1, len(gate["action_plan"]))
+        self.assertEqual(68, gate["coverage_confidence"])
+        self.assertEqual(1, len(gate["owner_verification_plan"]))
+        self.assertEqual(1, gate["standard_attention_count"])
+        self.assertEqual(2, gate["security_ticket_count"])
+        self.assertIn("standard_map", evidence)
+        self.assertIn("security_tickets", evidence)
+        self.assertIn("evidence_graph", evidence)
 
     def test_storage_indexes_security_summary_fields(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -222,6 +394,13 @@ class CyberAtlasEngineTests(unittest.TestCase):
             self.assertEqual(1, record["public_sensitive_endpoint_count"])
             self.assertEqual("C", record["security_grade"])
             self.assertEqual(1, record["reachable_source_map_count"])
+            self.assertEqual(68, record["coverage_confidence"])
+            self.assertEqual(2, record["owner_verification_count"])
+            self.assertEqual(1, record["attack_path_count"])
+            self.assertEqual(1, record["standard_attention_count"])
+            self.assertEqual(2, record["security_ticket_count"])
+            self.assertEqual(8, record["evidence_graph_node_count"])
+            self.assertEqual(1, record["dangerous_method_count"])
             self.assertEqual("improved", record["comparison_status"])
 
     def test_frontend_api_reference_extraction_flags_private_hosts(self):
@@ -274,6 +453,32 @@ class CyberAtlasEngineTests(unittest.TestCase):
         triggered_ids = {item["id"] for item in recommendations if item["triggered"]}
         self.assertIn("api-access-control-review", triggered_ids)
         self.assertIn("frontend-bundle-exposure-cleanup", triggered_ids)
+
+    def test_owner_verification_and_coverage_capture_riftprobe_style_followups(self):
+        audit = self.sample_audit()
+        owner_plan = _build_owner_verification_plan(audit["snapshot"], audit["findings"])
+        coverage = _build_coverage_summary(audit["snapshot"], audit["findings"])
+
+        owner_ids = {item["id"] for item in owner_plan}
+        self.assertIn("owner-api-access-control-matrix", owner_ids)
+        self.assertIn("owner-auth-abuse-drill", owner_ids)
+        self.assertGreaterEqual(coverage["confidence_score"], 50)
+        self.assertIn("checks", coverage)
+
+    def test_standard_map_security_tickets_and_evidence_graph_are_built(self):
+        audit = self.sample_audit()
+        standard_map = _build_standard_map(audit["findings"], audit["snapshot"])
+        action_plan = audit["action_plan"]
+        owner_plan = _build_owner_verification_plan(audit["snapshot"], audit["findings"])
+        tickets = _build_security_tickets(audit["findings"], action_plan, owner_plan, standard_map)
+        graph = _build_evidence_graph(audit["snapshot"], audit["findings"])
+
+        attention = [item for item in standard_map if item["status"] == "attention"]
+        self.assertTrue(any(item["id"] == "A03" for item in attention))
+        self.assertTrue(any(item["type"] == "remediation" for item in tickets))
+        self.assertTrue(any(item["owner_mode_required"] for item in tickets))
+        self.assertGreaterEqual(len(graph["nodes"]), 2)
+        self.assertGreaterEqual(len(graph["edges"]), 1)
 
     def test_audit_comparison_flags_regression(self):
         previous = {

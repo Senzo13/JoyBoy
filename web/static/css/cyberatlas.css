@@ -129,6 +129,52 @@ body.cyberatlas-mode {
     opacity: 0.8;
 }
 
+.cyberatlas-owner-check-card {
+    border-color: rgba(52, 211, 153, 0.22) !important;
+}
+
+.cyberatlas-ticket-card {
+    border-color: rgba(96, 165, 250, 0.22) !important;
+}
+
+.cyberatlas-risk-path-card {
+    border-color: rgba(251, 191, 36, 0.22) !important;
+}
+
+.cyberatlas-risk-path-columns {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+    margin-top: 12px;
+}
+
+.cyberatlas-path-step {
+    position: relative;
+    margin-top: 8px;
+    padding: 9px 11px 9px 28px;
+    border: 1px solid rgba(148, 163, 184, 0.14);
+    border-radius: 13px;
+    color: #cbd5e1;
+    background: rgba(2, 6, 23, 0.38);
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+.cyberatlas-path-step::before {
+    content: "";
+    position: absolute;
+    left: 11px;
+    top: 15px;
+    width: 7px;
+    height: 7px;
+    border-radius: 999px;
+    background: #fbbf24;
+}
+
+.cyberatlas-path-step.is-break::before {
+    background: #34d399;
+}
+
 .cyberatlas-surface-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
@@ -179,4 +225,68 @@ body.cyberatlas-mode {
     color: #d1fae5;
     font-size: 12px;
     line-height: 1.55;
+}
+
+.cyberatlas-standard-grid,
+.cyberatlas-graph-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 12px;
+}
+
+.cyberatlas-standard-card,
+.cyberatlas-graph-node {
+    border: 1px solid rgba(148, 163, 184, 0.16);
+    border-radius: 18px;
+    padding: 16px;
+    background:
+        radial-gradient(circle at 0 0, rgba(52, 211, 153, 0.08), transparent 36%),
+        rgba(2, 6, 23, 0.46);
+}
+
+.cyberatlas-standard-card.is-danger,
+.cyberatlas-graph-node.is-danger {
+    border-color: rgba(251, 113, 133, 0.32);
+}
+
+.cyberatlas-standard-card.is-warn,
+.cyberatlas-graph-node.is-warn {
+    border-color: rgba(251, 191, 36, 0.32);
+}
+
+.cyberatlas-standard-card.is-good,
+.cyberatlas-graph-node.is-good {
+    border-color: rgba(52, 211, 153, 0.28);
+}
+
+.cyberatlas-standard-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    color: #f8fafc;
+}
+
+.cyberatlas-standard-ref {
+    margin-bottom: 4px;
+    color: #34d399;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.cyberatlas-standard-card p,
+.cyberatlas-graph-node span {
+    display: block;
+    margin: 10px 0 0;
+    color: #cbd5e1;
+    font-size: 12px;
+    line-height: 1.55;
+}
+
+.cyberatlas-graph-node strong {
+    color: #f8fafc;
+    font-size: 13px;
+    line-height: 1.35;
 }

@@ -91,18 +91,42 @@ API_DISCOVERY_PATHS = (
     "/api/v3",
     "/api/auth",
     "/api/login",
+    "/api/logout",
+    "/api/register",
+    "/api/signup",
+    "/api/signin",
     "/api/session",
+    "/api/token",
+    "/api/refresh",
+    "/api/password",
+    "/api/password-reset",
+    "/api/reset-password",
+    "/api/oauth",
     "/api/users",
     "/api/user",
     "/api/me",
+    "/api/profile",
+    "/api/account",
     "/api/admin",
+    "/api/admin/users",
+    "/api/internal",
+    "/api/private",
     "/api/debug",
     "/api/health",
     "/api/status",
     "/api/config",
+    "/api/settings",
     "/api/search",
     "/api/upload",
+    "/api/uploads",
     "/api/files",
+    "/api/export",
+    "/api/import",
+    "/api/webhook",
+    "/api/webhooks",
+    "/api/callback",
+    "/api/proxy",
+    "/api/fetch",
     "/api/graphql",
     "/graphql",
     "/graphiql",
@@ -119,6 +143,8 @@ API_DISCOVERY_PATHS = (
     "/wp-json",
     "/.well-known/openid-configuration",
 )
+
+STATE_CHANGING_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 
 AUTH_ENDPOINT_HINTS = (
     "auth",
@@ -771,6 +797,48 @@ def _is_auth_endpoint_path(path: str) -> bool:
     return any(token in lower for token in AUTH_ENDPOINT_HINTS)
 
 
+def _endpoint_category(path: str) -> str:
+    lower = str(path or "").lower()
+    if any(token in lower for token in ("graphql", "graphiql", "playground")):
+        return "graphql"
+    if any(token in lower for token in ("socket.io", "/ws", "/wss", "realtime")):
+        return "realtime"
+    if _is_auth_endpoint_path(lower):
+        return "auth"
+    if any(token in lower for token in ("admin", "internal", "private")):
+        return "admin_internal"
+    if any(token in lower for token in ("user", "account", "profile", "payment", "billing")):
+        return "user_data"
+    if any(token in lower for token in ("config", "debug", "status", "health")):
+        return "ops_debug"
+    if any(token in lower for token in ("upload", "files", "import", "export")):
+        return "file_transfer"
+    if any(token in lower for token in ("webhook", "callback", "proxy", "fetch", "url")):
+        return "outbound_fetch"
+    if "search" in lower:
+        return "search"
+    return "public_api"
+
+
+def _endpoint_risk_reasons(path: str, allowed_methods: Iterable[str], requires_auth: bool) -> List[str]:
+    lower = str(path or "").lower()
+    methods = {str(method or "").upper() for method in allowed_methods or []}
+    reasons: List[str] = []
+    if _is_sensitive_endpoint_path(lower) and not requires_auth:
+        reasons.append("sensitive_name_public")
+    if STATE_CHANGING_METHODS.intersection(methods) and not requires_auth:
+        reasons.append("state_changing_methods_public")
+    if any(token in lower for token in ("webhook", "callback", "proxy", "fetch", "url")):
+        reasons.append("ssrf_review")
+    if any(token in lower for token in ("upload", "files", "import")):
+        reasons.append("file_handling_review")
+    if any(token in lower for token in ("graphql", "playground", "graphiql")):
+        reasons.append("graphql_policy_review")
+    if any(token in lower for token in ("socket.io", "/ws", "/wss", "realtime")):
+        reasons.append("realtime_quota_review")
+    return reasons[:8]
+
+
 def _discover_endpoint_inventory(
     session: requests.Session,
     entry_url: str,
@@ -797,21 +865,34 @@ def _discover_endpoint_inventory(
         options = _fetch_options(session, final_url) if len(records) < (18 if active_checks else 8) else {"allowed_methods": []}
         content_type = str(probe.get("content_type") or "")
         response_type = "json" if "json" in content_type.lower() else "html" if "html" in content_type.lower() else "other"
+        requires_auth = int(status or 0) in {401, 403}
+        allowed_methods = options.get("allowed_methods") or []
+        category = _endpoint_category(path)
         records.append({
             "path": path,
             "url": final_url,
             "status_code": status,
             "response_type": response_type,
-            "requires_auth": int(status or 0) in {401, 403},
+            "requires_auth": requires_auth,
             "rate_limited": int(status or 0) == 429,
             "sensitive": _is_sensitive_endpoint_path(path),
             "auth_related": _is_auth_endpoint_path(path),
+            "category": category,
+            "risk_reasons": _endpoint_risk_reasons(path, allowed_methods, requires_auth),
             "content_type": content_type,
             "content_length": probe.get("content_length", 0),
-            "allowed_methods": options.get("allowed_methods") or [],
+            "allowed_methods": allowed_methods,
             "options_status": options.get("status_code"),
+            "headers": probe.get("headers") or {},
+            "options_headers": options.get("headers") or {},
         })
 
+    category_counts = Counter(str(item.get("category") or "unknown") for item in records)
+    dangerous_method_count = len([
+        item for item in records
+        if not item.get("requires_auth")
+        and STATE_CHANGING_METHODS.intersection({str(method).upper() for method in (item.get("allowed_methods") or [])})
+    ])
     return {
         "endpoint_count": len(records),
         "auth_protected_count": len([item for item in records if item.get("requires_auth")]),
@@ -819,6 +900,8 @@ def _discover_endpoint_inventory(
         "public_sensitive_count": len([item for item in records if item.get("sensitive") and not item.get("requires_auth")]),
         "rate_limited_count": len([item for item in records if item.get("rate_limited")]),
         "auth_related_count": len([item for item in records if item.get("auth_related")]),
+        "dangerous_method_count": dangerous_method_count,
+        "category_counts": dict(sorted(category_counts.items())),
         "endpoints": records,
     }
 
@@ -1514,6 +1597,50 @@ def _api_inventory_findings(api_inventory: Dict[str, Any], protections: Dict[str
             recommended_fix="Disable TRACE at the edge, reverse proxy, or application server.",
             acceptance_criteria="OPTIONS responses and direct verification show TRACE is not allowed publicly.",
         ))
+    public_state_methods = [
+        item for item in endpoints
+        if not item.get("requires_auth")
+        and STATE_CHANGING_METHODS.intersection({str(method).upper() for method in (item.get("allowed_methods") or [])})
+    ]
+    if public_state_methods:
+        findings.append(_make_finding(
+            finding_id="public-state-changing-methods-visible",
+            title="Public endpoints advertise state-changing HTTP methods",
+            severity="medium",
+            confidence="Estimated",
+            bucket="api_surface",
+            category="http_methods",
+            scope=", ".join(str(item.get("path") or "") for item in public_state_methods[:4]),
+            evidence=[
+                f"{item.get('path')} allowed methods: {', '.join(item.get('allowed_methods') or [])}"
+                for item in public_state_methods[:6]
+            ],
+            diagnostic="OPTIONS metadata suggests some unauthenticated public endpoints may accept write-capable methods.",
+            recommended_fix="Restrict allowed methods per route and verify unauthenticated write methods reject before business logic.",
+            acceptance_criteria="Unauthenticated public endpoints expose only intended methods and write methods require authorization.",
+        ))
+    wildcard_cors = [
+        item for item in endpoints
+        if str(((item.get("headers") or {}).get("access-control-allow-origin") or "")).strip() == "*"
+        or str(((item.get("options_headers") or {}).get("access-control-allow-origin") or "")).strip() == "*"
+    ]
+    if wildcard_cors:
+        findings.append(_make_finding(
+            finding_id="api-wildcard-cors-observed",
+            title="API endpoints expose wildcard CORS",
+            severity="medium",
+            confidence="Strong signal",
+            bucket="app_exposure",
+            category="cors",
+            scope=", ".join(str(item.get("path") or "") for item in wildcard_cors[:4]),
+            evidence=[
+                f"{item.get('path')} returned Access-Control-Allow-Origin wildcard"
+                for item in wildcard_cors[:6]
+            ],
+            diagnostic="Wildcard CORS may be intended for public APIs, but sensitive or credentialed surfaces need strict origin policy.",
+            recommended_fix="Use explicit origin allowlists for authenticated/sensitive APIs and document intentionally public CORS routes.",
+            acceptance_criteria="Sensitive API routes do not return wildcard CORS and public wildcard routes are intentionally documented.",
+        ))
     auth_surface = int(api_inventory.get("auth_related_count") or 0) + len([
         form for page in pages for form in (page.get("forms") or []) if form.get("has_password")
     ])
@@ -1861,6 +1988,548 @@ def _build_action_plan(recommendations: List[Dict[str, Any]], limit: int = 8) ->
     ]
 
 
+def _build_coverage_summary(snapshot: Dict[str, Any], findings: List[Dict[str, Any]]) -> Dict[str, Any]:
+    pages = snapshot.get("pages") or []
+    probes = snapshot.get("exposure_probes") or []
+    openapi = snapshot.get("openapi") or {}
+    inventory = snapshot.get("api_inventory") or {}
+    frontend = snapshot.get("frontend_hints") or {}
+    protection = snapshot.get("protections") or {}
+    checks = [
+        {
+            "id": "tls",
+            "label": "TLS and certificate metadata",
+            "status": "covered" if (snapshot.get("tls") or {}).get("available") else "partial",
+            "evidence_count": 1,
+            "limit": "Certificate chain and protocol were checked from this runtime only.",
+        },
+        {
+            "id": "crawl",
+            "label": "Public pages, forms and assets",
+            "status": "covered" if pages else "partial",
+            "evidence_count": len(pages),
+            "limit": "CyberAtlas samples public pages and does not submit forms in public mode.",
+        },
+        {
+            "id": "exposure",
+            "label": "Safe public exposure probes",
+            "status": "covered" if probes else "partial",
+            "evidence_count": len([item for item in probes if item.get("exists")]),
+            "limit": "Only safe GET probes are executed; no exploit payloads or brute force are run.",
+        },
+        {
+            "id": "api_contract",
+            "label": "OpenAPI and endpoint inventory",
+            "status": "covered" if openapi.get("available") or inventory.get("endpoint_count") else "partial",
+            "evidence_count": int(openapi.get("endpoint_count") or 0) + int(inventory.get("endpoint_count") or 0),
+            "limit": "Unauthenticated route behavior is inferred from public status codes and OPTIONS metadata.",
+        },
+        {
+            "id": "frontend",
+            "label": "Frontend bundle and backend references",
+            "status": "covered" if int(frontend.get("scripts_sampled") or 0) or int(frontend.get("api_reference_count") or 0) else "partial",
+            "evidence_count": int(frontend.get("api_reference_count") or 0) + int(frontend.get("source_map_count") or 0),
+            "limit": "CyberAtlas samples first-party scripts and does not download large private artifacts.",
+        },
+        {
+            "id": "abuse_protection",
+            "label": "WAF, bot and rate-limit signals",
+            "status": "covered" if protection.get("waf_detected") or protection.get("rate_limit_detected") else "partial",
+            "evidence_count": len(protection.get("rate_limit_headers") or []) + len(protection.get("waf_signals") or []),
+            "limit": "Absence of visible headers does not prove absence of protection; owner-side testing is required.",
+        },
+    ]
+    confirmed = len([item for item in findings if str(item.get("confidence") or "").lower() == "confirmed"])
+    strong = len([item for item in findings if str(item.get("confidence") or "").lower() == "strong signal"])
+    estimated = len([item for item in findings if str(item.get("confidence") or "").lower() == "estimated"])
+    confidence_score = min(100, max(35, 45 + confirmed * 7 + strong * 4 - estimated * 2))
+    return {
+        "confidence_score": int(confidence_score),
+        "confirmed_findings": confirmed,
+        "strong_signal_findings": strong,
+        "estimated_findings": estimated,
+        "checks": checks,
+        "public_mode_limit": "Public mode is intentionally non-invasive: no credential guessing, no stress testing, no exploit payload execution.",
+    }
+
+
+def _owner_step(*, item_id: str, priority: str, category: str, title: str, why: str, steps: List[str], validation: str) -> Dict[str, Any]:
+    return {
+        "id": item_id,
+        "priority": priority,
+        "category": category,
+        "title": title,
+        "why": why,
+        "safe_steps": steps,
+        "validation": validation,
+        "owner_mode_required": True,
+    }
+
+
+def _build_owner_verification_plan(snapshot: Dict[str, Any], findings: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    ids = {str(item.get("id") or "") for item in findings}
+    buckets = {str(item.get("bucket") or "") for item in findings}
+    categories = {str(item.get("category") or "") for item in findings}
+    recon = snapshot.get("recon_summary") or {}
+    openapi = snapshot.get("openapi") or {}
+    api_inventory = snapshot.get("api_inventory") or {}
+    frontend = snapshot.get("frontend_hints") or {}
+    endpoints = api_inventory.get("endpoints") or []
+    endpoint_categories = set((api_inventory.get("category_counts") or {}).keys())
+    plan: List[Dict[str, Any]] = []
+
+    if "api_surface" in buckets or int(openapi.get("endpoint_count") or 0) or int(api_inventory.get("endpoint_count") or 0):
+        plan.append(_owner_step(
+            item_id="owner-api-access-control-matrix",
+            priority="high",
+            category="api_access_control",
+            title="Build an endpoint-by-endpoint access-control matrix",
+            why="RiftProbe-style endpoint discovery is useful only if every route is mapped to auth, role, schema, throttling and logging expectations.",
+            steps=[
+                "Export the API inventory and mark each route as public, authenticated, admin, webhook, upload, or internal.",
+                "For each state-changing route, verify unauthenticated and low-privilege requests fail before business logic.",
+                "Update OpenAPI security declarations so the contract matches production behavior.",
+            ],
+            validation="Every sensitive or state-changing route has documented auth, authorization, input schema, rate limit, and audit logging coverage.",
+        ))
+    if int(recon.get("auth_surface_count") or 0) or "auth" in endpoint_categories:
+        plan.append(_owner_step(
+            item_id="owner-auth-abuse-drill",
+            priority="high",
+            category="auth_abuse_resistance",
+            title="Run a controlled authentication abuse-resistance drill",
+            why="Public evidence can show auth surfaces, but only owner-side tests can prove throttling, lockout, enumeration resistance, and alerting.",
+            steps=[
+                "Use a staging or owner-approved production window with a tiny capped request volume.",
+                "Verify failed login, token refresh, password reset, signup, and MFA flows throttle consistently.",
+                "Confirm monitoring creates useful alerts without revealing whether an account exists.",
+            ],
+            validation="Auth flows throttle safely, account enumeration is not exposed, and alerts contain enough context for response.",
+        ))
+    if "graphql" in endpoint_categories or recon.get("graphql_public"):
+        plan.append(_owner_step(
+            item_id="owner-graphql-policy-review",
+            priority="medium",
+            category="graphql",
+            title="Review GraphQL introspection, resolver authorization and query limits",
+            why="GraphQL surfaces can hide large functionality behind one endpoint, so route discovery alone is not enough.",
+            steps=[
+                "Confirm introspection and playground access policy for production.",
+                "Review resolver-level authorization for sensitive objects and tenant boundaries.",
+                "Set query depth, complexity, timeout and rate-limit controls.",
+            ],
+            validation="Unauthorized sensitive queries fail, complexity limits work, and public introspection is intentionally documented or disabled.",
+        ))
+    if "realtime" in endpoint_categories or recon.get("realtime_public"):
+        plan.append(_owner_step(
+            item_id="owner-realtime-quota-review",
+            priority="medium",
+            category="realtime",
+            title="Verify realtime namespace authorization and connection quotas",
+            why="Socket.IO/WebSocket endpoints need connection-level and message-level controls, not just HTTP headers.",
+            steps=[
+                "Map every namespace/channel to an auth and authorization rule.",
+                "Verify unauthenticated clients cannot subscribe to private data.",
+                "Confirm connection quotas, heartbeat timeouts and abuse monitoring.",
+            ],
+            validation="Unauthorized subscriptions fail, excessive connection attempts throttle, and noisy clients are observable.",
+        ))
+    if "outbound_fetch" in endpoint_categories or any("ssrf_review" in (item.get("risk_reasons") or []) for item in endpoints):
+        plan.append(_owner_step(
+            item_id="owner-ssrf-url-input-review",
+            priority="high",
+            category="ssrf",
+            title="Review URL-fetching, webhook, import and proxy inputs for SSRF controls",
+            why="RiftProbe had SSRF payload families; CyberAtlas keeps this safe by flagging the code paths that need owner-side validation.",
+            steps=[
+                "Find every route that accepts URLs, callbacks, webhooks, imports, fetch/proxy targets, or file URLs.",
+                "Verify allowlists, DNS rebinding protections, private IP blocking, redirect limits and response size/time limits.",
+                "Add regression tests for internal, loopback, metadata, file and redirect-to-private destinations.",
+            ],
+            validation="Outbound fetch flows cannot reach private/internal targets and fail closed on redirects, rebinding and oversized responses.",
+        ))
+    if "file_transfer" in endpoint_categories or any("file_handling_review" in (item.get("risk_reasons") or []) for item in endpoints):
+        plan.append(_owner_step(
+            item_id="owner-file-upload-review",
+            priority="high",
+            category="file_handling",
+            title="Review upload, import, export and file-serving controls",
+            why="File handling is where traversal, unsafe content types, public buckets and oversized payloads often appear.",
+            steps=[
+                "Verify allowed MIME types, extensions, storage location, antivirus/scanning, and maximum size.",
+                "Confirm uploaded files cannot execute as HTML/JS and cannot overwrite server paths.",
+                "Check exports do not leak cross-tenant data and downloads require authorization.",
+            ],
+            validation="File flows enforce type/size/path/tenant controls and serve untrusted files with safe content disposition.",
+        ))
+    if "browser_hardening" in buckets or "cors" in categories or int(frontend.get("third_party_script_without_sri_count") or 0):
+        plan.append(_owner_step(
+            item_id="owner-browser-xss-policy-review",
+            priority="medium",
+            category="browser_xss",
+            title="Validate browser XSS blast-radius controls",
+            why="Instead of firing XSS payloads, CyberAtlas checks whether CSP, framing, SRI and CORS reduce the blast radius if an injection bug exists.",
+            steps=[
+                "Deploy CSP in report-only, remove unsafe-inline/wildcards where possible, then enforce.",
+                "Review third-party scripts for SRI or compensating CSP/vendor controls.",
+                "Confirm sensitive API routes do not use wildcard CORS with credentials.",
+            ],
+            validation="CSP reports are clean, third-party script policy is documented, and sensitive CORS behavior is restricted.",
+        ))
+    if int(frontend.get("source_map_count") or 0) or frontend.get("private_backend_hosts") or frontend.get("secret_name_hints"):
+        plan.append(_owner_step(
+            item_id="owner-frontend-bundle-secret-review",
+            priority="medium",
+            category="frontend_exposure",
+            title="Review production bundles for source maps, private origins and secret-like config",
+            why="Frontend bundles often reveal implementation details that make later attacks easier even when no vulnerability is directly proven.",
+            steps=[
+                "Inspect the production build artifact list and disable public source maps unless intentionally needed.",
+                "Search bundles for private origins, local hosts, token names and public config values.",
+                "Move secrets and environment-specific backend URLs to server-side configuration.",
+            ],
+            validation="Fresh production bundles contain no reachable source maps, private hosts, or real secrets.",
+        ))
+    if any(item in ids for item in SENSITIVE_PATHS.values()):
+        plan.append(_owner_step(
+            item_id="owner-exposure-incident-review",
+            priority="critical",
+            category="exposure_response",
+            title="Treat confirmed sensitive artifact exposure as an incident review",
+            why="Public .env/.git/debug/config evidence can leak secrets or enough implementation detail to require rotation.",
+            steps=[
+                "Remove the artifact from public deployment and block the path at the edge.",
+                "Review access logs to estimate exposure window and rotate possibly leaked credentials.",
+                "Add deployment checks that fail if sensitive artifacts are present.",
+            ],
+            validation="The path is blocked, impacted secrets are rotated, and CI prevents reintroduction.",
+        ))
+    if not plan:
+        plan.append(_owner_step(
+            item_id="owner-security-regression-suite",
+            priority="low",
+            category="security_operations",
+            title="Create a lightweight security regression suite",
+            why="Even when public evidence looks healthy, owner-side regression tests keep auth, headers, CORS and API contracts from drifting.",
+            steps=[
+                "Add tests for security headers, sensitive routes, auth failures and OpenAPI security declarations.",
+                "Run CyberAtlas after releases and compare against the previous audit.",
+                "Track exceptions explicitly instead of letting warnings become background noise.",
+            ],
+            validation="Security regressions fail CI or create visible release-blocking tasks.",
+        ))
+    plan.sort(key=lambda item: _priority_rank(item.get("priority", "")), reverse=True)
+    return plan[:12]
+
+
+def _build_attack_paths(snapshot: Dict[str, Any], findings: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    ids = {str(item.get("id") or "") for item in findings}
+    buckets = {str(item.get("bucket") or "") for item in findings}
+    recon = snapshot.get("recon_summary") or {}
+    frontend = snapshot.get("frontend_hints") or {}
+    api_inventory = snapshot.get("api_inventory") or {}
+    openapi = snapshot.get("openapi") or {}
+    paths: List[Dict[str, Any]] = []
+    if any(item in ids for item in SENSITIVE_PATHS.values()):
+        paths.append({
+            "id": "artifact-to-secret-rotation",
+            "severity": "critical",
+            "title": "Public artifact exposure can become a secret-rotation incident",
+            "chain": ["Sensitive path reachable", "Implementation/secrets may leak", "Credentials need rotation if confirmed"],
+            "breakpoints": ["Block artifact paths", "Remove artifact from deploy", "Rotate exposed credentials", "Add CI guard"],
+        })
+    if int(openapi.get("endpoint_count") or 0) or int(api_inventory.get("public_sensitive_count") or 0):
+        paths.append({
+            "id": "endpoint-map-to-access-control-review",
+            "severity": "high" if int(api_inventory.get("public_sensitive_count") or 0) else "medium",
+            "title": "Endpoint discovery increases the need for access-control proof",
+            "chain": ["OpenAPI/API inventory reveals route map", "Sensitive route names are easier to prioritize", "Authorization mistakes become higher impact"],
+            "breakpoints": ["Restrict public docs", "Verify auth per route", "Match OpenAPI security declarations", "Add audit logs"],
+        })
+    if int(recon.get("auth_surface_count") or 0) and not (snapshot.get("protections") or {}).get("rate_limit_detected"):
+        paths.append({
+            "id": "auth-surface-to-automation-risk",
+            "severity": "medium",
+            "title": "Authentication surface needs owner-side abuse resistance proof",
+            "chain": ["Login/token/password routes detected", "No visible rate-limit signal", "Automation resistance cannot be proven from public headers"],
+            "breakpoints": ["Account/IP throttles", "Enumeration-safe responses", "Bot/WAF rules", "Alerting on bursts"],
+        })
+    if int(frontend.get("source_map_count") or 0) or frontend.get("private_backend_hosts"):
+        paths.append({
+            "id": "bundle-exposure-to-backend-recon",
+            "severity": "medium",
+            "title": "Frontend bundle hints can expose backend and implementation details",
+            "chain": ["Client bundle exposes source maps or backend hosts", "Internal route names and config become easier to inspect", "API probing becomes more targeted"],
+            "breakpoints": ["Disable public source maps", "Remove private origins", "Keep secrets server-side", "Review bundle release artifacts"],
+        })
+    if "browser_hardening" in buckets:
+        paths.append({
+            "id": "weak-browser-policy-to-xss-blast-radius",
+            "severity": "medium",
+            "title": "Weak browser policy increases XSS blast radius if an injection bug appears",
+            "chain": ["CSP/framing/SRI controls are weak or missing", "A future injection has fewer browser guardrails", "Session and user data exposure impact rises"],
+            "breakpoints": ["Nonce/hash CSP", "frame-ancestors", "SRI or strict script-src", "Referrer and permissions policy"],
+        })
+    return paths[:8]
+
+
+def _finding_standards(item: Dict[str, Any]) -> List[Dict[str, str]]:
+    finding_id = str(item.get("id") or "").lower()
+    category = str(item.get("category") or "").lower()
+    bucket = str(item.get("bucket") or "").lower()
+    title = str(item.get("title") or "").lower()
+    text = " ".join([finding_id, category, bucket, title])
+    refs: List[Dict[str, str]] = []
+
+    def add(framework: str, ref_id: str, label: str) -> None:
+        marker = (framework, ref_id)
+        if marker not in {(entry["framework"], entry["id"]) for entry in refs}:
+            refs.append({"framework": framework, "id": ref_id, "label": label})
+
+    if any(token in text for token in ("api_exposure", "access", "authorization", "admin", "sensitive-api", "state-changing")):
+        add("OWASP Top 10 2021", "A01", "Broken Access Control")
+        add("ASVS", "V4", "Access Control")
+        add("CWE", "CWE-284", "Improper Access Control")
+    if any(token in text for token in ("transport", "tls", "hsts", "cookie", "session")):
+        add("OWASP Top 10 2021", "A02", "Cryptographic Failures")
+        add("ASVS", "V9", "Communications")
+        add("ASVS", "V3", "Session Management")
+        add("CWE", "CWE-319", "Cleartext Transmission")
+    if any(token in text for token in ("csp", "xss", "cors", "csrf", "nosniff", "browser_security")):
+        add("OWASP Top 10 2021", "A03", "Injection")
+        add("ASVS", "V5", "Validation, Sanitization and Encoding")
+        add("CWE", "CWE-79", "Cross-site Scripting")
+    if any(token in text for token in ("debug", "server-status", "phpinfo", "openapi", "swagger", "trace", "security_headers", "misconfiguration")):
+        add("OWASP Top 10 2021", "A05", "Security Misconfiguration")
+        add("ASVS", "V14", "Configuration")
+        add("CWE", "CWE-16", "Configuration")
+    if any(token in text for token in ("auth", "login", "password", "rate-limit", "brute", "token")):
+        add("OWASP Top 10 2021", "A07", "Identification and Authentication Failures")
+        add("ASVS", "V2", "Authentication")
+        add("CWE", "CWE-307", "Improper Restriction of Excessive Authentication Attempts")
+    if any(token in text for token in ("sri", "source-map", "bundle", "supply_chain", "source maps")):
+        add("OWASP Top 10 2021", "A08", "Software and Data Integrity Failures")
+        add("ASVS", "V14", "Configuration")
+        add("CWE", "CWE-494", "Download of Code Without Integrity Check")
+    if any(token in text for token in ("error", "disclosure", "fingerprint", "security.txt", "monitor", "logging")):
+        add("OWASP Top 10 2021", "A09", "Security Logging and Monitoring Failures")
+        add("ASVS", "V7", "Error Handling and Logging")
+        add("CWE", "CWE-200", "Exposure of Sensitive Information")
+    if any(token in text for token in ("ssrf", "proxy", "fetch", "webhook", "callback", "outbound")):
+        add("OWASP Top 10 2021", "A10", "Server-Side Request Forgery")
+        add("ASVS", "V12", "File and Resources")
+        add("CWE", "CWE-918", "Server-Side Request Forgery")
+    if any(token in text for token in ("upload", "file", "import", "export")):
+        add("ASVS", "V12", "File and Resources")
+        add("CWE", "CWE-434", "Unrestricted Upload of File with Dangerous Type")
+    return refs
+
+
+def _severity_max(items: List[Dict[str, Any]]) -> str:
+    order = {"critical": 4, "high": 3, "medium": 2, "low": 1, "info": 0}
+    winner = "info"
+    for item in items:
+        severity = str(item.get("severity") or "info").lower()
+        if order.get(severity, 0) > order.get(winner, 0):
+            winner = severity
+    return winner
+
+
+def _build_standard_map(findings: List[Dict[str, Any]], snapshot: Dict[str, Any]) -> List[Dict[str, Any]]:
+    standards = {
+        ("OWASP Top 10 2021", "A01"): {
+            "label": "Broken Access Control",
+            "action": "Review sensitive routes, tenant boundaries, role checks and default-deny authorization.",
+        },
+        ("OWASP Top 10 2021", "A02"): {
+            "label": "Cryptographic Failures",
+            "action": "Verify HTTPS canonicalization, HSTS, secure cookies and transport guarantees.",
+        },
+        ("OWASP Top 10 2021", "A03"): {
+            "label": "Injection",
+            "action": "Ship CSP/CORS/CSRF/input-validation controls and test fail-closed behavior.",
+        },
+        ("OWASP Top 10 2021", "A05"): {
+            "label": "Security Misconfiguration",
+            "action": "Remove debug/docs/artifacts from public exposure and harden security headers.",
+        },
+        ("OWASP Top 10 2021", "A07"): {
+            "label": "Identification and Authentication Failures",
+            "action": "Verify auth throttling, token lifecycle, lockout/backoff and enumeration-safe responses.",
+        },
+        ("OWASP Top 10 2021", "A08"): {
+            "label": "Software and Data Integrity Failures",
+            "action": "Review source maps, third-party scripts, SRI/CSP and release artifact integrity.",
+        },
+        ("OWASP Top 10 2021", "A09"): {
+            "label": "Security Logging and Monitoring Failures",
+            "action": "Publish security contact paths and verify security events are logged and alertable.",
+        },
+        ("OWASP Top 10 2021", "A10"): {
+            "label": "Server-Side Request Forgery",
+            "action": "Review URL-fetching, webhook and proxy flows for private-network blocking.",
+        },
+        ("ASVS", "V2"): {"label": "Authentication", "action": "Confirm authentication controls and abuse resistance."},
+        ("ASVS", "V3"): {"label": "Session Management", "action": "Confirm cookie flags, SameSite behavior and session lifecycle."},
+        ("ASVS", "V4"): {"label": "Access Control", "action": "Map every protected action to an authorization rule."},
+        ("ASVS", "V5"): {"label": "Validation, Sanitization and Encoding", "action": "Validate and encode untrusted input/output paths."},
+        ("ASVS", "V7"): {"label": "Error Handling and Logging", "action": "Sanitize public errors and log actionable security events."},
+        ("ASVS", "V9"): {"label": "Communications", "action": "Enforce secure transport and reviewed TLS/HSTS policy."},
+        ("ASVS", "V12"): {"label": "File and Resources", "action": "Harden file, webhook, fetch, upload and download flows."},
+        ("ASVS", "V14"): {"label": "Configuration", "action": "Harden deploy config, headers, docs and public artifacts."},
+    }
+    grouped: Dict[Tuple[str, str], List[Dict[str, Any]]] = {key: [] for key in standards}
+    for item in findings:
+        item["standards"] = _finding_standards(item)
+        for ref in item["standards"]:
+            key = (ref["framework"], ref["id"])
+            if key in grouped:
+                grouped[key].append(item)
+
+    owner_plan = snapshot.get("owner_verification_plan") or []
+    owner_categories = {str(item.get("category") or "") for item in owner_plan}
+    if "ssrf" in owner_categories:
+        grouped.setdefault(("OWASP Top 10 2021", "A10"), [])
+    rows: List[Dict[str, Any]] = []
+    for (framework, ref_id), meta in standards.items():
+        matched = grouped.get((framework, ref_id), [])
+        owner_review = (
+            (ref_id == "A10" and "ssrf" in owner_categories)
+            or (ref_id == "V12" and {"ssrf", "file_handling"}.intersection(owner_categories))
+        )
+        if matched:
+            status = "attention"
+        elif owner_review:
+            status = "owner_review"
+        else:
+            status = "clear"
+        rows.append({
+            "framework": framework,
+            "id": ref_id,
+            "label": meta["label"],
+            "status": status,
+            "severity": _severity_max(matched),
+            "finding_count": len(matched),
+            "finding_ids": [str(item.get("id") or "") for item in matched[:12]],
+            "action": meta["action"],
+        })
+    rows.sort(key=lambda item: (item["framework"], item["id"]))
+    return rows
+
+
+def _ticket_effort(item: Dict[str, Any]) -> str:
+    text = " ".join(str(item.get(key) or "").lower() for key in ("id", "category", "title", "description"))
+    if any(token in text for token in ("access-control", "auth", "ssrf", "file", "graphql", "realtime")):
+        return "M"
+    if any(token in text for token in ("headers", "csp", "cookie", "source map", "sri")):
+        return "S"
+    return "M"
+
+
+def _build_security_tickets(
+    findings: List[Dict[str, Any]],
+    action_plan: List[Dict[str, Any]],
+    owner_plan: List[Dict[str, Any]],
+    standard_map: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    tickets: List[Dict[str, Any]] = []
+    standard_lookup = {
+        finding_id: [
+            f"{item.get('framework')} {item.get('id')}"
+            for item in standard_map
+            if finding_id in (item.get("finding_ids") or [])
+        ]
+        for finding_id in {str(finding.get("id") or "") for finding in findings}
+    }
+    finding_lookup = {str(item.get("id") or ""): item for item in findings}
+    for item in action_plan:
+        related = [
+            str(finding.get("id") or "")
+            for finding in findings
+            if str(finding.get("bucket") or "") in str(item.get("id") or "")
+            or str(finding.get("category") or "") in str(item.get("id") or "")
+        ][:8]
+        if not related and findings:
+            related = [str(findings[0].get("id") or "")]
+        standards = sorted({ref for finding_id in related for ref in standard_lookup.get(finding_id, [])})
+        tickets.append({
+            "id": f"cyberatlas-remediate-{item.get('id') or item.get('order')}",
+            "type": "remediation",
+            "priority": item.get("priority") or "medium",
+            "effort": _ticket_effort(item),
+            "title": item.get("title") or item.get("id") or "Security remediation",
+            "summary": item.get("description") or "",
+            "implementation": item.get("action") or "",
+            "implementation_prompt": item.get("action") or "",
+            "acceptance_criteria": item.get("validation") or "",
+            "validation_steps": [item.get("validation") or ""],
+            "related_finding_ids": related,
+            "standards": standards,
+            "owner_mode_required": False,
+        })
+    for item in owner_plan:
+        tickets.append({
+            "id": f"cyberatlas-owner-{item.get('id')}",
+            "type": "owner_verification",
+            "priority": item.get("priority") or "medium",
+            "effort": _ticket_effort(item),
+            "title": item.get("title") or item.get("id") or "Owner verification",
+            "summary": item.get("why") or "",
+            "implementation": "Run the controlled verification steps in an authorized environment.",
+            "implementation_prompt": "Run the controlled verification steps in an authorized environment, then document the result and the evidence location.",
+            "acceptance_criteria": item.get("validation") or "",
+            "validation_steps": item.get("safe_steps") or [],
+            "related_finding_ids": [
+                finding_id for finding_id, finding in finding_lookup.items()
+                if str(finding.get("bucket") or "") in str(item.get("category") or "")
+                or str(finding.get("category") or "") in str(item.get("category") or "")
+            ][:8],
+            "standards": [],
+            "owner_mode_required": True,
+        })
+    tickets.sort(key=lambda item: (_priority_rank(item.get("priority", "")), item.get("type") == "remediation"), reverse=True)
+    return tickets[:24]
+
+
+def _build_evidence_graph(snapshot: Dict[str, Any], findings: List[Dict[str, Any]]) -> Dict[str, Any]:
+    summary_nodes = [
+        {"id": "target", "label": "Target", "kind": "entry", "weight": 1},
+        {"id": "tls", "label": "TLS", "kind": "control", "weight": 1},
+        {"id": "headers", "label": "Security headers", "kind": "control", "weight": 1},
+        {"id": "frontend", "label": "Frontend bundle", "kind": "surface", "weight": int((snapshot.get("frontend_hints") or {}).get("api_reference_count") or 0)},
+        {"id": "api", "label": "API inventory", "kind": "surface", "weight": int((snapshot.get("api_inventory") or {}).get("endpoint_count") or 0)},
+        {"id": "auth", "label": "Auth surface", "kind": "surface", "weight": int((snapshot.get("recon_summary") or {}).get("auth_surface_count") or 0)},
+        {"id": "edge", "label": "Edge protection", "kind": "control", "weight": len((snapshot.get("protections") or {}).get("cdn") or [])},
+    ]
+    finding_nodes = [
+        {
+            "id": f"finding:{item.get('id')}",
+            "label": str(item.get("title") or item.get("id") or "")[:80],
+            "kind": "finding",
+            "severity": item.get("severity"),
+            "weight": _priority_rank(str(item.get("severity") or "")),
+        }
+        for item in findings[:10]
+    ]
+    edges = [
+        {"from": "target", "to": "tls", "label": "transport"},
+        {"from": "target", "to": "headers", "label": "browser policy"},
+        {"from": "target", "to": "frontend", "label": "HTML/assets"},
+        {"from": "frontend", "to": "api", "label": "API refs"},
+        {"from": "api", "to": "auth", "label": "auth routes"},
+        {"from": "target", "to": "edge", "label": "edge signals"},
+    ]
+    for item in findings[:10]:
+        bucket = str(item.get("bucket") or "")
+        target = "api" if "api" in bucket else "frontend" if bucket in {"app_exposure", "browser_hardening"} else "auth" if "session" in bucket else "headers"
+        edges.append({"from": target, "to": f"finding:{item.get('id')}", "label": str(item.get("severity") or "")})
+    return {
+        "nodes": summary_nodes + finding_nodes,
+        "edges": edges,
+        "note": "Graph is an explanatory evidence map, not an exploit chain.",
+    }
+
+
 def run_site_audit(
     target_url: str,
     *,
@@ -2041,9 +2710,32 @@ def run_site_audit(
             "note": "CyberAtlas v1 performs defensive HTTP evidence collection and safe exposure probes only; it does not exploit or brute-force targets.",
         },
     }
+    coverage = _build_coverage_summary(snapshot, findings)
+    owner_verification_plan = _build_owner_verification_plan(snapshot, findings)
+    attack_paths = _build_attack_paths(snapshot, findings)
+    snapshot["coverage"] = coverage
+    snapshot["owner_verification_plan"] = owner_verification_plan
+    snapshot["attack_paths"] = attack_paths
+    standard_map = _build_standard_map(findings, snapshot)
+    evidence_graph = _build_evidence_graph(snapshot, findings)
+    snapshot["standard_map"] = standard_map
+    snapshot["evidence_graph"] = evidence_graph
+    summary.update({
+        "coverage_confidence": int(coverage.get("confidence_score") or 0),
+        "owner_verification_count": len(owner_verification_plan),
+        "attack_path_count": len(attack_paths),
+        "standard_attention_count": len([item for item in standard_map if item.get("status") == "attention"]),
+        "standard_owner_review_count": len([item for item in standard_map if item.get("status") == "owner_review"]),
+        "evidence_graph_node_count": len(evidence_graph.get("nodes") or []),
+        "dangerous_method_count": int(api_inventory.get("dangerous_method_count") or 0),
+        "external_backend_host_count": len(frontend_hints.get("backend_hosts") or []),
+    })
     _emit(progress_callback, "score", 90, "Building remediation action plan")
     recommendations = _build_recommendations(findings=findings, summary=summary, snapshot=snapshot)
     action_plan = _build_action_plan(recommendations)
+    security_tickets = _build_security_tickets(findings, action_plan, owner_verification_plan, standard_map)
+    snapshot["security_tickets"] = security_tickets
+    summary["security_ticket_count"] = len(security_tickets)
     return {
         "summary": summary,
         "snapshot": snapshot,
@@ -2052,5 +2744,11 @@ def run_site_audit(
         "remediation_items": _build_remediation_items(findings),
         "recommendations": recommendations,
         "action_plan": action_plan,
+        "owner_verification_plan": owner_verification_plan,
+        "attack_paths": attack_paths,
+        "coverage": coverage,
+        "standard_map": standard_map,
+        "security_tickets": security_tickets,
+        "evidence_graph": evidence_graph,
         "owner_context": {},
     }

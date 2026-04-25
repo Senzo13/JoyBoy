@@ -70,6 +70,11 @@ def build_executive_summary(audit: Dict[str, Any]) -> str:
             f"Edge protection signals: CDN={cdn}, WAF={bool(protections.get('waf_detected'))}, "
             f"rate-limit={bool(protections.get('rate_limit_detected'))}."
         )
+    if int(summary.get("standard_attention_count") or 0) or int(summary.get("security_ticket_count") or 0):
+        lines.append(
+            f"Standards and execution: {summary.get('standard_attention_count', 0)} control area(s) need attention, "
+            f"{summary.get('security_ticket_count', 0)} security ticket(s) generated."
+        )
     blocking = summary.get("blocking_risk") or {}
     if blocking.get("level") not in {"", "Low", None}:
         lines.append(f"Blocking risk: {blocking.get('level')} - {blocking.get('summary')}")
@@ -97,6 +102,12 @@ def build_markdown_report(audit: Dict[str, Any]) -> str:
     findings = audit.get("findings") or []
     remediation = audit.get("remediation_items") or []
     action_plan = audit.get("action_plan") or []
+    owner_plan = audit.get("owner_verification_plan") or snapshot.get("owner_verification_plan") or []
+    attack_paths = audit.get("attack_paths") or snapshot.get("attack_paths") or []
+    coverage = audit.get("coverage") or snapshot.get("coverage") or {}
+    standard_map = audit.get("standard_map") or snapshot.get("standard_map") or []
+    security_tickets = audit.get("security_tickets") or snapshot.get("security_tickets") or []
+    evidence_graph = audit.get("evidence_graph") or snapshot.get("evidence_graph") or {}
     recommendations = audit.get("recommendations") or []
     comparison = audit.get("comparison") or {}
     surface_matrix = snapshot.get("surface_matrix") or []
@@ -148,6 +159,59 @@ def build_markdown_report(audit: Dict[str, Any]) -> str:
     else:
         lines.extend(["- No action plan was generated.", ""])
     lines.extend([
+        "## Standards Map",
+        "",
+        "- Mapping is deterministic and defensive. It helps prioritize remediation against common OWASP/ASVS/CWE families; it is not a certification claim.",
+        "",
+    ])
+    if standard_map:
+        for item in standard_map:
+            if item.get("status") == "clear":
+                continue
+            lines.extend([
+                f"### {item.get('framework')} {item.get('id')} - {item.get('label')}",
+                "",
+                f"- Status: `{item.get('status')}`",
+                f"- Severity: `{item.get('severity')}`",
+                f"- Finding count: `{item.get('finding_count', 0)}`",
+                f"- Finding IDs: `{', '.join(item.get('finding_ids') or []) or 'none'}`",
+                f"- Next action: {item.get('action')}",
+                "",
+            ])
+    else:
+        lines.extend(["- No standard mapping was generated.", ""])
+    lines.extend([
+        "## Security Tickets",
+        "",
+        "- These tickets are safe remediation or owner-verification tasks designed to be handed to a developer or another AI.",
+        "",
+    ])
+    if security_tickets:
+        for item in security_tickets:
+            lines.extend([
+                f"### {item.get('title')}",
+                "",
+                f"- Ticket ID: `{item.get('id')}`",
+                f"- Type: `{item.get('type')}`",
+                f"- Priority: `{item.get('priority')}`",
+                f"- Effort: `{item.get('effort')}`",
+                f"- Owner mode required: `{bool(item.get('owner_mode_required'))}`",
+                f"- Summary: {item.get('summary')}",
+                f"- Implementation prompt: {item.get('implementation_prompt') or item.get('implementation')}",
+                f"- Acceptance criteria: {item.get('acceptance_criteria')}",
+                f"- Related findings: `{', '.join(item.get('related_finding_ids') or []) or 'none'}`",
+                f"- Standards: `{', '.join(item.get('standards') or []) or 'none'}`",
+                "",
+            ])
+            steps = item.get("validation_steps") or []
+            if steps:
+                lines.append("Validation steps:")
+                for step in steps[:6]:
+                    lines.append(f"- {step}")
+                lines.append("")
+    else:
+        lines.extend(["- No security ticket was generated.", ""])
+    lines.extend([
         "## Attack Surface Matrix",
         "",
     ])
@@ -164,6 +228,84 @@ def build_markdown_report(audit: Dict[str, Any]) -> str:
             lines.append("")
     else:
         lines.extend(["- No surface matrix was generated.", ""])
+    lines.extend([
+        "## Owner Verification Plan",
+        "",
+        "- These are controlled follow-up checks for the site owner. They are not exploit payloads and should run only with authorization.",
+        "",
+    ])
+    if owner_plan:
+        for item in owner_plan:
+            lines.extend([
+                f"### {item.get('title')}",
+                "",
+                f"- Priority: `{item.get('priority')}`",
+                f"- Category: `{item.get('category')}`",
+                f"- Owner mode required: `{bool(item.get('owner_mode_required'))}`",
+                f"- Why: {item.get('why')}",
+                f"- Validation: {item.get('validation')}",
+                "",
+                "Safe steps:",
+            ])
+            for step in item.get("safe_steps") or []:
+                lines.append(f"- {step}")
+            lines.append("")
+    else:
+        lines.extend(["- No owner verification plan was generated.", ""])
+    lines.extend(["## Likely Risk Paths", ""])
+    if attack_paths:
+        for item in attack_paths:
+            lines.extend([
+                f"### {item.get('title')}",
+                "",
+                f"- Severity: `{item.get('severity')}`",
+                "- Chain:",
+            ])
+            for link in item.get("chain") or []:
+                lines.append(f"- {link}")
+            lines.append("- Breakpoints:")
+            for breakpoint in item.get("breakpoints") or []:
+                lines.append(f"- {breakpoint}")
+            lines.append("")
+    else:
+        lines.extend(["- No chained risk path was generated from the sampled evidence.", ""])
+    lines.extend(["## Evidence Graph", ""])
+    graph_nodes = evidence_graph.get("nodes") or []
+    graph_edges = evidence_graph.get("edges") or []
+    if graph_nodes or graph_edges:
+        if evidence_graph.get("note"):
+            lines.extend([f"- Note: {evidence_graph.get('note')}", ""])
+        lines.append("Nodes:")
+        for node in graph_nodes[:24]:
+            lines.append(
+                f"- `{node.get('id')}` - {node.get('label')} ({node.get('kind') or 'node'}, weight `{node.get('weight', 0)}`)"
+            )
+        lines.append("")
+        lines.append("Edges:")
+        for edge in graph_edges[:32]:
+            lines.append(f"- `{edge.get('from')}` -> `{edge.get('to')}`: {edge.get('label')}")
+        lines.append("")
+    else:
+        lines.extend(["- No evidence graph was generated.", ""])
+    lines.extend([
+        "## Audit Coverage",
+        "",
+        f"- Coverage confidence: `{coverage.get('confidence_score', 'n/a')}`",
+        f"- Confirmed findings: `{coverage.get('confirmed_findings', 0)}`",
+        f"- Strong-signal findings: `{coverage.get('strong_signal_findings', 0)}`",
+        f"- Estimated findings: `{coverage.get('estimated_findings', 0)}`",
+        f"- Public-mode limit: {coverage.get('public_mode_limit') or 'n/a'}",
+        "",
+    ])
+    for item in coverage.get("checks") or []:
+        lines.extend([
+            f"### {item.get('label') or item.get('id')}",
+            "",
+            f"- Status: `{item.get('status')}`",
+            f"- Evidence count: `{item.get('evidence_count')}`",
+            f"- Limit: {item.get('limit')}",
+            "",
+        ])
     lines.extend([
         "## Previous Audit Comparison",
         "",
@@ -245,9 +387,10 @@ def build_markdown_report(audit: Dict[str, Any]) -> str:
         for endpoint in inventory_endpoints[:40]:
             auth = "auth required" if endpoint.get("requires_auth") else "public/unknown auth"
             methods = ", ".join(endpoint.get("allowed_methods") or []) or "not declared"
+            reasons = ", ".join(endpoint.get("risk_reasons") or []) or "none"
             lines.append(
                 f"- `{endpoint.get('path')}` - HTTP `{endpoint.get('status_code')}`, {auth}, "
-                f"type `{endpoint.get('response_type')}`, methods `{methods}`"
+                f"type `{endpoint.get('response_type')}`, category `{endpoint.get('category') or 'unknown'}`, methods `{methods}`, risk hints `{reasons}`"
             )
     else:
         lines.append("- No additional endpoint inventory signals were found.")
@@ -362,7 +505,10 @@ def build_ai_fix_prompt(audit: Dict[str, Any]) -> str:
 
 def build_security_gate_payload(audit: Dict[str, Any]) -> Dict[str, Any]:
     summary = audit.get("summary") or {}
+    snapshot = audit.get("snapshot") or {}
     findings = audit.get("findings") or []
+    standard_map = audit.get("standard_map") or snapshot.get("standard_map") or []
+    security_tickets = audit.get("security_tickets") or snapshot.get("security_tickets") or []
     failures: List[str] = []
     warnings: List[str] = []
     if str(audit.get("status") or "").lower() != "done":
@@ -381,6 +527,11 @@ def build_security_gate_payload(audit: Dict[str, Any]) -> Dict[str, Any]:
         warnings.append(f"{summary.get('public_sensitive_endpoint_count')} sensitive-looking public endpoint signal(s) need review.")
     if int(summary.get("source_map_count") or 0) > 0:
         warnings.append(f"{summary.get('source_map_count')} public source map signal(s) were detected.")
+    if int(summary.get("dangerous_method_count") or 0) > 0:
+        warnings.append(f"{summary.get('dangerous_method_count')} public endpoint(s) advertise write-capable HTTP methods.")
+    attention_standards = [item for item in standard_map if item.get("status") == "attention"]
+    if len(attention_standards) >= 4:
+        warnings.append(f"{len(attention_standards)} OWASP/ASVS control area(s) need remediation attention.")
     return {
         "schema": "joyboy.cyberatlas.security_gate.v1",
         "audit_id": audit.get("id") or "",
@@ -394,9 +545,18 @@ def build_security_gate_payload(audit: Dict[str, Any]) -> Dict[str, Any]:
         "high_count": summary.get("high_count", 0),
         "public_sensitive_endpoint_count": summary.get("public_sensitive_endpoint_count", 0),
         "source_map_count": summary.get("source_map_count", 0),
+        "coverage_confidence": summary.get("coverage_confidence", 0),
+        "owner_verification_count": summary.get("owner_verification_count", 0),
+        "attack_path_count": summary.get("attack_path_count", 0),
+        "standard_attention_count": summary.get("standard_attention_count", len(attention_standards)),
+        "security_ticket_count": summary.get("security_ticket_count", len(security_tickets)),
+        "dangerous_method_count": summary.get("dangerous_method_count", 0),
         "failures": failures,
         "warnings": warnings,
         "action_plan": audit.get("action_plan") or [],
+        "owner_verification_plan": audit.get("owner_verification_plan") or (audit.get("snapshot") or {}).get("owner_verification_plan") or [],
+        "standard_map": standard_map,
+        "security_tickets": security_tickets,
         "top_findings": findings[:8],
     }
 
@@ -419,6 +579,12 @@ def build_evidence_pack(audit: Dict[str, Any]) -> Dict[str, Any]:
         "protections": snapshot.get("protections") or {},
         "recon_summary": snapshot.get("recon_summary") or {},
         "surface_matrix": snapshot.get("surface_matrix") or [],
+        "coverage": audit.get("coverage") or snapshot.get("coverage") or {},
+        "owner_verification_plan": audit.get("owner_verification_plan") or snapshot.get("owner_verification_plan") or [],
+        "attack_paths": audit.get("attack_paths") or snapshot.get("attack_paths") or [],
+        "standard_map": audit.get("standard_map") or snapshot.get("standard_map") or [],
+        "security_tickets": audit.get("security_tickets") or snapshot.get("security_tickets") or [],
+        "evidence_graph": audit.get("evidence_graph") or snapshot.get("evidence_graph") or {},
         "comparison": audit.get("comparison") or {},
         "findings": audit.get("findings") or [],
         "remediation_items": audit.get("remediation_items") or [],
@@ -429,6 +595,7 @@ def build_evidence_pack(audit: Dict[str, Any]) -> Dict[str, Any]:
 
 def build_report_html(audit: Dict[str, Any]) -> str:
     summary = audit.get("summary") or {}
+    snapshot = audit.get("snapshot") or {}
     counts = _severity_counts(audit)
     score_cards = "".join(
         f"<div class='score-card'><div class='label'>{html_escape(str(score.get('label')))}</div>"
@@ -453,6 +620,36 @@ def build_report_html(audit: Dict[str, Any]) -> str:
         f"<td>{html_escape(str(item.get('action') or ''))}</td>"
         "</tr>"
         for item in (audit.get("action_plan") or [])
+    )
+    owner_rows = "".join(
+        "<tr>"
+        f"<td>{html_escape(str(item.get('priority') or ''))}</td>"
+        f"<td>{html_escape(str(item.get('category') or ''))}</td>"
+        f"<td>{html_escape(str(item.get('title') or ''))}</td>"
+        f"<td>{html_escape(str(item.get('validation') or ''))}</td>"
+        "</tr>"
+        for item in (audit.get("owner_verification_plan") or (audit.get("snapshot") or {}).get("owner_verification_plan") or [])
+    )
+    standard_rows = "".join(
+        "<tr>"
+        f"<td>{html_escape(str(item.get('framework') or ''))} {html_escape(str(item.get('id') or ''))}</td>"
+        f"<td>{html_escape(str(item.get('label') or ''))}</td>"
+        f"<td>{html_escape(str(item.get('status') or ''))}</td>"
+        f"<td>{html_escape(str(item.get('severity') or ''))}</td>"
+        f"<td>{html_escape(str(item.get('action') or ''))}</td>"
+        "</tr>"
+        for item in (audit.get("standard_map") or snapshot.get("standard_map") or [])
+        if item.get("status") != "clear"
+    )
+    ticket_rows = "".join(
+        "<tr>"
+        f"<td>{html_escape(str(item.get('priority') or ''))}</td>"
+        f"<td>{html_escape(str(item.get('type') or ''))}</td>"
+        f"<td>{html_escape(str(item.get('title') or ''))}</td>"
+        f"<td>{html_escape(str(item.get('implementation_prompt') or item.get('implementation') or ''))}</td>"
+        f"<td>{html_escape(str(item.get('acceptance_criteria') or ''))}</td>"
+        "</tr>"
+        for item in (audit.get("security_tickets") or snapshot.get("security_tickets") or [])
     )
     return f"""
 <!doctype html>
@@ -479,12 +676,28 @@ def build_report_html(audit: Dict[str, Any]) -> str:
   <div class="muted">{html_escape(str(summary.get('target', '')))}</div>
   <p>{html_escape(build_executive_summary(audit)).replace(chr(10), '<br>')}</p>
   <p><strong>Grade:</strong> {html_escape(str(summary.get('security_grade') or 'n/a'))}</p>
+  <p><strong>Coverage confidence:</strong> {html_escape(str(summary.get('coverage_confidence') or 'n/a'))}</p>
   <p><strong>Severity mix:</strong> {counts['critical']} critical · {counts['high']} high · {counts['medium']} medium · {counts['low']} low</p>
   <div class="scores">{score_cards}</div>
   <h2>Action plan</h2>
   <table>
     <thead><tr><th>#</th><th>Priority</th><th>Action</th><th>Fix</th></tr></thead>
     <tbody>{plan_rows}</tbody>
+  </table>
+  <h2>Owner verification plan</h2>
+  <table>
+    <thead><tr><th>Priority</th><th>Category</th><th>Check</th><th>Validation</th></tr></thead>
+    <tbody>{owner_rows}</tbody>
+  </table>
+  <h2>Standards map</h2>
+  <table>
+    <thead><tr><th>Control</th><th>Label</th><th>Status</th><th>Severity</th><th>Next action</th></tr></thead>
+    <tbody>{standard_rows}</tbody>
+  </table>
+  <h2>Security tickets</h2>
+  <table>
+    <thead><tr><th>Priority</th><th>Type</th><th>Ticket</th><th>Implementation</th><th>Acceptance</th></tr></thead>
+    <tbody>{ticket_rows}</tbody>
   </table>
   <h2>Findings</h2>
   <table>
@@ -525,6 +738,22 @@ def build_export_payload(audit: Dict[str, Any], export_format: str) -> Dict[str,
             "mimetype": "application/json",
             "extension": "json",
             "label": "AI remediation pack",
+        }
+    if fmt in {"tickets", "security-tickets"}:
+        snapshot = audit.get("snapshot") or {}
+        return {
+            "content": json.dumps(audit.get("security_tickets") or snapshot.get("security_tickets") or [], ensure_ascii=False, indent=2),
+            "mimetype": "application/json",
+            "extension": "json",
+            "label": "Security tickets",
+        }
+    if fmt in {"standards", "standard-map"}:
+        snapshot = audit.get("snapshot") or {}
+        return {
+            "content": json.dumps(audit.get("standard_map") or snapshot.get("standard_map") or [], ensure_ascii=False, indent=2),
+            "mimetype": "application/json",
+            "extension": "json",
+            "label": "Standards map",
         }
     if fmt in {"gate", "security-gate", "ci"}:
         return {
