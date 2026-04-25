@@ -18,6 +18,13 @@ print(f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micr
 PY
 }
 
+python_has_venv() {
+    "$1" - <<'PY' >/dev/null 2>&1
+import ensurepip
+import venv
+PY
+}
+
 find_compatible_python() {
     for candidate in python3.12 python3.11 python3.10 python3; do
         if command -v "$candidate" >/dev/null 2>&1 && python_version_ok "$candidate"; then
@@ -38,6 +45,16 @@ show_python_install_help() {
     echo ""
     echo "           Recommended on macOS:"
     echo "             brew install python@3.12"
+    echo ""
+}
+
+show_python_venv_help() {
+    echo "   [ERROR] Python venv/ensurepip support is missing or broken."
+    echo "           Install a complete Python build, then run setup again."
+    echo ""
+    echo "           Recommended on macOS:"
+    echo "             brew install python@3.12"
+    echo "             brew link --overwrite python@3.12"
     echo ""
 }
 
@@ -133,6 +150,12 @@ setup() {
     fi
 
     echo "   Python base: $("$PYTHON_BIN" --version 2>&1)"
+    if ! python_has_venv "$PYTHON_BIN"; then
+        show_python_venv_help
+        read -p "   Press Enter..."
+        show_menu
+        return
+    fi
 
     # Create venv if missing or too old
     if [ -d "venv" ] && ! venv_python_ok; then
