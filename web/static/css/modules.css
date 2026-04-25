@@ -78,10 +78,11 @@
 }
 
 .modules-card-cyberatlas {
-    border-color: rgba(52, 211, 153, 0.36);
+    border-color: rgba(34, 211, 238, 0.42);
     background:
-        radial-gradient(circle at 8% 0%, rgba(239, 68, 68, 0.16), transparent 28%),
-        linear-gradient(180deg, rgba(6, 36, 29, 0.92), rgba(2, 10, 12, 0.96));
+        radial-gradient(circle at 8% 0%, rgba(251, 79, 147, 0.17), transparent 30%),
+        radial-gradient(circle at 92% 10%, rgba(34, 211, 238, 0.14), transparent 28%),
+        linear-gradient(180deg, rgba(2, 28, 40, 0.94), rgba(1, 8, 17, 0.97));
 }
 
 .modules-card:hover {
@@ -104,10 +105,11 @@
 }
 
 .modules-card-cyberatlas:hover {
-    border-color: rgba(110, 231, 183, 0.62);
+    border-color: rgba(34, 211, 238, 0.72);
     background:
-        radial-gradient(circle at 8% 0%, rgba(248, 113, 113, 0.22), transparent 30%),
-        linear-gradient(180deg, rgba(8, 70, 48, 0.94), rgba(2, 18, 20, 0.98));
+        radial-gradient(circle at 8% 0%, rgba(251, 79, 147, 0.24), transparent 32%),
+        radial-gradient(circle at 92% 10%, rgba(163, 230, 53, 0.14), transparent 30%),
+        linear-gradient(180deg, rgba(2, 48, 68, 0.96), rgba(1, 12, 22, 0.98));
 }
 
 .modules-card:disabled,
@@ -141,8 +143,8 @@
 }
 
 .modules-card-cyberatlas.featured {
-    border-color: rgba(52, 211, 153, 0.52);
-    box-shadow: 0 18px 40px rgba(6, 95, 70, 0.22);
+    border-color: rgba(34, 211, 238, 0.58);
+    box-shadow: 0 18px 40px rgba(6, 182, 212, 0.18), 0 0 0 1px rgba(163, 230, 53, 0.10);
 }
 
 .modules-card-main {
@@ -174,8 +176,8 @@
 }
 
 .modules-card-cyberatlas .modules-card-icon {
-    background: rgba(16, 185, 129, 0.18);
-    color: #a7f3d0;
+    background: linear-gradient(135deg, rgba(34, 211, 238, 0.18), rgba(163, 230, 53, 0.14));
+    color: #cffafe;
 }
 
 .modules-card-status {
@@ -195,7 +197,7 @@
 }
 
 .modules-card-cyberatlas .modules-card-status {
-    color: #6ee7b7;
+    color: #22d3ee;
 }
 
 .modules-card-copy {
@@ -276,8 +278,8 @@
 }
 
 .modules-card-cyberatlas .modules-card-outcome {
-    border-left-color: #10b981;
-    background: rgba(6, 95, 70, 0.24);
+    border-left-color: #22d3ee;
+    background: rgba(8, 145, 178, 0.20);
 }
 
 .modules-card-usecases {
@@ -339,7 +341,7 @@
 }
 
 .modules-card-cyberatlas .modules-card-usecase i {
-    color: #6ee7b7;
+    color: #a3e635;
 }
 
 .modules-card-capabilities {
@@ -362,9 +364,9 @@
 }
 
 .modules-card-cyberatlas .modules-chip:not(.premium) {
-    border-color: rgba(52, 211, 153, 0.28);
-    background: rgba(16, 185, 129, 0.11);
-    color: #d1fae5;
+    border-color: rgba(34, 211, 238, 0.30);
+    background: rgba(34, 211, 238, 0.10);
+    color: #cffafe;
 }
 
 .modules-chip,
