@@ -110,8 +110,12 @@
     },
 
     "ollama": {
-        "max_vram_gb": 8,
-        "default_chat_model": "qwen2.5:32b",
-        "utility_model": "dolphin-phi:2.7b"
+        "max_vram_gb": 36,
+        "default_chat_model": "llama3.3:70b-instruct-q4_K_M",
+        "fast_chat_model": "qwen3:30b-a3b-instruct-2507-q4_K_M",
+        "coder_chat_model": "qwen3-coder:30b-a3b-q4_K_M",
+        "video_analysis_model": "qwen3-vl:32b-instruct-q4_K_M",
+        "utility_model": "qwen3.5:2b",
+        "auto_pull_heavy_models": false
     }
 }

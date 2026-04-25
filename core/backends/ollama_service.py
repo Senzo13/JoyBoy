@@ -240,6 +240,9 @@ def search_models(query="", filter_type=None):
         {"name": "qwen3.5:0.8b", "desc": "Qwen 3.5 0.8B - Ultra léger pour routing et réponses rapides", "size": "1GB", "uncensored": False, "fast": True, "powerful": False, "vision": False},
         {"name": "qwen3.5:2b", "desc": "Qwen 3.5 2B - Recommandé pour JoyBoy: meilleur que 2.5 sans exploser la VRAM", "size": "2.7GB", "uncensored": False, "fast": True, "powerful": False, "vision": False},
         {"name": "qwen3.5:4b", "desc": "Qwen 3.5 4B - Plus robuste, encore raisonnable", "size": "3.4GB", "uncensored": False, "fast": False, "powerful": False, "vision": False},
+        {"name": "qwen3:30b-a3b-instruct-2507-q4_K_M", "desc": "Qwen3 30B-A3B Q4 - très récent, rapide sur A100 40GB, excellent généraliste", "size": "~19GB", "uncensored": False, "fast": False, "powerful": True, "vision": False, "high_end": True, "auto_pull": False},
+        {"name": "qwen3:32b-q4_K_M", "desc": "Qwen3 32B Q4 - dense, raisonnement solide, bon choix 40GB", "size": "~20GB", "uncensored": False, "fast": False, "powerful": True, "vision": False, "high_end": True, "auto_pull": False},
+        {"name": "qwen3-coder:30b-a3b-q4_K_M", "desc": "Qwen3 Coder 30B-A3B Q4 - code/agent, long contexte, recommandé dev", "size": "~19GB", "uncensored": False, "fast": False, "powerful": True, "vision": False, "high_end": True, "auto_pull": False},
 
         # === MODÈLES OPEN ULTRA-LÉGERS (pour petites configs) ===
         {"name": "tinydolphin:1.1b", "desc": "TinyDolphin - Ultra léger, réponse directe", "size": "637MB", "uncensored": True, "fast": True, "powerful": False, "vision": False},
@@ -262,11 +265,16 @@ def search_models(query="", filter_type=None):
 
         # === MODÈLES STANDARDS ===
         {"name": "qwen3.5:9b", "desc": "Qwen 3.5 9B - Plus capable, à réserver aux configs confortables", "size": "6.6GB", "uncensored": False, "fast": False, "powerful": True, "vision": False},
+        {"name": "llama3.3:70b-instruct-q4_K_M", "desc": "Llama 3.3 70B Q4 - gros chat local réaliste pour 40GB VRAM", "size": "~43GB", "uncensored": False, "fast": False, "powerful": True, "vision": False, "high_end": True, "auto_pull": False},
         {"name": HIGH_END_CHAT_MODEL, "desc": "Llama 3.3 70B INT8 - chat local haute VRAM", "size": "~70GB", "uncensored": False, "fast": False, "powerful": True, "vision": False, "high_end": True, "auto_pull": False},
         {"name": EXTREME_CHAT_MODEL, "desc": "Qwen3 235B-A22B MoE Q4 - très puissant, RAM système élevée", "size": "~140GB", "uncensored": False, "fast": False, "powerful": True, "vision": False, "high_end": True, "auto_pull": False},
         {"name": EXTREME_CHAT_MODEL_INT8, "desc": "Qwen3 235B-A22B MoE INT8 - qualité max, téléchargement massif", "size": "~250GB", "uncensored": False, "fast": False, "powerful": True, "vision": False, "high_end": True, "auto_pull": False},
         {"name": "deepseek-r1:7b", "desc": "DeepSeek R1 - Bon raisonnement", "size": "4.7GB", "uncensored": False, "fast": False, "powerful": False, "vision": False},
         {"name": "deepseek-r1:14b", "desc": "DeepSeek R1 14B - Plus puissant", "size": "9GB", "uncensored": False, "fast": False, "powerful": True, "vision": False},
+        {"name": "deepseek-r1:32b", "desc": "DeepSeek R1 32B - raisonnement costaud, bon fit A100 40GB", "size": "~20GB", "uncensored": False, "fast": False, "powerful": True, "vision": False, "high_end": True, "auto_pull": False},
+        {"name": "openthinker:32b-q4_K_M", "desc": "OpenThinker 32B Q4 - raisonnement/math/code open, format 40GB-friendly", "size": "~20GB", "uncensored": False, "fast": False, "powerful": True, "vision": False, "high_end": True, "auto_pull": False},
+        {"name": "nemotron:70b-instruct-q4_K_M", "desc": "Nemotron 70B Q4 - NVIDIA, très bon assistant local haute VRAM", "size": "~43GB", "uncensored": False, "fast": False, "powerful": True, "vision": False, "high_end": True, "auto_pull": False},
+        {"name": "tulu3:70b-q4_K_M", "desc": "Tulu 3 70B Q4 - instruct open, alternative solide à Llama", "size": "~43GB", "uncensored": False, "fast": False, "powerful": True, "vision": False, "high_end": True, "auto_pull": False},
         {"name": "qwen2.5:7b", "desc": "Qwen 2.5 - Rapide et polyvalent", "size": "4.7GB", "uncensored": False, "fast": False, "powerful": False, "vision": False},
         {"name": "mistral:7b", "desc": "Mistral - Français, performant", "size": "4.1GB", "uncensored": False, "fast": False, "powerful": False, "vision": False},
         {"name": "codellama:7b", "desc": "Code Llama - Spécialisé code", "size": "3.8GB", "uncensored": False, "fast": False, "powerful": False, "vision": False},

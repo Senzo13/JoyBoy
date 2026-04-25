@@ -797,6 +797,31 @@ ALL_MODELS = {
         "category": "inpaint",
         "desc": "Rapide et polyvalent"
     },
+    "inpaint_flux_fill_int4": {
+        "name": "Flux Fill INT4",
+        "repo": "black-forest-labs/FLUX.1-Fill-dev",
+        "size": "~13 GB",
+        "category": "inpaint",
+        "desc": "Flux Fill 12B NF4 - haute qualité, rapide sur GPU 16GB+",
+        "quant": "int4",
+    },
+    "inpaint_flux_fill_int8": {
+        "name": "Flux Fill INT8",
+        "repo": "black-forest-labs/FLUX.1-Fill-dev",
+        "size": "~18 GB",
+        "category": "inpaint",
+        "desc": "Flux Fill 12B INT8 - inpainting premium pour grosses configs",
+        "quant": "int8",
+    },
+    "inpaint_flux_fill_dev": {
+        "name": "Flux.1 Fill Dev",
+        "repo": "black-forest-labs/FLUX.1-Fill-dev",
+        "size": "~30 GB",
+        "category": "inpaint",
+        "desc": "Flux Fill bf16 - qualité maximale, nécessite accès Hugging Face",
+        "quant": "none",
+        "gated": True,
+    },
     "txt2img_juggernaut": {
         "name": "Juggernaut XL v9",
         "repo": "RunDiffusion/Juggernaut-XL-v9",
@@ -819,6 +844,22 @@ ALL_MODELS = {
         "desc": "Tres rapide (4 steps)"
     },
 
+    "txt2img_flux_dev_int4": {
+        "name": "Flux Dev INT4",
+        "repo": "black-forest-labs/FLUX.1-dev",
+        "size": "~13 GB",
+        "category": "txt2img",
+        "desc": "Flux Dev 12B NF4 - très bon rendu, 40GB-friendly",
+        "quant": "int4",
+    },
+    "txt2img_flux_dev_int8": {
+        "name": "Flux Dev INT8",
+        "repo": "black-forest-labs/FLUX.1-dev",
+        "size": "~18 GB",
+        "category": "txt2img",
+        "desc": "Flux Dev 12B INT8 - rendu premium pour A100/A6000",
+        "quant": "int8",
+    },
     "inpaint_cyberrealistic_pony": {
         "name": "CyberRealistic Pony (Moyen)",
         "repo": "cyberdelia/CyberRealisticPony",
