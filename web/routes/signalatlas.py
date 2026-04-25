@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+import io
+import zipfile
 from typing import Any, Dict, Tuple
 
 from flask import Blueprint, Response, jsonify, request
@@ -27,7 +29,10 @@ signalatlas_bp = Blueprint("signalatlas", __name__)
 SIGNALATLAS_DEFAULT_PAGE_BUDGET = 12
 SIGNALATLAS_MAX_PAGE_BUDGET = 1500
 SIGNALATLAS_UNLIMITED_PAGE_BUDGET_TOKENS = {"unlimited", "infinity", "infinite", "inf", "∞"}
-SIGNALATLAS_GSC_CSV_MAX_BYTES = 5 * 1024 * 1024
+SIGNALATLAS_GSC_CSV_MAX_BYTES = 10 * 1024 * 1024
+SIGNALATLAS_GSC_ZIP_MAX_BYTES = 25 * 1024 * 1024
+SIGNALATLAS_GSC_ZIP_MAX_FILES = 32
+SIGNALATLAS_GSC_ZIP_MAX_TOTAL_CSV_BYTES = 25 * 1024 * 1024
 
 
 def _normalize_target(raw_value: str, mode: str) -> Dict[str, Any]:
@@ -47,6 +52,57 @@ def _normalize_max_pages(raw_value: Any) -> int:
 
 def _model_context() -> Dict[str, Any]:
     return get_audit_model_context()
+
+
+def _archive_member_filename(value: str) -> str:
+    return str(value or "").replace("\\", "/").rsplit("/", 1)[-1].strip()
+
+
+def _read_uploaded_gsc_payloads(uploaded_files: list) -> Tuple[list, Tuple[Dict[str, Any], int] | None]:
+    file_payloads = []
+    for uploaded in uploaded_files:
+        filename = str(uploaded.filename or "").strip()
+        lowered = filename.lower()
+        if lowered.endswith(".zip"):
+            archive_bytes = uploaded.read(SIGNALATLAS_GSC_ZIP_MAX_BYTES + 1)
+            if len(archive_bytes) > SIGNALATLAS_GSC_ZIP_MAX_BYTES:
+                return [], ({"success": False, "error": f"Archive ZIP trop volumineuse: {filename}"}, 413)
+            try:
+                archive = zipfile.ZipFile(io.BytesIO(archive_bytes))
+            except zipfile.BadZipFile:
+                return [], ({"success": False, "error": f"Archive ZIP invalide: {filename or 'sans nom'}"}, 400)
+            with archive:
+                csv_members = [
+                    info
+                    for info in archive.infolist()
+                    if not info.is_dir() and _archive_member_filename(info.filename).lower().endswith(".csv")
+                ]
+                if not csv_members:
+                    return [], ({"success": False, "error": f"Aucun CSV trouvé dans l’archive ZIP: {filename}"}, 400)
+                if len(csv_members) > SIGNALATLAS_GSC_ZIP_MAX_FILES:
+                    return [], ({"success": False, "error": f"Trop de CSV dans l’archive ZIP: {filename}"}, 400)
+                total_csv_bytes = 0
+                for info in csv_members:
+                    member_name = _archive_member_filename(info.filename)
+                    total_csv_bytes += int(info.file_size or 0)
+                    if info.file_size > SIGNALATLAS_GSC_CSV_MAX_BYTES:
+                        return [], ({"success": False, "error": f"CSV trop volumineux dans le ZIP: {member_name}"}, 413)
+                    if total_csv_bytes > SIGNALATLAS_GSC_ZIP_MAX_TOTAL_CSV_BYTES:
+                        return [], ({"success": False, "error": f"Archive ZIP trop volumineuse après extraction: {filename}"}, 413)
+                    with archive.open(info) as member:
+                        content = member.read(SIGNALATLAS_GSC_CSV_MAX_BYTES + 1)
+                    if len(content) > SIGNALATLAS_GSC_CSV_MAX_BYTES:
+                        return [], ({"success": False, "error": f"CSV trop volumineux dans le ZIP: {member_name}"}, 413)
+                    file_payloads.append({"filename": f"{filename}/{member_name}", "content": content})
+            continue
+
+        if not lowered.endswith(".csv"):
+            return [], ({"success": False, "error": f"Fichier non CSV/ZIP refusé: {filename or 'sans nom'}"}, 400)
+        content = uploaded.read(SIGNALATLAS_GSC_CSV_MAX_BYTES + 1)
+        if len(content) > SIGNALATLAS_GSC_CSV_MAX_BYTES:
+            return [], ({"success": False, "error": f"Fichier trop volumineux: {filename}"}, 413)
+        file_payloads.append({"filename": filename, "content": content})
+    return file_payloads, None
 
 
 @signalatlas_bp.route("/api/modules", methods=["GET"])
@@ -146,17 +202,12 @@ def signalatlas_organic_potential_import(audit_id: str):
     if not uploaded_files and request.files:
         uploaded_files = list(request.files.values())
     if not uploaded_files:
-        return jsonify({"success": False, "error": "Ajoute au moins un export CSV Google Search Console."}), 400
+        return jsonify({"success": False, "error": "Ajoute au moins un export CSV ou ZIP Google Search Console."}), 400
 
-    file_payloads = []
-    for uploaded in uploaded_files:
-        filename = str(uploaded.filename or "").strip()
-        if not filename.lower().endswith(".csv"):
-            return jsonify({"success": False, "error": f"Fichier non CSV refusé: {filename or 'sans nom'}"}), 400
-        content = uploaded.read(SIGNALATLAS_GSC_CSV_MAX_BYTES + 1)
-        if len(content) > SIGNALATLAS_GSC_CSV_MAX_BYTES:
-            return jsonify({"success": False, "error": f"Fichier trop volumineux: {filename}"}), 413
-        file_payloads.append({"filename": filename, "content": content})
+    file_payloads, upload_error = _read_uploaded_gsc_payloads(uploaded_files)
+    if upload_error:
+        payload, status_code = upload_error
+        return jsonify(payload), status_code
 
     organic_potential = analyze_gsc_csv_exports(
         file_payloads,
@@ -164,7 +215,7 @@ def signalatlas_organic_potential_import(audit_id: str):
         semrush_configured=bool(os.environ.get("SEMRUSH_API_KEY")),
     )
     if not any(item.get("accepted") for item in (organic_potential.get("source_files") or [])):
-        return jsonify({"success": False, "error": "Aucun export GSC reconnu dans les CSV fournis."}), 400
+        return jsonify({"success": False, "error": "Aucun export GSC reconnu dans les fichiers fournis."}), 400
     audit["organic_potential"] = organic_potential
     summary = dict(audit.get("summary") or {})
     organic_summary = organic_potential.get("summary") or {}

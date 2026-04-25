@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
@@ -67,6 +68,49 @@ class SignalAtlasRouteTests(unittest.TestCase):
                 )
                 self.assertEqual(get_response.status_code, 200)
                 self.assertEqual(get_response.get_json()["organic_potential"]["summary"]["clicks"], 1)
+
+    def test_organic_potential_import_accepts_zip_with_gsc_csvs(self) -> None:
+        archive_buffer = io.BytesIO()
+        with zipfile.ZipFile(archive_buffer, "w") as archive:
+            archive.writestr(
+                "gsc/Pages.csv",
+                "Top pages,Clicks,Impressions,CTR,Position\nhttps://nevomove.com/,2,200,1%,7.5\n",
+            )
+            archive.writestr(
+                "gsc/Queries.csv",
+                "Top queries,Clicks,Impressions,CTR,Position\nnevomove chaussures,0,90,0%,9.2\n",
+            )
+            archive.writestr("notes/readme.txt", "ignored")
+        archive_buffer.seek(0)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            storage = SignalAtlasStorage(root=Path(tmp))
+            audit = storage.create_audit_stub(
+                target={"normalized_url": "https://nevomove.com/", "host": "nevomove.com", "mode": "public"},
+                title="nevomove.com",
+                options={},
+            )
+            audit["status"] = "done"
+            audit["summary"] = {"target": "https://nevomove.com/"}
+            storage.save_audit(audit)
+            app = Flask(__name__)
+            app.register_blueprint(signalatlas_routes.signalatlas_bp)
+
+            with patch.object(signalatlas_routes, "get_signalatlas_storage", return_value=storage):
+                response = app.test_client().post(
+                    f"/api/signalatlas/audits/{audit['id']}/organic-potential/import",
+                    data={"files": [(archive_buffer, "gsc-export.zip")]},
+                    content_type="multipart/form-data",
+                )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload["success"])
+        self.assertEqual(payload["organic_potential"]["summary"]["impressions"], 200)
+        self.assertEqual(payload["organic_potential"]["summary"]["query_count"], 1)
+        accepted_files = [item["filename"] for item in payload["organic_potential"]["source_files"] if item["accepted"]]
+        self.assertTrue(any("Pages.csv" in filename for filename in accepted_files))
+        self.assertTrue(any("Queries.csv" in filename for filename in accepted_files))
 
     def test_organic_potential_import_rejects_missing_or_invalid_state(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

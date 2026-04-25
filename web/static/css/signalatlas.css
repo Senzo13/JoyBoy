@@ -1048,6 +1048,44 @@
     align-items: stretch;
 }
 
+.signalatlas-organic-main-cta {
+    margin-top: 18px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 18px;
+    align-items: center;
+    border-color: rgba(52, 211, 153, 0.28);
+    background:
+        radial-gradient(circle at 100% 0%, rgba(16, 185, 129, 0.2), transparent 34%),
+        linear-gradient(135deg, rgba(5, 46, 22, 0.42), rgba(15, 23, 42, 0.72));
+}
+
+.signalatlas-organic-main-cta.is-ready {
+    border-color: rgba(96, 165, 250, 0.32);
+    background:
+        radial-gradient(circle at 100% 0%, rgba(59, 130, 246, 0.2), transparent 34%),
+        linear-gradient(135deg, rgba(15, 23, 42, 0.66), rgba(8, 47, 73, 0.52));
+}
+
+.signalatlas-organic-main-copy {
+    min-width: 0;
+}
+
+.signalatlas-organic-main-actions,
+.signalatlas-organic-import {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+.signalatlas-organic-import .signalatlas-visibility-note {
+    flex-basis: 100%;
+    max-width: 360px;
+    text-align: right;
+}
+
 .signalatlas-report-summary-title {
     margin: 8px 0 0;
     color: #f8fafc;
@@ -1678,6 +1716,7 @@
     .signalatlas-detail-grid,
     .signalatlas-ai-grid,
     .signalatlas-report-hero,
+    .signalatlas-organic-main-cta,
     .signalatlas-serp-layout {
         grid-template-columns: 1fr;
     }
@@ -1740,6 +1779,17 @@
     .signalatlas-report-download {
         width: 100%;
         justify-content: flex-start;
+    }
+
+    .signalatlas-organic-main-actions,
+    .signalatlas-organic-import {
+        width: 100%;
+        justify-content: flex-start;
+    }
+
+    .signalatlas-organic-import .signalatlas-visibility-note {
+        max-width: none;
+        text-align: left;
     }
 
     .signalatlas-picker .signalatlas-picker-menu {

@@ -280,6 +280,7 @@ body.terminal-mode .chat-bubble pre {
 
 body.terminal-mode .terminal-thinking,
 body.terminal-mode .terminal-line,
+body.terminal-mode .terminal-activity-summary,
 body.terminal-mode .tool-call-line,
 body.terminal-mode .tool-result-line,
 body.terminal-mode .terminal-code-block {
@@ -307,6 +308,13 @@ body.terminal-mode .tool-call-line {
     color: #8b8b8b !important;
     font-size: 13px !important;
     opacity: 0.78 !important;
+}
+
+body.terminal-mode .terminal-activity-summary {
+    padding: 10px 0 5px !important;
+    color: #9ca3af !important;
+    font-size: 12px !important;
+    opacity: 0.72 !important;
 }
 
 body.terminal-mode .tool-call-line .tool-bullet,

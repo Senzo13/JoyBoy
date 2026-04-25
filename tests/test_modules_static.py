@@ -128,10 +128,12 @@ class ModulesStaticTests(unittest.TestCase):
 
         self.assertIn("tabOrganicPotential", modules_js)
         self.assertIn("renderSignalAtlasOrganicPotential", modules_js)
+        self.assertIn("renderSignalAtlasOrganicMainCta", modules_js)
         self.assertIn("signalAtlasProgressEtaLabel", modules_js)
         self.assertIn("notifySignalAtlasAuditCompleted", modules_js)
         self.assertIn("auditCompleteSmallSite", modules_js)
         self.assertIn("signalatlas-organic-files", modules_js)
+        self.assertIn(".csv,.zip", modules_js)
         self.assertIn("importSignalAtlasOrganicPotential", modules_js)
         self.assertIn("organic-potential/import", api_js)
         self.assertIn("organic-potential/import", routes_py)

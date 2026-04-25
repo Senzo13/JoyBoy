@@ -449,6 +449,9 @@ let terminalProgressContentStarted = false;
 let terminalProgressIntent = '';
 const TERMINAL_PROGRESS_AUTO_REVEAL_MS = 3500;
 
+let terminalActivityCounters = null;
+let terminalActivityElements = {};
+
 function formatTerminalElapsed(seconds) {
     const safeSeconds = Math.max(0, Number(seconds) || 0);
     if (safeSeconds < 60) return `${safeSeconds}s`;
@@ -664,6 +667,66 @@ function hideTerminalProgressPanel() {
     refreshTerminalProgressLayout();
 }
 
+function resetTerminalActivitySummaries() {
+    terminalActivityCounters = {
+        commands: 0,
+        webSearches: 0,
+        webFetches: 0,
+        fileReads: 0,
+        fileWrites: 0,
+        searches: 0
+    };
+    terminalActivityElements = {};
+}
+
+function terminalPlural(count, singular, plural = null) {
+    return `${count} ${count > 1 ? (plural || `${singular}s`) : singular}`;
+}
+
+function getTerminalActivityKind(action = '') {
+    if (action === 'bash') return 'commands';
+    if (action === 'web_search') return 'webSearches';
+    if (action === 'web_fetch') return 'webFetches';
+    if (action === 'read_file') return 'fileReads';
+    if (['write_file', 'write_files', 'edit_file', 'delete_file', 'clear_workspace'].includes(action)) return 'fileWrites';
+    if (['search', 'glob', 'list_files', 'tool_search'].includes(action)) return 'searches';
+    return '';
+}
+
+function formatTerminalActivitySummary(kind, count) {
+    if (kind === 'commands') return terminalT('terminal.activityCommands', 'Ran {count} commands', { count });
+    if (kind === 'webSearches') return terminalT('terminal.activityWebSearches', 'Recherche Web effectuée {count} fois', { count });
+    if (kind === 'webFetches') return terminalT('terminal.activityWebFetches', '{count} pages Web lues', { count });
+    if (kind === 'fileReads') return terminalT('terminal.activityFileReads', `${terminalPlural(count, 'fichier lu', 'fichiers lus')}`, { count });
+    if (kind === 'fileWrites') return terminalT('terminal.activityFileWrites', `${terminalPlural(count, 'changement fichier', 'changements fichiers')}`, { count });
+    if (kind === 'searches') return terminalT('terminal.activitySearches', `${terminalPlural(count, 'recherche workspace', 'recherches workspace')}`, { count });
+    return '';
+}
+
+function addOrUpdateTerminalActivitySummary(action = '') {
+    if (!terminalActivityCounters) resetTerminalActivitySummaries();
+    const kind = getTerminalActivityKind(action);
+    if (!kind) return;
+
+    terminalActivityCounters[kind] += 1;
+    const count = terminalActivityCounters[kind];
+    const text = formatTerminalActivitySummary(kind, count);
+    if (!text) return;
+
+    const messagesDiv = getChatMessages();
+    if (!messagesDiv) return;
+
+    let el = terminalActivityElements[kind];
+    if (!el || !el.isConnected) {
+        el = document.createElement('div');
+        el.className = 'terminal-activity-summary';
+        terminalActivityElements[kind] = el;
+        messagesDiv.appendChild(el);
+    }
+    el.textContent = text;
+    scrollToBottom(document.body.classList.contains('terminal-mode'));
+}
+
 function toggleTerminalProgressPanel() {
     if (!terminalProgressElement) return;
     terminalProgressElement.classList.toggle('is-collapsed');
@@ -792,6 +855,28 @@ function shouldShowTerminalToolAsTask(action) {
         'bash',
         'delegate_subagent'
     ].includes(action);
+}
+
+const TERMINAL_READ_ONLY_PROGRESS_TOOLS = new Set([
+    'list_files',
+    'read_file',
+    'search',
+    'glob',
+    'tool_search',
+    'write_todos'
+]);
+
+function shouldRevealTerminalProgressForModelCall(data = {}) {
+    const intent = String(terminalProgressIntent || '').toLowerCase();
+    const iteration = Number(data.iteration || 1);
+    if (iteration > 1) return true;
+    return !['read', 'question'].includes(intent);
+}
+
+function shouldRevealTerminalProgressForTool(action = '') {
+    const intent = String(terminalProgressIntent || '').toLowerCase();
+    if (!['read', 'question'].includes(intent)) return true;
+    return !TERMINAL_READ_ONLY_PROGRESS_TOOLS.has(String(action || ''));
 }
 
 function applyTerminalTodos(todos = []) {
@@ -2347,6 +2432,7 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
         hideTerminalProgressPanel();
         hideTerminalTasks();
         beginTerminalProgressSession();
+        resetTerminalActivitySummaries();
         addTerminalProgressLog(analyzingLabel, message, 'thinking');
         let taskCounter = 0;
 
@@ -2506,7 +2592,7 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                             modelCallLabel,
                             modelName,
                             'thinking',
-                            { reveal: true }
+                            { reveal: shouldRevealTerminalProgressForModelCall(data.model_call) }
                         );
                         addTerminalTask('model-call', modelCallLabel, 'running', modelName);
                         continue;
@@ -2542,6 +2628,7 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
 
                         console.log(`%c[TERMINAL] ● Tool call reçu: ${action} → ${path}`, 'color: #3b82f6; font-weight: bold;');
                         hideThinkingAnimation();
+                        addOrUpdateTerminalActivitySummary(action);
 
                         // Style Claude Code: ● Action(target)
                         if (typeof addToolCall === 'function') {
@@ -2554,7 +2641,7 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                             terminalT('terminal.progressToolRunning', 'Exécute {tool}', { tool: action }),
                             path,
                             'running',
-                            { reveal: true }
+                            { reveal: shouldRevealTerminalProgressForTool(action) }
                         );
                         if (shouldShowTerminalToolAsTask(action)) {
                             updateTerminalTask('model-call', 'done', terminalT('terminal.taskToolSelected', 'Outil choisi'));
@@ -2653,7 +2740,7 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                             terminalT('terminal.progressToolDone', 'Terminé {tool}', { tool: result.action || '' }),
                             resultSummary,
                             'success',
-                            { reveal: true }
+                            { reveal: shouldRevealTerminalProgressForTool(result.action) }
                         );
                         // Sinon pas d'affichage (l'IA donnera la réponse à la fin)
 

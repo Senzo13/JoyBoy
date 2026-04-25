@@ -632,6 +632,10 @@ class TerminalBrain(
         repo_brief_events = []
         if self._is_repo_overview_request(initial_message):
             repo_brief, repo_brief_events = self._build_repo_brief(workspace_path)
+            if use_cloud_model:
+                response_token_limit = min(response_token_limit, 1200)
+            else:
+                response_token_limit = min(response_token_limit, 900)
             for event in repo_brief_events:
                 yield event
 
@@ -652,7 +656,9 @@ class TerminalBrain(
                     f"{initial_message}\n\n"
                     "REPO CONTEXT ALREADY EXPLORED BY JOYBOY:\n"
                     f"{repo_brief}\n\n"
-                    "Answer now in the user's language with a concrete synthesis. "
+                    "Answer now in the user's language with a compact, concrete synthesis. "
+                    "Use at most three short sections: quick verdict, concrete issues from observed files, next step. "
+                    "Avoid generic setup boilerplate unless the explored root listing proves it matters. "
                     "Do not call list_files/glob/ls/pwd again: the useful context is already available."
                 )
             })

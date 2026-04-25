@@ -30,15 +30,17 @@ def _estimate_audit_seconds(options: Dict[str, Any], ai_config: Dict[str, Any]) 
     crawl_seconds = 12 + min(max_pages, 40) * 1.5
     crawl_seconds += max(0, min(max_pages, 250) - 40) * 0.55
     crawl_seconds += max(0, min(max_pages, 1500) - 250) * 0.18
-    render_seconds = 30 if options.get("render_js") else 0
     level = str(ai_config.get("level") or "basic_summary").strip().lower()
+    render_probe_count = min(3, max_pages)
+    render_seconds = (8 + render_probe_count * 6) if options.get("render_js") else 0
     ai_seconds = {
         "no_ai": 0,
         "basic_summary": 18,
         "full_expert_analysis": 45,
         "ai_remediation_pack": 70,
     }.get(level, 35)
-    return int(max(35, min(1200, crawl_seconds + render_seconds + ai_seconds)))
+    floor_seconds = 18 if level == "no_ai" else 28
+    return int(max(floor_seconds, min(1200, crawl_seconds + render_seconds + ai_seconds)))
 
 
 def _run_audit_job(job_id: str, audit_id: str, payload: Dict[str, Any]) -> None:

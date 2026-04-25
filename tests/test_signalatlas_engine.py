@@ -1,6 +1,9 @@
+import sys
+import types
 import unittest
 from unittest.mock import patch
 
+from core.signalatlas import engine as signalatlas_engine
 from core.signalatlas.engine import run_public_audit, run_site_audit
 from core.signalatlas.reporting import build_export_payload
 
@@ -1229,6 +1232,80 @@ class SignalAtlasEngineTests(unittest.TestCase):
         self.assertFalse(result["snapshot"]["render_detection"]["render_js_executed"])
         self.assertEqual(result["snapshot"]["render_detection"]["reason"], "playwright_not_installed")
         self.assertIn("Playwright", result["snapshot"]["render_detection"]["note"])
+
+    def test_render_probe_reuses_one_browser_for_multiple_candidates(self):
+        launches = []
+
+        class FakePage:
+            def __init__(self, url=""):
+                self.url = url
+
+            def goto(self, url, wait_until=None, timeout=None):
+                del wait_until, timeout
+                self.url = url
+
+            def content(self):
+                return (
+                    "<html><head><title>Rendered</title></head><body>"
+                    "<h1>Rendered page</h1><p>This rendered page contains enough text for a probe.</p>"
+                    "</body></html>"
+                )
+
+            def title(self):
+                return "Rendered"
+
+            def close(self):
+                return None
+
+        class FakeContext:
+            def __init__(self):
+                self.page_count = 0
+
+            def new_page(self):
+                self.page_count += 1
+                return FakePage()
+
+            def close(self):
+                return None
+
+        class FakeBrowser:
+            def new_context(self, user_agent=None, viewport=None):
+                del user_agent, viewport
+                return FakeContext()
+
+            def close(self):
+                return None
+
+        class FakeChromium:
+            def launch(self, headless=True):
+                del headless
+                launches.append("launch")
+                return FakeBrowser()
+
+        class FakePlaywright:
+            chromium = FakeChromium()
+
+        class FakeManager:
+            def __enter__(self):
+                return FakePlaywright()
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+        fake_playwright = types.ModuleType("playwright")
+        fake_sync_api = types.ModuleType("playwright.sync_api")
+        fake_sync_api.sync_playwright = lambda: FakeManager()
+        fake_playwright.sync_api = fake_sync_api
+
+        with patch.dict(sys.modules, {"playwright": fake_playwright, "playwright.sync_api": fake_sync_api}):
+            rendered = signalatlas_engine._render_pages_with_shared_playwright([
+                "https://example.com/",
+                "https://example.com/about",
+            ])
+
+        self.assertEqual(launches, ["launch"])
+        self.assertEqual(len(rendered), 2)
+        self.assertTrue(all(item["executed"] for item in rendered))
 
     @patch("core.signalatlas.engine._playwright_runtime_status")
     @patch("core.signalatlas.engine.requests.Session.get")

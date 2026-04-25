@@ -23,6 +23,8 @@ class TerminalBrainSmokeTests(unittest.TestCase):
         self.assertIn("explicitly asks for agentic/parallel analysis", prompt)
         self.assertIn("use web_search first, then web_fetch", prompt)
         self.assertIn("verify directly with read_file/list_files", prompt)
+        self.assertIn("Fast repo reading", prompt)
+        self.assertIn("Prefer high-signal answers over reports", prompt)
         self.assertNotIn("C:/projects/demo", prompt)
         self.assertNotIn("TOUJOURS", prompt)
         self.assertNotIn("RÈGLES", prompt)
@@ -75,6 +77,17 @@ class TerminalBrainSmokeTests(unittest.TestCase):
                 "export default function App() {\n  return <main>demo</main>;\n}\n",
                 encoding="utf-8",
             )
+            app_dir = src_dir / "app"
+            app_dir.mkdir()
+            Path(app_dir, "page.jsx").write_text(
+                "export default function Home() {\n  return <main className=\"home\">demo</main>;\n}\n",
+                encoding="utf-8",
+            )
+            Path(app_dir, "layout.jsx").write_text(
+                "export default function RootLayout({ children }) {\n  return <html><body>{children}</body></html>;\n}\n",
+                encoding="utf-8",
+            )
+            Path(app_dir, "globals.css").write_text(".home { color: white; }\n", encoding="utf-8")
 
             events = list(brain.run_agentic_loop("analyse le projet", tmp, model="openai:gpt-5.4"))
 
@@ -93,6 +106,7 @@ class TerminalBrainSmokeTests(unittest.TestCase):
         )
         self.assertIn("--- README.md", repo_context)
         self.assertIn("--- package.json", repo_context)
+        self.assertIn("--- src/app/globals.css", repo_context)
         self.assertNotIn("Explorer observations", repo_context)
 
     def test_budget_fallback_ends_without_another_model_call(self):

@@ -26,6 +26,8 @@ from .scoring import score_findings
 
 USER_AGENT = "JoyBoy-SignalAtlas/1.0 (+https://joyboy.local)"
 DEFAULT_TIMEOUT = (5, 15)
+FAST_DISCOVERY_TIMEOUT = (3, 8)
+OPTIONAL_PROBE_TIMEOUT = (2, 4)
 MAX_LINK_SAMPLES = 48
 MAX_RENDER_PROBES = 3
 CJK_CHAR_RE = re.compile(r"[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uac00-\ud7af]")
@@ -182,13 +184,17 @@ def _text_metrics(text: str) -> Dict[str, Any]:
     }
 
 
-def _probe_llms_txt(session: requests.Session, entry_url: str) -> Dict[str, Any]:
+def _discovery_timeout_for_budget(max_pages: int) -> Tuple[int, int]:
+    return DEFAULT_TIMEOUT if int(max_pages or 0) >= 50 else FAST_DISCOVERY_TIMEOUT
+
+
+def _probe_llms_txt(session: requests.Session, entry_url: str, timeout: Tuple[int, int] = OPTIONAL_PROBE_TIMEOUT) -> Dict[str, Any]:
     parsed = urlparse(entry_url)
     base = f"{parsed.scheme}://{parsed.netloc}"
     for path in ("/llms.txt", "/llms-full.txt"):
         url = f"{base}{path}"
         try:
-            response = session.get(url, timeout=DEFAULT_TIMEOUT, headers={"User-Agent": USER_AGENT})
+            response = session.get(url, timeout=timeout, headers={"User-Agent": USER_AGENT})
         except Exception as exc:
             return {
                 "found": False,
@@ -420,6 +426,43 @@ def _playwright_runtime_status() -> Dict[str, Any]:
     }
 
 
+def _render_page_payload(url: str, html: str, title: str) -> Dict[str, Any]:
+    plain_text = _text_content(html)
+    metrics = _text_metrics(plain_text)
+    render_signals, shell_like, reasons = _render_signals(html, plain_text)
+    return {
+        "url": url,
+        "executed": True,
+        "html": html,
+        "title": title[:240],
+        "word_count": int(metrics["word_count"] or 0),
+        "content_units": int(metrics["content_units"] or 0),
+        "text_hash": _hash_text(plain_text),
+        "shell_like": shell_like,
+        "render_signals": render_signals,
+        "classification_reasons": reasons,
+    }
+
+
+def _render_page_with_open_playwright_page(page: Any, url: str) -> Dict[str, Any]:
+    try:
+        page.goto(url, wait_until="networkidle", timeout=15000)
+        html = page.content() or ""
+        title = page.title() or ""
+        return _render_page_payload(url, html, title)
+    except Exception as exc:
+        return {
+            "url": url,
+            "executed": False,
+            "reason": "playwright_error",
+            "detail": str(exc),
+        }
+
+
+def _new_playwright_context(browser: Any) -> Any:
+    return browser.new_context(user_agent=USER_AGENT, viewport={"width": 1440, "height": 900})
+
+
 def _render_page_with_playwright(url: str) -> Dict[str, Any]:
     try:
         from playwright.sync_api import sync_playwright
@@ -435,28 +478,17 @@ def _render_page_with_playwright(url: str) -> Dict[str, Any]:
         with sync_playwright() as playwright:
             browser = playwright.chromium.launch(headless=True)
             try:
-                page = browser.new_page(user_agent=USER_AGENT, viewport={"width": 1440, "height": 900})
-                page.goto(url, wait_until="networkidle", timeout=15000)
-                html = page.content() or ""
-                title = page.title() or ""
+                context = _new_playwright_context(browser)
+                try:
+                    page = context.new_page()
+                    try:
+                        return _render_page_with_open_playwright_page(page, url)
+                    finally:
+                        page.close()
+                finally:
+                    context.close()
             finally:
                 browser.close()
-
-        plain_text = _text_content(html)
-        metrics = _text_metrics(plain_text)
-        render_signals, shell_like, reasons = _render_signals(html, plain_text)
-        return {
-            "url": url,
-            "executed": True,
-            "html": html,
-            "title": title[:240],
-            "word_count": int(metrics["word_count"] or 0),
-            "content_units": int(metrics["content_units"] or 0),
-            "text_hash": _hash_text(plain_text),
-            "shell_like": shell_like,
-            "render_signals": render_signals,
-            "classification_reasons": reasons,
-        }
     except Exception as exc:
         return {
             "url": url,
@@ -464,6 +496,91 @@ def _render_page_with_playwright(url: str) -> Dict[str, Any]:
             "reason": "playwright_error",
             "detail": str(exc),
         }
+
+
+def _render_pages_with_shared_playwright(
+    candidates: List[str],
+    *,
+    progress_callback: Optional[Callable[[str, float, str], None]] = None,
+    cancel_check: Optional[Callable[[], bool]] = None,
+) -> List[Dict[str, Any]]:
+    if not candidates:
+        return []
+
+    try:
+        from playwright.sync_api import sync_playwright
+    except Exception as exc:  # pragma: no cover - guarded by _playwright_runtime_status
+        return [
+            {
+                "url": candidate,
+                "executed": False,
+                "reason": "playwright_not_installed",
+                "detail": str(exc),
+            }
+            for candidate in candidates
+        ]
+
+    rendered_pages: List[Dict[str, Any]] = []
+    try:
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(headless=True)
+            try:
+                context = _new_playwright_context(browser)
+                try:
+                    for index, candidate in enumerate(candidates, start=1):
+                        if cancel_check and cancel_check():
+                            raise RuntimeError("SignalAtlas audit cancelled")
+                        if progress_callback:
+                            progress_callback(
+                                "render",
+                                min(75, 65 + (index * 4)),
+                                f"Rendering JS for {candidate}",
+                            )
+                        page = None
+                        try:
+                            page = context.new_page()
+                            rendered_pages.append(_render_page_with_open_playwright_page(page, candidate))
+                        except Exception as exc:
+                            rendered_pages.append({
+                                "url": candidate,
+                                "executed": False,
+                                "reason": "playwright_error",
+                                "detail": str(exc),
+                            })
+                        finally:
+                            if page is not None:
+                                try:
+                                    page.close()
+                                except Exception:
+                                    pass
+                finally:
+                    context.close()
+            finally:
+                browser.close()
+    except RuntimeError as exc:
+        if str(exc) == "SignalAtlas audit cancelled":
+            raise
+        completed = {str(item.get("url") or "") for item in rendered_pages}
+        for candidate in candidates:
+            if candidate not in completed:
+                rendered_pages.append({
+                    "url": candidate,
+                    "executed": False,
+                    "reason": "playwright_error",
+                    "detail": str(exc),
+                })
+    except Exception as exc:
+        completed = {str(item.get("url") or "") for item in rendered_pages}
+        for candidate in candidates:
+            if candidate not in completed:
+                rendered_pages.append({
+                    "url": candidate,
+                    "executed": False,
+                    "reason": "playwright_error",
+                    "detail": str(exc),
+                })
+
+    return rendered_pages
 
 
 def _apply_render_probe(
@@ -518,16 +635,12 @@ def _apply_render_probe(
     rendered_pages: List[Dict[str, Any]] = []
     changed_count = 0
 
-    for index, candidate in enumerate(candidates, start=1):
-        if cancel_check and cancel_check():
-            raise RuntimeError("SignalAtlas audit cancelled")
-        if progress_callback:
-            progress_callback(
-                "render",
-                min(75, 65 + (index * 4)),
-                f"Rendering JS for {candidate}",
-            )
-        rendered = _render_page_with_playwright(candidate)
+    for rendered in _render_pages_with_shared_playwright(
+        candidates,
+        progress_callback=progress_callback,
+        cancel_check=cancel_check,
+    ):
+        candidate = str(rendered.get("url") or "")
         raw_page = page_by_url.get(candidate)
         if rendered.get("executed") and raw_page is not None:
             raw_units = int(raw_page.get("content_units") or raw_page.get("word_count") or 0)
@@ -582,6 +695,7 @@ def _apply_render_probe(
         "changed_page_count": changed_count,
         "reason": reason,
         "note": note,
+        "shared_browser_session": True,
         "rendered_pages": rendered_pages,
     }
 
@@ -695,7 +809,7 @@ def _is_blog_like(url: str, title: str) -> bool:
     return any(marker in text for marker in ("/blog", "/news", "/articles", "/guides", "/posts"))
 
 
-def _parse_robots(session: requests.Session, entry_url: str) -> Dict[str, Any]:
+def _parse_robots(session: requests.Session, entry_url: str, timeout: Tuple[int, int] = DEFAULT_TIMEOUT) -> Dict[str, Any]:
     parsed = urlparse(entry_url)
     robots_url = f"{parsed.scheme}://{parsed.netloc}/robots.txt"
     result = {
@@ -709,7 +823,7 @@ def _parse_robots(session: requests.Session, entry_url: str) -> Dict[str, Any]:
     parser = RobotFileParser()
     parser.set_url(robots_url)
     try:
-        response = session.get(robots_url, timeout=DEFAULT_TIMEOUT, headers={"User-Agent": USER_AGENT})
+        response = session.get(robots_url, timeout=timeout, headers={"User-Agent": USER_AGENT})
         result["status_code"] = response.status_code
         if response.ok:
             result["found"] = True
@@ -738,7 +852,12 @@ def _parse_sitemap_xml(content: str) -> Tuple[List[str], List[str], int]:
     return urls, indexes, alternate_count
 
 
-def _discover_sitemaps(session: requests.Session, entry_url: str, robots: Dict[str, Any]) -> Dict[str, Any]:
+def _discover_sitemaps(
+    session: requests.Session,
+    entry_url: str,
+    robots: Dict[str, Any],
+    timeout: Tuple[int, int] = DEFAULT_TIMEOUT,
+) -> Dict[str, Any]:
     parsed = urlparse(entry_url)
     candidates = list(robots.get("sitemaps") or [])
     default = f"{parsed.scheme}://{parsed.netloc}/sitemap.xml"
@@ -757,7 +876,7 @@ def _discover_sitemaps(session: requests.Session, entry_url: str, robots: Dict[s
             continue
         seen.add(url)
         try:
-            response = session.get(url, timeout=DEFAULT_TIMEOUT, headers={"User-Agent": USER_AGENT})
+            response = session.get(url, timeout=timeout, headers={"User-Agent": USER_AGENT})
             item = {"url": url, "status_code": response.status_code, "found": bool(response.ok)}
             if response.ok:
                 urls, indexes, alternates = _parse_sitemap_xml(response.text or "")
@@ -2188,6 +2307,7 @@ def run_site_audit(
     entry_url, host = _normalize_target(target)
     session = requests.Session()
     session.headers.update({"User-Agent": USER_AGENT})
+    discovery_timeout = _discovery_timeout_for_budget(max_pages)
 
     def emit(phase: str, progress: float, message: str) -> None:
         if progress_callback:
@@ -2199,11 +2319,11 @@ def run_site_audit(
 
     emit("crawl", 6, "Preparing crawl target")
     ensure_not_cancelled()
-    robots = _parse_robots(session, entry_url)
+    robots = _parse_robots(session, entry_url, timeout=discovery_timeout)
 
     emit("crawl", 12, "Discovering sitemap signals")
     ensure_not_cancelled()
-    sitemaps = _discover_sitemaps(session, entry_url, robots)
+    sitemaps = _discover_sitemaps(session, entry_url, robots, timeout=discovery_timeout)
     llms_signal = _probe_llms_txt(session, entry_url)
 
     queue: Deque[Tuple[str, int]] = deque()

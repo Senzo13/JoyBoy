@@ -3348,13 +3348,13 @@ function signalAtlasOrganicFormatPercent(value) {
 
 function signalAtlasOrganicOpportunityLabel(value) {
     const clean = String(value || '').trim().toLowerCase();
-    if (clean === 'quick_win') return moduleT('signalatlas.organicTypeQuickWin', 'Quick win');
+    if (clean === 'quick_win') return moduleT('signalatlas.organicTypeQuickWin', 'Gain rapide');
     if (clean === 'ctr_gap') return moduleT('signalatlas.organicTypeCtrGap', 'CTR à corriger');
-    if (clean === 'ranking_distance') return moduleT('signalatlas.organicTypeRankingDistance', 'Distance ranking');
-    if (clean === 'content_gap') return moduleT('signalatlas.organicTypeContentGap', 'Gap contenu');
+    if (clean === 'ranking_distance') return moduleT('signalatlas.organicTypeRankingDistance', 'Distance de classement');
+    if (clean === 'content_gap') return moduleT('signalatlas.organicTypeContentGap', 'Manque contenu');
     if (clean === 'low_value') return moduleT('signalatlas.organicTypeLowValue', 'Faible priorité');
-    if (clean === 'brand_query') return moduleT('signalatlas.organicTypeBrandQuery', 'Brand');
-    if (clean === 'non_brand_query') return moduleT('signalatlas.organicTypeNonBrandQuery', 'Non-brand');
+    if (clean === 'brand_query') return moduleT('signalatlas.organicTypeBrandQuery', 'Marque');
+    if (clean === 'non_brand_query') return moduleT('signalatlas.organicTypeNonBrandQuery', 'Hors marque');
     return value || moduleT('signalatlas.statusUnknown', 'Inconnu');
 }
 
@@ -3362,19 +3362,46 @@ function signalAtlasOrganicCanImport(audit) {
     return ['done', 'completed', 'ready'].includes(String(audit?.status || '').trim().toLowerCase());
 }
 
-function renderSignalAtlasOrganicImportControl(audit, compact = false) {
+function signalAtlasSafeDomId(value) {
+    return String(value || 'audit').trim().replace(/[^a-z0-9_-]+/gi, '-') || 'audit';
+}
+
+function renderSignalAtlasOrganicImportControl(audit, compact = false, placement = 'default') {
     const canImport = signalAtlasOrganicCanImport(audit);
     const auditId = String(audit?.id || '');
+    const inputId = `signalatlas-organic-files-${signalAtlasSafeDomId(auditId)}-${signalAtlasSafeDomId(placement)}`;
     return `
         <div class="signalatlas-organic-import">
-            <input id="signalatlas-organic-files" type="file" accept=".csv,text/csv" multiple hidden onchange="importSignalAtlasOrganicPotential('${escapeHtml(auditId)}', this)">
-            <button class="signalatlas-btn secondary" type="button" onclick="document.getElementById('signalatlas-organic-files')?.click()" ${canImport ? '' : 'disabled'}>
+            <input id="${escapeHtml(inputId)}" type="file" accept=".csv,.zip,text/csv,application/zip" multiple hidden onchange="importSignalAtlasOrganicPotential('${escapeHtml(auditId)}', this)">
+            <button class="signalatlas-btn secondary" type="button" onclick="document.getElementById('${escapeHtml(inputId)}')?.click()" ${canImport ? '' : 'disabled'}>
                 ${escapeHtml(compact ? moduleT('signalatlas.organicReimportButton', 'Réimporter GSC') : moduleT('signalatlas.organicImportButton', 'Importer GSC / Analyser le potentiel'))}
             </button>
             <div class="signalatlas-visibility-note">${escapeHtml(canImport
-                ? moduleT('signalatlas.organicImportHint', 'Accepte Chart, Pages, Queries, Devices, Countries, Search appearance et Filters exportés depuis Google Search Console.')
+                ? moduleT('signalatlas.organicImportHint', 'Accepte les CSV GSC ou un ZIP qui contient Chart, Pages, Queries, Devices, Countries, Search appearance et Filters.')
                 : moduleT('signalatlas.organicImportBlocked', 'Termine d’abord l’audit SignalAtlas, puis importe les exports Search Console.'))}</div>
         </div>
+    `;
+}
+
+function renderSignalAtlasOrganicMainCta(audit) {
+    if (!audit?.id || !signalAtlasOrganicCanImport(audit)) return '';
+    const organicReady = !!audit.organic_potential;
+    return `
+        <section class="signalatlas-panel signalatlas-organic-main-cta${organicReady ? ' is-ready' : ''}">
+            <div class="signalatlas-organic-main-copy">
+                <div class="signalatlas-panel-kicker">${escapeHtml(moduleT('signalatlas.organicMainCtaKicker', 'Données Google réelles'))}</div>
+                <div class="signalatlas-panel-title">${escapeHtml(organicReady
+                    ? moduleT('signalatlas.organicMainReadyTitle', 'Potentiel organique prêt')
+                    : moduleT('signalatlas.organicMainCtaTitle', 'Ajoute les CSV Google Search Console'))}</div>
+                <p class="signalatlas-panel-copy">${escapeHtml(organicReady
+                    ? moduleT('signalatlas.organicMainReadyCopy', 'Les données GSC sont déjà croisées avec cet audit. Tu peux consulter le potentiel organique ou réimporter un export plus récent.')
+                    : moduleT('signalatlas.organicMainCtaCopy', 'Importe les CSV GSC séparés ou un ZIP qui les contient pour transformer ce crawl en plan SEO basé sur les vraies impressions, clics, CTR et positions.'))}</p>
+            </div>
+            <div class="signalatlas-organic-main-actions">
+                ${renderSignalAtlasOrganicImportControl(audit, organicReady, 'main-cta')}
+                ${organicReady ? `<button class="signalatlas-btn secondary" type="button" onclick="setSignalAtlasTab('organic')">${escapeHtml(moduleT('signalatlas.organicOpenTab', 'Voir le potentiel'))}</button>` : ''}
+            </div>
+        </section>
     `;
 }
 
@@ -3389,7 +3416,7 @@ function renderSignalAtlasOrganicPotential(audit) {
                 <div class="signalatlas-panel-kicker">${escapeHtml(moduleT('signalatlas.organicPotentialKicker', 'Données réelles Google'))}</div>
                 <div class="signalatlas-panel-title">${escapeHtml(moduleT('signalatlas.organicPotentialTitle', 'Potentiel organique'))}</div>
                 <p class="signalatlas-panel-copy">${escapeHtml(moduleT('signalatlas.organicPotentialEmptyCopy', 'Importe les CSV Google Search Console pour transformer le crawl SignalAtlas en plan de croissance: pages prioritaires, requêtes à pousser, CTR anormal, clics manqués et cannibalisation probable.'))}</p>
-                ${renderSignalAtlasOrganicImportControl(audit)}
+                ${renderSignalAtlasOrganicImportControl(audit, false, 'organic-empty')}
             </section>
         `;
     }
@@ -3418,7 +3445,7 @@ function renderSignalAtlasOrganicPotential(audit) {
                         <div class="signalatlas-panel-title">${escapeHtml(moduleT('signalatlas.organicPotentialTitle', 'Potentiel organique'))}</div>
                         <p class="signalatlas-panel-copy">${escapeHtml(moduleT('signalatlas.organicPotentialReadyCopy', 'Analyse basée sur les exports GSC importés localement. Les rapprochements page/requête restent marqués inferred quand les CSV sont séparés.'))}</p>
                     </div>
-                    ${renderSignalAtlasOrganicImportControl(audit, true)}
+                    ${renderSignalAtlasOrganicImportControl(audit, true, 'organic-ready')}
                 </div>
                 <div class="signalatlas-score-grid">
                     ${cardItems.map(([label, value, meta]) => `
@@ -3773,6 +3800,7 @@ function renderSignalAtlasWorkspace() {
                             </div>
                         </aside>
                     </div>
+                    ${renderSignalAtlasOrganicMainCta(audit)}
                     ${renderSignalAtlasOverview(audit)}
                     ${signalAtlasSeoDetailsVisible ? `
                         <div class="signalatlas-drawer-panel signalatlas-seo-drawer${signalAtlasAnimateSeoDrawer ? ' is-entering' : ''}">
@@ -3815,13 +3843,13 @@ async function importSignalAtlasOrganicPotential(auditId, input) {
     const files = Array.from(input?.files || []);
     if (input) input.value = '';
     if (!auditId || !files.length) return;
-    const csvFiles = files.filter(file => /\.csv$/i.test(file.name || ''));
-    if (csvFiles.length !== files.length) {
-        Toast?.warning?.(moduleT('signalatlas.organicCsvOnly', 'Importe uniquement des fichiers CSV Google Search Console.'));
+    const acceptedFiles = files.filter(file => /\.(csv|zip)$/i.test(file.name || ''));
+    if (acceptedFiles.length !== files.length) {
+        Toast?.warning?.(moduleT('signalatlas.organicCsvOnly', 'Importe uniquement des fichiers CSV ou ZIP Google Search Console.'));
         return;
     }
     const formData = new FormData();
-    csvFiles.forEach(file => formData.append('files', file, file.name));
+    acceptedFiles.forEach(file => formData.append('files', file, file.name));
     Toast?.info?.(moduleT('signalatlas.organicImportRunning', 'Import GSC en cours...'));
     const result = await apiSignalAtlas.importOrganicPotential(auditId, formData);
     if (!result.ok || !result.data?.audit) {

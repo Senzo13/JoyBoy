@@ -273,12 +273,16 @@ class TerminalActionsMixin:
                 lines.append("Visible root directories: " + ", ".join(root_dirs[:18]))
 
         preferred = [
-            "README.md", "readme.md", "pyproject.toml", "package.json",
+            "README.md", "readme.md", "AGENTS.md", "CLAUDE.md", "CODEX.md",
+            "pyproject.toml", "package.json",
             "requirements.txt", "vite.config.ts", "vite.config.js", "next.config.js",
             "web/app.py", "app.py", "main.py", "server.py",
             "src/main.tsx", "src/main.jsx", "src/main.ts", "src/main.js",
             "src/App.tsx", "src/App.jsx", "src/App.ts", "src/App.js",
             "src/app/page.tsx", "src/app/page.jsx", "src/app/layout.tsx", "src/app/layout.jsx",
+            "src/app/globals.css", "src/app/global.css", "src/index.css", "src/App.css",
+            "app/page.tsx", "app/page.jsx", "app/layout.tsx", "app/layout.jsx",
+            "app/globals.css", "app/global.css",
             "core/__init__.py", "core/models/manager.py", "core/backends/terminal_brain.py",
         ]
         if root_listing.get("success"):
@@ -291,13 +295,25 @@ class TerminalActionsMixin:
             preferred.extend(dynamic_root_files[:12])
         seen_preferred = set()
         preferred = [path for path in preferred if path and not (path in seen_preferred or seen_preferred.add(path))]
+        instruction_files = {"AGENTS.md", "CLAUDE.md", "CODEX.md"}
+        read_instruction_file = False
+        read_path_keys = set()
         read_count = 0
+        max_brief_files = 6
         for path in preferred:
-            if read_count >= 5:
+            if read_count >= max_brief_files:
                 break
+            path_key = path.lower()
+            if path_key in read_path_keys:
+                continue
+            if path in instruction_files and read_instruction_file:
+                continue
             result = read_file(workspace_path, path, max_lines=120)
             if not result.get("success"):
                 continue
+            read_path_keys.add(path_key)
+            if path in instruction_files:
+                read_instruction_file = True
             read_count += 1
             events.append(runtime_event('tool_call', name='read_file', args={'path': path, 'max_lines': 120}))
             events.append(runtime_event('tool_result', result={
