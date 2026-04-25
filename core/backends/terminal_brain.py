@@ -15,6 +15,7 @@ Fonctionnement:
 import os
 import json
 import queue
+import re
 import threading
 import time
 from collections import defaultdict
@@ -633,11 +634,26 @@ class TerminalBrain(
         if self._is_repo_overview_request(initial_message):
             repo_brief, repo_brief_events = self._build_repo_brief(workspace_path)
             if use_cloud_model:
-                response_token_limit = min(response_token_limit, 1200)
+                response_token_limit = min(response_token_limit, 650)
             else:
-                response_token_limit = min(response_token_limit, 900)
+                response_token_limit = min(response_token_limit, 500)
             for event in repo_brief_events:
                 yield event
+            if not self._wants_deep_repo_overview(initial_message):
+                direct_repo_overview = self._build_direct_repo_overview_answer(
+                    initial_message,
+                    workspace_path,
+                    repo_brief,
+                )
+                if direct_repo_overview:
+                    yield runtime_event('content', text=direct_repo_overview, token_stats={})
+                    _end_resource_lease()
+                    yield runtime_event(
+                        'done',
+                        full_response=direct_repo_overview,
+                        token_stats={'prompt_tokens': 0, 'completion_tokens': 0, 'total': 0},
+                    )
+                    return
 
         # Construire les messages
         messages = [{"role": "system", "content": system_prompt}]
@@ -657,8 +673,10 @@ class TerminalBrain(
                     "REPO CONTEXT ALREADY EXPLORED BY JOYBOY:\n"
                     f"{repo_brief}\n\n"
                     "Answer now in the user's language with a compact, concrete synthesis. "
-                    "Use at most three short sections: quick verdict, concrete issues from observed files, next step. "
-                    "Avoid generic setup boilerplate unless the explored root listing proves it matters. "
+                    "Hard limit: 6 to 10 short lines total, no code blocks, no JSON/templates, no long boilerplate. "
+                    "Use at most three tiny sections: verdict, concrete issues from observed files, next step. "
+                    "Mention at most three issues and only if they are grounded in the explored files. "
+                    "Do not start with meta narration such as 'je vais', 'je n’ai pas besoin', or 'I will'. "
                     "Do not call list_files/glob/ls/pwd again: the useful context is already available."
                 )
             })
@@ -727,6 +745,7 @@ class TerminalBrain(
                     circuit_block = self._cloud_circuit_block_reason(model)
                     if circuit_block:
                         raise CloudModelError(circuit_block)
+                    stream_cloud_content = not bool(repo_brief)
                     yield runtime_event(
                         'model_call',
                         model=model,
@@ -756,7 +775,7 @@ class TerminalBrain(
                                         max_tokens=response_token_limit,
                                         temperature=0.2,
                                         reasoning_effort=reasoning_effort,
-                                        stream_callback=_on_cloud_delta,
+                                        stream_callback=_on_cloud_delta if stream_cloud_content else None,
                                     )
                                 except BaseException as exc:
                                     result_holder["error"] = exc
@@ -851,6 +870,10 @@ class TerminalBrain(
                     message_dict = {'role': 'assistant', 'content': content}
                     if tool_calls:
                         message_dict['tool_calls'] = tool_calls
+
+                if repo_brief and content:
+                    content = self._compact_repo_overview_response(content)
+                    message_dict['content'] = content
 
                 # Extraire les stats de tokens
                 token_stats = {}
@@ -1258,6 +1281,328 @@ class TerminalBrain(
 
     def get_snapshot(self, path: str) -> Optional[FileSnapshot]:
         return self.snapshots.get(path)
+
+    def _wants_deep_repo_overview(self, message: str) -> bool:
+        msg = self._intent_text(message)
+        return any(
+            word in msg
+            for word in (
+                "détaillé",
+                "detaille",
+                "détail",
+                "detail",
+                "detailed",
+                "exhaustif",
+                "exhaustive",
+                "profond",
+                "deep",
+                "complet",
+                "complete",
+                "tout en détail",
+                "tout en detail",
+            )
+        )
+
+    def _build_direct_repo_overview_answer(self, initial_message: str, workspace_path: str, repo_brief: str) -> str:
+        """Fast deterministic answer for broad repo overview requests.
+
+        A quick "analyse le repo" should feel like an agent did the obvious
+        local inspection, not like the model wrote a generic audit report.
+        """
+        root = os.path.realpath(os.path.abspath(workspace_path or ""))
+        if not os.path.isdir(root):
+            return ""
+
+        root_entries = self._safe_root_entries(root)
+        root_files = {name for name, kind in root_entries.items() if kind == "file"}
+        root_dirs = {name for name, kind in root_entries.items() if kind == "dir"}
+        lower_root_files = {name.lower() for name in root_files}
+        lower_root_dirs = {name.lower() for name in root_dirs}
+
+        package_data = self._read_repo_json(root, "package.json")
+        package_scripts = package_data.get("scripts", {}) if isinstance(package_data, dict) else {}
+        package_deps = {}
+        if isinstance(package_data, dict):
+            for dep_key in ("dependencies", "devDependencies"):
+                deps = package_data.get(dep_key, {})
+                if isinstance(deps, dict):
+                    package_deps.update(deps)
+
+        next_app_files = [
+            path
+            for path in (
+                "src/app/page.jsx",
+                "src/app/page.tsx",
+                "src/app/layout.jsx",
+                "src/app/layout.tsx",
+                "app/page.jsx",
+                "app/page.tsx",
+                "app/layout.jsx",
+                "app/layout.tsx",
+            )
+            if self._repo_file_exists(root, path)
+        ]
+        has_next = bool(next_app_files) or "next" in package_deps or any(
+            name in {"next.config.js", "next.config.mjs"} for name in lower_root_files
+        )
+        has_vite = "vite" in package_deps or any(name.startswith("vite.config.") for name in lower_root_files)
+        has_react = bool({"react", "react-dom"} & set(package_deps)) or any(
+            self._repo_file_exists(root, path)
+            for path in ("src/App.jsx", "src/App.tsx", "src/main.jsx", "src/main.tsx")
+        )
+
+        if has_next:
+            project_kind = "une petite app Next.js App Router" if next_app_files else "un projet Next.js"
+        elif has_vite and has_react:
+            project_kind = "une app React/Vite"
+        elif package_data:
+            project_kind = "un projet JavaScript/Node"
+        elif any(name.endswith(".py") for name in root_files):
+            project_kind = "un projet Python"
+        else:
+            project_kind = "un workspace léger"
+
+        file_count_hint = self._repo_brief_file_count(repo_brief)
+        git_text = "repo Git" if os.path.isdir(os.path.join(root, ".git")) else "dossier non initialisé en Git"
+        launchable = bool(package_data and package_scripts)
+
+        issues = []
+        if (has_next or has_vite or has_react or self._repo_file_exists(root, "src/app/page.jsx")) and "package.json" not in lower_root_files:
+            issues.append("il manque `package.json`, donc l'app ne se lance probablement pas via `npm run dev`")
+        elif package_data and not package_scripts:
+            issues.append("`package.json` existe mais ne déclare pas de scripts de dev/build")
+
+        suspicious_dirs = sorted(name for name in root_dirs if name in {"-p", "--", "-r"})
+        if suspicious_dirs:
+            issues.append(f"dossier suspect `{suspicious_dirs[0]}` à vérifier/supprimer s'il est accidentel")
+
+        jsx_css_issue = self._repo_jsx_css_issue(root)
+        if jsx_css_issue:
+            issues.append(jsx_css_issue)
+
+        if "readme.md" not in lower_root_files:
+            issues.append("pas de `README.md`, donc le chemin d'installation/lancement n'est pas documenté")
+
+        if ".gitignore" not in lower_root_files and (package_data or has_next or has_vite or has_react):
+            issues.append("pas de `.gitignore` visible pour exclure `node_modules`, `.next`, caches et `.env`")
+
+        public_path = os.path.join(root, "public")
+        if "public" in lower_root_dirs and os.path.isdir(public_path):
+            try:
+                public_items = [item for item in os.listdir(public_path) if item not in {".DS_Store", "Thumbs.db"}]
+            except OSError:
+                public_items = []
+            if not public_items:
+                issues.append("`public/` est vide, donc pas encore d'assets/favicon/OG image")
+
+        issues = self._dedupe_strings(issues)[:3]
+        positives = []
+        if has_next and next_app_files:
+            positives.append("structure App Router claire")
+        if self._repo_file_exists(root, "src/app/layout.jsx") or self._repo_file_exists(root, "src/app/layout.tsx"):
+            layout_text = self._read_repo_text(root, "src/app/layout.jsx", 4000) or self._read_repo_text(root, "src/app/layout.tsx", 4000)
+            if 'lang="fr"' in layout_text or "lang='fr'" in layout_text:
+                positives.append("layout en français")
+            if "metadata" in layout_text:
+                positives.append("métadonnées SEO de base")
+        if not positives and launchable:
+            positives.append("tooling de lancement présent")
+
+        first_line = f"**Analyse Rapide**\nC'est {project_kind}, {git_text}"
+        if file_count_hint:
+            first_line += f", avec environ {file_count_hint} fichier(s) repéré(s)"
+        first_line += "."
+
+        quality_line = ""
+        if positives:
+            quality_line = f"Base propre côté code: {', '.join(positives[:3])}."
+        elif launchable:
+            quality_line = "Base lançable, mais il faut lire les fichiers métier pour juger plus finement."
+        else:
+            quality_line = "Base lisible, mais le repo ressemble encore à un fragment plus qu'à un projet prêt à tourner."
+
+        issue_lines = issues or ["rien de bloquant détecté dans le scan rapide; un audit ciblé peut aller plus loin"]
+        next_step = self._repo_overview_next_step(issues, launchable)
+
+        return "\n".join([
+            first_line,
+            quality_line,
+            "",
+            "**À Corriger**",
+            *[f"- {issue}" for issue in issue_lines],
+            "",
+            f"**Prochaine Étape**\n{next_step}",
+        ])
+
+    def _safe_root_entries(self, root: str) -> Dict[str, str]:
+        try:
+            names = os.listdir(root)
+        except OSError:
+            return {}
+        entries: Dict[str, str] = {}
+        for name in names:
+            full = os.path.join(root, name)
+            if os.path.isdir(full):
+                entries[name] = "dir"
+            elif os.path.isfile(full):
+                entries[name] = "file"
+        return entries
+
+    def _repo_file_exists(self, root: str, relative_path: str) -> bool:
+        full_path = self._repo_resolve_path(root, relative_path)
+        return bool(full_path and os.path.isfile(full_path))
+
+    def _repo_resolve_path(self, root: str, relative_path: str) -> Optional[str]:
+        candidate = os.path.realpath(os.path.abspath(os.path.join(root, relative_path.replace("/", os.sep))))
+        try:
+            common = os.path.commonpath([os.path.normcase(root), os.path.normcase(candidate)])
+        except ValueError:
+            return None
+        if common != os.path.normcase(root):
+            return None
+        return candidate
+
+    def _read_repo_text(self, root: str, relative_path: str, max_chars: int = 20000) -> str:
+        full_path = self._repo_resolve_path(root, relative_path)
+        if not full_path or not os.path.isfile(full_path):
+            return ""
+        try:
+            with open(full_path, "r", encoding="utf-8", errors="replace") as handle:
+                return handle.read(max_chars)
+        except OSError:
+            return ""
+
+    def _read_repo_json(self, root: str, relative_path: str) -> Dict[str, Any]:
+        text = self._read_repo_text(root, relative_path, 12000)
+        if not text:
+            return {}
+        try:
+            data = json.loads(text)
+            return data if isinstance(data, dict) else {}
+        except json.JSONDecodeError:
+            return {}
+
+    def _repo_brief_file_count(self, repo_brief: str) -> str:
+        match = re.search(r"Project:\s+.+?\((\d+)\s+files?\)", str(repo_brief or ""), re.IGNORECASE)
+        return match.group(1) if match else ""
+
+    def _repo_jsx_css_issue(self, root: str) -> str:
+        jsx_paths = [
+            "src/app/page.jsx",
+            "src/app/page.tsx",
+            "src/app/layout.jsx",
+            "src/app/layout.tsx",
+            "src/App.jsx",
+            "src/App.tsx",
+            "src/main.jsx",
+            "src/main.tsx",
+        ]
+        css_paths = [
+            "src/app/globals.css",
+            "src/app/global.css",
+            "src/index.css",
+            "src/App.css",
+            "app/globals.css",
+            "app/global.css",
+        ]
+        jsx_text = "\n".join(self._read_repo_text(root, path, 30000) for path in jsx_paths)
+        css_text = "\n".join(self._read_repo_text(root, path, 30000) for path in css_paths)
+        if not jsx_text.strip() or not css_text.strip():
+            return ""
+
+        used_classes = set()
+        for raw in re.findall(r"className\s*=\s*([\"'])(.*?)\1", jsx_text, flags=re.DOTALL):
+            for class_name in re.split(r"\s+", raw[1].strip()):
+                if class_name and "{" not in class_name and "}" not in class_name:
+                    used_classes.add(class_name)
+        css_classes = set(re.findall(r"(?<![\w-])\.([A-Za-z_][\w-]*)", css_text))
+
+        unstyled = sorted(used_classes - css_classes)
+        unused = sorted(css_classes - used_classes)
+        details = []
+        if unstyled:
+            details.append("utilisées sans style: " + ", ".join(f"`.{name}`" for name in unstyled[:3]))
+        if unused:
+            details.append("stylées mais absentes du JSX: " + ", ".join(f"`.{name}`" for name in unused[:3]))
+        if details:
+            return "CSS/JSX désalignés (" + "; ".join(details[:2]) + ")"
+        return ""
+
+    def _repo_overview_next_step(self, issues: List[str], launchable: bool) -> str:
+        joined = " ".join(issues).lower()
+        if "package.json" in joined or not launchable:
+            return "Rendre le projet lançable (`package.json`, scripts, dépendances), puis refaire un build."
+        if "css/jsx" in joined:
+            return "Nettoyer l'alignement JSX/CSS avant d'ajouter de nouvelles sections."
+        if "readme" in joined or ".gitignore" in joined:
+            return "Ajouter les fichiers de base (`README.md`, `.gitignore`) pour rendre le repo maintenable."
+        return "Choisir une zone précise à auditer ensuite: UI, routing, tooling ou qualité code."
+
+    def _dedupe_strings(self, items: List[str]) -> List[str]:
+        seen = set()
+        result = []
+        for item in items:
+            key = item.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            result.append(item)
+        return result
+
+    def _compact_repo_overview_response(self, text: str, max_lines: int = 10, max_chars: int = 1400) -> str:
+        """Keep quick repository audits closer to Codex-style summaries."""
+        raw = str(text or "").strip()
+        if not raw:
+            return raw
+
+        visible_lines = [line for line in raw.splitlines() if line.strip()]
+        if len(raw) <= max_chars and len(visible_lines) <= max_lines:
+            return raw
+
+        without_code = re.sub(r"```[\s\S]*?```", "", raw)
+        lines: List[str] = []
+        skip_prefixes = (
+            "je vais",
+            "je n'ai pas besoin",
+            "je n’ai pas besoin",
+            "i will",
+            "i don't need",
+            "voici une analyse détaillée",
+            "voici l'analyse détaillée",
+        )
+        low_signal_prefixes = (
+            "structure connue",
+            "fichiers applicatifs principaux",
+            "minimum recommandé",
+            "exemple",
+            "priorité ",
+            "priorite ",
+        )
+
+        for line in without_code.replace("\r\n", "\n").splitlines():
+            item = line.strip()
+            if not item:
+                continue
+            normalized = item.lower().lstrip("#-*0123456789. ")
+            if any(normalized.startswith(prefix) for prefix in skip_prefixes):
+                continue
+            if any(normalized.startswith(prefix) for prefix in low_signal_prefixes):
+                continue
+            if len(item) > 190:
+                item = item[:187].rstrip() + "..."
+            lines.append(item)
+            if len(lines) >= max_lines:
+                break
+
+        compact = "\n".join(lines).strip()
+        if not compact:
+            compact = raw[:max_chars].strip()
+        if len(compact) > max_chars:
+            compact = compact[:max_chars].rstrip()
+            if "\n" in compact:
+                compact = compact.rsplit("\n", 1)[0].rstrip()
+            compact += "\n..."
+        return compact
 
     def rollback(self, path: str, workspace_path: str) -> bool:
         """Restaure un fichier depuis son snapshot"""

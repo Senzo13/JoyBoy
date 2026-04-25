@@ -60,7 +60,7 @@ class TerminalBrainSmokeTests(unittest.TestCase):
         self.assertFalse(brain._is_repo_overview_request("analyse core/backends/terminal_brain.py"))
 
     @patch("core.backends.terminal_brain.chat_with_cloud_model")
-    def test_repo_overview_brief_reads_local_files_without_subagent(self, mock_chat):
+    def test_deep_repo_overview_brief_reads_local_files_without_subagent(self, mock_chat):
         mock_chat.return_value = {
             "message": {"role": "assistant", "content": "Voici une synthèse du projet."},
             "prompt_eval_count": 40,
@@ -89,7 +89,7 @@ class TerminalBrainSmokeTests(unittest.TestCase):
             )
             Path(app_dir, "globals.css").write_text(".home { color: white; }\n", encoding="utf-8")
 
-            events = list(brain.run_agentic_loop("analyse le projet", tmp, model="openai:gpt-5.4"))
+            events = list(brain.run_agentic_loop("analyse le projet en détail", tmp, model="openai:gpt-5.4"))
 
         tool_names = [event.get("name") for event in events if event.get("type") == "tool_call"]
         self.assertIn("list_files", tool_names)
@@ -107,7 +107,77 @@ class TerminalBrainSmokeTests(unittest.TestCase):
         self.assertIn("--- README.md", repo_context)
         self.assertIn("--- package.json", repo_context)
         self.assertIn("--- src/app/globals.css", repo_context)
+        self.assertIn("Hard limit: 6 to 10 short lines total", repo_context)
         self.assertNotIn("Explorer observations", repo_context)
+        self.assertLessEqual(mock_chat.call_args.kwargs["max_tokens"], 650)
+
+    @patch("core.backends.terminal_brain.chat_with_cloud_model")
+    def test_quick_repo_overview_returns_direct_deterministic_answer(self, mock_chat):
+        brain = TerminalBrain()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            Path(tmp, "-p").mkdir()
+            app_dir = Path(tmp, "src", "app")
+            app_dir.mkdir(parents=True)
+            Path(app_dir, "page.jsx").write_text(
+                "export default function Home() {\n"
+                "  return <main className=\"home about-content\">demo</main>;\n"
+                "}\n",
+                encoding="utf-8",
+            )
+            Path(app_dir, "layout.jsx").write_text(
+                "export const metadata = { title: 'Demo' };\n"
+                "export default function RootLayout({ children }) {\n"
+                "  return <html lang=\"fr\"><body>{children}</body></html>;\n"
+                "}\n",
+                encoding="utf-8",
+            )
+            Path(app_dir, "globals.css").write_text(
+                ".home { color: white; }\n.unused-panel { display: grid; }\n",
+                encoding="utf-8",
+            )
+
+            events = list(brain.run_agentic_loop("analyse le projet", tmp, model="openai:gpt-5.4"))
+
+        mock_chat.assert_not_called()
+        text = "".join(event.get("text", "") for event in events if event.get("type") == "content")
+        self.assertIn("Next.js App Router", text)
+        self.assertIn("package.json", text)
+        self.assertIn("`-p`", text)
+        self.assertIn("CSS/JSX", text)
+        self.assertIn("about-content", text)
+
+    def test_repo_overview_response_is_compacted_when_model_is_verbose(self):
+        brain = TerminalBrain()
+        verbose = """
+Je vais vérifier rapidement la structure réelle.
+
+## Analyse du repo
+
+Structure connue :
+
+```json
+{"scripts":{"dev":"next dev","build":"next build"}}
+```
+
+Le repo est une petite app Next.js.
+Points positifs
+- Code lisible.
+Problèmes / risques
+- package.json absent.
+- dossier -p suspect.
+- CSS et JSX peuvent être désalignés.
+Priorité 1 - ajouter tooling.
+Next step: rendre le projet lançable.
+Encore beaucoup de détail inutile.
+"""
+
+        compact = brain._compact_repo_overview_response(verbose, max_lines=6, max_chars=500)
+
+        self.assertNotIn("Je vais", compact)
+        self.assertNotIn("```", compact)
+        self.assertNotIn('"scripts"', compact)
+        self.assertLessEqual(len([line for line in compact.splitlines() if line.strip()]), 6)
 
     def test_budget_fallback_ends_without_another_model_call(self):
         brain = TerminalBrain()
