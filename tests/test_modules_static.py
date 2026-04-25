@@ -182,9 +182,12 @@ class ModulesStaticTests(unittest.TestCase):
         self.assertIn("function renderCyberAtlasWorkspace()", cyber_js)
         self.assertIn("function launchCyberAtlasAudit()", cyber_js)
         self.assertIn("function cancelCyberAtlasAudit", cyber_js)
+        self.assertIn("renderCyberAtlasActionPlan", cyber_js)
+        self.assertIn("tabPlan", cyber_js)
         self.assertIn("downloadCyberAtlasExport", cyber_js)
         self.assertIn("/api/cyberatlas/audits", routes_py)
         self.assertIn("build_security_gate_payload", reporting_py)
+        self.assertIn("## Action Plan", reporting_py)
         self.assertIn("# CyberAtlas Audit", reporting_py)
 
 

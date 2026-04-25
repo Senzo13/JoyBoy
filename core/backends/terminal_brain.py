@@ -1370,11 +1370,8 @@ class TerminalBrain(
         if not raw:
             return raw
 
-        visible_lines = [line for line in raw.splitlines() if line.strip()]
-        if len(raw) <= max_chars and len(visible_lines) <= max_lines:
-            return raw
-
         without_code = re.sub(r"```[\s\S]*?```", "", raw)
+        visible_lines = [line for line in raw.splitlines() if line.strip()]
         lines: List[str] = []
         skip_prefixes = (
             "je vais",
@@ -1394,9 +1391,27 @@ class TerminalBrain(
             "priorite ",
         )
 
+        has_noisy_shape = (
+            "```" in raw
+            or any(
+                line.strip().lower().lstrip("#-*0123456789. ").startswith(low_signal_prefixes)
+                for line in raw.splitlines()
+                if line.strip()
+            )
+            or any(
+                line.strip().lower().startswith(skip_prefixes)
+                for line in raw.splitlines()
+                if line.strip()
+            )
+        )
+        if not has_noisy_shape and len(raw) <= max_chars and len(visible_lines) <= max_lines:
+            return raw
+
         for line in without_code.replace("\r\n", "\n").splitlines():
             item = line.strip()
             if not item:
+                continue
+            if item.startswith("```"):
                 continue
             normalized = item.lower().lstrip("#-*0123456789. ")
             if any(normalized.startswith(prefix) for prefix in skip_prefixes):
@@ -1411,7 +1426,7 @@ class TerminalBrain(
 
         compact = "\n".join(lines).strip()
         if not compact:
-            compact = raw[:max_chars].strip()
+            compact = re.sub(r"```[a-zA-Z0-9_+-]*\s*|\s*```", "", raw).strip()[:max_chars].strip()
         if len(compact) > max_chars:
             compact = compact[:max_chars].rstrip()
             if "\n" in compact:

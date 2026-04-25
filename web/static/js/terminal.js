@@ -659,9 +659,10 @@ function addTerminalProgressLog(label, detail = '', type = 'info', options = {})
     appendTerminalProgressLog(label, detail, type, key);
 }
 
-function completeTerminalProgressPanel(success = true) {
+function completeTerminalProgressPanel(success = true, options = {}) {
     clearTimeout(terminalProgressRevealTimer);
     terminalProgressRevealTimer = null;
+    const finishingReadOnly = isTerminalReadOnlyTurn();
     terminalProgressSessionActive = false;
     terminalProgressContentStarted = false;
     terminalProgressIntent = '';
@@ -672,8 +673,9 @@ function completeTerminalProgressPanel(success = true) {
     terminalProgressElement.classList.toggle('is-complete', success);
     terminalProgressElement.classList.toggle('is-error', !success);
     if (success) {
-        terminalProgressElement.classList.add('is-collapsed');
-        if (terminalTasksElement) terminalTasksElement.classList.add('collapsed');
+        const shouldCollapse = options.collapse !== false && !finishingReadOnly;
+        terminalProgressElement.classList.toggle('is-collapsed', shouldCollapse);
+        if (terminalTasksElement) terminalTasksElement.classList.toggle('collapsed', shouldCollapse);
     }
     updateTerminalProgressTimer(true);
     refreshTerminalProgressLayout();
@@ -1078,7 +1080,6 @@ function toggleTerminalProgressPanel() {
  */
 function showTerminalTasks() {
     if (terminalTasksElement) return terminalTasksElement;
-    if (isTerminalReadOnlyTurn()) return null;
 
     const progressPanel = revealTerminalProgressPanel();
     const taskSlot = progressPanel?.querySelector('.terminal-progress-task-slot');
@@ -1186,18 +1187,17 @@ function describeTerminalModelCall(data = {}) {
         return terminalT('terminal.taskContinueAfterTools', 'Décision après les résultats');
     }
     if (iteration > 1) {
-        return terminalT('terminal.taskFinalSynthesis', 'Rédaction de la réponse');
+        return terminalT('terminal.taskFinalSynthesis', 'Synthèse après les outils');
     }
     if (toolsCount > 0) {
         return terminalT('terminal.taskRepoAnalysis', 'Choix des fichiers à lire');
     }
-    return terminalT('terminal.taskPrepareAnswer', 'Rédaction de la réponse');
+    return terminalT('terminal.taskPrepareAnswer', 'Synthèse du contexte');
 }
 
 function shouldShowTerminalToolAsTask(action, args = {}) {
     if (action === 'ask_clarification') return false;
     if (isTerminalContextGatheringToolCall(action, args)) return false;
-    if (isTerminalPassiveReadOnlyTool(action)) return false;
     return [
         'write_todos',
         'list_files',
@@ -1243,6 +1243,12 @@ function shouldShowTerminalToolResult(result = {}, args = {}) {
     const action = result.action || result.tool_name;
     if (action === 'ask_clarification') return false;
     return Boolean(action);
+}
+
+function describeTerminalToolResultLabel(result = {}, args = {}) {
+    const action = result.action || result.tool_name || '';
+    const target = result.path || window.lastToolCall?.path || '';
+    return describeTerminalToolCall(action, target, args);
 }
 
 function shouldShowTerminalToolCallLine(action = '', args = {}) {
@@ -2822,7 +2828,7 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
         currentController = controller;
 
         // Afficher l'animation de travail (pas de skeleton bubble)
-        const analyzingLabel = terminalT('terminal.progressThinking', 'Analyse en cours');
+        const analyzingLabel = terminalT('terminal.progressThinking', 'Traitement en cours');
         showThinkingAnimation(analyzingLabel);
 
         // Réinitialiser les tâches pour cette requête
@@ -3090,7 +3096,7 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                             if (window.lastToolCall?.taskId) {
                                 updateTerminalTask(window.lastToolCall.taskId, 'error', terminalT('terminal.writeBlockedShort', 'Écriture bloquée'));
                             }
-                            showThinkingAnimation(terminalT('terminal.progressThinking', 'Analyse en cours'));
+                            showThinkingAnimation(terminalT('terminal.progressThinking', 'Traitement en cours'));
                             continue;
                         }
 
@@ -3112,9 +3118,10 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                                 continue;
                             }
                             const errorText = result.error || 'Error';
+                            const resultLabel = describeTerminalToolResultLabel(result, window.lastToolCall?.args || {});
                             addToolResult(errorText, 'error');
                             addTerminalProgressLog(
-                                terminalT('terminal.progressToolFailed', 'Échec {tool}', { tool: result.action || '' }),
+                                terminalT('terminal.progressToolFailed', 'Échec {tool}', { tool: resultLabel || result.action || '' }),
                                 errorText,
                                 'error',
                                 { reveal: true, key: terminalToolProgressKey(result.action) }
@@ -3161,8 +3168,9 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                         }
                         const revealResultProgress = shouldRevealTerminalProgressForTool(result.action, lastToolArgs);
                         if (revealResultProgress) {
+                            const resultLabel = describeTerminalToolResultLabel(result, lastToolArgs);
                             addTerminalProgressLog(
-                                terminalT('terminal.progressToolDone', 'Terminé {tool}', { tool: result.action || '' }),
+                                terminalT('terminal.progressToolDone', 'Terminé {tool}', { tool: resultLabel || result.action || '' }),
                                 resultSummary,
                                 'success',
                                 { reveal: true, key: terminalToolProgressKey(result.action) }
@@ -3170,7 +3178,7 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                         }
                         // Sinon pas d'affichage (l'IA donnera la réponse à la fin)
 
-                        showThinkingAnimation(terminalT('terminal.progressThinking', 'Analyse en cours'));
+                        showThinkingAnimation(terminalT('terminal.progressThinking', 'Traitement en cours'));
                         continue;
                     }
 
@@ -3207,12 +3215,7 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                             terminalProgressContentStarted = true;
                             completeTerminalContextActivity();
                             updateTerminalTask('model-call', 'done', terminalT('terminal.taskAnswerStarted', 'Réponse commencée'));
-                            if (isTerminalReadOnlyTurn()) {
-                                if (terminalProgressElement) {
-                                    completeTerminalProgressPanel(true);
-                                }
-                                hideTerminalTasks();
-                            } else if (!terminalProgressElement) {
+                            if (!isTerminalReadOnlyTurn() && !terminalProgressElement) {
                                 clearTimeout(terminalProgressRevealTimer);
                                 terminalProgressRevealTimer = null;
                                 terminalProgressBufferedLogs = [];

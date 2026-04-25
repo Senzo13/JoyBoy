@@ -114,3 +114,69 @@ body.cyberatlas-mode {
     font-size: 12px;
     line-height: 1.5;
 }
+
+.cyberatlas-action-card {
+    position: relative;
+    overflow: hidden;
+}
+
+.cyberatlas-action-card::before {
+    content: "";
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 3px;
+    background: linear-gradient(180deg, #34d399, #fb7185);
+    opacity: 0.8;
+}
+
+.cyberatlas-surface-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 12px;
+}
+
+.cyberatlas-surface-card {
+    border: 1px solid rgba(148, 163, 184, 0.16);
+    border-radius: 18px;
+    padding: 16px;
+    background: rgba(2, 6, 23, 0.46);
+}
+
+.cyberatlas-surface-card.is-good {
+    border-color: rgba(52, 211, 153, 0.24);
+}
+
+.cyberatlas-surface-card.is-warn {
+    border-color: rgba(251, 191, 36, 0.28);
+}
+
+.cyberatlas-surface-card.is-danger {
+    border-color: rgba(251, 113, 133, 0.28);
+}
+
+.cyberatlas-surface-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    color: #f8fafc;
+}
+
+.cyberatlas-surface-signals {
+    display: grid;
+    gap: 6px;
+    margin: 14px 0;
+}
+
+.cyberatlas-surface-signals span {
+    color: #9fb0c7;
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+.cyberatlas-surface-card p {
+    margin: 0;
+    color: #d1fae5;
+    font-size: 12px;
+    line-height: 1.55;
+}

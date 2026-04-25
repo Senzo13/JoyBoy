@@ -317,9 +317,9 @@ def terminal_chat():
 
             elif event_type == 'model_call':
                 tools_count = int(event.get('tools_count') or 0)
-                label = "Analyse avec le modèle"
+                label = "Appel du modèle"
                 if tools_count:
-                    label = f"Analyse avec le modèle ({tools_count} outils disponibles)"
+                    label = f"Appel du modèle ({tools_count} outil(s) disponibles)"
                 if job_manager and terminal_job_id:
                     job_manager.update(
                         terminal_job_id,

@@ -188,6 +188,25 @@ Encore beaucoup de détail inutile.
         self.assertNotIn('"scripts"', compact)
         self.assertLessEqual(len([line for line in compact.splitlines() if line.strip()]), 6)
 
+    def test_repo_overview_response_removes_short_code_fence_noise(self):
+        brain = TerminalBrain()
+
+        compact = brain._compact_repo_overview_response(
+            "Le repo est une petite app Next.js.\n\n"
+            "```text\n"
+            "src/app/page.jsx\n"
+            "src/app/layout.jsx\n"
+            "```\n"
+            "Problème concret: package.json absent.",
+            max_lines=6,
+            max_chars=500,
+        )
+
+        self.assertIn("Le repo est une petite app Next.js.", compact)
+        self.assertIn("package.json absent", compact)
+        self.assertNotIn("```", compact)
+        self.assertNotIn("src/app/page.jsx", compact)
+
     def test_budget_fallback_ends_without_another_model_call(self):
         brain = TerminalBrain()
         observed = [

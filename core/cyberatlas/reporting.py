@@ -33,7 +33,7 @@ def build_executive_summary(audit: Dict[str, Any]) -> str:
     counts = _severity_counts(audit)
     lines = [
         f"CyberAtlas audited {summary.get('target') or 'the requested target'} in {summary.get('mode', 'public')} mode.",
-        f"Defensive security score: {summary.get('global_score', 'n/a')} / 100.",
+        f"Defensive security score: {summary.get('global_score', 'n/a')} / 100, grade {summary.get('security_grade') or 'n/a'}.",
         f"Risk level: {summary.get('risk_level', 'Unknown')}.",
         (
             f"Coverage: {summary.get('pages_crawled', 0)} page(s), "
@@ -96,6 +96,10 @@ def build_markdown_report(audit: Dict[str, Any]) -> str:
     scores = audit.get("scores") or []
     findings = audit.get("findings") or []
     remediation = audit.get("remediation_items") or []
+    action_plan = audit.get("action_plan") or []
+    recommendations = audit.get("recommendations") or []
+    comparison = audit.get("comparison") or {}
+    surface_matrix = snapshot.get("surface_matrix") or []
     lines = [
         "# CyberAtlas Audit",
         "",
@@ -103,6 +107,7 @@ def build_markdown_report(audit: Dict[str, Any]) -> str:
         f"- Mode: `{summary.get('mode', 'public')}`",
         f"- Profile: `{summary.get('profile', 'elevated')}`",
         f"- Defensive score: `{summary.get('global_score', 'n/a')}`",
+        f"- Security grade: `{summary.get('security_grade', 'n/a')}`",
         f"- Risk level: `{summary.get('risk_level', 'Unknown')}`",
         f"- Safe mode: `{bool(summary.get('safe_mode', True))}`",
         f"- Discovered endpoint signals: `{summary.get('discovered_endpoint_count', 0)}`",
@@ -119,6 +124,65 @@ def build_markdown_report(audit: Dict[str, Any]) -> str:
         "- It does not exploit targets, brute-force logins, attempt stealth, or send injection payloads.",
         "- Treat every result as a prioritized remediation signal; confirm high-risk changes in a controlled environment.",
         "",
+        "## Action Plan",
+        "",
+    ]
+    if action_plan:
+        for item in action_plan:
+            lines.extend([
+                f"### {item.get('order')}. {item.get('title')}",
+                "",
+                f"- Priority: `{item.get('priority')}`",
+                f"- Triggered: `{bool(item.get('triggered'))}`",
+                f"- Why: {item.get('description')}",
+                f"- Action: {item.get('action')}",
+                f"- Validation: {item.get('validation')}",
+                "",
+            ])
+            evidence = item.get("evidence") or []
+            if evidence:
+                lines.append("Evidence:")
+                for evidence_item in evidence[:5]:
+                    lines.append(f"- {evidence_item}")
+                lines.append("")
+    else:
+        lines.extend(["- No action plan was generated.", ""])
+    lines.extend([
+        "## Attack Surface Matrix",
+        "",
+    ])
+    if surface_matrix:
+        for item in surface_matrix:
+            lines.extend([
+                f"### {item.get('label') or item.get('id')}",
+                "",
+                f"- Status: `{item.get('status')}`",
+                f"- Next action: {item.get('next_action')}",
+            ])
+            for signal in item.get("signals") or []:
+                lines.append(f"- {signal}")
+            lines.append("")
+    else:
+        lines.extend(["- No surface matrix was generated.", ""])
+    lines.extend([
+        "## Previous Audit Comparison",
+        "",
+        f"- Status: `{comparison.get('status') or 'baseline'}`",
+        f"- Previous audit: `{comparison.get('previous_audit_id') or 'none'}`",
+        f"- Score delta: `{comparison.get('score_delta', 0)}`",
+        f"- Critical delta: `{comparison.get('critical_delta', 0)}`",
+        f"- High delta: `{comparison.get('high_delta', 0)}`",
+        f"- Public sensitive endpoint delta: `{comparison.get('public_sensitive_delta', 0)}`",
+        f"- Source map delta: `{comparison.get('source_map_delta', 0)}`",
+        "",
+    ])
+    if comparison.get("new_finding_ids") or comparison.get("fixed_finding_ids"):
+        lines.extend([
+            f"- New finding IDs: `{', '.join(comparison.get('new_finding_ids') or []) or 'none'}`",
+            f"- Fixed finding IDs: `{', '.join(comparison.get('fixed_finding_ids') or []) or 'none'}`",
+            "",
+        ])
+    lines.extend([
         "## TLS",
         "",
         f"- Available: `{bool(tls.get('available'))}`",
@@ -140,7 +204,7 @@ def build_markdown_report(audit: Dict[str, Any]) -> str:
         "",
         "## Security Headers",
         "",
-    ]
+    ])
     if headers:
         for key, value in headers.items():
             lines.append(f"- `{key}`: `{str(value)[:240]}`")
@@ -258,6 +322,18 @@ def build_markdown_report(audit: Dict[str, Any]) -> str:
                 f"- Implementation prompt: {item.get('dev_prompt')}",
                 "",
             ])
+    if recommendations:
+        lines.extend(["## Recommendation Backlog", ""])
+        for item in recommendations:
+            lines.extend([
+                f"### {item.get('title')}",
+                "",
+                f"- Priority: `{item.get('priority')}`",
+                f"- Triggered: `{bool(item.get('triggered'))}`",
+                f"- Action: {item.get('action')}",
+                f"- Validation: {item.get('validation')}",
+                "",
+            ])
     interpretations = audit.get("interpretations") or []
     if interpretations:
         latest = interpretations[-1]
@@ -312,6 +388,7 @@ def build_security_gate_payload(audit: Dict[str, Any]) -> Dict[str, Any]:
         "status": "failed" if failures else "passed",
         "passed": not failures,
         "score": summary.get("global_score"),
+        "security_grade": summary.get("security_grade"),
         "risk_level": summary.get("risk_level"),
         "critical_count": summary.get("critical_count", 0),
         "high_count": summary.get("high_count", 0),
@@ -319,6 +396,7 @@ def build_security_gate_payload(audit: Dict[str, Any]) -> Dict[str, Any]:
         "source_map_count": summary.get("source_map_count", 0),
         "failures": failures,
         "warnings": warnings,
+        "action_plan": audit.get("action_plan") or [],
         "top_findings": findings[:8],
     }
 
@@ -340,8 +418,12 @@ def build_evidence_pack(audit: Dict[str, Any]) -> Dict[str, Any]:
         "frontend_hints": snapshot.get("frontend_hints") or {},
         "protections": snapshot.get("protections") or {},
         "recon_summary": snapshot.get("recon_summary") or {},
+        "surface_matrix": snapshot.get("surface_matrix") or [],
+        "comparison": audit.get("comparison") or {},
         "findings": audit.get("findings") or [],
         "remediation_items": audit.get("remediation_items") or [],
+        "recommendations": audit.get("recommendations") or [],
+        "action_plan": audit.get("action_plan") or [],
     }
 
 
@@ -362,6 +444,15 @@ def build_report_html(audit: Dict[str, Any]) -> str:
         f"<td>{html_escape(str(item.get('scope') or ''))}</td>"
         "</tr>"
         for item in (audit.get("findings") or [])
+    )
+    plan_rows = "".join(
+        "<tr>"
+        f"<td>{html_escape(str(item.get('order') or ''))}</td>"
+        f"<td>{html_escape(str(item.get('priority') or ''))}</td>"
+        f"<td>{html_escape(str(item.get('title') or ''))}</td>"
+        f"<td>{html_escape(str(item.get('action') or ''))}</td>"
+        "</tr>"
+        for item in (audit.get("action_plan") or [])
     )
     return f"""
 <!doctype html>
@@ -387,8 +478,14 @@ def build_report_html(audit: Dict[str, Any]) -> str:
   <h1>CyberAtlas Audit</h1>
   <div class="muted">{html_escape(str(summary.get('target', '')))}</div>
   <p>{html_escape(build_executive_summary(audit)).replace(chr(10), '<br>')}</p>
+  <p><strong>Grade:</strong> {html_escape(str(summary.get('security_grade') or 'n/a'))}</p>
   <p><strong>Severity mix:</strong> {counts['critical']} critical · {counts['high']} high · {counts['medium']} medium · {counts['low']} low</p>
   <div class="scores">{score_cards}</div>
+  <h2>Action plan</h2>
+  <table>
+    <thead><tr><th>#</th><th>Priority</th><th>Action</th><th>Fix</th></tr></thead>
+    <tbody>{plan_rows}</tbody>
+  </table>
   <h2>Findings</h2>
   <table>
     <thead><tr><th>Issue</th><th>Severity</th><th>Confidence</th><th>Scope</th></tr></thead>

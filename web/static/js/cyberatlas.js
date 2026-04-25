@@ -246,6 +246,44 @@
         return cyberAtlasText(`cyberatlas.confidence_${key}`, value || 'Unknown');
     }
 
+    function cyberAtlasBoolLabel(value) {
+        return value ? cyberAtlasText('cyberatlas.yes', 'Yes') : cyberAtlasText('cyberatlas.no', 'No');
+    }
+
+    function cyberAtlasNoneLabel() {
+        return cyberAtlasText('cyberatlas.none', 'None');
+    }
+
+    function cyberAtlasSurfaceStatusLabel(value) {
+        const clean = String(value || '').trim().toLowerCase();
+        if (clean === 'ok') return cyberAtlasText('cyberatlas.surfaceOk', 'OK');
+        if (clean === 'review') return cyberAtlasText('cyberatlas.surfaceReview', 'Review');
+        if (clean === 'weak') return cyberAtlasText('cyberatlas.surfaceWeak', 'Weak');
+        return cyberAtlasText('cyberatlas.statusUnknown', 'Unknown');
+    }
+
+    function cyberAtlasSurfaceStatusTone(value) {
+        const clean = String(value || '').trim().toLowerCase();
+        if (clean === 'ok') return 'is-good';
+        if (clean === 'review') return 'is-warn';
+        return 'is-danger';
+    }
+
+    function cyberAtlasComparisonLabel(value) {
+        const clean = String(value || '').trim().toLowerCase();
+        if (clean === 'regressed') return cyberAtlasText('cyberatlas.comparisonRegressed', 'Regressed');
+        if (clean === 'improved') return cyberAtlasText('cyberatlas.comparisonImproved', 'Improved');
+        if (clean === 'stable') return cyberAtlasText('cyberatlas.comparisonStable', 'Stable');
+        return cyberAtlasText('cyberatlas.comparisonBaseline', 'Baseline');
+    }
+
+    function cyberAtlasComparisonTone(value) {
+        const clean = String(value || '').trim().toLowerCase();
+        if (clean === 'improved') return 'is-good';
+        if (clean === 'regressed') return 'is-danger';
+        return 'is-warn';
+    }
+
     function cyberAtlasPhaseLabel(phase) {
         const clean = String(phase || '').trim().toLowerCase();
         if (clean === 'tls') return cyberAtlasText('cyberatlas.phaseTls', 'TLS');
@@ -271,8 +309,10 @@
         if (/^Sampling /i.test(raw)) return cyberAtlasText('cyberatlas.progressSampling', 'Sampling {target}', { target: raw.replace(/^Sampling\s+/i, '') });
         if (/^Analyzing security headers and browser hardening$/i.test(raw)) return cyberAtlasText('cyberatlas.progressHeaders', 'Analyzing security headers and browser hardening');
         if (/^Running safe public exposure probes$/i.test(raw)) return cyberAtlasText('cyberatlas.progressExposure', 'Running safe public exposure probes');
+        if (/^Extracting frontend API and stack hints$/i.test(raw)) return cyberAtlasText('cyberatlas.progressFrontend', 'Extracting frontend API and stack hints');
         if (/^Parsing OpenAPI and API surface signals$/i.test(raw)) return cyberAtlasText('cyberatlas.progressApi', 'Parsing OpenAPI and API surface signals');
         if (/^Scoring defensive security posture$/i.test(raw)) return cyberAtlasText('cyberatlas.progressScore', 'Scoring defensive security posture');
+        if (/^Building remediation action plan$/i.test(raw)) return cyberAtlasText('cyberatlas.progressActionPlan', 'Building remediation action plan');
         if (/^Generating defensive AI interpretation$/i.test(raw)) return cyberAtlasText('cyberatlas.progressAi', 'Generating defensive AI interpretation');
         if (/^Preparing defensive audit excerpt$/i.test(raw)) return cyberAtlasText('cyberatlas.progressPreparingAi', 'Preparing defensive audit excerpt');
         if (/^Generating first defensive interpretation$/i.test(raw)) return cyberAtlasText('cyberatlas.progressFirstAi', 'Generating first defensive interpretation');
@@ -404,13 +444,19 @@
             host: target.host || '',
             mode: target.mode || summary.mode || 'public',
             global_score: summary.global_score,
+            security_grade: summary.security_grade || '',
             pages_crawled: summary.pages_crawled || 0,
             endpoint_count: summary.endpoint_count || 0,
             exposure_count: summary.exposure_count || 0,
+            public_sensitive_endpoint_count: summary.public_sensitive_endpoint_count || 0,
+            source_map_count: summary.source_map_count || 0,
             critical_count: summary.critical_count || 0,
             high_count: summary.high_count || 0,
             risk_level: summary.risk_level || 'unknown',
             top_risk: summary.top_risk || '',
+            comparison_status: audit?.comparison?.status || '',
+            score_delta: audit?.comparison?.score_delta || 0,
+            high_delta: audit?.comparison?.high_delta || 0,
             has_ai: Array.isArray(audit?.interpretations) && audit.interpretations.length > 0,
             report_model_label: ((audit?.interpretations || [])[audit?.interpretations?.length - 1] || {}).model || ((audit?.metadata || {}).ai || {}).model || '',
             report_model_state: (audit?.interpretations || []).length ? 'generated' : (((audit?.metadata || {}).ai || {}).model ? 'planned' : 'none'),
@@ -595,6 +641,8 @@
                     ${timestamp ? `<div class="signalatlas-history-timestamp">${cyberAtlasEscape(timestamp)}</div>` : ''}
                     <div class="signalatlas-history-footer">
                         <span>${cyberAtlasEscape(cyberAtlasText('cyberatlas.scoreShort', 'Score'))}: ${cyberAtlasEscape(String(audit.global_score ?? '--'))}</span>
+                        <span>${cyberAtlasEscape(cyberAtlasText('cyberatlas.securityGrade', 'Grade'))}: ${cyberAtlasEscape(audit.security_grade || '--')}</span>
+                        <span>${cyberAtlasEscape(cyberAtlasComparisonLabel(audit.comparison_status || 'baseline'))}</span>
                         <span>${cyberAtlasEscape(String(audit.endpoint_count || 0))} ${cyberAtlasEscape(cyberAtlasText('cyberatlas.endpointsShort', 'endpoints'))}</span>
                     </div>
                     ${progressState ? `
@@ -657,6 +705,81 @@
         `).join('');
     }
 
+    function renderCyberAtlasActionPlan(audit, limit = 8) {
+        const items = Array.isArray(audit?.action_plan) ? audit.action_plan.slice(0, limit) : [];
+        if (!items.length) {
+            return `<div class="signalatlas-empty-panel">${cyberAtlasEscape(cyberAtlasText('cyberatlas.noActionPlan', 'No action plan is available yet.'))}</div>`;
+        }
+        return items.map(item => `
+            <article class="signalatlas-finding-card cyberatlas-action-card">
+                <div class="signalatlas-finding-top">
+                    <div>
+                        <div class="signalatlas-finding-title">${cyberAtlasEscape(item.order ? `${item.order}. ${item.title || item.id || ''}` : (item.title || item.id || ''))}</div>
+                        <div class="signalatlas-finding-copy">${cyberAtlasEscape(item.description || '')}</div>
+                    </div>
+                    <span class="signalatlas-tag ${cyberAtlasSeverityTone(item.priority)}">${cyberAtlasEscape(cyberAtlasSeverityLabel(item.priority || 'low'))}</span>
+                </div>
+                <div class="signalatlas-mini-finding-copy"><strong>${cyberAtlasEscape(cyberAtlasText('cyberatlas.action', 'Action'))}:</strong> ${cyberAtlasEscape(item.action || '')}</div>
+                <div class="signalatlas-mini-finding-copy"><strong>${cyberAtlasEscape(cyberAtlasText('cyberatlas.validation', 'Validation'))}:</strong> ${cyberAtlasEscape(item.validation || '')}</div>
+                ${(item.evidence || []).length ? `
+                    <div class="cyberatlas-evidence-list">
+                        ${(item.evidence || []).slice(0, 3).map(evidence => `
+                            <div class="cyberatlas-evidence-card">
+                                <div class="cyberatlas-evidence-meta">${cyberAtlasEscape(evidence)}</div>
+                            </div>
+                        `).join('')}
+                    </div>
+                ` : ''}
+            </article>
+        `).join('');
+    }
+
+    function renderCyberAtlasSurfaceMatrix(audit) {
+        const items = Array.isArray(audit?.snapshot?.surface_matrix) ? audit.snapshot.surface_matrix : [];
+        if (!items.length) {
+            return `<div class="signalatlas-empty-panel">${cyberAtlasEscape(cyberAtlasText('cyberatlas.noSurfaceMatrix', 'No attack surface matrix is available yet.'))}</div>`;
+        }
+        return `
+            <div class="cyberatlas-surface-grid">
+                ${items.map(item => `
+                    <article class="cyberatlas-surface-card ${cyberAtlasSurfaceStatusTone(item.status)}">
+                        <div class="cyberatlas-surface-top">
+                            <strong>${cyberAtlasEscape(item.label || item.id || '')}</strong>
+                            <span class="signalatlas-tag ${cyberAtlasSurfaceStatusTone(item.status)}">${cyberAtlasEscape(cyberAtlasSurfaceStatusLabel(item.status))}</span>
+                        </div>
+                        <div class="cyberatlas-surface-signals">
+                            ${(item.signals || []).slice(0, 4).map(signal => `<span>${cyberAtlasEscape(signal)}</span>`).join('')}
+                        </div>
+                        <p>${cyberAtlasEscape(item.next_action || '')}</p>
+                    </article>
+                `).join('')}
+            </div>
+        `;
+    }
+
+    function renderCyberAtlasComparison(audit) {
+        const comparison = audit?.comparison || {};
+        const status = comparison.status || 'baseline';
+        return `
+            <section class="signalatlas-panel">
+                <div class="signalatlas-section-top">
+                    <div>
+                        <div class="signalatlas-panel-kicker">${cyberAtlasEscape(cyberAtlasText('cyberatlas.previousComparison', 'Previous comparison'))}</div>
+                        <div class="signalatlas-panel-title">${cyberAtlasEscape(cyberAtlasComparisonLabel(status))}</div>
+                    </div>
+                    <span class="signalatlas-tag ${cyberAtlasComparisonTone(status)}">${cyberAtlasEscape(cyberAtlasComparisonLabel(status))}</span>
+                </div>
+                <div class="signalatlas-metric-grid">
+                    <div class="signalatlas-metric-card"><span>${cyberAtlasEscape(cyberAtlasText('cyberatlas.scoreDelta', 'Score delta'))}</span><strong>${cyberAtlasEscape(String(comparison.score_delta ?? 0))}</strong></div>
+                    <div class="signalatlas-metric-card"><span>${cyberAtlasEscape(cyberAtlasText('cyberatlas.criticalDelta', 'Critical delta'))}</span><strong>${cyberAtlasEscape(String(comparison.critical_delta ?? 0))}</strong></div>
+                    <div class="signalatlas-metric-card"><span>${cyberAtlasEscape(cyberAtlasText('cyberatlas.highDelta', 'High delta'))}</span><strong>${cyberAtlasEscape(String(comparison.high_delta ?? 0))}</strong></div>
+                    <div class="signalatlas-metric-card"><span>${cyberAtlasEscape(cyberAtlasText('cyberatlas.fixedFindings', 'Fixed findings'))}</span><strong>${cyberAtlasEscape(String((comparison.fixed_finding_ids || []).length))}</strong></div>
+                </div>
+                <div class="signalatlas-panel-copy">${cyberAtlasEscape(comparison.previous_audit_id ? cyberAtlasText('cyberatlas.comparedToPrevious', 'Compared with previous audit {id}', { id: comparison.previous_audit_id }) : cyberAtlasText('cyberatlas.noPreviousAudit', 'No previous completed audit for this target yet.'))}</div>
+            </section>
+        `;
+    }
+
     function renderCyberAtlasOverview(audit) {
         const summary = audit?.summary || {};
         const snapshot = audit?.snapshot || {};
@@ -684,6 +807,7 @@
                         <div class="signalatlas-summary-copy">
                             <p>${cyberAtlasEscape(blockingRisk.summary || summary.top_risk || cyberAtlasText('cyberatlas.noBlockingRisk', 'No blocking cyber exposure was detected in the sampled evidence.'))}</p>
                             <div class="signalatlas-metric-grid">
+                                <div class="signalatlas-metric-card"><span>${cyberAtlasEscape(cyberAtlasText('cyberatlas.securityGrade', 'Grade'))}</span><strong>${cyberAtlasEscape(summary.security_grade || '--')}</strong></div>
                                 <div class="signalatlas-metric-card"><span>${cyberAtlasEscape(cyberAtlasText('cyberatlas.pagesSampled', 'Pages'))}</span><strong>${cyberAtlasEscape(String(summary.pages_crawled || 0))}</strong></div>
                                 <div class="signalatlas-metric-card"><span>${cyberAtlasEscape(cyberAtlasText('cyberatlas.exposures', 'Exposures'))}</span><strong>${cyberAtlasEscape(String(summary.exposure_count || 0))}</strong></div>
                                 <div class="signalatlas-metric-card"><span>${cyberAtlasEscape(cyberAtlasText('cyberatlas.endpoints', 'Endpoints'))}</span><strong>${cyberAtlasEscape(String(summary.endpoint_count || 0))}</strong></div>
@@ -692,6 +816,11 @@
                         </div>
                     </div>
                 </section>
+                <section class="signalatlas-panel">
+                    <div class="signalatlas-panel-kicker">${cyberAtlasEscape(cyberAtlasText('cyberatlas.actionPlan', 'Action plan'))}</div>
+                    <div class="signalatlas-finding-list">${renderCyberAtlasActionPlan(audit, 4)}</div>
+                </section>
+                ${renderCyberAtlasComparison(audit)}
                 <section class="signalatlas-panel">
                     <div class="signalatlas-panel-kicker">${cyberAtlasEscape(cyberAtlasText('cyberatlas.scoreBreakdown', 'Score breakdown'))}</div>
                     <div class="signalatlas-score-card-grid">${renderCyberAtlasScoreCards(audit)}</div>
@@ -740,10 +869,10 @@
                     <div class="signalatlas-metric-grid">
                         <div class="signalatlas-metric-card"><span>${cyberAtlasEscape(cyberAtlasText('cyberatlas.framework', 'Framework'))}</span><strong>${cyberAtlasEscape(recon.framework || 'n/a')}</strong></div>
                         <div class="signalatlas-metric-card"><span>${cyberAtlasEscape(cyberAtlasText('cyberatlas.databaseHint', 'Database hint'))}</span><strong>${cyberAtlasEscape(recon.database_type || 'Unknown')}</strong></div>
-                        <div class="signalatlas-metric-card"><span>${cyberAtlasEscape(cyberAtlasText('cyberatlas.wafSignal', 'WAF'))}</span><strong>${cyberAtlasEscape(protections.waf_detected ? 'yes' : 'no')}</strong></div>
-                        <div class="signalatlas-metric-card"><span>${cyberAtlasEscape(cyberAtlasText('cyberatlas.rateLimitSignal', 'Rate limit'))}</span><strong>${cyberAtlasEscape(protections.rate_limit_detected ? 'yes' : 'no')}</strong></div>
+                        <div class="signalatlas-metric-card"><span>${cyberAtlasEscape(cyberAtlasText('cyberatlas.wafSignal', 'WAF'))}</span><strong>${cyberAtlasEscape(cyberAtlasBoolLabel(protections.waf_detected))}</strong></div>
+                        <div class="signalatlas-metric-card"><span>${cyberAtlasEscape(cyberAtlasText('cyberatlas.rateLimitSignal', 'Rate limit'))}</span><strong>${cyberAtlasEscape(cyberAtlasBoolLabel(protections.rate_limit_detected))}</strong></div>
                     </div>
-                    <div class="signalatlas-panel-copy">${cyberAtlasEscape(cyberAtlasText('cyberatlas.cdnSignals', 'CDN signals'))}: ${cyberAtlasEscape((protections.cdn || []).join(', ') || 'none')}</div>
+                    <div class="signalatlas-panel-copy">${cyberAtlasEscape(cyberAtlasText('cyberatlas.cdnSignals', 'CDN signals'))}: ${cyberAtlasEscape((protections.cdn || []).join(', ') || cyberAtlasNoneLabel())}</div>
                 </section>
                 <section class="signalatlas-panel">
                     <div class="signalatlas-panel-kicker">${cyberAtlasEscape(cyberAtlasText('cyberatlas.frontendHints', 'Frontend hints'))}</div>
@@ -815,9 +944,24 @@
                             <div class="signalatlas-mini-finding-title">${cyberAtlasEscape(endpoint.path || endpoint.url || '')}</div>
                             <div class="signalatlas-mini-finding-copy">HTTP ${cyberAtlasEscape(String(endpoint.status_code ?? 'n/a'))} · ${cyberAtlasEscape(endpoint.response_type || endpoint.content_type || '')} · ${cyberAtlasEscape(endpoint.requires_auth ? cyberAtlasText('cyberatlas.authProtected', 'auth protected') : cyberAtlasText('cyberatlas.publicMode', 'public'))}</div>
                         </div>
-                    `).join('') : `<div class="signalatlas-empty-panel">${cyberAtlasEscape(cyberAtlasText('cyberatlas.noOpenApi', 'No public OpenAPI document was parsed in this audit.'))}</div>`}
+                    `).join('') : `<div class="signalatlas-empty-panel">${cyberAtlasEscape(cyberAtlasText('cyberatlas.noApiInventory', 'No additional API inventory signal was found.'))}</div>`}
                 </div>
             </section>
+        `;
+    }
+
+    function renderCyberAtlasPlan(audit) {
+        return `
+            <div class="signalatlas-overview-stack">
+                <section class="signalatlas-panel">
+                    <div class="signalatlas-panel-kicker">${cyberAtlasEscape(cyberAtlasText('cyberatlas.actionPlan', 'Action plan'))}</div>
+                    <div class="signalatlas-finding-list">${renderCyberAtlasActionPlan(audit, 12)}</div>
+                </section>
+                <section class="signalatlas-panel">
+                    <div class="signalatlas-panel-kicker">${cyberAtlasEscape(cyberAtlasText('cyberatlas.attackSurfaceMatrix', 'Attack surface matrix'))}</div>
+                    ${renderCyberAtlasSurfaceMatrix(audit)}
+                </section>
+            </div>
         `;
     }
 
@@ -877,6 +1021,7 @@
     }
 
     function renderCyberAtlasTabContent(audit) {
+        if (cyberAtlasActiveTab === 'plan') return renderCyberAtlasPlan(audit);
         if (cyberAtlasActiveTab === 'findings') return `<div class="signalatlas-finding-list">${renderCyberAtlasFindings(audit, 20)}</div>`;
         if (cyberAtlasActiveTab === 'evidence') return renderCyberAtlasEvidence(audit);
         if (cyberAtlasActiveTab === 'api') return renderCyberAtlasApiSurface(audit);
@@ -924,6 +1069,7 @@
         const selectedProfile = cyberAtlasDraft.profile || 'elevated';
         const tabs = [
             ['overview', cyberAtlasText('cyberatlas.tabOverview', 'Overview')],
+            ['plan', cyberAtlasText('cyberatlas.tabPlan', 'Plan')],
             ['findings', cyberAtlasText('cyberatlas.tabFindings', 'Findings')],
             ['evidence', cyberAtlasText('cyberatlas.tabEvidence', 'Evidence')],
             ['api', cyberAtlasText('cyberatlas.tabApi', 'API surface')],

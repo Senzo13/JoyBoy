@@ -44,6 +44,65 @@ def _estimate_audit_seconds(options: Dict[str, Any], ai_config: Dict[str, Any]) 
     return int(max(28, min(900, crawl_seconds + probe_seconds + tls_seconds + ai_seconds)))
 
 
+def _build_audit_comparison(previous: Dict[str, Any], current: Dict[str, Any]) -> Dict[str, Any]:
+    previous_summary = previous.get("summary") or {}
+    current_summary = current.get("summary") or {}
+
+    def number_delta(key: str) -> float:
+        try:
+            return round(float(current_summary.get(key) or 0) - float(previous_summary.get(key) or 0), 2)
+        except (TypeError, ValueError):
+            return 0.0
+
+    previous_findings = previous.get("findings") or []
+    current_findings = current.get("findings") or []
+    previous_ids = {str(item.get("id") or "") for item in previous_findings if item.get("id")}
+    current_ids = {str(item.get("id") or "") for item in current_findings if item.get("id")}
+    new_ids = current_ids - previous_ids
+    fixed_ids = previous_ids - current_ids
+    score_delta = number_delta("global_score")
+    high_delta = int(number_delta("high_count"))
+    critical_delta = int(number_delta("critical_count"))
+    if critical_delta > 0 or high_delta > 1 or score_delta <= -5:
+        status = "regressed"
+    elif critical_delta < 0 or high_delta < 0 or score_delta >= 5 or fixed_ids:
+        status = "improved"
+    else:
+        status = "stable"
+    return {
+        "previous_audit_id": previous.get("id") or "",
+        "previous_updated_at": previous.get("updated_at") or previous.get("created_at") or "",
+        "status": status,
+        "score_delta": score_delta,
+        "critical_delta": critical_delta,
+        "high_delta": high_delta,
+        "endpoint_delta": int(number_delta("endpoint_count")),
+        "public_sensitive_delta": int(number_delta("public_sensitive_endpoint_count")),
+        "source_map_delta": int(number_delta("source_map_count")),
+        "new_finding_ids": sorted(new_ids)[:20],
+        "fixed_finding_ids": sorted(fixed_ids)[:20],
+    }
+
+
+def _latest_completed_audit_for_target(storage: Any, current_audit: Dict[str, Any]) -> Dict[str, Any]:
+    target = current_audit.get("target") or {}
+    host = str(target.get("host") or "").strip().lower()
+    current_id = str(current_audit.get("id") or "")
+    if not host:
+        return {}
+    for record in storage.list_audits(limit=120):
+        if str(record.get("id") or "") == current_id:
+            continue
+        if str(record.get("status") or "").lower() != "done":
+            continue
+        if str(record.get("host") or "").strip().lower() != host:
+            continue
+        previous = storage.get_audit(str(record.get("id") or ""))
+        if previous:
+            return previous
+    return {}
+
+
 def _run_audit_job(job_id: str, audit_id: str, payload: Dict[str, Any]) -> None:
     storage = get_cyberatlas_storage()
     manager = get_job_manager()
@@ -80,10 +139,25 @@ def _run_audit_job(job_id: str, audit_id: str, payload: Dict[str, Any]) -> None:
             findings=result["findings"],
             scores=result["scores"],
             remediation_items=result["remediation_items"],
+            recommendations=result.get("recommendations") or [],
+            action_plan=result.get("action_plan") or [],
             owner_context=result["owner_context"],
             status="done",
             updated_at=utc_now_iso(),
         )
+        previous = _latest_completed_audit_for_target(storage, updated)
+        updated["comparison"] = _build_audit_comparison(previous, updated) if previous else {
+            "status": "baseline",
+            "previous_audit_id": "",
+            "score_delta": 0,
+            "critical_delta": 0,
+            "high_delta": 0,
+            "endpoint_delta": 0,
+            "public_sensitive_delta": 0,
+            "source_map_delta": 0,
+            "new_finding_ids": [],
+            "fixed_finding_ids": [],
+        }
 
         ai_config = payload.get("ai") or {}
         if ai_config.get("level") and str(ai_config.get("level")).lower() != "no_ai":

@@ -34,7 +34,10 @@ class ProjectsStaticTests(unittest.TestCase):
         self.assertIn("taskContinueAfterTools: 'Décision après les résultats'", fr)
         self.assertIn("scheduleTerminalOutputRender", terminal)
         self.assertIn("formatMarkdownPartial(cleanedText)", terminal)
-        self.assertIn("completeTerminalProgressPanel(true)", terminal)
+        self.assertIn("function completeTerminalProgressPanel(success = true, options = {})", terminal)
+        self.assertIn("finishingReadOnly", terminal)
+        self.assertNotIn("if (isTerminalReadOnlyTurn()) return null;", terminal)
+        self.assertIn("describeTerminalToolResultLabel", terminal)
 
     def test_terminal_hides_raw_tool_ledgers_from_answers(self):
         chat = self.read("web/static/js/chat.js")

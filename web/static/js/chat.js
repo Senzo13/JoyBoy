@@ -28,8 +28,15 @@ function getChatMessages() {
 function sanitizeAssistantToolTraceText(text = '') {
     const source = String(text ?? '').replace(/\r\n?/g, '\n');
     if (!source) return '';
-    const rawToolLedgerPattern = /^\s*(?:\[?(?:OK|FAIL|ERROR)\]?\s+)?(?:write_files|write_file|edit_file|read_file|list_files|search|glob|bash|clear_workspace|delete_file|tool_search|delegate_subagent)\s*:/mi;
-    if (!/(?:\bto=|^[\t ]*[●⎿]|Subagent\(|\bdata=\{|\bcode=")/mi.test(source) && !rawToolLedgerPattern.test(source)) {
+    const toolLedgerNames = 'write_files|write_file|edit_file|read_file|list_files|search|glob|bash|clear_workspace|delete_file|tool_search|delegate_subagent';
+    const rawToolLedgerPattern = new RegExp(`^\\s*(?:\\[?(?:OK|FAIL|ERROR)\\]?\\s+)?(?:${toolLedgerNames})\\s*:`, 'mi');
+    const inlineToolLedgerPattern = new RegExp(`(?:^|[\\s;.,-])(?:\\[?(?:OK|FAIL|ERROR)\\]?\\s+)?(?:${toolLedgerNames})\\s*:\\s*[^\\n]{0,260}`, 'mi');
+    const inlineToolLedgerGlobalPattern = new RegExp(`(?:^|[\\s;.,-])(?:\\[?(?:OK|FAIL|ERROR)\\]?\\s+)?(?:${toolLedgerNames})\\s*:\\s*[^\\n]{0,260}`, 'gmi');
+    if (
+        !/(?:\bto=|^[\t ]*[●⎿]|Subagent\(|\bdata=\{|\bcode=")/mi.test(source)
+        && !rawToolLedgerPattern.test(source)
+        && !inlineToolLedgerPattern.test(source)
+    ) {
         return source;
     }
 
@@ -42,6 +49,11 @@ function sanitizeAssistantToolTraceText(text = '') {
     });
     cleaned = cleaned.replace(/to=[\w.-]+[\s\S]{0,240}?(?:data=\{[^{}]{0,600}\}|code="[^"]{0,600}")/gi, '\n');
     cleaned = cleaned.replace(/[ \t]*\b(?:data=\{[^{}]{0,600}\}|code="[^"]{0,600}")/gi, ' ');
+    cleaned = cleaned.replace(/^\s*\[RESULT\s+(?:write_files|write_file|edit_file|read_file|list_files|search|glob|bash|clear_workspace|delete_file|tool_search|delegate_subagent)\][^\n]*(?:\n\s*-\s[^\n]*){0,12}/gim, '\n');
+    cleaned = cleaned.replace(inlineToolLedgerGlobalPattern, match => {
+        const prefix = match.match(/^[\s;.,-]+/)?.[0] || '';
+        return prefix.includes('\n') ? '\n' : ' ';
+    });
 
     cleaned = cleaned
         .split('\n')
