@@ -468,6 +468,55 @@ async function maybeShowTerminalCommandCatalogFromInput(input) {
     showTerminalCommandCatalog(catalog);
 }
 
+function getTerminalComposerInput() {
+    const active = document.activeElement;
+    if (active?.id === 'chat-prompt' || active?.id === 'prompt-input') return active;
+
+    const chatView = document.getElementById('chat-view');
+    const chatPrompt = document.getElementById('chat-prompt');
+    const homePrompt = document.getElementById('prompt-input');
+    const chatVisible = chatView && getComputedStyle(chatView).display !== 'none';
+    return (chatVisible && chatPrompt) ? chatPrompt : (homePrompt || chatPrompt);
+}
+
+function terminalCatalogCommandNeedsInput(command = '') {
+    return /\s+<[^>]+>/.test(String(command || ''));
+}
+
+function normalizeTerminalCatalogCommand(command = '') {
+    const raw = String(command || '').trim();
+    const requiresInput = terminalCatalogCommandNeedsInput(raw);
+    const clean = raw
+        .replace(/\s+\[[^\]]+\]/g, '')
+        .replace(/\s+<[^>]+>/g, '')
+        .trim();
+    return requiresInput && clean ? `${clean} ` : clean;
+}
+
+function setTerminalComposerValue(input, value = '') {
+    if (!input) return;
+    input.value = value;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    if (typeof autoResizeTextarea === 'function') autoResizeTextarea(input);
+    input.focus();
+    input.selectionStart = input.selectionEnd = input.value.length;
+}
+
+async function runTerminalCatalogCommand(rawCommand = '') {
+    const requiresInput = terminalCatalogCommandNeedsInput(rawCommand);
+    const command = normalizeTerminalCatalogCommand(rawCommand);
+    if (!command) return;
+
+    const input = getTerminalComposerInput();
+    setTerminalComposerValue(input, command);
+    closeTerminalCommandCatalog();
+
+    if (requiresInput || terminalWorking || isGenerating) return;
+
+    resetComposerTextarea(input);
+    await sendTerminalMessage(command);
+}
+
 function showTerminalCommandCatalog(catalog = {}) {
     closeTerminalCommandCatalog();
     const inputBar = document.querySelector('#chat-view .chat-input-bar') || document.querySelector('.chat-input-bar');
@@ -524,13 +573,7 @@ function showTerminalCommandCatalog(catalog = {}) {
     panel.querySelector('.terminal-command-catalog-close')?.addEventListener('click', closeTerminalCommandCatalog);
     panel.querySelectorAll('[data-terminal-command]').forEach(button => {
         button.addEventListener('click', () => {
-            const input = document.getElementById('prompt-input') || document.getElementById('chat-prompt');
-            if (input) {
-                input.value = button.dataset.terminalCommand || '';
-                input.focus();
-                input.selectionStart = input.selectionEnd = input.value.length;
-            }
-            closeTerminalCommandCatalog();
+            runTerminalCatalogCommand(button.dataset.terminalCommand || '');
         });
     });
 

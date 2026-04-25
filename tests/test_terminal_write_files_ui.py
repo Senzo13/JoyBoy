@@ -63,6 +63,10 @@ class TerminalWriteFilesUiTests(unittest.TestCase):
         self.assertIn("/terminal/commands/catalog", terminal_route)
         self.assertIn("function fetchTerminalCommandCatalog", terminal_js)
         self.assertIn("function maybeShowTerminalCommandCatalogFromInput", terminal_js)
+        self.assertIn("function getTerminalComposerInput", terminal_js)
+        self.assertIn("function runTerminalCatalogCommand", terminal_js)
+        self.assertIn("normalizeTerminalCatalogCommand", terminal_js)
+        self.assertIn("await sendTerminalMessage(command)", terminal_js)
         self.assertIn("document.addEventListener('input', handleTerminalInput)", terminal_js)
         self.assertIn("shouldShowTerminalCommandCatalogForInput(input.value)", terminal_js)
 
