@@ -110,9 +110,9 @@ class TerminalBrainSmokeTests(unittest.TestCase):
         self.assertIn("--- README.md", repo_context)
         self.assertIn("--- package.json", repo_context)
         self.assertIn("--- src/app/globals.css", repo_context)
-        self.assertIn("Hard limit: 6 to 10 short lines total", repo_context)
+        self.assertIn("Target 10 to 16 short lines total", repo_context)
         self.assertNotIn("Explorer observations", repo_context)
-        self.assertLessEqual(mock_chat.call_args.kwargs["max_tokens"], 650)
+        self.assertLessEqual(mock_chat.call_args.kwargs["max_tokens"], 1100)
 
     @patch("core.backends.terminal_brain.chat_with_cloud_model")
     def test_repo_overview_still_uses_model_after_local_brief(self, mock_chat):
@@ -206,6 +206,14 @@ Encore beaucoup de détail inutile.
         self.assertIn("package.json absent", compact)
         self.assertNotIn("```", compact)
         self.assertNotIn("src/app/page.jsx", compact)
+
+    def test_model_progress_stage_advances_with_elapsed_time(self):
+        brain = TerminalBrain()
+
+        self.assertEqual("drafting", brain._model_progress_stage(4))
+        self.assertEqual("grounding", brain._model_progress_stage(12))
+        self.assertEqual("formatting", brain._model_progress_stage(25))
+        self.assertEqual("finalizing", brain._model_progress_stage(45))
 
     def test_budget_fallback_ends_without_another_model_call(self):
         brain = TerminalBrain()

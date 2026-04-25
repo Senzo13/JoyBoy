@@ -2392,6 +2392,12 @@ Object.assign(MESSAGES.en.terminal, {
         taskPrepareAnswer: 'Synthesizing context',
         taskRepoAnalysis: 'Choosing files to read',
         taskToolSelected: 'Tool selected',
+        modelStageDrafting: 'Writing the synthesis',
+        modelStageGrounding: 'Checking useful points',
+        modelStageFormatting: 'Final formatting',
+        modelStageFinalizing: 'Finalizing',
+        modelStageWaiting: 'Model response in progress',
+        modelProgressRepoContext: 'from the files read',
         toolRunCommand: 'Running',
     });
 

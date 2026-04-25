@@ -1195,6 +1195,23 @@ function describeTerminalModelCall(data = {}) {
     return terminalT('terminal.taskPrepareAnswer', 'Synthèse du contexte');
 }
 
+function describeTerminalModelProgress(data = {}) {
+    const stage = String(data.stage || '').toLowerCase();
+    const labels = {
+        drafting: terminalT('terminal.modelStageDrafting', 'Rédaction de la synthèse'),
+        grounding: terminalT('terminal.modelStageGrounding', 'Vérification des points utiles'),
+        formatting: terminalT('terminal.modelStageFormatting', 'Mise en forme finale'),
+        finalizing: terminalT('terminal.modelStageFinalizing', 'Finalisation'),
+    };
+    const label = labels[stage] || terminalT('terminal.modelStageWaiting', 'Réponse du modèle en cours');
+    const elapsed = Number(data.elapsed_seconds || 0) > 0 ? formatTerminalElapsed(data.elapsed_seconds) : '';
+    const contextLabel = data.context_kind === 'repo_overview'
+        ? terminalT('terminal.modelProgressRepoContext', 'à partir des fichiers lus')
+        : '';
+    const detail = [data.model || '', elapsed, contextLabel].filter(Boolean).join(' · ');
+    return { label, detail };
+}
+
 function shouldShowTerminalToolAsTask(action, args = {}) {
     if (action === 'ask_clarification') return false;
     if (isTerminalContextGatheringToolCall(action, args)) return false;
@@ -2996,6 +3013,22 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                             'thinking',
                             {
                                 reveal: shouldRevealTerminalProgressForModelCall(data.model_call),
+                                key: TERMINAL_PROGRESS_MODEL_STATUS_KEY
+                            }
+                        );
+                        continue;
+                    }
+
+                    // Model progress - heartbeat pendant un appel modèle long.
+                    if (data.model_progress) {
+                        const { label, detail } = describeTerminalModelProgress(data.model_progress);
+                        updateThinkingText(label);
+                        addTerminalProgressLog(
+                            label,
+                            detail,
+                            'thinking',
+                            {
+                                reveal: true,
                                 key: TERMINAL_PROGRESS_MODEL_STATUS_KEY
                             }
                         );

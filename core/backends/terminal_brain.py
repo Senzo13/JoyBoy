@@ -687,9 +687,9 @@ class TerminalBrain(
         if self._is_repo_overview_request(initial_message):
             repo_brief, repo_brief_events = self._build_repo_brief(workspace_path)
             if use_cloud_model:
-                response_token_limit = min(response_token_limit, 650)
+                response_token_limit = min(response_token_limit, 1100)
             else:
-                response_token_limit = min(response_token_limit, 500)
+                response_token_limit = min(response_token_limit, 800)
             for event in repo_brief_events:
                 yield event
 
@@ -710,10 +710,10 @@ class TerminalBrain(
                     f"{initial_message}\n\n"
                     "REPO CONTEXT ALREADY EXPLORED BY JOYBOY:\n"
                     f"{repo_brief}\n\n"
-                    "Answer now in the user's language with a compact, concrete synthesis. "
-                    "Hard limit: 6 to 10 short lines total, no code blocks, no JSON/templates, no long boilerplate. "
-                    "Use at most three tiny sections: verdict, concrete issues from observed files, next step. "
-                    "Mention at most three issues and only if they are grounded in the explored files. "
+                    "Answer now in the user's language with a concrete synthesis that feels useful, not tiny. "
+                    "Target 10 to 16 short lines total, no code blocks, no JSON/templates, no long boilerplate. "
+                    "Use up to four compact sections: verdict, what is solid, concrete issues from observed files, next step. "
+                    "Mention 3 to 5 grounded points when the explored files support them. "
                     "Do not start with meta narration such as 'je vais', 'je n’ai pas besoin', or 'I will'. "
                     "Do not call list_files/glob/ls/pwd again: the useful context is already available."
                 )
@@ -822,10 +822,26 @@ class TerminalBrain(
 
                             worker = threading.Thread(target=_call_cloud_model, daemon=True)
                             worker.start()
+                            model_call_started_at = time.monotonic()
+                            last_progress_emit_at = model_call_started_at
                             while True:
                                 try:
                                     stream_kind, stream_payload = stream_queue.get(timeout=0.25)
                                 except queue.Empty:
+                                    now = time.monotonic()
+                                    elapsed = int(now - model_call_started_at)
+                                    if elapsed >= 4 and now - last_progress_emit_at >= 6:
+                                        last_progress_emit_at = now
+                                        yield runtime_event(
+                                            "model_progress",
+                                            model=model,
+                                            provider="cloud",
+                                            iteration=iteration,
+                                            elapsed_seconds=elapsed,
+                                            stage=self._model_progress_stage(elapsed),
+                                            context_kind="repo_overview" if repo_brief else "agent_turn",
+                                            streamed=stream_cloud_content,
+                                        )
                                     continue
                                 if stream_kind == "content":
                                     chunk = str(stream_payload or "")
@@ -1361,10 +1377,21 @@ class TerminalBrain(
 
     # ===== HELPERS =====
 
+    def _model_progress_stage(self, elapsed_seconds: int) -> str:
+        """Return a coarse UI stage while a model call is still pending."""
+        elapsed = max(0, int(elapsed_seconds or 0))
+        if elapsed < 10:
+            return "drafting"
+        if elapsed < 22:
+            return "grounding"
+        if elapsed < 40:
+            return "formatting"
+        return "finalizing"
+
     def get_snapshot(self, path: str) -> Optional[FileSnapshot]:
         return self.snapshots.get(path)
 
-    def _compact_repo_overview_response(self, text: str, max_lines: int = 10, max_chars: int = 1400) -> str:
+    def _compact_repo_overview_response(self, text: str, max_lines: int = 16, max_chars: int = 2200) -> str:
         """Keep quick repository audits closer to Codex-style summaries."""
         raw = str(text or "").strip()
         if not raw:

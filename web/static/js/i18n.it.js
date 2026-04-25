@@ -2104,6 +2104,12 @@ Object.assign(MESSAGES.it.terminal, {
         taskPrepareAnswer: 'Sintesi del contesto',
         taskRepoAnalysis: 'Scelta dei file da leggere',
         taskToolSelected: 'Tool scelto',
+        modelStageDrafting: 'Scrittura della sintesi',
+        modelStageGrounding: 'Verifica dei punti utili',
+        modelStageFormatting: 'Formattazione finale',
+        modelStageFinalizing: 'Finalizzazione',
+        modelStageWaiting: 'Risposta del modello in corso',
+        modelProgressRepoContext: 'dai file letti',
         toolRunCommand: 'Esegue',
     });
 

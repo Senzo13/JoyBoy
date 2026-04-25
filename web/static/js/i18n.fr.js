@@ -2543,6 +2543,12 @@ Object.assign(MESSAGES.fr.terminal, {
         taskPrepareAnswer: 'Synthèse du contexte',
         taskRepoAnalysis: 'Choix des fichiers à lire',
         taskToolSelected: 'Outil choisi',
+        modelStageDrafting: 'Rédaction de la synthèse',
+        modelStageGrounding: 'Vérification des points utiles',
+        modelStageFormatting: 'Mise en forme finale',
+        modelStageFinalizing: 'Finalisation',
+        modelStageWaiting: 'Réponse du modèle en cours',
+        modelProgressRepoContext: 'à partir des fichiers lus',
         toolRunCommand: 'Exécute',
     });
 

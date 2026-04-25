@@ -330,6 +330,19 @@ def terminal_chat():
                     )
                 yield f"data: {json.dumps({'model_call': {'model': event.get('model', ''), 'provider': event.get('provider', ''), 'iteration': event.get('iteration', 1), 'tools_count': tools_count, 'estimated_prompt_tokens': event.get('estimated_prompt_tokens', 0)}})}\n\n"
 
+            elif event_type == 'model_progress':
+                elapsed_seconds = int(event.get('elapsed_seconds') or 0)
+                stage = event.get('stage') or 'drafting'
+                if job_manager and terminal_job_id:
+                    job_manager.update(
+                        terminal_job_id,
+                        status="running",
+                        phase="model_progress",
+                        progress=None,
+                        message=f"{stage} · {elapsed_seconds}s"[:160],
+                    )
+                yield f"data: {json.dumps({'model_progress': {'model': event.get('model', ''), 'provider': event.get('provider', ''), 'iteration': event.get('iteration', 1), 'elapsed_seconds': elapsed_seconds, 'stage': stage, 'context_kind': event.get('context_kind', ''), 'streamed': bool(event.get('streamed'))}})}\n\n"
+
             elif event_type == 'content':
                 if job_manager and terminal_job_id:
                     job_manager.update(

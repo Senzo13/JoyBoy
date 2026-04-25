@@ -36,6 +36,8 @@ class ProjectsStaticTests(unittest.TestCase):
         self.assertIn("formatMarkdownPartial(cleanedText)", terminal)
         self.assertIn("function completeTerminalProgressPanel(success = true, options = {})", terminal)
         self.assertIn("finishingReadOnly", terminal)
+        self.assertIn("describeTerminalModelProgress", terminal)
+        self.assertIn("data.model_progress", terminal)
         self.assertNotIn("if (isTerminalReadOnlyTurn()) return null;", terminal)
         self.assertIn("describeTerminalToolResultLabel", terminal)
 

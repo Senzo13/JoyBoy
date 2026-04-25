@@ -2104,6 +2104,12 @@ Object.assign(MESSAGES.es.terminal, {
         taskPrepareAnswer: 'Síntesis del contexto',
         taskRepoAnalysis: 'Elección de archivos a leer',
         taskToolSelected: 'Herramienta elegida',
+        modelStageDrafting: 'Redacción de la síntesis',
+        modelStageGrounding: 'Verificación de puntos útiles',
+        modelStageFormatting: 'Formato final',
+        modelStageFinalizing: 'Finalización',
+        modelStageWaiting: 'Respuesta del modelo en curso',
+        modelProgressRepoContext: 'a partir de los archivos leídos',
         toolRunCommand: 'Ejecuta',
     });
 
