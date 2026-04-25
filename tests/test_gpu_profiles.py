@@ -44,6 +44,15 @@ class GpuProfileTests(unittest.TestCase):
         self.assertEqual(name, "8gb.json")
         self.assertIn("epiCRealism XL (Moyen)", profile["image"]["visible_models"])
 
+    def test_high_end_profile_uses_registered_video_and_ollama_models(self):
+        name, profile = _select_profile(96)
+
+        self.assertEqual(name, "80gb.json")
+        self.assertEqual(profile["video"]["default_model"], "wan-native-14b")
+        self.assertIn("ltx2", profile["video"]["high_end_models"])
+        self.assertEqual(profile["ollama"]["default_chat_model"], "llama3.3:70b-instruct-q8_0")
+        self.assertFalse(profile["ollama"]["auto_pull_heavy_models"])
+
 
 if __name__ == "__main__":
     unittest.main()

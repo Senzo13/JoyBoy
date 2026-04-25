@@ -187,6 +187,9 @@ class LLMProviderCatalogTest(unittest.TestCase):
         profile_ids = {profile["id"] for profile in profiles}
 
         self.assertIn("qwen3.5:2b", profile_ids)
+        self.assertIn("llama3.3:70b-instruct-q8_0", profile_ids)
+        self.assertIn("qwen3:235b-a22b-instruct-2507-q4_K_M", profile_ids)
+        self.assertIn("qwen3-vl:32b-instruct-q8_0", profile_ids)
         self.assertIn("openai:gpt-5.5", profile_ids)
         self.assertIn("openai:gpt-5.4-mini", profile_ids)
         self.assertIn("openai:gpt-5.4", profile_ids)
