@@ -67,7 +67,10 @@
     },
 
     "video": {
-        "default_model": "wan_i2v_720p",
+        "default_model": "wan-native-14b",
+        "high_end_models": ["wan-native-14b", "wan22", "wan22-t2v-14b", "ltx2", "ltx2_fp8", "framepack", "hunyuan"],
+        "video_analysis_model": "qwen3-vl:32b-instruct-q8_0",
+        "audio_engine": "mmaudio",
         "wan": {
             "quantization": "none",
             "offload_strategy": "none",
@@ -110,8 +113,12 @@
     },
 
     "ollama": {
-        "max_vram_gb": 16,
-        "default_chat_model": "qwen2.5:72b",
-        "utility_model": "dolphin-phi:2.7b"
+        "max_vram_gb": 64,
+        "default_chat_model": "llama3.3:70b-instruct-q8_0",
+        "extreme_chat_model": "qwen3:235b-a22b-instruct-2507-q4_K_M",
+        "extreme_chat_model_int8": "qwen3:235b-a22b-instruct-2507-q8_0",
+        "video_analysis_model": "qwen3-vl:32b-instruct-q8_0",
+        "utility_model": "qwen3.5:2b",
+        "auto_pull_heavy_models": false
     }
 }

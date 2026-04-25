@@ -10,16 +10,51 @@ import json
 
 # Import config
 try:
-    from config import UTILITY_MODEL, OLLAMA_MAX_VRAM_GB, OLLAMA_BASE_URL
+    from config import (
+        EXTREME_CHAT_MODEL,
+        EXTREME_CHAT_MODEL_INT8,
+        HIGH_END_CHAT_MODEL,
+        UTILITY_MODEL,
+        VIDEO_ANALYSIS_MODEL,
+        VIDEO_ANALYSIS_MODEL_EXTREME,
+        OLLAMA_MAX_VRAM_GB,
+        OLLAMA_BASE_URL,
+    )
 except ImportError:
     UTILITY_MODEL = "qwen3.5:2b"
+    HIGH_END_CHAT_MODEL = "llama3.3:70b-instruct-q8_0"
+    EXTREME_CHAT_MODEL = "qwen3:235b-a22b-instruct-2507-q4_K_M"
+    EXTREME_CHAT_MODEL_INT8 = "qwen3:235b-a22b-instruct-2507-q8_0"
+    VIDEO_ANALYSIS_MODEL = "qwen3-vl:32b-instruct-q8_0"
+    VIDEO_ANALYSIS_MODEL_EXTREME = "qwen3-vl:235b-a22b-instruct-q4_K_M"
     OLLAMA_MAX_VRAM_GB = None
     OLLAMA_BASE_URL = "http://127.0.0.1:11434"
 
+def get_effective_ollama_max_vram_gb():
+    """Return the configured Ollama VRAM cap, preferring the active GPU profile."""
+    if os.environ.get("JOYBOY_OLLAMA_MAX_VRAM_GB", "").strip():
+        return OLLAMA_MAX_VRAM_GB
+    try:
+        from core.models.gpu_profile import get_config
+        value = get_config("ollama").get("max_vram_gb")
+        if value is not None:
+            return float(value)
+    except Exception:
+        pass
+    return OLLAMA_MAX_VRAM_GB
+
+
+def _apply_ollama_vram_env(env=None):
+    target = env if env is not None else os.environ
+    limit_gb = get_effective_ollama_max_vram_gb()
+    if limit_gb is not None and float(limit_gb) > 0:
+        max_vram_bytes = int(float(limit_gb) * 1024 * 1024 * 1024)
+        target["OLLAMA_MAX_VRAM"] = str(max_vram_bytes)
+    return limit_gb
+
+
 # Configurer la limite VRAM globalement (pour tous les sous-processus)
-if OLLAMA_MAX_VRAM_GB:
-    max_vram_bytes = int(OLLAMA_MAX_VRAM_GB * 1024 * 1024 * 1024)
-    os.environ["OLLAMA_MAX_VRAM"] = str(max_vram_bytes)
+_apply_ollama_vram_env()
 
 # Cache pour savoir si le utility model est installé
 _utility_model_available = None
@@ -95,15 +130,9 @@ def start_ollama():
     try:
         # Configurer la limite VRAM (offload vers RAM au-delà)
         env = os.environ.copy()
-        try:
-            from config import OLLAMA_MAX_VRAM_GB
-            if OLLAMA_MAX_VRAM_GB:
-                # Convertir GB en bytes
-                max_vram_bytes = int(OLLAMA_MAX_VRAM_GB * 1024 * 1024 * 1024)
-                env["OLLAMA_MAX_VRAM"] = str(max_vram_bytes)
-                print(f"[OLLAMA] Limite VRAM: {OLLAMA_MAX_VRAM_GB}GB (offload RAM au-delà)")
-        except ImportError:
-            pass
+        limit_gb = _apply_ollama_vram_env(env)
+        if limit_gb:
+            print(f"[OLLAMA] Limite VRAM: {limit_gb}GB (offload RAM au-delà)")
 
         # Windows
         if sys.platform == "win32":
@@ -204,6 +233,8 @@ def search_models(query="", filter_type=None):
         # === MODÈLES VISION (comprennent les images) ===
         {"name": "qwen2.5vl:3b", "desc": "Qwen 2.5 VL - Vision léger et performant (recommandé)", "size": "2.1GB", "uncensored": False, "fast": True, "powerful": False, "vision": True},
         {"name": "moondream:1.8b", "desc": "Moondream - Vision ultra-léger (filtrage plus strict)", "size": "1.7GB", "uncensored": False, "fast": True, "powerful": False, "vision": True},
+        {"name": VIDEO_ANALYSIS_MODEL, "desc": "Qwen3-VL 32B INT8 - analyse locale de keyframes vidéo", "size": "~35GB", "uncensored": False, "fast": False, "powerful": True, "vision": True, "high_end": True, "auto_pull": False},
+        {"name": VIDEO_ANALYSIS_MODEL_EXTREME, "desc": "Qwen3-VL 235B MoE Q4 - vision très lourde pour cloud local", "size": "~140GB", "uncensored": False, "fast": False, "powerful": True, "vision": True, "high_end": True, "auto_pull": False},
 
         # === MODÈLES QWEN RÉCENTS POUR ROUTING/CHAT LÉGER ===
         {"name": "qwen3.5:0.8b", "desc": "Qwen 3.5 0.8B - Ultra léger pour routing et réponses rapides", "size": "1GB", "uncensored": False, "fast": True, "powerful": False, "vision": False},
@@ -231,6 +262,9 @@ def search_models(query="", filter_type=None):
 
         # === MODÈLES STANDARDS ===
         {"name": "qwen3.5:9b", "desc": "Qwen 3.5 9B - Plus capable, à réserver aux configs confortables", "size": "6.6GB", "uncensored": False, "fast": False, "powerful": True, "vision": False},
+        {"name": HIGH_END_CHAT_MODEL, "desc": "Llama 3.3 70B INT8 - chat local haute VRAM", "size": "~70GB", "uncensored": False, "fast": False, "powerful": True, "vision": False, "high_end": True, "auto_pull": False},
+        {"name": EXTREME_CHAT_MODEL, "desc": "Qwen3 235B-A22B MoE Q4 - très puissant, RAM système élevée", "size": "~140GB", "uncensored": False, "fast": False, "powerful": True, "vision": False, "high_end": True, "auto_pull": False},
+        {"name": EXTREME_CHAT_MODEL_INT8, "desc": "Qwen3 235B-A22B MoE INT8 - qualité max, téléchargement massif", "size": "~250GB", "uncensored": False, "fast": False, "powerful": True, "vision": False, "high_end": True, "auto_pull": False},
         {"name": "deepseek-r1:7b", "desc": "DeepSeek R1 - Bon raisonnement", "size": "4.7GB", "uncensored": False, "fast": False, "powerful": False, "vision": False},
         {"name": "deepseek-r1:14b", "desc": "DeepSeek R1 14B - Plus puissant", "size": "9GB", "uncensored": False, "fast": False, "powerful": True, "vision": False},
         {"name": "qwen2.5:7b", "desc": "Qwen 2.5 - Rapide et polyvalent", "size": "4.7GB", "uncensored": False, "fast": False, "powerful": False, "vision": False},

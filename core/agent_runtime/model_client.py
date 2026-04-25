@@ -79,7 +79,14 @@ LLM_PROVIDER_CATALOG: tuple[LLMProviderDescriptor, ...] = (
         supports_tools=True,
         supports_vision=True,
         supports_thinking=True,
-        default_models=("qwen3.5:2b", "qwen3.5:4b"),
+        default_models=(
+            "qwen3.5:2b",
+            "qwen3.5:4b",
+            "qwen3.5:9b",
+            "llama3.3:70b-instruct-q8_0",
+            "qwen3:235b-a22b-instruct-2507-q4_K_M",
+            "qwen3-vl:32b-instruct-q8_0",
+        ),
         notes="Local default runtime.",
     ),
     LLMProviderDescriptor(

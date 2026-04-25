@@ -1269,10 +1269,10 @@ def setup_profile_models():
     vram_level = "low"
     if torch.cuda.is_available():
         vram_gb = torch.cuda.get_device_properties(0).total_memory / (1024**3)
-        if vram_gb >= VRAM_THRESHOLDS["medium"]:
-            vram_level = "high"
-        elif vram_gb >= VRAM_THRESHOLDS["low"]:
-            vram_level = "medium"
+        for level, threshold in sorted(VRAM_THRESHOLDS.items(), key=lambda item: item[1], reverse=True):
+            if vram_gb >= threshold:
+                vram_level = level
+                break
 
     # Obtenir le modèle recommandé pour ce profil
     if profile in MODEL_RECOMMENDATIONS:
