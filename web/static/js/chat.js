@@ -25,22 +25,64 @@ function getChatMessages() {
     return _chatMessagesEl;
 }
 
+const ASSISTANT_TOOL_TRACE_NAMES = [
+    'write_files',
+    'write_file',
+    'edit_file',
+    'read_file',
+    'list_files',
+    'listfiles',
+    'search',
+    'glob',
+    'bash',
+    'clear_workspace',
+    'clearworkspace',
+    'delete_file',
+    'deletefile',
+    'tool_search',
+    'toolsearch',
+    'delegate_subagent',
+    'delegatesubagent',
+    'write_todos',
+    'writetodos',
+    'open_workspace',
+    'openworkspace',
+    'ask_clarification',
+    'askclarification'
+].join('|');
+
+function stripAssistantToolTraceMarkup(text = '') {
+    let cleaned = String(text ?? '');
+    if (!cleaned) return '';
+
+    const toolTagBlockPattern = new RegExp(`<(${ASSISTANT_TOOL_TRACE_NAMES})\\b[^>]*>[\\s\\S]*?<\\/\\1>`, 'gi');
+    const toolTagLinePattern = new RegExp(`^\\s*<\\/?(?:${ASSISTANT_TOOL_TRACE_NAMES})\\b[^>]*>\\s*$`, 'gim');
+    const danglingToolTagPattern = new RegExp(`<\\/?(?:${ASSISTANT_TOOL_TRACE_NAMES})\\b[^>]*>`, 'gi');
+
+    cleaned = cleaned.replace(toolTagBlockPattern, '\n');
+    cleaned = cleaned.replace(toolTagLinePattern, '\n');
+    cleaned = cleaned.replace(danglingToolTagPattern, '');
+    return cleaned;
+}
+
 function sanitizeAssistantToolTraceText(text = '') {
     const source = String(text ?? '').replace(/\r\n?/g, '\n');
     if (!source) return '';
-    const toolLedgerNames = 'write_files|write_file|edit_file|read_file|list_files|search|glob|bash|clear_workspace|delete_file|tool_search|delegate_subagent';
+    const toolLedgerNames = ASSISTANT_TOOL_TRACE_NAMES;
     const rawToolLedgerPattern = new RegExp(`^\\s*(?:\\[?(?:OK|FAIL|ERROR)\\]?\\s+)?(?:${toolLedgerNames})\\s*:`, 'mi');
     const inlineToolLedgerPattern = new RegExp(`(?:^|[\\s;.,-])(?:\\[?(?:OK|FAIL|ERROR)\\]?\\s+)?(?:${toolLedgerNames})\\s*:\\s*[^\\n]{0,260}`, 'mi');
     const inlineToolLedgerGlobalPattern = new RegExp(`(?:^|[\\s;.,-])(?:\\[?(?:OK|FAIL|ERROR)\\]?\\s+)?(?:${toolLedgerNames})\\s*:\\s*[^\\n]{0,260}`, 'gmi');
+    const rawToolTagPattern = new RegExp(`<\\/?(?:${toolLedgerNames})\\b[^>]*>`, 'mi');
     if (
         !/(?:\bto=|^[\t ]*[●⎿]|Subagent\(|\bdata=\{|\bcode=")/mi.test(source)
         && !rawToolLedgerPattern.test(source)
         && !inlineToolLedgerPattern.test(source)
+        && !rawToolTagPattern.test(source)
     ) {
         return source;
     }
 
-    let cleaned = source;
+    let cleaned = stripAssistantToolTraceMarkup(source);
 
     // Strip raw tool protocol blobs that occasionally leak from provider output.
     cleaned = cleaned.replace(/([^\n]{0,220}?)\s*\.?\s*to=[\w.-]+[^\n]*/gi, (_, prefix = '') => {
@@ -67,6 +109,7 @@ function sanitizeAssistantToolTraceText(text = '') {
             if (/^Subagent\([^)]*\)/i.test(trimmed)) return false;
             if (/^(?:write_files|write_file|edit_file|read_file|list_files|search|glob|bash|clear_workspace|delete_file|tool_search|delegate_subagent)\s*:/i.test(trimmed)) return false;
             if (/^\[?(?:OK|FAIL|ERROR)\]?\s+(?:write_files|write_file|edit_file|read_file|list_files|search|glob|bash|clear_workspace|delete_file|tool_search|delegate_subagent)\s*:/i.test(trimmed)) return false;
+            if (new RegExp(`^<\\/?(?:${ASSISTANT_TOOL_TRACE_NAMES})\\b[^>]*>$`, 'i').test(trimmed)) return false;
             if (/^[●•]\s*(?:Read|Write|Edit|Delete|Search|Glob|Bash|List|Plan|Subagent|ToolSearch|Explore|Open|UpdatePlan|Lecture|Exploration|Recherche|Écriture|Modification|Suppression|Planification|Vérification|Commande)\b/u.test(trimmed)) {
                 return false;
             }

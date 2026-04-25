@@ -2106,6 +2106,9 @@ function cleanTerminalAssistantText(text) {
     let cleanedText = typeof sanitizeAssistantToolTraceText === 'function'
         ? sanitizeAssistantToolTraceText(text)
         : String(text || '');
+    if (typeof stripAssistantToolTraceMarkup === 'function') {
+        cleanedText = stripAssistantToolTraceMarkup(cleanedText);
+    }
 
     cleanedText = cleanedText.replace(/\[READ_FILE:\s*[^\]]*\]/gi, '');
     cleanedText = cleanedText.replace(/\[LIST_FILES:\s*[^\]]*\]/gi, '');

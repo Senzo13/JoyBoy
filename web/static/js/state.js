@@ -169,7 +169,40 @@ let activeQueueItem = null;
 
 // escapeHtml() moved to utils.js (loaded before state.js)
 
-let queueMinimized = true;
+function normalizeQueueImageSrc(image = '') {
+    const value = String(image || '').trim();
+    if (!value) return '';
+    if (value.startsWith('data:') || value.startsWith('http://') || value.startsWith('https://') || value.startsWith('/')) {
+        return value;
+    }
+    return `data:image/png;base64,${value}`;
+}
+
+function getActiveQueueComposerTarget() {
+    const chatView = document.getElementById('chat-view');
+    const chatVisible = chatView && chatView.style.display !== 'none';
+    const chatInputBar = document.querySelector('.chat-input-bar');
+    const homeInputBar = document.querySelector('#home-view .input-bar');
+    const anchor = chatVisible ? chatInputBar : homeInputBar?.parentElement;
+    const input = chatVisible
+        ? document.getElementById('chat-prompt')
+        : document.getElementById('prompt-input');
+    return {
+        chatVisible,
+        anchor,
+        input: input || document.getElementById('chat-prompt') || document.getElementById('prompt-input'),
+        homeInputBar,
+    };
+}
+
+function refreshQueueComposerLayout() {
+    requestAnimationFrame(() => {
+        const chatInputBar = document.querySelector('.chat-input-bar');
+        const nextHeight = Math.max(80, Math.ceil(chatInputBar?.offsetHeight || 80));
+        document.documentElement.style.setProperty('--chat-input-h', `${nextHeight}px`);
+        if (typeof updateChatPadding === 'function') updateChatPadding();
+    });
+}
 
 function renderQueueForCurrentChat() {
     // Nettoyer les éléments existants
@@ -180,80 +213,69 @@ function renderQueueForCurrentChat() {
 
     const pending = globalQueue.filter(item => item.status === 'pending');
     if (pending.length === 0) {
-        queueMinimized = false;
+        refreshQueueComposerLayout();
         return;
     }
 
-    // Mode bulle flottante (minimisé)
-    if (queueMinimized) {
-        const bubble = document.createElement('div');
-        bubble.id = 'queue-bubble';
-        bubble.className = 'queue-bubble';
-        bubble.onclick = () => { queueMinimized = false; renderQueueForCurrentChat(); };
-        bubble.innerHTML = `
-            <div class="queue-bubble-icon">
-                <i data-lucide="list-ordered"></i>
-                <div class="queue-bubble-count">${pending.length}</div>
-            </div>
-            <span class="queue-bubble-label"><span>${pending.length}</span> en attente</span>
-        `;
-        document.body.appendChild(bubble);
-        if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [bubble] });
-        return;
-    }
-
-    // Mode étendu
-    const chatView = document.getElementById('chat-view');
-    const isChat = chatView && chatView.style.display !== 'none';
-    const inputBar = isChat
-        ? document.querySelector('.chat-input-bar')
-        : document.querySelector('#home-view .input-bar');
-    if (!inputBar) return;
+    const { chatVisible, anchor, homeInputBar } = getActiveQueueComposerTarget();
+    if (!anchor) return;
 
     const container = document.createElement('div');
     container.id = 'prompt-queue';
     container.className = 'prompt-queue';
+    container.dataset.count = String(pending.length);
+    const visibleItems = pending.slice(0, 5);
+    const remaining = Math.max(0, pending.length - visibleItems.length);
     container.innerHTML = `
-        <div class="queue-header">
-            <div class="queue-header-left">
-                <i data-lucide="list-ordered"></i>
-                <span class="queue-title">${pending.length} en attente</span>
-            </div>
-            <div class="queue-actions">
-                <button class="queue-btn queue-minimize" onclick="minimizeQueue()" title="Réduire">
-                    <i data-lucide="minus"></i>
-                </button>
-                <button class="queue-btn queue-clear" onclick="clearQueue()" title="Vider la queue">
-                    <i data-lucide="trash-2"></i>
-                </button>
-            </div>
-        </div>
-        <div class="queue-items">
-            ${pending.map((item, index) => `
-                <div class="queue-item" data-id="${item.id}">
-                    <span class="queue-index">${index + 1}</span>
-                    ${item.options?.image ? `<img class="queue-thumb" src="${item.options.image.startsWith('data:') ? item.options.image : 'data:image/png;base64,' + item.options.image}" />` : ''}
-                    <span class="queue-text">${escapeHtml(item.prompt.substring(0, 50))}${item.prompt.length > 50 ? '...' : ''}</span>
-                    <button class="queue-remove" onclick="removeFromQueue('${item.id}')" title="Retirer">
-                        <i data-lucide="x"></i>
-                    </button>
-                </div>
-            `).join('')}
+        <div class="queue-items" role="list" aria-label="File d'attente">
+            ${visibleItems.map((item, index) => {
+                const imageSrc = normalizeQueueImageSrc(item.options?.image || '');
+                const text = String(item.prompt || '').trim();
+                return `
+                <div class="queue-item${imageSrc ? ' has-image' : ''}" data-id="${item.id}" role="listitem">
+                    ${imageSrc ? `<img class="queue-thumb" src="${escapeHtml(imageSrc)}" alt="">` : `<span class="queue-index">${index + 1}</span>`}
+                    <span class="queue-text">${escapeHtml(text.substring(0, 96))}${text.length > 96 ? '...' : ''}</span>
+                    <div class="queue-actions">
+                        <button class="queue-btn queue-orient" type="button" onclick="orientQueueItem('${item.id}')" title="Orienter dans le composer">
+                            <i data-lucide="corner-down-left"></i>
+                            <span>Orienter</span>
+                        </button>
+                        <button class="queue-btn queue-remove" type="button" onclick="removeFromQueue('${item.id}')" title="Retirer">
+                            <i data-lucide="trash-2"></i>
+                        </button>
+                        <button class="queue-btn queue-clear" type="button" onclick="clearQueue()" title="Vider la file">
+                            <i data-lucide="ellipsis"></i>
+                        </button>
+                    </div>
+                </div>`;
+            }).join('')}
+            ${remaining ? `<div class="queue-more-count">+${remaining} en attente</div>` : ''}
         </div>
     `;
 
-    if (isChat) {
-        inputBar.insertBefore(container, inputBar.firstChild);
-    } else {
-        inputBar.parentElement.insertBefore(container, inputBar);
+    if (chatVisible) {
+        anchor.insertBefore(container, anchor.firstChild);
+    } else if (homeInputBar?.parentElement) {
+        homeInputBar.parentElement.insertBefore(container, homeInputBar);
     }
 
     if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [container] });
+    refreshQueueComposerLayout();
 }
 
-function minimizeQueue() {
-    queueMinimized = true;
-    renderQueueForCurrentChat();
+function orientQueueItem(id) {
+    const item = globalQueue.find(entry => entry.id === id);
+    if (!item) return;
+    const { input } = getActiveQueueComposerTarget();
+    if (input) {
+        input.value = item.prompt || '';
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.focus();
+    }
+    if (item.options?.image) {
+        currentImage = item.options.image;
+        if (typeof updateImagePreviews === 'function') updateImagePreviews();
+    }
 }
 
 function addToQueue(prompt, mode = 'chat', options = {}) {
@@ -265,7 +287,6 @@ function addToQueue(prompt, mode = 'chat', options = {}) {
         status: 'pending',
         addedAt: Date.now()
     });
-    queueMinimized = true;
     renderQueueForCurrentChat();
     return id;
 }

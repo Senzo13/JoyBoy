@@ -319,6 +319,9 @@ class ModulesStaticTests(unittest.TestCase):
         self.assertIn("/api/deployatlas/deployments", routes_py)
         self.assertIn("DeployAtlas", catalog_py)
         self.assertIn("server-cog", catalog_py)
+        self.assertIn("auditModuleCurrentProfiles(deployAtlasModelContext)", deploy_js)
+        self.assertIn("deployAtlasModelContext?.terminal_model_profiles", deploy_js)
+        self.assertIn("get_audit_model_context()", routes_py)
 
 
 if __name__ == "__main__":

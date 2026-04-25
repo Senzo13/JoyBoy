@@ -63,13 +63,23 @@
 
     /* === QUEUE === */
     .prompt-queue {
-        border-radius: 12px;
-        margin-bottom: 8px;
+        border-radius: 16px 16px 10px 10px;
+        margin-bottom: -1px;
     }
 
-    .queue-bubble {
-        right: 12px;
-        bottom: 90px;
+    .queue-item {
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        gap: 8px;
+        padding: 7px 10px;
+    }
+
+    .queue-orient span {
+        display: none;
+    }
+
+    .queue-btn {
+        width: 28px;
+        padding: 0;
     }
 
     /* === VIDEO BUTTON === */

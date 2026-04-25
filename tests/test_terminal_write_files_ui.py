@@ -87,6 +87,19 @@ class TerminalWriteFilesUiTests(unittest.TestCase):
         self.assertIn("result_data['tool_result']['commands'] = commands[:4]", terminal_route)
         self.assertNotIn("'<span class=\"cursor\">|</span>'", terminal_js)
 
+    def test_terminal_strips_leaked_tool_xml_tags_from_assistant_output(self):
+        chat_js = (ROOT / "web/static/js/chat.js").read_text(encoding="utf-8")
+        terminal_js = (ROOT / "web/static/js/terminal.js").read_text(encoding="utf-8")
+
+        self.assertIn("const ASSISTANT_TOOL_TRACE_NAMES = [", chat_js)
+        self.assertIn("function stripAssistantToolTraceMarkup", chat_js)
+        self.assertIn("toolTagBlockPattern", chat_js)
+        self.assertIn("'write_todos'", chat_js)
+        self.assertIn("'listfiles'", chat_js)
+        self.assertIn("'ask_clarification'", chat_js)
+        self.assertIn("rawToolTagPattern", chat_js)
+        self.assertIn("stripAssistantToolTraceMarkup(cleanedText)", terminal_js)
+
     def test_terminal_interrupt_uses_double_escape_not_ctrl_c(self):
         terminal_js = (ROOT / "web/static/js/terminal.js").read_text(encoding="utf-8")
         app_js = (ROOT / "web/static/js/app.js").read_text(encoding="utf-8")

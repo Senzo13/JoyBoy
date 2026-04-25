@@ -239,9 +239,15 @@
     }
 
     function deployAtlasModelProfiles() {
-        const profiles = Array.isArray(deployAtlasModelContext?.profiles) && deployAtlasModelContext.profiles.length
-            ? deployAtlasModelContext.profiles
-            : [{ id: currentModel(), label: currentModel(), provider: 'current', configured: true }];
+        if (typeof auditModuleCurrentProfiles === 'function') {
+            const sharedProfiles = auditModuleCurrentProfiles(deployAtlasModelContext);
+            if (sharedProfiles.length) return sharedProfiles;
+        }
+        const profiles = Array.isArray(deployAtlasModelContext?.terminal_model_profiles) && deployAtlasModelContext.terminal_model_profiles.length
+            ? deployAtlasModelContext.terminal_model_profiles
+            : (Array.isArray(deployAtlasModelContext?.profiles) && deployAtlasModelContext.profiles.length
+                ? deployAtlasModelContext.profiles
+                : [{ id: currentModel(), label: currentModel(), provider: 'current', configured: true }]);
         const normalized = profiles
             .map(profile => {
                 const id = profile.id || profile.name || profile.label || '';
