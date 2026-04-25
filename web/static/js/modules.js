@@ -2454,11 +2454,13 @@ function hideOtherJoyBoyViews() {
     const chatView = document.getElementById('chat-view');
     const modalView = document.getElementById('modal-view');
     const addonsView = document.getElementById('addons-view');
+    const extensionsView = document.getElementById('extensions-view');
     const modelsView = document.getElementById('models-view');
     if (homeView) homeView.style.display = 'none';
     if (chatView) chatView.style.display = 'none';
     if (modalView) modalView.style.display = 'none';
     if (addonsView) addonsView.style.display = 'none';
+    if (extensionsView) extensionsView.style.display = 'none';
     if (modelsView) modelsView.style.display = 'none';
     if (typeof hideProjectView === 'function') hideProjectView();
 }
@@ -2471,7 +2473,7 @@ function applyModulesShellMode(activeButtonId, bodyClass) {
     hideOtherJoyBoyViews();
     clearActiveHubButtons();
     document.getElementById(activeButtonId)?.classList.add('active');
-    document.body.classList.remove('addons-mode', 'models-mode', 'projects-mode', 'modules-mode', 'signalatlas-mode', 'perfatlas-mode', 'cyberatlas-mode');
+    document.body.classList.remove('addons-mode', 'extensions-mode', 'models-mode', 'projects-mode', 'modules-mode', 'signalatlas-mode', 'perfatlas-mode', 'cyberatlas-mode');
     document.body.classList.add(bodyClass);
 }
 

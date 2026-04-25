@@ -322,16 +322,19 @@ function showProjectView(projectId) {
     const chatView = document.getElementById('chat-view');
     const modalView = document.getElementById('modal-view');
     const addonsView = document.getElementById('addons-view');
+    const extensionsView = document.getElementById('extensions-view');
     const modelsView = document.getElementById('models-view');
     const projectsView = document.getElementById('projects-view');
     if (homeView) homeView.style.display = 'none';
     if (chatView) chatView.style.display = 'none';
     if (modalView) modalView.style.display = 'none';
     if (addonsView) addonsView.style.display = 'none';
+    if (extensionsView) extensionsView.style.display = 'none';
     if (modelsView) modelsView.style.display = 'none';
     if (projectsView) projectsView.style.display = 'flex';
 
     document.body.classList.remove('addons-mode');
+    document.body.classList.remove('extensions-mode');
     document.body.classList.remove('models-mode');
     document.body.classList.add('projects-mode');
     document.querySelectorAll('.sidebar-hub-btn').forEach(btn => btn.classList.remove('active'));

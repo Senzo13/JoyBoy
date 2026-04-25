@@ -39,6 +39,7 @@
 
 /* ===== HUB VIEWS ===== */
 #addons-view,
+#extensions-view,
 #models-view,
 #projects-view,
 #modules-view,
@@ -56,6 +57,7 @@
 }
 
 #addons-view-content,
+#extensions-view-content,
 #models-view-content,
 #projects-view-content,
 #modules-view-content,
@@ -67,6 +69,7 @@
 }
 
 #models-view-content,
+#extensions-view-content,
 #modules-view-content,
 #signalatlas-view-content,
 #perfatlas-view-content,
@@ -107,6 +110,7 @@
 }
 
 body.addons-mode,
+body.extensions-mode,
 body.models-mode,
 body.projects-mode,
 body.modules-mode,
@@ -117,6 +121,7 @@ body.cyberatlas-mode {
 }
 
 body.addons-mode #stars,
+body.extensions-mode #stars,
 body.models-mode #stars,
 body.projects-mode #stars,
 body.modules-mode #stars,
@@ -127,7 +132,7 @@ body.cyberatlas-mode #stars {
 }
 
 /* Decaler le contenu principal */
-#home-view, #chat-view, #addons-view, #models-view, #projects-view, #modules-view, #signalatlas-view, #perfatlas-view, #cyberatlas-view {
+#home-view, #chat-view, #addons-view, #extensions-view, #models-view, #projects-view, #modules-view, #signalatlas-view, #perfatlas-view, #cyberatlas-view {
     margin-left: 260px;
     transition: margin-left 0.3s ease;
 }
@@ -135,6 +140,7 @@ body.cyberatlas-mode #stars {
 body.sidebar-collapsed #home-view,
 body.sidebar-collapsed #chat-view,
 body.sidebar-collapsed #addons-view,
+body.sidebar-collapsed #extensions-view,
 body.sidebar-collapsed #models-view,
 body.sidebar-collapsed #projects-view,
 body.sidebar-collapsed #modules-view,
@@ -1052,7 +1058,7 @@ body.cursor-active .chat-messages::-webkit-scrollbar-thumb:hover {
     }
 
     /* === VIEWS: full width === */
-    #home-view, #chat-view, #addons-view, #models-view, #projects-view, #modules-view, #signalatlas-view, #perfatlas-view, #cyberatlas-view {
+    #home-view, #chat-view, #addons-view, #extensions-view, #models-view, #projects-view, #modules-view, #signalatlas-view, #perfatlas-view, #cyberatlas-view {
         margin-left: 0 !important;
         width: 100%;
     }
@@ -1060,6 +1066,7 @@ body.cursor-active .chat-messages::-webkit-scrollbar-thumb:hover {
     body.sidebar-collapsed #home-view,
     body.sidebar-collapsed #chat-view,
     body.sidebar-collapsed #addons-view,
+    body.sidebar-collapsed #extensions-view,
     body.sidebar-collapsed #models-view,
     body.sidebar-collapsed #projects-view,
     body.sidebar-collapsed #modules-view,
@@ -1101,6 +1108,7 @@ body.cursor-active .chat-messages::-webkit-scrollbar-thumb:hover {
     }
 
     #addons-view,
+    #extensions-view,
     #models-view,
     #projects-view,
     #modules-view,

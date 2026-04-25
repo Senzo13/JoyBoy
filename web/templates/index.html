@@ -54,6 +54,7 @@
     <link rel="stylesheet" href="/static/css/modal.css">
     <link rel="stylesheet" href="/static/css/settings-modal.css">
     <link rel="stylesheet" href="/static/css/settings-addons.css">
+    <link rel="stylesheet" href="/static/css/extensions.css">
     <link rel="stylesheet" href="/static/css/settings-models.css">
     <link rel="stylesheet" href="/static/css/onboarding.css">
     <link rel="stylesheet" href="/static/css/settings-local-models.css">
@@ -502,6 +503,11 @@
         <div id="addons-view-content"></div>
     </div>
 
+    <!-- EXTENSIONS VIEW -->
+    <div id="extensions-view" style="display: none;">
+        <div id="extensions-view-content"></div>
+    </div>
+
     <!-- MODELS VIEW -->
     <div id="models-view" style="display: none;">
         <div id="models-view-content"></div>
@@ -550,6 +556,10 @@
             <button class="sidebar-hub-btn" id="sidebar-modules-btn" onclick="openModulesHub()" title="Modules" data-i18n-tooltip="modules.sidebarTooltip">
                 <i data-lucide="layout-grid"></i>
                 <span id="sidebar-modules-label">Modules</span>
+            </button>
+            <button class="sidebar-hub-btn" id="sidebar-extensions-btn" onclick="openExtensionsHub()" title="Extensions" data-i18n-tooltip="extensions.sidebarTooltip">
+                <i data-lucide="plug-zap"></i>
+                <span id="sidebar-extensions-label">Extensions</span>
             </button>
             <button class="sidebar-hub-btn" id="sidebar-addons-btn" onclick="openAddonsHub()" title="Addons locaux" data-i18n-tooltip="settings.addons.sidebarTooltip">
                 <i data-lucide="blocks"></i>
@@ -858,6 +868,7 @@
 <script src="/static/js/settings.addons.js"></script>
     <script src="/static/js/settings.providers.js"></script>
     <script src="/static/js/settings.mcp.js"></script>
+    <script src="/static/js/extensions.js"></script>
     <script src="/static/js/settings.image-models.js"></script>
     <script src="/static/js/settings.gallery.js"></script>
     <script src="/static/js/settings.training.js"></script>

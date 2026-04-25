@@ -43,8 +43,10 @@ class ModulesStaticTests(unittest.TestCase):
         self.assertIn("openAuditModuleWorkspace", db_js)
         self.assertIn("hideModulesWorkspaces", settings_js)
         self.assertIn("hideModulesWorkspaces", ui_js)
+        self.assertIn("applyTerminalChatState(null);", ui_js)
         self.assertIn("perfatlas-mode", settings_js)
         self.assertIn("perfatlas-mode", ui_js)
+        self.assertIn("cyberatlas-mode", ui_js)
 
     def test_modules_translations_exist_for_all_locales(self):
         for locale in ("fr", "en", "es", "it"):
@@ -104,6 +106,36 @@ class ModulesStaticTests(unittest.TestCase):
         bindings = self.read("web/static/js/i18n.bindings.js")
         self.assertIn("#sidebar-modules-label", bindings)
         self.assertIn("modules.sidebarLabel", bindings)
+
+    def test_extensions_catalog_assets_and_i18n_are_registered(self):
+        html = self.read("web/templates/index.html")
+        layout = self.read("web/static/css/layout.css")
+        extensions_js = self.read("web/static/js/extensions.js")
+
+        self.assertIn('/static/css/extensions.css', html)
+        self.assertIn('/static/js/extensions.js', html)
+        self.assertIn('id="extensions-view"', html)
+        self.assertIn('id="sidebar-extensions-btn"', html)
+        self.assertIn('#extensions-view', layout)
+        self.assertIn('extensions-mode', layout)
+        self.assertIn("function openExtensionsHub()", extensions_js)
+        self.assertIn("JOYBOY_EXTENSION_CATALOG", extensions_js)
+        self.assertIn("mcp-template", extensions_js)
+        self.assertIn("openExtensionModal", extensions_js)
+
+        bindings = self.read("web/static/js/i18n.bindings.js")
+        self.assertIn("#sidebar-extensions-label", bindings)
+        self.assertIn("extensions.sidebarLabel", bindings)
+
+        for locale in ("fr", "en", "es", "it"):
+            with self.subTest(locale=locale):
+                data = self.read(f"web/static/js/i18n.{locale}.js")
+                self.assertIn("extensions: {", data)
+                self.assertIn("mcpBody:", data)
+                self.assertIn("catalog: {", data)
+                self.assertIn("'web-research':", data)
+                self.assertIn("github:", data)
+                self.assertIn("'browser-use':", data)
 
     def test_modules_hub_refreshes_catalog_and_keeps_native_fallbacks(self):
         modules_js = self.read("web/static/js/modules.js")
