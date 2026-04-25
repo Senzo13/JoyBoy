@@ -154,6 +154,7 @@ def signalatlas_audits():
             "max_pages": _normalize_max_pages(options.get("max_pages")),
             "render_js": bool(options.get("render_js")),
             "depth": max(1, min(5, int(options.get("depth") or 2))),
+            "use_cache": bool(options.get("use_cache")) or _normalize_max_pages(options.get("max_pages")) >= 50,
         },
         "ai": data.get("ai") or {},
     }

@@ -30,6 +30,13 @@ CONFIDENCE_ORDER = {
     "Unknown": 1,
 }
 
+CONFIDENCE_PENALTY_MULTIPLIERS = {
+    "Confirmed": 1.0,
+    "Strong signal": 0.85,
+    "Estimated": 0.65,
+    "Unknown": 0.45,
+}
+
 SEVERITY_ORDER = {
     "critical": 5,
     "high": 4,
@@ -71,7 +78,12 @@ def score_findings(
         bucket = buckets.get(bucket_id)
         if not bucket:
             continue
-        penalty = SEVERITY_PENALTIES.get(str(finding.get("severity", "low")).lower(), 3)
+        base_penalty = SEVERITY_PENALTIES.get(str(finding.get("severity", "low")).lower(), 3)
+        confidence = str(finding.get("confidence") or "Unknown")
+        multiplier = CONFIDENCE_PENALTY_MULTIPLIERS.get(confidence, 0.55)
+        if finding.get("root_cause"):
+            multiplier = max(multiplier, 0.95)
+        penalty = base_penalty * multiplier
         bucket["score"] = max(0.0, float(bucket["score"]) - penalty)
         bucket["issues"].append(finding)
 

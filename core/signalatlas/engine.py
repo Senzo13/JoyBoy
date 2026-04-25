@@ -6,9 +6,9 @@ import hashlib
 import json
 import re
 import time
-from collections import Counter, deque
+from collections import Counter
 from html import unescape
-from typing import Any, Callable, Deque, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 from urllib.parse import urljoin, urlparse, urlunparse
 from urllib.robotparser import RobotFileParser
 
@@ -20,6 +20,8 @@ except Exception:  # pragma: no cover - best effort fallback
     BeautifulSoup = None
 
 from core.runtime.storage import utc_now_iso
+from .cache import SignalAtlasPageCache
+from .crawl import seed_frontier, should_enqueue_link
 from .providers import build_owner_context, get_signalatlas_provider_status
 from .scoring import score_findings
 
@@ -30,6 +32,7 @@ FAST_DISCOVERY_TIMEOUT = (3, 8)
 OPTIONAL_PROBE_TIMEOUT = (2, 4)
 MAX_LINK_SAMPLES = 48
 MAX_RENDER_PROBES = 3
+MAX_RENDER_PROBES_ULTRA = 20
 CJK_CHAR_RE = re.compile(r"[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uac00-\ud7af]")
 LOCALE_ROOT_RE = re.compile(r"^/[a-z]{2,3}(?:[-_][a-z0-9]{2,4})?$", re.I)
 SYSTEM_PATH_PREFIXES = ("/cdn-cgi/",)
@@ -588,6 +591,7 @@ def _apply_render_probe(
     entry_url: str,
     *,
     render_js: bool,
+    max_render_probes: int = MAX_RENDER_PROBES,
     progress_callback: Optional[Callable[[str, float, str], None]] = None,
     cancel_check: Optional[Callable[[], bool]] = None,
 ) -> Dict[str, Any]:
@@ -621,15 +625,30 @@ def _apply_render_probe(
 
     page_by_url = {page.get("final_url") or page.get("url"): page for page in pages}
     candidates: List[str] = []
-    for candidate in [entry_url] + [
-        page.get("final_url") or page.get("url")
-        for page in pages
-        if page.get("shell_like")
-    ]:
+    probe_limit = max(1, min(MAX_RENDER_PROBES_ULTRA, int(max_render_probes or MAX_RENDER_PROBES)))
+    risky_pages = sorted(
+        pages,
+        key=lambda page: (
+            0 if page.get("shell_like") else 1,
+            int(page.get("crawl_depth") or 0),
+            str(page.get("template_signature") or ""),
+        ),
+    )
+    seen_templates = set()
+    template_candidates: List[str] = []
+    for page in risky_pages:
+        signature = str(page.get("template_signature") or "")
+        candidate_url = page.get("final_url") or page.get("url")
+        if not candidate_url or signature in seen_templates:
+            continue
+        seen_templates.add(signature)
+        template_candidates.append(candidate_url)
+
+    for candidate in [entry_url] + template_candidates:
         clean = str(candidate or "").strip()
         if clean and clean not in candidates:
             candidates.append(clean)
-        if len(candidates) >= MAX_RENDER_PROBES:
+        if len(candidates) >= probe_limit:
             break
 
     rendered_pages: List[Dict[str, Any]] = []
@@ -2298,7 +2317,10 @@ def run_site_audit(
     *,
     mode: str = "public",
     max_pages: int = 12,
+    max_depth: int = 2,
     render_js: bool = False,
+    use_cache: bool = False,
+    cache_ttl_seconds: int = 6 * 60 * 60,
     progress_callback: Optional[Callable[[str, float, str], None]] = None,
     cancel_check: Optional[Callable[[], bool]] = None,
 ) -> Dict[str, Any]:
@@ -2308,6 +2330,8 @@ def run_site_audit(
     session = requests.Session()
     session.headers.update({"User-Agent": USER_AGENT})
     discovery_timeout = _discovery_timeout_for_budget(max_pages)
+    max_depth = max(1, min(8, int(max_depth or 2)))
+    page_cache = SignalAtlasPageCache(ttl_seconds=cache_ttl_seconds) if use_cache else None
 
     def emit(phase: str, progress: float, message: str) -> None:
         if progress_callback:
@@ -2326,36 +2350,51 @@ def run_site_audit(
     sitemaps = _discover_sitemaps(session, entry_url, robots, timeout=discovery_timeout)
     llms_signal = _probe_llms_txt(session, entry_url)
 
-    queue: Deque[Tuple[str, int]] = deque()
-    seen = set()
-    for candidate in [entry_url] + list(sitemaps.get("urls") or [])[: max_pages]:
-        clean = _clean_url(candidate)
-        if _same_host(clean, host) and clean not in seen and not _is_system_url(clean):
-            queue.append((clean, 0))
-            seen.add(clean)
+    queue, seen, discovered_urls = seed_frontier(
+        entry_url,
+        list(sitemaps.get("urls") or [])[: max_pages * 2],
+        max_pages=max_pages,
+        clean_url=_clean_url,
+        same_host=lambda candidate: _same_host(candidate, host),
+        is_system_url=_is_system_url,
+    )
 
     pages: List[Dict[str, Any]] = []
-    discovered_urls = set(seen)
     broken_urls = set()
+    cache_hits = 0
 
     while queue and len(pages) < max_pages:
         ensure_not_cancelled()
         current, depth = queue.popleft()
         emit("crawl", 12 + ((len(pages) / float(max_pages or 1)) * 46), f"Crawling {current}")
         try:
-            page = _extract_page_snapshot(session, current, host, depth)
+            page = page_cache.get(current) if page_cache else None
+            if page is not None:
+                page["crawl_depth"] = depth
+                cache_hits += 1
+            else:
+                page = _extract_page_snapshot(session, current, host, depth)
+                if page_cache:
+                    page_cache.set(current, page)
             pages.append(page)
             if page.get("status_code", 0) >= 400:
                 broken_urls.add(page.get("final_url") or current)
                 continue
             for link in page.get("internal_links") or []:
                 clean = _clean_url(link)
-                if clean in seen or not _same_host(clean, host) or _is_system_url(clean):
+                if not should_enqueue_link(
+                    clean,
+                    depth=depth,
+                    max_depth=max_depth,
+                    seen=seen,
+                    max_seen=max_pages * 3,
+                    same_host=lambda candidate: _same_host(candidate, host),
+                    is_system_url=_is_system_url,
+                ):
                     continue
                 seen.add(clean)
                 discovered_urls.add(clean)
-                if len(seen) <= max_pages * 3:
-                    queue.append((clean, depth + 1))
+                queue.append((clean, depth + 1))
         except Exception as exc:
             broken_urls.add(current)
             pages.append({
@@ -2402,6 +2441,7 @@ def run_site_audit(
         pages,
         entry_url,
         render_js=render_js,
+        max_render_probes=20 if max_pages >= 250 else (8 if max_pages >= 50 else MAX_RENDER_PROBES),
         progress_callback=progress_callback,
         cancel_check=cancel_check,
     )
@@ -2445,8 +2485,10 @@ def run_site_audit(
         "pages_sampled": len(pages),
         "page_budget": max_pages,
         "requested_page_budget": max_pages,
+        "max_depth": max_depth,
         "crawl_budget_reached": crawl_budget_reached,
         "crawl_exhausted_early": crawl_exhausted_early,
+        "cache_hits": cache_hits,
         "pages_discovered": len(discovered_urls),
         "sitemap_url_count": len(sitemaps.get("urls") or []),
         "sitemap_index_count": len(sitemaps.get("indexes") or []),
@@ -2533,6 +2575,9 @@ def run_site_audit(
         "duration_seconds": round(time.time() - start, 2),
         "crawl_budget_reached": crawl_budget_reached,
         "crawl_exhausted_early": crawl_exhausted_early,
+        "max_depth": max_depth,
+        "cache_hits": cache_hits,
+        "cache_enabled": bool(page_cache),
     }
 
     remediation_items = [
@@ -2569,7 +2614,9 @@ def run_public_audit(
     target: str,
     *,
     max_pages: int = 12,
+    max_depth: int = 2,
     render_js: bool = False,
+    use_cache: bool = False,
     progress_callback: Optional[Callable[[str, float, str], None]] = None,
     cancel_check: Optional[Callable[[], bool]] = None,
 ) -> Dict[str, Any]:
@@ -2577,7 +2624,9 @@ def run_public_audit(
         target,
         mode="public",
         max_pages=max_pages,
+        max_depth=max_depth,
         render_js=render_js,
+        use_cache=use_cache,
         progress_callback=progress_callback,
         cancel_check=cancel_check,
     )

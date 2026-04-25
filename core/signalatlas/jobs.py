@@ -62,7 +62,9 @@ def _run_audit_job(job_id: str, audit_id: str, payload: Dict[str, Any]) -> None:
             audit["target"]["normalized_url"],
             mode=str(audit.get("target", {}).get("mode") or "public"),
             max_pages=int(options.get("max_pages") or 12),
+            max_depth=int(options.get("depth") or 2),
             render_js=bool(options.get("render_js")),
+            use_cache=bool(options.get("use_cache")),
             progress_callback=_update_progress and (lambda phase, progress, message: _update_progress(job_id, phase, progress, message)),
             cancel_check=cancel_check,
         )
