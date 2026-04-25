@@ -1590,6 +1590,277 @@ def _risk_counts(findings: List[Dict[str, Any]]) -> Dict[str, int]:
     return {key: int(counts.get(key, 0)) for key in ("critical", "high", "medium", "low", "info")}
 
 
+def _security_grade(global_score: Any, counts: Dict[str, int]) -> str:
+    try:
+        score = float(global_score)
+    except (TypeError, ValueError):
+        score = 0.0
+    if counts.get("critical", 0) > 0 or score < 45:
+        return "F"
+    if counts.get("high", 0) >= 3 or score < 60:
+        return "D"
+    if counts.get("high", 0) > 0 or counts.get("medium", 0) >= 5 or score < 75:
+        return "C"
+    if counts.get("medium", 0) > 0 or score < 90:
+        return "B"
+    return "A"
+
+
+def _priority_rank(priority: str) -> int:
+    return {"critical": 4, "high": 3, "medium": 2, "low": 1}.get(str(priority or "").lower(), 0)
+
+
+def _surface_status(ok: bool, weak: bool = False) -> str:
+    if weak:
+        return "review"
+    return "ok" if ok else "weak"
+
+
+def _build_surface_matrix(
+    *,
+    tls: Dict[str, Any],
+    entry_headers: Dict[str, str],
+    missing_headers: List[str],
+    probes: List[Dict[str, Any]],
+    openapi: Dict[str, Any],
+    api_inventory: Dict[str, Any],
+    frontend_hints: Dict[str, Any],
+    protections: Dict[str, Any],
+    recon_summary: Dict[str, Any],
+    pages: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    sensitive_exposures = [
+        item for item in probes
+        if item.get("exists") and str(item.get("path") or "") in SENSITIVE_PATHS
+    ]
+    cookie_header_count = len([
+        page for page in pages
+        if (page.get("headers") or {}).get("set-cookie")
+    ])
+    auth_surface_count = int(recon_summary.get("auth_surface_count") or 0)
+    public_sensitive = int(api_inventory.get("public_sensitive_count") or 0)
+    source_maps = int(frontend_hints.get("source_map_count") or 0)
+    reachable_source_maps = int(frontend_hints.get("reachable_source_map_count") or 0)
+    third_party_without_sri = int(frontend_hints.get("third_party_script_without_sri_count") or 0)
+    return [
+        {
+            "id": "transport_tls",
+            "label": "Transport & TLS",
+            "status": _surface_status(bool(tls.get("available")) and not missing_headers.count("strict-transport-security")),
+            "signals": [
+                f"TLS available: {bool(tls.get('available'))}",
+                f"Protocol: {tls.get('protocol') or 'unknown'}",
+                f"HSTS present: {bool(entry_headers.get('strict-transport-security'))}",
+            ],
+            "next_action": "Validate HTTPS canonicalization, HSTS scope, and certificate automation.",
+        },
+        {
+            "id": "browser_hardening",
+            "label": "Browser hardening",
+            "status": _surface_status(len(missing_headers) == 0, bool(missing_headers)),
+            "signals": [
+                f"{len(missing_headers)} security header(s) missing.",
+                f"CSP present: {bool(entry_headers.get('content-security-policy'))}",
+                f"Third-party scripts without SRI: {third_party_without_sri}",
+            ],
+            "next_action": "Ship CSP, framing, MIME, referrer, permissions and origin-isolation controls deliberately.",
+        },
+        {
+            "id": "session_auth",
+            "label": "Session & authentication",
+            "status": _surface_status(auth_surface_count == 0 or bool(protections.get("rate_limit_detected")), auth_surface_count > 0),
+            "signals": [
+                f"Auth surface signals: {auth_surface_count}",
+                f"Auth-protected endpoint signals: {api_inventory.get('auth_protected_count', 0)}",
+                f"Pages setting cookies: {cookie_header_count}",
+                f"Rate-limit visible: {bool(protections.get('rate_limit_detected'))}",
+            ],
+            "next_action": "Verify auth middleware, cookie flags, CSRF protection, and account/IP/device throttling.",
+        },
+        {
+            "id": "api_contract",
+            "label": "API contract",
+            "status": _surface_status(public_sensitive == 0 and int(openapi.get("state_changing_without_security_count") or 0) == 0, int(api_inventory.get("endpoint_count") or 0) > 0),
+            "signals": [
+                f"OpenAPI endpoints: {openapi.get('endpoint_count', 0)}",
+                f"Discovered endpoint signals: {api_inventory.get('endpoint_count', 0)}",
+                f"Sensitive-looking public endpoints: {public_sensitive}",
+                f"State-changing operations without declared security: {openapi.get('state_changing_without_security_count', 0)}",
+            ],
+            "next_action": "Review every sensitive and state-changing route against auth, authorization, rate limits, and schema validation.",
+        },
+        {
+            "id": "frontend_bundle",
+            "label": "Frontend bundle hygiene",
+            "status": _surface_status(source_maps == 0 and not frontend_hints.get("private_backend_hosts"), source_maps > 0 or third_party_without_sri > 0),
+            "signals": [
+                f"API references in frontend: {frontend_hints.get('api_reference_count', 0)}",
+                f"Private backend references: {len(frontend_hints.get('private_backend_hosts') or [])}",
+                f"Source map references: {source_maps}",
+                f"Reachable source maps: {reachable_source_maps}",
+            ],
+            "next_action": "Remove private origins and production source maps from client bundles; verify no secrets ship client-side.",
+        },
+        {
+            "id": "public_exposure",
+            "label": "Public exposure hygiene",
+            "status": _surface_status(len(sensitive_exposures) == 0, len(sensitive_exposures) > 0),
+            "signals": [
+                f"Reachable exposure probes: {len([item for item in probes if item.get('exists')])}",
+                f"Sensitive exposure probes: {len(sensitive_exposures)}",
+                f"security.txt reachable: {any(item.get('exists') and str(item.get('path') or '').endswith('security.txt') for item in probes)}",
+            ],
+            "next_action": "Block sensitive deployment artifacts and publish a maintained security.txt contact path.",
+        },
+        {
+            "id": "edge_abuse",
+            "label": "Edge & abuse resistance",
+            "status": _surface_status(bool(protections.get("waf_detected")) or bool(protections.get("rate_limit_detected")), not protections.get("waf_detected") and auth_surface_count > 0),
+            "signals": [
+                f"CDN signals: {', '.join(protections.get('cdn') or []) or 'none'}",
+                f"WAF signal: {bool(protections.get('waf_detected'))}",
+                f"Rate-limit signal: {bool(protections.get('rate_limit_detected'))}",
+                f"Realtime public: {bool(recon_summary.get('realtime_public'))}",
+            ],
+            "next_action": "Confirm WAF/bot filtering, auth throttles, realtime quotas, logging, and alerting from owner-side controls.",
+        },
+    ]
+
+
+def _build_recommendations(
+    *,
+    findings: List[Dict[str, Any]],
+    summary: Dict[str, Any],
+    snapshot: Dict[str, Any],
+) -> List[Dict[str, Any]]:
+    finding_ids = {str(item.get("id") or "") for item in findings}
+    categories = {str(item.get("category") or "") for item in findings}
+    buckets = {str(item.get("bucket") or "") for item in findings}
+    recon = snapshot.get("recon_summary") or {}
+    frontend = snapshot.get("frontend_hints") or {}
+    openapi = snapshot.get("openapi") or {}
+    recommendations = [
+        {
+            "id": "fix-critical-and-high-first",
+            "priority": "critical" if int(summary.get("critical_count") or 0) else "high",
+            "title": "Fix the highest-confidence security risks first",
+            "description": "Start with confirmed critical/high findings before cosmetic hardening, because those are the most likely to reduce real exposure.",
+            "triggered": int(summary.get("critical_count") or 0) > 0 or int(summary.get("high_count") or 0) > 0,
+            "evidence": [f"{summary.get('critical_count', 0)} critical, {summary.get('high_count', 0)} high finding(s)."],
+            "action": "Patch root-cause findings, redeploy, then rerun CyberAtlas to confirm the severity mix drops.",
+            "validation": "No critical findings remain and high findings are either fixed or explicitly accepted with owner sign-off.",
+        },
+        {
+            "id": "browser-security-header-baseline",
+            "priority": "high",
+            "title": "Ship a complete browser security header baseline",
+            "description": "Missing or weak browser headers leave the app exposed to XSS blast radius, framing, sniffing, and origin-isolation gaps.",
+            "triggered": "browser_hardening" in buckets,
+            "evidence": [item.get("title", "") for item in findings if item.get("bucket") == "browser_hardening"][:6],
+            "action": "Deploy CSP, HSTS, frame-ancestors/XFO, nosniff, referrer-policy, permissions-policy, and COOP where compatible.",
+            "validation": "All sampled HTML responses include the expected headers and CSP violation telemetry is clean.",
+        },
+        {
+            "id": "api-access-control-review",
+            "priority": "high",
+            "title": "Review API access control endpoint by endpoint",
+            "description": "Sensitive-looking public routes, OpenAPI operations without security, and large endpoint surfaces need explicit auth/authorization review.",
+            "triggered": int(summary.get("public_sensitive_endpoint_count") or 0) > 0 or int(openapi.get("unauthenticated_count") or 0) > 0,
+            "evidence": [
+                f"Public sensitive endpoint signals: {summary.get('public_sensitive_endpoint_count', 0)}",
+                f"OpenAPI operations without declared security: {openapi.get('unauthenticated_count', 0)}",
+            ],
+            "action": "Map each sensitive/state-changing route to auth, authorization policy, input schema, rate limit, and audit logging.",
+            "validation": "Unauthenticated requests to protected routes return 401/403 and OpenAPI security declarations match production behavior.",
+        },
+        {
+            "id": "auth-abuse-protection",
+            "priority": "medium",
+            "title": "Verify throttling and abuse controls on authentication surfaces",
+            "description": "Login, token, password, realtime, and upload surfaces should resist brute force, enumeration, and automated abuse.",
+            "triggered": int(recon.get("auth_surface_count") or 0) > 0 and not bool(summary.get("rate_limit_detected")),
+            "evidence": [
+                f"Auth surface signals: {recon.get('auth_surface_count', 0)}",
+                f"Rate-limit detected: {summary.get('rate_limit_detected')}",
+            ],
+            "action": "Add account/IP/device throttles, backoff, lockout signals, bot filtering, and monitoring for suspicious auth bursts.",
+            "validation": "Controlled owner-side tests show throttling/alerts without degrading normal login flows.",
+        },
+        {
+            "id": "frontend-bundle-exposure-cleanup",
+            "priority": "medium",
+            "title": "Clean frontend bundle exposure",
+            "description": "Frontend bundles can accidentally reveal private origins, source maps, endpoint maps, or secret-like implementation details.",
+            "triggered": int(frontend.get("source_map_count") or 0) > 0 or bool(frontend.get("private_backend_hosts")) or int(frontend.get("third_party_script_without_sri_count") or 0) > 0,
+            "evidence": [
+                f"Source maps: {frontend.get('source_map_count', 0)}",
+                f"Private backends: {len(frontend.get('private_backend_hosts') or [])}",
+                f"Third-party scripts without SRI: {frontend.get('third_party_script_without_sri_count', 0)}",
+            ],
+            "action": "Disable production source maps, remove private origins from public bundles, verify no real secrets ship client-side, and add SRI/CSP controls.",
+            "validation": "A fresh production build contains no private hosts, no reachable source maps, and reviewed third-party script integrity controls.",
+        },
+        {
+            "id": "public-artifact-exposure-cleanup",
+            "priority": "critical" if any(item in finding_ids for item in {"environment_file_exposed", "public_git_metadata"}) else "high",
+            "title": "Remove public deployment artifacts and sensitive files",
+            "description": "Public .env, .git, config, debug, server-status, and phpinfo-style surfaces can leak secrets or implementation details.",
+            "triggered": any(item in finding_ids for item in SENSITIVE_PATHS.values()),
+            "evidence": [item.get("title", "") for item in findings if item.get("category") == "exposure"][:6],
+            "action": "Block sensitive paths at the edge/app layer, remove artifacts from deployments, and rotate credentials if exposure is confirmed.",
+            "validation": "Sensitive paths return 404/403 without content and secret rotation is completed where needed.",
+        },
+        {
+            "id": "graphql-realtime-hardening",
+            "priority": "medium",
+            "title": "Harden GraphQL and realtime surfaces",
+            "description": "Public GraphQL and websocket-like paths need resolver/namespace authorization, quotas, and introspection/playground policy.",
+            "triggered": bool(recon.get("graphql_public")) or bool(recon.get("realtime_public")),
+            "evidence": [
+                f"GraphQL public: {bool(recon.get('graphql_public'))}",
+                f"Realtime public: {bool(recon.get('realtime_public'))}",
+            ],
+            "action": "Disable public playgrounds unless intentional, enforce resolver/namespace auth, depth limits, connection quotas, and structured monitoring.",
+            "validation": "Unauthorized sensitive GraphQL/realtime operations are rejected and quotas are confirmed in owner-side tests.",
+        },
+        {
+            "id": "session-cookie-hardening",
+            "priority": "medium",
+            "title": "Harden cookies and CSRF handling",
+            "description": "Session cookies and sensitive forms should have Secure, HttpOnly, SameSite, and verified CSRF behavior where relevant.",
+            "triggered": "session" in categories or "session_privacy" in buckets,
+            "evidence": [item.get("title", "") for item in findings if item.get("bucket") == "session_privacy"][:6],
+            "action": "Set explicit cookie attributes, review SameSite behavior for auth flows, and test invalid/missing CSRF tokens.",
+            "validation": "Sampled cookies carry expected attributes and sensitive form/API CSRF checks fail closed.",
+        },
+        {
+            "id": "security-operations-loop",
+            "priority": "low",
+            "title": "Close the security operations loop",
+            "description": "A strong posture needs a contact path, repeatable evidence exports, CI gates, and owner-side validation for checks that public probes cannot prove.",
+            "triggered": True,
+            "evidence": ["CyberAtlas public mode intentionally avoids exploit, brute-force, and stress behavior."],
+            "action": "Publish security.txt, export the security gate payload into CI, and schedule owner-verified follow-up checks after major releases.",
+            "validation": "Security contact, CI gate, and rerun cadence are documented and owned.",
+        },
+    ]
+    recommendations.sort(key=lambda item: (_priority_rank(item.get("priority", "")), bool(item.get("triggered"))), reverse=True)
+    return recommendations
+
+
+def _build_action_plan(recommendations: List[Dict[str, Any]], limit: int = 8) -> List[Dict[str, Any]]:
+    triggered = [item for item in recommendations if item.get("triggered")]
+    fallback = [item for item in recommendations if not item.get("triggered")]
+    items = (triggered + fallback)[:limit]
+    return [
+        {
+            **item,
+            "order": index + 1,
+        }
+        for index, item in enumerate(items)
+    ]
+
+
 def run_site_audit(
     target_url: str,
     *,
@@ -1703,12 +1974,26 @@ def run_site_audit(
     risk_level = blocking_risk.get("level") or "Low"
     exposed = [item for item in probes if item.get("exists")]
     missing_headers = [key for key in SECURITY_HEADER_KEYS if not entry_headers.get(key)]
+    security_grade = _security_grade(scores.get("global_score"), counts)
+    surface_matrix = _build_surface_matrix(
+        tls=tls,
+        entry_headers=entry_headers,
+        missing_headers=missing_headers,
+        probes=probes,
+        openapi=openapi,
+        api_inventory=api_inventory,
+        frontend_hints=frontend_hints,
+        protections=protections,
+        recon_summary=recon_summary,
+        pages=pages,
+    )
 
     summary = {
         "target": entry_url,
         "mode": mode,
         "profile": profile["label"],
         "global_score": scores.get("global_score"),
+        "security_grade": security_grade,
         "risk_level": risk_level,
         "top_risk": findings[0].get("title") if findings else "",
         "pages_crawled": len(pages),
@@ -1721,7 +2006,9 @@ def run_site_audit(
         "public_sensitive_endpoint_count": int(api_inventory.get("public_sensitive_count") or 0),
         "exposure_count": len(exposed),
         "source_map_count": int(frontend_hints.get("source_map_count") or 0),
+        "reachable_source_map_count": int(frontend_hints.get("reachable_source_map_count") or 0),
         "frontend_api_reference_count": int(frontend_hints.get("api_reference_count") or 0),
+        "third_party_script_without_sri_count": int(frontend_hints.get("third_party_script_without_sri_count") or 0),
         "waf_detected": bool(protections.get("waf_detected")),
         "rate_limit_detected": bool(protections.get("rate_limit_detected")),
         "security_headers_present": len([key for key in SECURITY_HEADER_KEYS if entry_headers.get(key)]),
@@ -1748,16 +2035,22 @@ def run_site_audit(
         "frontend_hints": frontend_hints,
         "protections": protections,
         "recon_summary": recon_summary,
+        "surface_matrix": surface_matrix,
         "safe_scope": {
             "active_checks": bool(active_checks),
             "note": "CyberAtlas v1 performs defensive HTTP evidence collection and safe exposure probes only; it does not exploit or brute-force targets.",
         },
     }
+    _emit(progress_callback, "score", 90, "Building remediation action plan")
+    recommendations = _build_recommendations(findings=findings, summary=summary, snapshot=snapshot)
+    action_plan = _build_action_plan(recommendations)
     return {
         "summary": summary,
         "snapshot": snapshot,
         "findings": findings,
         "scores": scores["categories"],
         "remediation_items": _build_remediation_items(findings),
+        "recommendations": recommendations,
+        "action_plan": action_plan,
         "owner_context": {},
     }
