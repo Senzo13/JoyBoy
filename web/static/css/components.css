@@ -2,23 +2,33 @@
 
 /* ===== PROMPT QUEUE — composer dock ===== */
 .prompt-queue {
+  position: relative;
+  z-index: 1;
   width: 100%;
   max-width: 850px;
-  margin: 0 auto -1px;
+  margin: 0 auto -18px;
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-bottom-color: rgba(255, 255, 255, 0.06);
-  border-radius: 18px 18px 10px 10px;
-  background: rgba(18, 18, 18, 0.9);
+  border-bottom-color: transparent;
+  border-radius: 18px 18px 16px 16px;
+  background:
+    linear-gradient(180deg, rgba(18, 18, 18, 0.94) 0%, rgba(18, 18, 18, 0.78) 68%, rgba(18, 18, 18, 0.1) 100%);
   box-shadow: 0 18px 48px rgba(0, 0, 0, 0.24);
   overflow: hidden;
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   animation: queueDockIn 0.18s ease-out;
+  transform: translateY(10px);
+}
+
+.chat-input-bar > .input-bar,
+#home-view .input-bar {
+  position: relative;
+  z-index: 2;
 }
 
 @keyframes queueDockIn {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; transform: translateY(2px); }
+  to { opacity: 1; transform: translateY(10px); }
 }
 
 .queue-items {
