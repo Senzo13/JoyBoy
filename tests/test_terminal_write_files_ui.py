@@ -35,6 +35,19 @@ class TerminalWriteFilesUiTests(unittest.TestCase):
         self.assertIn("terminal-write-files-result", workspace_css)
         self.assertIn("terminal-file-chip", components_css)
 
+    def test_terminal_run_summary_tracks_usage_like_agent_harnesses(self):
+        terminal_js = (ROOT / "web/static/js/terminal.js").read_text(encoding="utf-8")
+        workspace_css = (ROOT / "web/static/css/workspace-chat.css").read_text(encoding="utf-8")
+        components_css = (ROOT / "web/static/css/terminal-components.css").read_text(encoding="utf-8")
+
+        self.assertIn("function createTerminalRunMetrics", terminal_js)
+        self.assertIn("recordTerminalModelCallMetrics(data.model_call)", terminal_js)
+        self.assertIn("recordTerminalToolCallMetrics(action)", terminal_js)
+        self.assertIn("recordTerminalToolResultMetrics(result)", terminal_js)
+        self.assertIn("buildTerminalRunSummaryParts(responseTime, tokenStats)", terminal_js)
+        self.assertIn("terminal-run-summary", workspace_css)
+        self.assertIn("terminal-run-summary-detail", components_css)
+
 
 if __name__ == "__main__":
     unittest.main()

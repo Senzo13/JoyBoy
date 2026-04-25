@@ -283,6 +283,7 @@ body.terminal-mode .chat-bubble pre {
 body.terminal-mode .terminal-thinking,
 body.terminal-mode .terminal-line,
 body.terminal-mode .terminal-activity-summary,
+body.terminal-mode .terminal-run-summary,
 body.terminal-mode .tool-call-line,
 body.terminal-mode .tool-result-line,
 body.terminal-mode .terminal-code-block {
@@ -323,6 +324,19 @@ body.terminal-mode .terminal-activity-summary {
     color: #9ca3af !important;
     font-size: 12px !important;
     opacity: 0.72 !important;
+}
+
+body.terminal-mode .terminal-run-summary {
+    padding: 8px 0 2px !important;
+    opacity: 0.86 !important;
+}
+
+body.terminal-mode .terminal-run-summary-main {
+    color: #9ca3af !important;
+}
+
+body.terminal-mode .terminal-run-summary-detail {
+    color: #64748b !important;
 }
 
 body.terminal-mode .tool-call-line .tool-bullet,

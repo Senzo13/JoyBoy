@@ -121,6 +121,64 @@ function updateTokensMaxDisplay() {
 // ===== TOOL RESULTS STORAGE (Ctrl+O to view) =====
 let lastToolResults = [];  // Stocke les derniers résultats d'outils
 let terminalToolResultSeq = 0;
+let terminalRunMetrics = null;
+
+function formatTerminalCompactNumber(value) {
+    const number = Number(value || 0);
+    if (!Number.isFinite(number) || number <= 0) return '0';
+    if (number >= 1000000) return `${(number / 1000000).toFixed(1).replace(/\.0$/, '')}M`;
+    if (number >= 1000) return `${(number / 1000).toFixed(1).replace(/\.0$/, '')}K`;
+    return String(Math.round(number));
+}
+
+function createTerminalRunMetrics(model = '') {
+    return {
+        requestedModel: model || '',
+        modelCalls: 0,
+        models: [],
+        toolCalls: 0,
+        toolResults: 0,
+        toolErrors: 0,
+        filesChanged: 0,
+        toolsByAction: {}
+    };
+}
+
+function ensureTerminalRunMetrics(model = '') {
+    if (!terminalRunMetrics) terminalRunMetrics = createTerminalRunMetrics(model);
+    if (model && !terminalRunMetrics.requestedModel) terminalRunMetrics.requestedModel = model;
+    return terminalRunMetrics;
+}
+
+function recordTerminalModelCallMetrics(data = {}) {
+    const metrics = ensureTerminalRunMetrics(data.model || '');
+    metrics.modelCalls += 1;
+    const model = String(data.model || '').trim();
+    if (model && !metrics.models.includes(model)) metrics.models.push(model);
+}
+
+function recordTerminalToolCallMetrics(action = '') {
+    const normalized = String(action || '').trim() || 'tool';
+    const metrics = ensureTerminalRunMetrics();
+    metrics.toolCalls += 1;
+    metrics.toolsByAction[normalized] = (metrics.toolsByAction[normalized] || 0) + 1;
+}
+
+function recordTerminalToolResultMetrics(result = {}) {
+    const metrics = ensureTerminalRunMetrics();
+    metrics.toolResults += 1;
+    if (!result.success) metrics.toolErrors += 1;
+    if (!result.success) return;
+
+    const action = result.action || result.tool_name || '';
+    if (action === 'write_files') {
+        metrics.filesChanged += Number(result.count || normalizeTerminalFileEntries(result).length || 0);
+    } else if (['write_file', 'edit_file', 'delete_file'].includes(action)) {
+        metrics.filesChanged += 1;
+    } else if (action === 'clear_workspace') {
+        metrics.filesChanged += Number(result.count || 0);
+    }
+}
 
 function terminalResultPathFromItem(item) {
     if (!item) return '';
@@ -1697,6 +1755,67 @@ function getSpeedIndicator(responseTime) {
     return 'très lent';
 }
 
+function formatTerminalModelList(metrics = terminalRunMetrics) {
+    const models = Array.isArray(metrics?.models) && metrics.models.length
+        ? metrics.models
+        : (metrics?.requestedModel ? [metrics.requestedModel] : []);
+    return [...new Set(models)].slice(0, 3).join(', ');
+}
+
+function buildTerminalRunSummaryParts(responseTime, tokenStats = {}, metrics = terminalRunMetrics) {
+    const main = [];
+    const details = [];
+    const totalTokens = Number(tokenStats?.total || tokenStats?.total_tokens || 0);
+    const promptTokens = Number(tokenStats?.prompt_tokens || 0);
+    const completionTokens = Number(tokenStats?.completion_tokens || 0);
+    const contextSize = Number(tokenStats?.context_size || 0);
+    const toolSchemaTokens = Number(tokenStats?.tool_schema_tokens || 0);
+    const estimatedPromptTokens = Number(tokenStats?.estimated_prompt_tokens || 0);
+
+    if (responseTime) {
+        const timeStr = `${(responseTime / 1000).toFixed(1)}s`;
+        main.push(`${timeStr} - ${getSpeedIndicator(responseTime)}`);
+    }
+    if (totalTokens > 0) {
+        main.push(terminalT('terminal.runSummaryTokens', '{count} tokens', { count: formatTerminalCompactNumber(totalTokens) }));
+    }
+    if (metrics?.modelCalls > 0) {
+        main.push(terminalT('terminal.runSummaryModelCalls', '{count} appel(s) modèle', { count: metrics.modelCalls }));
+    }
+    if (metrics?.toolCalls > 0) {
+        main.push(terminalT('terminal.runSummaryTools', '{count} outil(s)', { count: metrics.toolCalls }));
+    }
+    if (metrics?.filesChanged > 0) {
+        main.push(terminalT('terminal.runSummaryFilesChanged', '{count} fichier(s) changé(s)', { count: metrics.filesChanged }));
+    }
+
+    if (promptTokens > 0 || completionTokens > 0) {
+        details.push(terminalT(
+            'terminal.runSummaryInputOutput',
+            'entrée {input} · sortie {output}',
+            { input: formatTerminalCompactNumber(promptTokens), output: formatTerminalCompactNumber(completionTokens) }
+        ));
+    }
+    if (contextSize > 0) {
+        details.push(terminalT('terminal.runSummaryContext', 'contexte {context}', { context: formatTerminalContextSize(contextSize) }));
+    }
+    if (estimatedPromptTokens > 0 && estimatedPromptTokens !== promptTokens) {
+        details.push(terminalT('terminal.runSummaryEstimatedPrompt', 'prompt estimé {tokens}', { tokens: formatTerminalCompactNumber(estimatedPromptTokens) }));
+    }
+    if (toolSchemaTokens > 0) {
+        details.push(terminalT('terminal.runSummaryToolSchemas', 'schémas outils {tokens}', { tokens: formatTerminalCompactNumber(toolSchemaTokens) }));
+    }
+    const modelList = formatTerminalModelList(metrics);
+    if (modelList) {
+        details.push(terminalT('terminal.runSummaryModels', 'modèles {models}', { models: modelList }));
+    }
+    if (metrics?.toolErrors > 0) {
+        details.push(terminalT('terminal.runSummaryToolErrors', '{count} erreur(s) outil', { count: metrics.toolErrors }));
+    }
+
+    return { main, details };
+}
+
 /**
  * Finalise la sortie terminal (retire le curseur, ajoute stats)
  * @param {number} responseTime - Temps de réponse en ms
@@ -1712,17 +1831,14 @@ function finalizeTerminalOutput(responseTime, tokenStats) {
     // Ajouter les stats
     if (responseTime || tokenStats) {
         const statsEl = document.createElement('div');
-        statsEl.className = 'terminal-line terminal-dim';
-        statsEl.style.marginTop = '8px';
-
-        let statsText = '';
-        if (responseTime) {
-            const timeStr = `${(responseTime/1000).toFixed(1)}s`;
-            const speedStr = getSpeedIndicator(responseTime);
-            statsText += `${timeStr} - ${speedStr}`;
-        }
-        if (tokenStats?.total) statsText += ` · ${tokenStats.total} tokens`;
-        statsEl.textContent = statsText;
+        statsEl.className = 'terminal-run-summary';
+        const summary = buildTerminalRunSummaryParts(responseTime, tokenStats);
+        const mainText = summary.main.join(' · ');
+        const detailText = summary.details.join(' · ');
+        statsEl.innerHTML = `
+            <div class="terminal-run-summary-main">${escapeHtml(mainText)}</div>
+            ${detailText ? `<div class="terminal-run-summary-detail">${escapeHtml(detailText)}</div>` : ''}
+        `;
         terminalOutputElement.parentNode.insertBefore(statsEl, terminalOutputElement.nextSibling);
     }
 
@@ -3097,6 +3213,7 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
         const modelToUse = (imageData && terminalVisionModel)
             ? terminalVisionModel
             : getTerminalTextModelForRequest();
+        terminalRunMetrics = createTerminalRunMetrics(modelToUse);
         const effectiveContextSize = typeof getTerminalEffectiveContextSize === 'function'
             ? getTerminalEffectiveContextSize(modelToUse)
             : (userSettings.contextSize || 8192);
@@ -3232,6 +3349,7 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                     if (data.model_call) {
                         const modelCallLabel = describeTerminalModelCall(data.model_call);
                         const modelName = data.model_call.model || '';
+                        recordTerminalModelCallMetrics(data.model_call);
                         if (Number(data.model_call.iteration || 1) > 1) {
                             completeTerminalContextActivity();
                         }
@@ -3288,6 +3406,7 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                         const args = data.tool_call.args || {};
                         const toolTaskId = `tool-${++terminalToolTaskSeq}`;
                         const taskLabel = describeTerminalToolCall(action, path, args);
+                        recordTerminalToolCallMetrics(action);
 
                         // Stocker pour référence quand le résultat arrive (Ctrl+O)
                         window.lastToolCall = { ...data.tool_call, taskId: toolTaskId };
@@ -3340,6 +3459,7 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                     if (data.tool_result) {
                         const result = data.tool_result;
                         console.log(`%c[TERMINAL] ⎿ Tool result reçu: ${result.action} → ${result.success ? 'OK' : result.error}`, 'color: #22c55e; font-weight: bold;');
+                        recordTerminalToolResultMetrics(result);
 
                         // Stocker pour Ctrl+O et pour les détails cliquables des écritures multi-fichiers.
                         const storedToolResult = storeToolResult(window.lastToolCall || {action: result.action}, result);
