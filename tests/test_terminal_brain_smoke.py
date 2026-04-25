@@ -564,9 +564,16 @@ Encore beaucoup de détail inutile.
             for item in patched
             if item.get("role") == "tool"
         ]
+        missing_tool = next(
+            item
+            for item in patched
+            if item.get("role") == "tool" and item.get("tool_call_id") == "call_missing"
+        )
 
         self.assertIn("call_missing", patched_tool_ids)
         self.assertIn("call_done", patched_tool_ids)
+        self.assertEqual(missing_tool.get("tool_name"), "glob")
+        self.assertIn("glob", missing_tool.get("content", ""))
 
     def test_missing_tool_call_ids_are_normalized_before_protocol_patch(self):
         brain = TerminalBrain()

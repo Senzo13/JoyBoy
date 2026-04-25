@@ -200,7 +200,8 @@ class TerminalBrain(
             elif tool_name == "read_file":
                 path = args.get('path', '')
                 max_lines = args.get('max_lines', 220)
-                result = read_file(workspace_path, path, max_lines=max_lines)
+                start_line = args.get('start_line', 1)
+                result = read_file(workspace_path, path, max_lines=max_lines, start_line=start_line)
                 if result.get('success'):
                     self._track_read_file(workspace_path, path)
                 return ToolResult(success=result.get('success', False), tool_name=tool_name, data=result)
@@ -303,13 +304,27 @@ class TerminalBrain(
             # === SEARCH ===
             elif tool_name == "search":
                 pattern = args.get('pattern', '')
-                result = search_files(workspace_path, pattern)
+                result = search_files(
+                    workspace_path,
+                    pattern,
+                    file_pattern=args.get('file_pattern') or args.get('glob') or "*",
+                    max_results=args.get('max_results', 50),
+                    path=args.get('path', ''),
+                    literal=bool(args.get('literal', False)),
+                    case_sensitive=bool(args.get('case_sensitive', False)),
+                )
                 return ToolResult(success=result.get('success', False), tool_name=tool_name, data=result)
 
             # === GLOB ===
             elif tool_name == "glob":
                 pattern = args.get('pattern', '')
-                result = glob_files(workspace_path, pattern)
+                result = glob_files(
+                    workspace_path,
+                    pattern,
+                    max_results=args.get('max_results', 100),
+                    path=args.get('path', ''),
+                    include_dirs=bool(args.get('include_dirs', False)),
+                )
                 return ToolResult(success=result.get('success', False), tool_name=tool_name, data=result)
 
             # === BASH ===

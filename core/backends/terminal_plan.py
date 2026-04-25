@@ -260,7 +260,12 @@ class TerminalPlanMixin:
             return f"listed {path}: {len(data.get('items', []))} item(s)"
         if tool_name == "read_file":
             path = data.get("path") or args.get("path") or ""
-            return f"read {path}: {data.get('lines', 0)} line(s)"
+            start_line = data.get("start_line")
+            end_line = data.get("end_line")
+            total_lines = data.get("lines", 0)
+            if start_line and end_line and not (int(start_line) == 1 and int(end_line) == int(total_lines or 0)):
+                return f"read {path}: lines {start_line}-{end_line} of {total_lines} line(s)"
+            return f"read {path}: {total_lines} line(s)"
         if tool_name == "glob":
             return f"glob {args.get('pattern', '')}: {len(data.get('files', []))} file(s)"
         if tool_name == "search":

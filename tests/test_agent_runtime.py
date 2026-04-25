@@ -68,6 +68,14 @@ class AgentRuntimeTests(unittest.TestCase):
         self.assertIn("repeated call 3 times", reason)
         self.assertEqual(guard.seen_count("read_file", {"path": "README.md"}), 3)
 
+    def test_tool_signature_separates_read_file_line_buckets(self):
+        first_chunk = tool_signature("read_file", {"path": "src/app.py", "start_line": 1, "max_lines": 80})
+        same_chunk = tool_signature("read_file", {"path": "./src/app.py", "start_line": 120, "max_lines": 60})
+        later_chunk = tool_signature("read_file", {"path": "src/app.py", "start_line": 401, "max_lines": 80})
+
+        self.assertEqual(first_chunk, same_chunk)
+        self.assertNotEqual(first_chunk, later_chunk)
+
     def test_tool_signature_keeps_write_payloads_content_sensitive(self):
         self.assertNotEqual(
             tool_signature("write_file", {"path": "src/App.jsx", "content": "v1"}),

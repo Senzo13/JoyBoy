@@ -38,6 +38,10 @@ TOOLS = [
                     "max_lines": {
                         "type": "integer",
                         "description": "Maximum lines to read. Default: 220. Prefer small chunks to preserve context."
+                    },
+                    "start_line": {
+                        "type": "integer",
+                        "description": "1-based line to start reading from. Use this with search results or long files instead of rereading from the top."
                     }
                 },
                 "required": ["path"]
@@ -179,6 +183,18 @@ TOOLS = [
                     "file_pattern": {
                         "type": "string",
                         "description": "Optional file filter, for example '*.py' or '*.js'."
+                    },
+                    "max_results": {
+                        "type": "integer",
+                        "description": "Maximum matches to return. Default: 50, max: 500."
+                    },
+                    "literal": {
+                        "type": "boolean",
+                        "description": "Treat pattern as plain text instead of regex. Default: false."
+                    },
+                    "case_sensitive": {
+                        "type": "boolean",
+                        "description": "Use case-sensitive matching. Default: false."
                     }
                 },
                 "required": ["pattern"]
@@ -196,6 +212,18 @@ TOOLS = [
                     "pattern": {
                         "type": "string",
                         "description": "Glob pattern, for example '**/*.py' or 'src/**/*.js'."
+                    },
+                    "path": {
+                        "type": "string",
+                        "description": "Directory path relative to the workspace. Default: '.'."
+                    },
+                    "max_results": {
+                        "type": "integer",
+                        "description": "Maximum paths to return. Default: 100, max: 1000."
+                    },
+                    "include_dirs": {
+                        "type": "boolean",
+                        "description": "Include matching directories as well as files. Default: false."
                     }
                 },
                 "required": ["pattern"]

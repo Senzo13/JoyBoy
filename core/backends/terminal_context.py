@@ -394,25 +394,25 @@ class TerminalContextMixin:
         patched: List[Dict] = []
         patch_count = 0
         orphan_count = 0
-        pending_tool_ids: set[str] = set()
+        pending_tool_calls: Dict[str, str] = {}
 
         def append_missing_outputs(before_role: str | None = None) -> None:
             nonlocal patch_count
-            if not pending_tool_ids:
+            if not pending_tool_calls:
                 return
-            for call_id in list(pending_tool_ids):
+            for call_id, tool_name in list(pending_tool_calls.items()):
                 patched.append({
                     "role": "tool",
-                    "tool_name": "tool",
+                    "tool_name": tool_name or "tool",
                     "tool_call_id": call_id,
                     "content": (
-                        "[TERMINAL GUARDRAIL] Tool call did not return an output "
+                        f"[TERMINAL GUARDRAIL] Tool call {tool_name or 'tool'} did not return an output "
                         f"before {before_role or 'the next model call'}. Treat it as failed and continue "
                         "from the available context."
                     ),
                 })
                 patch_count += 1
-            pending_tool_ids.clear()
+            pending_tool_calls.clear()
 
         for message in messages:
             if not isinstance(message, dict):
@@ -423,9 +423,9 @@ class TerminalContextMixin:
             role = message.get("role")
             if role == "tool":
                 call_id = str(message.get("tool_call_id") or "").strip()
-                if call_id and call_id in pending_tool_ids:
+                if call_id and call_id in pending_tool_calls:
                     patched.append(message)
-                    pending_tool_ids.remove(call_id)
+                    pending_tool_calls.pop(call_id, None)
                 else:
                     orphan_count += 1
                     tool_name = str(message.get("tool_name") or message.get("name") or "tool").strip()
@@ -450,7 +450,7 @@ class TerminalContextMixin:
                 for call in message.get("tool_calls") or []:
                     call_id = self._tool_call_id(call)
                     if call_id:
-                        pending_tool_ids.add(call_id)
+                        pending_tool_calls[call_id] = self._tool_call_name(call) or "tool"
                 continue
 
             patched.append(message)

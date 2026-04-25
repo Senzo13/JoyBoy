@@ -68,7 +68,7 @@ Core contract:
 
 Fast repo reading:
 1. Use git ls-files or rg --files through bash when available for broad repo maps; fall back to list_files/glob when shell tools are unavailable.
-2. Use search/glob before reading when you need symbols, routes, CSS classes, tests, or references.
+2. Use search/glob before reading when you need symbols, routes, CSS classes, tests, or references. Then call read_file with start_line near the match instead of rereading from line 1.
 3. Read manifests/instructions first only when they affect the task, then read the smallest set of files that proves or disproves the likely issue.
 4. Cross-check paired surfaces before judging quality: component and stylesheet, route and client call, implementation and test.
 
@@ -210,11 +210,14 @@ You have access to filesystem, search, shell, and workspace tools. Use them to c
         elif result.tool_name == 'read_file':
             content = data.get('content', '')
             lines = data.get('lines', 0)
+            start_line = data.get('start_line', 1)
+            end_line = data.get('end_line', 0)
+            range_text = f", lines {start_line}-{end_line}" if end_line else ""
             # Tronquer si trop long
             max_chars = max(2500, min(6500, int(self._active_context_size * 1.2)))
             if len(content) > max_chars:
                 content = content[:max_chars] + "\n... (truncated to preserve context)"
-            return f"[RESULT read_file] ({lines} lines)\n```\n{content}\n```"
+            return f"[RESULT read_file] ({lines} total lines{range_text})\n```\n{content}\n```"
 
         elif result.tool_name == 'write_file':
             verified = " verified" if data.get('verified') else ""

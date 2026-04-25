@@ -200,7 +200,15 @@ def list_files(workspace_path: str, relative_path: str = "", max_depth: int = 3,
         return {"success": False, "error": str(e)}
 
 
-def read_file(workspace_path: str, relative_path: str, max_lines: int = 500) -> Dict:
+def _coerce_int(value, default: int, min_value: int, max_value: int) -> int:
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        number = default
+    return max(min_value, min(number, max_value))
+
+
+def read_file(workspace_path: str, relative_path: str, max_lines: int = 500, start_line: int = 1) -> Dict:
     """
     Lit le contenu d'un fichier
 
@@ -224,29 +232,34 @@ def read_file(workspace_path: str, relative_path: str, max_lines: int = 500) -> 
         if not is_text_file(full_path):
             return {"success": False, "error": f"Fichier non lisible (binaire): {relative_path}"}
 
+        max_lines = _coerce_int(max_lines, 500, 1, 2000)
+        start_line = _coerce_int(start_line, 1, 1, 1_000_000)
+
         # Lire le fichier
         with open(full_path, 'r', encoding='utf-8', errors='replace') as f:
-            lines = f.readlines()
+            all_lines = f.readlines()
 
-        total_lines = len(lines)
-        truncated = total_lines > max_lines
+        total_lines = len(all_lines)
+        start_index = min(start_line - 1, total_lines)
+        selected_lines = all_lines[start_index:start_index + max_lines]
+        end_line = start_index + len(selected_lines)
+        truncated = end_line < total_lines
 
-        if truncated:
-            lines = lines[:max_lines]
-
-        # Ajouter les numéros de ligne
+        # Ajouter les numéros de ligne originaux
         numbered_content = ""
-        for i, line in enumerate(lines, 1):
+        for i, line in enumerate(selected_lines, start_index + 1):
             numbered_content += f"{i:4d} | {line}"
 
         if truncated:
-            numbered_content += f"\n... (tronqué, {total_lines - max_lines} lignes restantes)"
+            numbered_content += f"\n... (tronqué, {total_lines - end_line} lignes restantes)"
 
         return {
             "success": True,
             "path": relative_path,
             "content": numbered_content,
             "lines": total_lines,
+            "start_line": start_line,
+            "end_line": end_line,
             "truncated": truncated
         }
 
@@ -254,7 +267,15 @@ def read_file(workspace_path: str, relative_path: str, max_lines: int = 500) -> 
         return {"success": False, "error": str(e)}
 
 
-def search_files(workspace_path: str, pattern: str, file_pattern: str = "*", max_results: int = 50) -> Dict:
+def search_files(
+    workspace_path: str,
+    pattern: str,
+    file_pattern: str = "*",
+    max_results: int = 50,
+    path: str = "",
+    literal: bool = False,
+    case_sensitive: bool = False,
+) -> Dict:
     """
     Recherche un pattern dans les fichiers (comme grep)
 
@@ -272,19 +293,32 @@ def search_files(workspace_path: str, pattern: str, file_pattern: str = "*", max
         }
     """
     try:
+        pattern = str(pattern or "").strip()
+        if not pattern:
+            return {"success": False, "error": "Pattern de recherche vide"}
+
         results = []
         files_searched = 0
         workspace_root = _resolve_workspace_path(workspace_path, "")
         if not workspace_root:
             return {"success": False, "error": "Workspace invalide"}
+        search_root = _resolve_workspace_path(workspace_path, path or "")
+        if not search_root:
+            return {"success": False, "error": "Chemin hors du workspace"}
+        if not os.path.isdir(search_root):
+            return {"success": False, "error": f"Dossier non trouvé: {path or '.'}"}
+
+        max_results = _coerce_int(max_results, 50, 1, 500)
+        flags = 0 if case_sensitive else re.IGNORECASE
+        pattern_text = re.escape(pattern) if literal else pattern
 
         try:
-            regex = re.compile(pattern, re.IGNORECASE)
+            regex = re.compile(pattern_text, flags)
         except re.error:
             # Pattern invalide, chercher en texte brut
-            regex = re.compile(re.escape(pattern), re.IGNORECASE)
+            regex = re.compile(re.escape(pattern), flags)
 
-        for root, dirs, files in os.walk(workspace_root):
+        for root, dirs, files in os.walk(search_root):
             # Filtrer les dossiers ignorés
             dirs[:] = [d for d in dirs if not should_ignore(d, True)]
 
@@ -318,6 +352,8 @@ def search_files(workspace_path: str, pattern: str, file_pattern: str = "*", max
                                     return {
                                         "success": True,
                                         "pattern": pattern,
+                                        "path": path or ".",
+                                        "file_pattern": file_pattern,
                                         "results": results,
                                         "files_searched": files_searched,
                                         "truncated": True
@@ -328,6 +364,8 @@ def search_files(workspace_path: str, pattern: str, file_pattern: str = "*", max
         return {
             "success": True,
             "pattern": pattern,
+            "path": path or ".",
+            "file_pattern": file_pattern,
             "results": results,
             "files_searched": files_searched,
             "truncated": False
@@ -337,7 +375,13 @@ def search_files(workspace_path: str, pattern: str, file_pattern: str = "*", max
         return {"success": False, "error": str(e)}
 
 
-def glob_files(workspace_path: str, pattern: str, max_results: int = 100) -> Dict:
+def glob_files(
+    workspace_path: str,
+    pattern: str,
+    max_results: int = 100,
+    path: str = "",
+    include_dirs: bool = False,
+) -> Dict:
     """
     Trouve des fichiers par pattern glob (ex: "**/*.py", "src/**/*.js")
 
@@ -351,11 +395,18 @@ def glob_files(workspace_path: str, pattern: str, max_results: int = 100) -> Dic
     try:
         import glob as glob_module
 
-        # Construire le pattern complet
         workspace_root = _resolve_workspace_path(workspace_path, "")
         if not workspace_root:
             return {"success": False, "error": "Workspace invalide"}
-        full_pattern = os.path.join(workspace_root, pattern)
+        search_root = _resolve_workspace_path(workspace_path, path or "")
+        if not search_root:
+            return {"success": False, "error": "Chemin hors du workspace"}
+        if not os.path.isdir(search_root):
+            return {"success": False, "error": f"Dossier non trouvé: {path or '.'}"}
+
+        max_results = _coerce_int(max_results, 100, 1, 1000)
+        safe_pattern = str(pattern or "**/*").lstrip("/\\")
+        full_pattern = os.path.join(search_root, safe_pattern)
 
         matches = []
         for match in glob_module.glob(full_pattern, recursive=True):
@@ -365,8 +416,9 @@ def glob_files(workspace_path: str, pattern: str, max_results: int = 100) -> Dic
                 continue
             if not _resolve_workspace_path(workspace_root, rel_from_root):
                 continue
-            # Vérifier que c'est un fichier et pas ignoré
-            if os.path.isfile(match):
+            # Vérifier que c'est un fichier/dossier autorisé et pas ignoré
+            is_dir_match = os.path.isdir(match)
+            if os.path.isfile(match) or (include_dirs and is_dir_match):
                 rel_path = rel_from_root.replace('\\', '/')
 
                 # Vérifier les dossiers parents
@@ -377,7 +429,7 @@ def glob_files(workspace_path: str, pattern: str, max_results: int = 100) -> Dic
                         skip = True
                         break
 
-                if skip or should_ignore(parts[-1]):
+                if skip or should_ignore(parts[-1], is_dir_match):
                     continue
 
                 matches.append(rel_path.replace('\\', '/'))
@@ -388,7 +440,8 @@ def glob_files(workspace_path: str, pattern: str, max_results: int = 100) -> Dic
         return {
             "success": True,
             "pattern": pattern,
-            "files": matches,
+            "path": path or ".",
+            "files": sorted(matches),
             "total": len(matches),
             "truncated": len(matches) >= max_results
         }
@@ -656,6 +709,14 @@ WORKSPACE_TOOLS = [
                     "path": {
                         "type": "string",
                         "description": "Chemin relatif du fichier à lire (ex: 'src/main.py')"
+                    },
+                    "start_line": {
+                        "type": "integer",
+                        "description": "Ligne de départ (1-based). Utile pour lire une portion ciblée."
+                    },
+                    "max_lines": {
+                        "type": "integer",
+                        "description": "Nombre maximum de lignes à lire."
                     }
                 },
                 "required": ["path"]
@@ -677,6 +738,18 @@ WORKSPACE_TOOLS = [
                     "file_filter": {
                         "type": "string",
                         "description": "Filtre les fichiers par pattern (ex: '*.py', '*.js'). Par défaut: tous."
+                    },
+                    "path": {
+                        "type": "string",
+                        "description": "Dossier relatif dans lequel chercher. Par défaut: racine."
+                    },
+                    "max_results": {
+                        "type": "integer",
+                        "description": "Nombre maximum de résultats."
+                    },
+                    "literal": {
+                        "type": "boolean",
+                        "description": "Chercher le texte littéral au lieu d'une regex."
                     }
                 },
                 "required": ["pattern"]
@@ -694,6 +767,18 @@ WORKSPACE_TOOLS = [
                     "pattern": {
                         "type": "string",
                         "description": "Pattern glob (ex: '**/*.py', 'src/**/*.js', '*.md')"
+                    },
+                    "path": {
+                        "type": "string",
+                        "description": "Dossier relatif de départ. Par défaut: racine."
+                    },
+                    "max_results": {
+                        "type": "integer",
+                        "description": "Nombre maximum de chemins retournés."
+                    },
+                    "include_dirs": {
+                        "type": "boolean",
+                        "description": "Inclure aussi les dossiers."
                     }
                 },
                 "required": ["pattern"]
@@ -780,16 +865,35 @@ def execute_tool(tool_name: str, arguments: dict, workspace_path: str) -> Dict:
 
     elif tool_name == "read_file":
         path = arguments.get("path", "")
-        return read_file(workspace_path, path)
+        return read_file(
+            workspace_path,
+            path,
+            max_lines=arguments.get("max_lines", 500),
+            start_line=arguments.get("start_line", 1),
+        )
 
     elif tool_name == "search":
         pattern = arguments.get("pattern", "")
-        file_filter = arguments.get("file_filter", "*")
-        return search_files(workspace_path, pattern, file_filter)
+        file_filter = arguments.get("file_pattern") or arguments.get("file_filter") or arguments.get("glob") or "*"
+        return search_files(
+            workspace_path,
+            pattern,
+            file_pattern=file_filter,
+            max_results=arguments.get("max_results", 50),
+            path=arguments.get("path", ""),
+            literal=bool(arguments.get("literal", False)),
+            case_sensitive=bool(arguments.get("case_sensitive", False)),
+        )
 
     elif tool_name == "glob":
         pattern = arguments.get("pattern", "**/*")
-        return glob_files(workspace_path, pattern)
+        return glob_files(
+            workspace_path,
+            pattern,
+            max_results=arguments.get("max_results", 100),
+            path=arguments.get("path", ""),
+            include_dirs=bool(arguments.get("include_dirs", False)),
+        )
 
     elif tool_name == "write_file":
         path = arguments.get("path", "")

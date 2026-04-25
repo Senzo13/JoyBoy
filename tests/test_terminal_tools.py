@@ -10,7 +10,7 @@ from core.backends.terminal_tools import (
     is_workspace_clear_shell_command,
     truncate_middle,
 )
-from core.backends.workspace_tools import glob_files, write_file
+from core.backends.workspace_tools import glob_files, read_file, search_files, write_file
 
 
 LEGACY_TOOLS = [
@@ -308,6 +308,64 @@ class TerminalToolRegistryTests(unittest.TestCase):
 
             self.assertTrue(result["success"])
             self.assertEqual(result["files"], [])
+
+    def test_workspace_read_file_supports_line_ranges(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "repo"
+            workspace.mkdir()
+            (workspace / "notes.txt").write_text(
+                "\n".join(f"line {index}" for index in range(1, 8)),
+                encoding="utf-8",
+            )
+
+            result = read_file(str(workspace), "notes.txt", start_line=3, max_lines=2)
+
+            self.assertTrue(result["success"])
+            self.assertEqual(result["start_line"], 3)
+            self.assertEqual(result["end_line"], 4)
+            self.assertIn("   3 | line 3", result["content"])
+            self.assertIn("   4 | line 4", result["content"])
+            self.assertNotIn("line 2", result["content"])
+
+    def test_workspace_search_respects_path_literal_case_and_limits(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "repo"
+            (workspace / "src").mkdir(parents=True)
+            (workspace / "docs").mkdir()
+            (workspace / "src" / "app.py").write_text("Token.VALUE\nToken.VALUE\n", encoding="utf-8")
+            (workspace / "docs" / "app.py").write_text("token.value\n", encoding="utf-8")
+
+            result = search_files(
+                str(workspace),
+                "Token.VALUE",
+                file_pattern="*.py",
+                path="src",
+                literal=True,
+                case_sensitive=True,
+                max_results=1,
+            )
+
+            self.assertTrue(result["success"])
+            self.assertEqual(result["path"], "src")
+            self.assertTrue(result["truncated"])
+            self.assertEqual(len(result["results"]), 1)
+            self.assertEqual(result["results"][0]["file"], "src/app.py")
+
+    def test_workspace_glob_respects_path_and_include_dirs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "repo"
+            (workspace / "src" / "components").mkdir(parents=True)
+            (workspace / "docs").mkdir()
+            (workspace / "src" / "components" / "Button.jsx").write_text("export {}", encoding="utf-8")
+            (workspace / "docs" / "Guide.jsx").write_text("docs", encoding="utf-8")
+
+            files = glob_files(str(workspace), "**/*.jsx", path="src")
+            dirs = glob_files(str(workspace), "**/components", path="src", include_dirs=True)
+
+            self.assertTrue(files["success"])
+            self.assertEqual(files["files"], ["src/components/Button.jsx"])
+            self.assertTrue(dirs["success"])
+            self.assertEqual(dirs["files"], ["src/components"])
 
 
 if __name__ == "__main__":

@@ -51,7 +51,20 @@ def _canonical_tool_args(tool_name: str, args: Dict[str, Any], fallback_key: str
         path = _clean_path(args.get("path"))
         if not path:
             return fallback_key or {}
-        return {"path": path}
+        bucket_size = 200
+        try:
+            start_line = int(args.get("start_line") or 1)
+        except (TypeError, ValueError):
+            start_line = 1
+        try:
+            max_lines = int(args.get("max_lines") or 220)
+        except (TypeError, ValueError):
+            max_lines = 220
+        start_line = max(1, start_line)
+        end_line = max(start_line, start_line + max(1, max_lines) - 1)
+        start_bucket = (start_line - 1) // bucket_size
+        end_bucket = (end_line - 1) // bucket_size
+        return {"path": path, "line_bucket": f"{start_bucket}-{end_bucket}"}
 
     if tool_name == "list_files":
         return {"path": _clean_path(args.get("path"), ".") or "."}
@@ -60,12 +73,16 @@ def _canonical_tool_args(tool_name: str, args: Dict[str, Any], fallback_key: str
         return {
             "path": _clean_path(args.get("path"), ".") or ".",
             "pattern": str(args.get("pattern") or args.get("glob") or "").strip(),
+            "include_dirs": bool(args.get("include_dirs", False)),
         }
 
     if tool_name == "search":
         return {
             "path": _clean_path(args.get("path"), ".") or ".",
             "pattern": str(args.get("pattern") or args.get("query") or "").strip(),
+            "file_pattern": str(args.get("file_pattern") or args.get("glob") or "*").strip() or "*",
+            "literal": bool(args.get("literal", False)),
+            "case_sensitive": bool(args.get("case_sensitive", False)),
         }
 
     if tool_name == "bash":

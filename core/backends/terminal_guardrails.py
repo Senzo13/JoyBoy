@@ -91,7 +91,10 @@ class TerminalGuardrailsMixin:
         if tool_name == "list_files":
             summary["summary"] = f"{len(data.get('items', []))} item(s)"
         elif tool_name == "read_file":
-            summary["summary"] = f"{data.get('path', args.get('path', ''))} ({data.get('lines', 0)} lines)"
+            start_line = data.get("start_line")
+            end_line = data.get("end_line")
+            range_text = f":{start_line}-{end_line}" if start_line and end_line else ""
+            summary["summary"] = f"{data.get('path', args.get('path', ''))}{range_text} ({data.get('lines', 0)} lines)"
         elif tool_name == "glob":
             summary["summary"] = f"{len(data.get('files', []))} file(s)"
         elif tool_name == "search":
