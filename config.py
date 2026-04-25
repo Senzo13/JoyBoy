@@ -45,6 +45,16 @@ else:
     VLLM_API_KEY = os.environ.get("VLLM_API_KEY", "")
 OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
 
+
+def _env_float(name: str, default: float | None = None) -> float | None:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        return default
+
 # ===== IDENTITÉ DE L'IA =====
 AI_NAME = "JoyBoy"
 AI_DESCRIPTION = "Local AI harness for multimodal workflows"
@@ -67,7 +77,7 @@ DEFAULT_DILATION = 30
 # Limite VRAM pour Ollama (en GB) - au-delà, utilise la RAM
 # None = pas de limite (utilise toute la VRAM disponible)
 # Recommandé: laisser 1-2GB libre pour les modèles image
-OLLAMA_MAX_VRAM_GB = 4  # Limite à 4GB (suffisant pour 3B-7B quantifié, le reste en RAM)
+OLLAMA_MAX_VRAM_GB = _env_float("JOYBOY_OLLAMA_MAX_VRAM_GB", 4.0)
 
 # Activer l'offloading CPU pour les modèles Diffusion (libère VRAM pendant inférence)
 ENABLE_CPU_OFFLOAD = True
@@ -97,6 +107,11 @@ TOOL_EXCLUDED_MODELS = {'dolphin', 'nous-hermes', 'openhermes'}
 # Utility model - pour les checks rapides (image-check, memory-check, prompt enhance).
 # Qwen 3.5 2B reste léger, mais suit mieux les instructions que l'ancien 2.5 1.5B.
 UTILITY_MODEL = os.environ.get("JOYBOY_UTILITY_MODEL", "qwen3.5:2b").strip()
+HIGH_END_CHAT_MODEL = os.environ.get("JOYBOY_HIGH_END_CHAT_MODEL", "llama3.3:70b-instruct-q8_0").strip()
+EXTREME_CHAT_MODEL = os.environ.get("JOYBOY_EXTREME_CHAT_MODEL", "qwen3:235b-a22b-instruct-2507-q4_K_M").strip()
+EXTREME_CHAT_MODEL_INT8 = os.environ.get("JOYBOY_EXTREME_CHAT_MODEL_INT8", "qwen3:235b-a22b-instruct-2507-q8_0").strip()
+VIDEO_ANALYSIS_MODEL = os.environ.get("JOYBOY_VIDEO_ANALYSIS_MODEL", "qwen3-vl:32b-instruct-q8_0").strip()
+VIDEO_ANALYSIS_MODEL_EXTREME = os.environ.get("JOYBOY_VIDEO_ANALYSIS_MODEL_EXTREME", "qwen3-vl:235b-a22b-instruct-q4_K_M").strip()
 
 # Router model - pour choisir intent/mask/strength. On préfère automatiquement
 # un petit modèle récent déjà installé, puis on retombe sur UTILITY_MODEL.
@@ -123,6 +138,7 @@ MODEL_RECOMMENDATIONS = {
         "very_high": "qwen3.5:4b",
         "ultra": "qwen3.5:9b",
         "extreme": "qwen3.5:9b",
+        "high_end": HIGH_END_CHAT_MODEL,
     },
     "designer": {
         "low": "qwen3.5:0.8b",
@@ -131,6 +147,7 @@ MODEL_RECOMMENDATIONS = {
         "very_high": "qwen3.5:4b",
         "ultra": "qwen3.5:9b",
         "extreme": "qwen3.5:9b",
+        "high_end": HIGH_END_CHAT_MODEL,
     },
     "student": {
         "low": "qwen3.5:0.8b",
@@ -139,6 +156,7 @@ MODEL_RECOMMENDATIONS = {
         "very_high": "qwen3.5:4b",
         "ultra": "qwen3.5:9b",
         "extreme": "qwen3.5:9b",
+        "high_end": HIGH_END_CHAT_MODEL,
     },
     "casual": {
         "low": "qwen3.5:0.8b",
@@ -147,11 +165,13 @@ MODEL_RECOMMENDATIONS = {
         "very_high": "qwen3.5:4b",
         "ultra": "qwen3.5:9b",
         "extreme": "qwen3.5:9b",
+        "high_end": HIGH_END_CHAT_MODEL,
     },
 }
 
 # Seuils VRAM (en GB) - ordre décroissant pour la détection
 VRAM_THRESHOLDS = {
+    "high_end": 48,    # 48GB+ workstation/cloud GPUs
     "extreme": 24,    # 24GB+ CUDA/pro GPUs
     "ultra": 16,      # 16GB GPUs
     "very_high": 12,  # 12GB GPUs
@@ -193,6 +213,11 @@ GENERATION_SETTINGS = {
         "text2imgSteps": 45,
         "strength": 0.82,
     },
+    "high_end": {
+        "steps": 45,
+        "text2imgSteps": 50,
+        "strength": 0.84,
+    },
 }
 
 # ===== MODÈLES IMAGE (Inpainting/Génération) =====
@@ -228,6 +253,11 @@ IMAGE_MODEL_RECOMMENDATIONS = {
         "inpainting": "epiCRealism XL (Moyen)",
         "generation": "epiCRealism XL",
         "description": "Pleine puissance",
+    },
+    "high_end": {
+        "inpainting": "Flux Fill INT8",
+        "generation": "Flux Dev INT8",
+        "description": "Grosse config locale",
     },
 }
 
@@ -277,6 +307,8 @@ __all__ = [
     'PRIMARY_COLOR', 'ACCENT_COLOR',
     'DEFAULT_STEPS', 'DEFAULT_STRENGTH', 'DEFAULT_DILATION',
     'UTILITY_MODEL', 'ROUTER_MODEL', 'ROUTER_MODEL_CANDIDATES',
+    'HIGH_END_CHAT_MODEL', 'EXTREME_CHAT_MODEL', 'EXTREME_CHAT_MODEL_INT8',
+    'VIDEO_ANALYSIS_MODEL', 'VIDEO_ANALYSIS_MODEL_EXTREME',
     'MODEL_RECOMMENDATIONS', 'VRAM_THRESHOLDS',
     'GENERATION_SETTINGS', 'IMAGE_MODEL_RECOMMENDATIONS',
     'MESSAGES', 'get_system_prompt',

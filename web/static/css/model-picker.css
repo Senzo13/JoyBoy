@@ -119,6 +119,7 @@ body.terminal-mode .terminal-permission-picker {
   position: absolute;
   right: 0;
   bottom: calc(100% + 8px);
+  z-index: var(--z-dropdown, 100);
   min-width: 230px;
   padding: 6px;
   border: 1px solid rgba(255, 255, 255, 0.08);

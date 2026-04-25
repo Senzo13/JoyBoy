@@ -1111,9 +1111,116 @@ function addMessageTxt2Img(prompt, generated, generationTime = null, seed = null
 }
 
 // Stocke le dernier contexte vidéo pour la continuation
-let _lastVideoContext = { prompt: '', sourceImage: null, canContinue: false };
+let _lastVideoContext = {
+    prompt: '',
+    sourceImage: null,
+    canContinue: false,
+    videoSessionId: null,
+    anchors: [],
+    analysisSummary: {},
+    chatId: null,
+};
 
-function addMessageVideo(videoBase64, generationTime = null, sourceImage = null, canContinue = false, modelName = null, chatId = (typeof currentChatId !== 'undefined' ? currentChatId : null)) {
+function updateLastVideoContextFromResult(data = {}, prompt = '', sourceImage = null, chatId = null) {
+    _lastVideoContext = {
+        prompt: prompt || _lastVideoContext.prompt || '',
+        sourceImage,
+        canContinue: Boolean(data.canContinue),
+        videoSessionId: data.videoSessionId || data.video_session_id || _lastVideoContext.videoSessionId || null,
+        anchors: Array.isArray(data.continuationAnchors) ? data.continuationAnchors : [],
+        analysisSummary: data.analysisSummary || {},
+        chatId: chatId || (typeof currentChatId !== 'undefined' ? currentChatId : null),
+    };
+    return _lastVideoContext;
+}
+
+function buildVideoKeyframeRail(anchors = [], sessionId = null) {
+    const visibleAnchors = Array.isArray(anchors) ? anchors.filter(anchor => anchor?.thumbnail) : [];
+    if (!visibleAnchors.length) return '';
+    return `
+        <div class="video-keyframe-rail" aria-label="Frames de continuation">
+            ${visibleAnchors.map(anchor => `
+                <button class="video-keyframe-btn" type="button" onclick="openVideoContinuationPanel({ videoSessionId: '${sessionId || ''}', anchorFrameIndex: ${Number(anchor.index) || 0} })" title="Continuer depuis ${Number(anchor.timeSec || 0).toFixed(1)}s">
+                    <img src="${anchor.thumbnail}" alt="">
+                </button>
+            `).join('')}
+        </div>
+    `;
+}
+
+function ensureVideoContinuationPanel() {
+    let panel = document.getElementById('video-continuation-panel');
+    if (panel) return panel;
+    panel = document.createElement('div');
+    panel.id = 'video-continuation-panel';
+    panel.className = 'video-continuation-panel';
+    panel.setAttribute('aria-hidden', 'true');
+    panel.innerHTML = `
+        <div class="video-continuation-panel-inner">
+            <div class="video-continuation-header">
+                <div class="video-continuation-title">Continuer la vidéo</div>
+                <button class="video-continuation-close" type="button" onclick="closeVideoContinuationPanel()" aria-label="Fermer">×</button>
+            </div>
+            <textarea id="video-continuation-prompt" class="video-continuation-prompt" rows="3" placeholder="Décris ce qui doit se passer ensuite..."></textarea>
+            <div class="video-continuation-options">
+                <label class="video-continuation-check">
+                    <input id="video-continuation-analyze" type="checkbox" checked>
+                    <span>Analyser la vidéo avant de continuer</span>
+                </label>
+                <select id="video-continuation-anchor" class="video-continuation-anchor"></select>
+            </div>
+            <div class="video-continuation-actions">
+                <button class="video-continuation-secondary" type="button" onclick="closeVideoContinuationPanel()">Annuler</button>
+                <button class="video-continuation-primary" type="button" onclick="submitVideoContinuation()">Continuer</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(panel);
+    return panel;
+}
+
+function openVideoContinuationPanel(options = {}) {
+    if (!_lastVideoContext.canContinue && !options.videoSessionId) return;
+    const panel = ensureVideoContinuationPanel();
+    const sessionId = options.videoSessionId || _lastVideoContext.videoSessionId;
+    const anchors = _lastVideoContext.anchors || [];
+    const select = panel.querySelector('#video-continuation-anchor');
+    const promptInput = panel.querySelector('#video-continuation-prompt');
+    const analyzeInput = panel.querySelector('#video-continuation-analyze');
+    panel.dataset.videoSessionId = sessionId || '';
+    select.innerHTML = '';
+    const fallbackIndex = options.anchorFrameIndex ?? anchors.at(-1)?.index ?? '';
+    if (anchors.length) {
+        for (const anchor of anchors) {
+            const option = document.createElement('option');
+            option.value = anchor.index;
+            option.textContent = `Frame ${anchor.index} · ${Number(anchor.timeSec || 0).toFixed(1)}s`;
+            select.appendChild(option);
+        }
+        select.value = String(fallbackIndex);
+        select.disabled = false;
+    } else {
+        const option = document.createElement('option');
+        option.value = '';
+        option.textContent = 'Dernière frame';
+        select.appendChild(option);
+        select.disabled = true;
+    }
+    if (promptInput && options.prefillPrompt) promptInput.value = options.prefillPrompt;
+    if (analyzeInput) analyzeInput.checked = userSettings.videoContinuationAnalyze !== false;
+    panel.classList.add('is-open');
+    panel.setAttribute('aria-hidden', 'false');
+    setTimeout(() => promptInput?.focus(), 0);
+}
+
+function closeVideoContinuationPanel() {
+    const panel = document.getElementById('video-continuation-panel');
+    if (!panel) return;
+    panel.classList.remove('is-open');
+    panel.setAttribute('aria-hidden', 'true');
+}
+
+function addMessageVideo(videoBase64, generationTime = null, sourceImage = null, canContinue = false, modelName = null, chatId = (typeof currentChatId !== 'undefined' ? currentChatId : null), metadata = {}) {
     removeSkeletonMessage(chatId);
 
     const messagesDiv = getChatMessages();
@@ -1132,8 +1239,15 @@ function addMessageVideo(videoBase64, generationTime = null, sourceImage = null,
         </div>
     ` : '';
 
-    const continueBtn = canContinue ? `
-        <button class="edit-btn video-continue-btn" onclick="continueLastVideo()" title="Continuer la vidéo" style="display:flex;align-items:center;gap:4px;padding:6px 12px;margin-top:6px;background:rgba(139,92,246,0.15);border:1px solid rgba(139,92,246,0.3);border-radius:8px;cursor:pointer;color:#a78bfa;">
+    const context = updateLastVideoContextFromResult(
+        { ...metadata, canContinue },
+        metadata.prompt || _lastVideoContext.prompt || '',
+        sourceImage,
+        chatId
+    );
+    const keyframeRail = buildVideoKeyframeRail(context.anchors, context.videoSessionId);
+    const continueBtn = context.canContinue ? `
+        <button class="edit-btn video-continue-btn" onclick="openVideoContinuationPanel({ videoSessionId: '${context.videoSessionId || ''}' })" title="Continuer la vidéo" style="display:flex;align-items:center;gap:4px;padding:6px 12px;margin-top:6px;background:rgba(139,92,246,0.15);border:1px solid rgba(139,92,246,0.3);border-radius:8px;cursor:pointer;color:#a78bfa;">
             ${playIcon} Continuer
         </button>
     ` : '';
@@ -1154,16 +1268,13 @@ function addMessageVideo(videoBase64, generationTime = null, sourceImage = null,
                             <a href="data:video/mp4;base64,${videoBase64}" download="video.mp4" class="edit-btn" title="Télécharger">${downloadIcon}</a>
                         </div>
                         <div class="image-label">${label} ${timeDisplay}</div>
+                        ${keyframeRail}
                         ${continueBtn}
                     </div>
                 </div>
             </div>
         </div>
     `;
-
-    // Sauvegarder le contexte pour continuation
-    _lastVideoContext.canContinue = canContinue;
-    _lastVideoContext.sourceImage = sourceImage;
 
     messagesDiv.insertAdjacentHTML('beforeend', messageHtml);
     scrollToBottom();
@@ -1174,9 +1285,28 @@ function addMessageVideo(videoBase64, generationTime = null, sourceImage = null,
 }
 
 async function continueLastVideo() {
-    if (!_lastVideoContext.canContinue) return;
+    openVideoContinuationPanel();
+}
 
-        const videoModel = userSettings.videoModel || 'svd';
+async function submitVideoContinuation() {
+    const panel = document.getElementById('video-continuation-panel');
+    if (!panel) return;
+    const prompt = (panel.querySelector('#video-continuation-prompt')?.value || '').trim();
+    const anchorValue = panel.querySelector('#video-continuation-anchor')?.value;
+    const analyzeVideo = panel.querySelector('#video-continuation-analyze')?.checked !== false;
+    closeVideoContinuationPanel();
+    await runVideoContinuation({
+        prompt,
+        anchorFrameIndex: anchorValue === '' || anchorValue == null ? null : Number(anchorValue),
+        analyzeVideo,
+        videoSessionId: panel.dataset.videoSessionId || _lastVideoContext.videoSessionId,
+    });
+}
+
+async function runVideoContinuation(options = {}) {
+    if (!_lastVideoContext.canContinue && !options.videoSessionId) return;
+
+    const videoModel = userSettings.videoModel || 'svd';
     const videoDefaults = getVideoModelDefaults(videoModel);
 
     isGenerating = true;
@@ -1201,10 +1331,17 @@ async function continueLastVideo() {
             video_model: videoModel,
             prompt: _lastVideoContext.prompt,
             continue: true,
+            source_video_session_id: options.videoSessionId || _lastVideoContext.videoSessionId,
+            anchor_frame_index: options.anchorFrameIndex,
+            continuation_prompt: options.prompt || '',
+            analyze_video: options.analyzeVideo !== false,
+            video_analysis_model: userSettings.videoAnalysisModel || undefined,
+            audio_engine: userSettings.videoAudioEngine || 'auto',
             target_frames: videoDefaults.frames,
             num_steps: videoDefaults.steps,
             fps: videoDefaults.fps,
             add_audio: userSettings.videoAudio === true,
+            audio_prompt: options.prompt || '',
             face_restore: userSettings.faceRestore || 'off',
             chatId: typeof currentChatId !== 'undefined' ? currentChatId : null,
             quality: userSettings.videoQuality || '720p',
@@ -1217,7 +1354,8 @@ async function continueLastVideo() {
         const generationTime = (Date.now() - startTime) / 1000;
 
         if (data?.success && data.video) {
-            addMessageVideo(data.video, generationTime, null, data.canContinue, videoDefaults.name);
+            updateLastVideoContextFromResult(data, options.prompt || _lastVideoContext.prompt, null, _lastVideoContext.chatId);
+            addMessageVideo(data.video, generationTime, null, data.canContinue, videoDefaults.name, _lastVideoContext.chatId, data);
         } else {
             removeSkeletonMessage();
         }

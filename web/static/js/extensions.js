@@ -4,6 +4,24 @@
 
 const JOYBOY_EXTENSION_CATEGORIES = ['featured', 'coding', 'productivity', 'design', 'research'];
 
+const JOYBOY_GOOGLE_WORKSPACE_CONNECTION = {
+    mode: 'env',
+    tokenUrl: 'https://console.cloud.google.com/apis/credentials',
+    fields: [
+        {
+            key: 'GOOGLE_OAUTH_CLIENT_ID',
+            label: 'Google OAuth client ID',
+            placeholder: 'client-id.apps.googleusercontent.com',
+        },
+        {
+            key: 'GOOGLE_OAUTH_CLIENT_SECRET',
+            label: 'Google OAuth client secret',
+            placeholder: 'GOCSPX-...',
+            secret: true,
+        },
+    ],
+};
+
 const JOYBOY_EXTENSION_CONNECTIONS = {
     github: {
         mode: 'runtime-oauth',
@@ -49,6 +67,26 @@ const JOYBOY_EXTENSION_CONNECTIONS = {
     'google-drive': {
         mode: 'unsupported-oauth',
     },
+    'google-workspace-docs': JOYBOY_GOOGLE_WORKSPACE_CONNECTION,
+    'google-workspace-sheets': JOYBOY_GOOGLE_WORKSPACE_CONNECTION,
+    'google-workspace-slides': JOYBOY_GOOGLE_WORKSPACE_CONNECTION,
+    'google-workspace-gmail': JOYBOY_GOOGLE_WORKSPACE_CONNECTION,
+    canva: {
+        mode: 'runtime-oauth',
+    },
+    slack: {
+        mode: 'token',
+        secretLabel: 'Slack user token',
+        secretPlaceholder: 'xoxp-... ou token OAuth user',
+        tokenUrl: 'https://api.slack.com/apps',
+    },
+    'market-research': {
+        mode: 'token',
+        envKey: 'BRAVE_API_KEY',
+        secretLabel: 'Brave Search API key',
+        secretPlaceholder: 'BSA...',
+        tokenUrl: 'https://api.search.brave.com/app/keys',
+    },
 };
 
 const JOYBOY_EXTENSION_CATALOG = [
@@ -90,9 +128,11 @@ const JOYBOY_EXTENSION_CATALOG = [
         name: 'Spreadsheets',
         icon: 'table-2',
         category: 'featured',
-        source: 'planned',
-        action: 'coming-soon',
-        developer: 'Connector',
+        source: 'mcp',
+        action: 'mcp-template',
+        template: 'google-workspace-sheets',
+        developer: 'Google Workspace MCP',
+        requiresConnection: true,
         capabilities: ['xlsx', 'csv', 'charts'],
     },
     {
@@ -100,9 +140,11 @@ const JOYBOY_EXTENSION_CATALOG = [
         name: 'Presentations',
         icon: 'presentation',
         category: 'featured',
-        source: 'planned',
-        action: 'coming-soon',
-        developer: 'Connector',
+        source: 'mcp',
+        action: 'mcp-template',
+        template: 'google-workspace-slides',
+        developer: 'Google Workspace MCP',
+        requiresConnection: true,
         capabilities: ['pptx', 'slides', 'export'],
     },
     {
@@ -110,9 +152,11 @@ const JOYBOY_EXTENSION_CATALOG = [
         name: 'Documents',
         icon: 'file-text',
         category: 'productivity',
-        source: 'planned',
-        action: 'coming-soon',
-        developer: 'Connector',
+        source: 'mcp',
+        action: 'mcp-template',
+        template: 'google-workspace-docs',
+        developer: 'Google Workspace MCP',
+        requiresConnection: true,
         capabilities: ['docx', 'redline', 'comments'],
     },
     {
@@ -273,9 +317,10 @@ const JOYBOY_EXTENSION_CATALOG = [
         name: 'Expo',
         icon: 'smartphone',
         category: 'coding',
-        source: 'planned',
-        action: 'coming-soon',
-        developer: 'Connector',
+        source: 'mcp',
+        action: 'mcp-template',
+        template: 'expo',
+        developer: 'metro-mcp',
         capabilities: ['react_native', 'mobile', 'builds'],
     },
     {
@@ -295,9 +340,11 @@ const JOYBOY_EXTENSION_CATALOG = [
         name: 'Canva',
         icon: 'pen-tool',
         category: 'design',
-        source: 'planned',
-        action: 'coming-soon',
-        developer: 'Connector',
+        source: 'mcp',
+        action: 'mcp-template',
+        template: 'canva',
+        developer: 'Canva MCP',
+        requiresConnection: true,
         capabilities: ['designs', 'exports', 'brand_assets'],
     },
     {
@@ -305,9 +352,10 @@ const JOYBOY_EXTENSION_CATALOG = [
         name: 'Remotion',
         icon: 'film',
         category: 'design',
-        source: 'planned',
-        action: 'coming-soon',
-        developer: 'Connector',
+        source: 'mcp',
+        action: 'mcp-template',
+        template: 'remotion',
+        developer: 'Remotion MCP',
         capabilities: ['motion', 'video', 'render'],
     },
     {
@@ -349,9 +397,11 @@ const JOYBOY_EXTENSION_CATALOG = [
         name: 'Gmail',
         icon: 'mail',
         category: 'productivity',
-        source: 'planned',
-        action: 'coming-soon',
-        developer: 'Connector',
+        source: 'mcp',
+        action: 'mcp-template',
+        template: 'google-workspace-gmail',
+        developer: 'Google Workspace MCP',
+        requiresConnection: true,
         capabilities: ['email', 'drafts', 'triage'],
     },
     {
@@ -359,9 +409,11 @@ const JOYBOY_EXTENSION_CATALOG = [
         name: 'Slack',
         icon: 'message-square',
         category: 'productivity',
-        source: 'planned',
-        action: 'coming-soon',
-        developer: 'Connector',
+        source: 'mcp',
+        action: 'mcp-template',
+        template: 'slack',
+        developer: 'Slack MCP',
+        requiresConnection: true,
         capabilities: ['channels', 'summaries', 'drafts'],
     },
     {
@@ -393,9 +445,10 @@ const JOYBOY_EXTENSION_CATALOG = [
         name: 'Life Science Research',
         icon: 'microscope',
         category: 'research',
-        source: 'planned',
-        action: 'coming-soon',
-        developer: 'Connector',
+        source: 'mcp',
+        action: 'mcp-template',
+        template: 'life-science',
+        developer: 'PubMed MCP',
         capabilities: ['papers', 'evidence', 'synthesis'],
     },
     {
@@ -403,9 +456,11 @@ const JOYBOY_EXTENSION_CATALOG = [
         name: 'Market Research',
         icon: 'line-chart',
         category: 'research',
-        source: 'planned',
-        action: 'coming-soon',
-        developer: 'Connector',
+        source: 'mcp',
+        action: 'mcp-template',
+        template: 'market-research',
+        developer: 'Model Context Protocol',
+        requiresConnection: true,
         capabilities: ['markets', 'companies', 'news'],
     },
 ];
@@ -509,8 +564,10 @@ function extensionNeedsConnection(item, server) {
     const connection = getExtensionConnection(item);
     if (connection?.mode === 'unsupported-oauth') return true;
     const status = getExtensionMcpServerStatus(item.template);
+    if (Array.isArray(status?.missing_env) && status.missing_env.length) return true;
     if (Number(status?.loaded_tool_count || 0) > 0) return false;
     if (extensionHasVerifiedConnection(item, server)) return false;
+    if (connection?.mode === 'env') return !extensionHasStoredConnection(item, server);
     if (['runtime-oauth', 'cli-oauth'].includes(connection?.mode) && server.enabled !== false) return false;
     return true;
 }
@@ -543,6 +600,14 @@ function extensionHasStoredConnection(item, server) {
         }
         const authHeader = String(server.headers?.Authorization || '').trim();
         return Boolean(authHeader && !authHeader.includes('$') && !authHeader.endsWith('Bearer'));
+    }
+    if (connection.mode === 'env') {
+        const fields = Array.isArray(connection.fields) ? connection.fields : [];
+        const requiredFields = fields.filter(field => field && !field.optional);
+        return requiredFields.every(field => {
+            const value = String(server.env?.[field.key] || '').trim();
+            return Boolean(value && !value.startsWith('$'));
+        });
     }
     return false;
 }
@@ -905,6 +970,30 @@ function renderExtensionModalShell() {
     `;
 }
 
+function extensionConnectionFieldId(item, index) {
+    return `extension-connection-env-${item.id}-${index}`;
+}
+
+function renderExtensionConnectionField(item, field, index, hasStoredConnection) {
+    const inputId = extensionConnectionFieldId(item, index);
+    const label = field.label || field.key || extensionT('extensions.tokenLabel', 'Token');
+    const placeholder = hasStoredConnection
+        ? extensionT('extensions.tokenAlreadyConfigured', 'Token déjà configuré - laisse vide pour tester')
+        : field.placeholder || field.key || '';
+    return `
+        <label class="extension-connect-field" for="${extensionEscapeHtml(inputId)}">
+            <span>${extensionEscapeHtml(label)}</span>
+            <input
+                id="${extensionEscapeHtml(inputId)}"
+                class="extension-connect-input"
+                type="${field.secret ? 'password' : 'text'}"
+                placeholder="${extensionEscapeHtml(placeholder)}"
+                autocomplete="off"
+            >
+        </label>
+    `;
+}
+
 function renderExtensionConnectionControls(item, state) {
     const connection = getExtensionConnection(item);
     const servers = getExtensionMcpServers();
@@ -927,6 +1016,27 @@ function renderExtensionConnectionControls(item, state) {
                 <button class="extension-modal-secondary compact" type="button" onclick="refreshExtensionsCatalogFromButton(this)">
                     ${extensionEscapeHtml(extensionT('extensions.actions.refreshRuntime', 'Rafraîchir le runtime'))}
                 </button>
+            </div>
+        `;
+    }
+
+    if (connection.mode === 'env') {
+        const fields = Array.isArray(connection.fields) ? connection.fields : [];
+        return `
+            <div class="extension-modal-section extension-modal-connect">
+                <div class="extension-modal-section-title">${extensionEscapeHtml(extensionT('extensions.connectTitle', 'Lier le compte'))}</div>
+                <div class="extension-modal-about">${extensionEscapeHtml(extensionT('extensions.connectEnvBody', 'Renseigne les variables locales requises. JoyBoy les enregistre uniquement dans ta config locale hors git, active le serveur MCP, puis teste vraiment le chargement des tools.'))}</div>
+                ${fields.map((field, index) => renderExtensionConnectionField(item, field, index, hasStoredConnection)).join('')}
+                <div class="extension-connect-actions">
+                    ${connection.tokenUrl ? `
+                        <button class="extension-modal-secondary" type="button" onclick="window.open('${extensionEscapeHtml(connection.tokenUrl)}', '_blank', 'noopener')">
+                            ${extensionEscapeHtml(extensionT('extensions.openProviderSetup', 'Ouvrir la config provider'))}
+                        </button>
+                    ` : ''}
+                    <button class="extension-modal-primary compact" type="button" onclick="connectMcpExtension('${extensionEscapeHtml(item.id)}')">
+                        ${extensionEscapeHtml(hasStoredConnection ? extensionT('extensions.actions.testConnection', 'Tester la connexion') : extensionT('extensions.saveEnvAndTest', 'Enregistrer et tester'))}
+                    </button>
+                </div>
             </div>
         `;
     }
@@ -1134,15 +1244,28 @@ async function saveExtensionMcpServers(servers) {
     return result.data;
 }
 
-function applyExtensionConnectionSecret(item, server, token) {
+function applyExtensionConnectionSecret(item, server, secret) {
     const connection = getExtensionConnection(item);
-    const cleanToken = String(token || '').trim();
     const nextServer = {
         ...server,
         enabled: true,
     };
 
     if (!connection) return nextServer;
+
+    if (connection.mode === 'env') {
+        const fields = Array.isArray(connection.fields) ? connection.fields : [];
+        const values = secret && typeof secret === 'object' ? secret : {};
+        nextServer.env = { ...(nextServer.env || {}) };
+        for (const field of fields) {
+            const key = String(field?.key || '').trim();
+            const value = String(values[key] || '').trim();
+            if (key && value) nextServer.env[key] = value;
+        }
+        return nextServer;
+    }
+
+    const cleanToken = String(secret || '').trim();
 
     if (connection.envKey) {
         nextServer.env = {
@@ -1247,6 +1370,7 @@ async function connectMcpExtension(extensionId, options = {}) {
         if (!currentServer) throw new Error(item.template);
 
         let token = '';
+        let envValues = {};
         if (connection.mode === 'token' || useTokenFallback) {
             const input = document.getElementById(`extension-connection-token-${item.id}`);
             token = String(input?.value || '').trim();
@@ -1254,10 +1378,32 @@ async function connectMcpExtension(extensionId, options = {}) {
                 throw new Error(extensionT('extensions.tokenRequired', 'Colle un token avant de tester la connexion.'));
             }
         }
+        if (connection.mode === 'env') {
+            const fields = Array.isArray(connection.fields) ? connection.fields : [];
+            envValues = Object.fromEntries(fields.map((field, index) => {
+                const input = document.getElementById(extensionConnectionFieldId(item, index));
+                return [field.key, String(input?.value || '').trim()];
+            }));
+            const stored = servers[item.template] || {};
+            const missingRequired = fields
+                .filter(field => field && !field.optional)
+                .filter(field => {
+                    const typedValue = String(envValues[field.key] || '').trim();
+                    const storedValue = String(stored.env?.[field.key] || '').trim();
+                    return !typedValue && (!storedValue || storedValue.startsWith('$'));
+                });
+            if (missingRequired.length) {
+                throw new Error(extensionT('extensions.envRequired', 'Renseigne les variables requises avant de tester la connexion.'));
+            }
+        }
 
-        servers[item.template] = (connection.mode === 'token' || useTokenFallback) && token
-            ? applyExtensionConnectionSecret(item, currentServer, token)
-            : { ...currentServer, enabled: true };
+        if (connection.mode === 'env') {
+            servers[item.template] = applyExtensionConnectionSecret(item, currentServer, envValues);
+        } else if ((connection.mode === 'token' || useTokenFallback) && token) {
+            servers[item.template] = applyExtensionConnectionSecret(item, currentServer, token);
+        } else {
+            servers[item.template] = { ...currentServer, enabled: true };
+        }
 
         await saveExtensionMcpServers(servers);
         Toast.info(extensionT('extensions.connectTestingTitle', 'Test MCP en cours'), extensionT('extensions.connectTestingBody', 'JoyBoy démarre le serveur MCP et vérifie les tools chargés.'), 2600);

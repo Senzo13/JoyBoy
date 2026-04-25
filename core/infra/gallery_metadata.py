@@ -34,8 +34,9 @@ def save_gallery_metadata(asset_path: str | Path, **metadata: Any) -> Path | Non
     try:
         path = Path(asset_path)
         sidecar = path.with_suffix(".json")
+        schema = metadata.pop("schema", 1)
         data = {
-            "schema": 1,
+            "schema": schema,
             "asset_name": path.name,
             "asset_type": metadata.pop("asset_type", None) or path.suffix.lstrip(".").lower(),
             "created_at": datetime.now().isoformat(timespec="seconds"),

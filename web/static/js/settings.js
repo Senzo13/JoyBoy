@@ -923,6 +923,18 @@ function initSettingsModal() {
             videoAudioToggle.classList.remove('active');
         }
     }
+    const videoAudioEngineSelect = document.getElementById('settings-video-audio-engine');
+    if (videoAudioEngineSelect) {
+        videoAudioEngineSelect.value = userSettings.videoAudioEngine || 'auto';
+    }
+    const continuationAnalyzeToggle = document.getElementById('toggle-video-continuation-analyze');
+    if (continuationAnalyzeToggle) {
+        continuationAnalyzeToggle.classList.toggle('active', userSettings.videoContinuationAnalyze !== false);
+    }
+    const videoAnalysisModelInput = document.getElementById('settings-video-analysis-model');
+    if (videoAnalysisModelInput) {
+        videoAnalysisModelInput.value = userSettings.videoAnalysisModel || 'qwen3-vl:32b-instruct-q8_0';
+    }
 
     // Load Ollama status and models (utilisé aussi dans l'onglet Général)
     checkOllamaStatus();

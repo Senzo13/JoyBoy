@@ -643,6 +643,120 @@ VIDEO_MODELS = {
     },
 }
 
+_VIDEO_CAPABILITY_DEFAULTS = {
+    "min_vram_gb": 8,
+    "min_ram_gb": 32,
+    "supports_i2v": True,
+    "supports_t2v": False,
+    "supports_continue": True,
+    "supports_audio_native": False,
+    "continuation_strategy": "last_frame_i2v",
+    "recommended_for": [],
+}
+
+_VIDEO_CAPABILITY_OVERRIDES = {
+    "svd": {
+        "min_vram_gb": 6,
+        "min_ram_gb": 16,
+        "supports_prompt": False,
+        "supports_continue": True,
+        "recommended_for": ["safe_low_vram"],
+        "continuation_strategy": "last_frame_i2v_subtle_motion",
+    },
+    "cogvideox-2b": {
+        "supports_i2v": False,
+        "supports_t2v": True,
+        "supports_continue": False,
+        "continuation_strategy": "text_only",
+    },
+    "wan22": {
+        "min_vram_gb": 14,
+        "min_ram_gb": 64,
+        "recommended_for": ["high_end_video", "quality_i2v"],
+        "continuation_strategy": "last_frame_i2v_wan",
+    },
+    "wan-native-14b": {
+        "min_vram_gb": 24,
+        "min_ram_gb": 96,
+        "recommended_for": ["high_end_video", "quality_i2v"],
+        "continuation_strategy": "last_frame_i2v_wan_native",
+    },
+    "wan22-t2v-14b": {
+        "min_vram_gb": 24,
+        "min_ram_gb": 96,
+        "supports_i2v": False,
+        "supports_t2v": True,
+        "supports_continue": False,
+        "recommended_for": ["high_end_video", "quality_t2v"],
+        "continuation_strategy": "text_only",
+    },
+    "wan22-5b": {
+        "min_vram_gb": 10,
+        "min_ram_gb": 48,
+        "supports_t2v": True,
+        "recommended_for": ["balanced_t2v_i2v"],
+        "continuation_strategy": "last_frame_i2v_wan",
+    },
+    "fastwan": {
+        "min_vram_gb": 10,
+        "min_ram_gb": 48,
+        "supports_t2v": True,
+        "recommended_for": ["fast_preview"],
+        "continuation_strategy": "last_frame_i2v_wan",
+    },
+    "wan-native-5b": {
+        "min_vram_gb": 10,
+        "min_ram_gb": 48,
+        "supports_t2v": True,
+        "recommended_for": ["balanced_t2v_i2v"],
+        "continuation_strategy": "last_frame_i2v_wan_native",
+    },
+    "ltx2": {
+        "min_vram_gb": 20,
+        "min_ram_gb": 96,
+        "supports_t2v": True,
+        "supports_audio_native": True,
+        "recommended_for": ["high_end_video", "audio_video"],
+        "continuation_strategy": "last_frame_i2v_ltx2",
+    },
+    "ltx2_fp8": {
+        "min_vram_gb": 20,
+        "min_ram_gb": 96,
+        "supports_t2v": True,
+        "supports_audio_native": True,
+        "recommended_for": ["high_end_video", "audio_video"],
+        "continuation_strategy": "last_frame_i2v_ltx2_fp8",
+    },
+    "framepack": {
+        "min_vram_gb": 24,
+        "min_ram_gb": 96,
+        "recommended_for": ["high_end_video", "long_continue"],
+        "continuation_strategy": "last_frame_i2v_long_context",
+    },
+    "framepack-fast": {
+        "min_vram_gb": 12,
+        "min_ram_gb": 64,
+        "recommended_for": ["fast_preview"],
+        "continuation_strategy": "last_frame_i2v_long_context_fast",
+    },
+    "hunyuan": {
+        "min_vram_gb": 16,
+        "min_ram_gb": 64,
+        "recommended_for": ["high_end_video", "alternative_i2v"],
+        "continuation_strategy": "last_frame_i2v_hunyuan",
+    },
+}
+
+for _video_id, _video_meta in VIDEO_MODELS.items():
+    _supports_image = bool(_video_meta.get("supports_image", False))
+    _video_meta.update({
+        **_VIDEO_CAPABILITY_DEFAULTS,
+        "supports_i2v": _supports_image,
+        "supports_continue": _supports_image,
+        **_video_meta,
+        **_VIDEO_CAPABILITY_OVERRIDES.get(_video_id, {}),
+    })
+
 ALL_MODELS = {
     "inpaint_epicrealism_fast": {
         "name": "epiCRealism XL (Fast)",

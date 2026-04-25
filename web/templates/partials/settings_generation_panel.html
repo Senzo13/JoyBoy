@@ -214,6 +214,34 @@
 
                         <div class="settings-row">
                             <div>
+                                <div class="settings-label" id="gen-video-audio-engine-label">Moteur audio vidéo</div>
+                                <div class="settings-label-desc" id="gen-video-audio-engine-desc">Auto privilégie l’audio natif LTX-2, puis MMAudio pour le clip final.</div>
+                            </div>
+                            <select class="settings-select" id="settings-video-audio-engine" onchange="saveSetting('videoAudioEngine', this.value)">
+                                <option value="auto">Auto</option>
+                                <option value="native">Natif si disponible</option>
+                                <option value="mmaudio">MMAudio</option>
+                            </select>
+                        </div>
+
+                        <div class="settings-row">
+                            <div>
+                                <div class="settings-label" id="gen-video-continuation-analyze-label">Analyse avant continuation</div>
+                                <div class="settings-label-desc" id="gen-video-continuation-analyze-desc">Analyse les keyframes localement pour raccorder la suite au mouvement existant.</div>
+                            </div>
+                            <div class="settings-toggle active" id="toggle-video-continuation-analyze" onclick="toggleSetting('videoContinuationAnalyze')"></div>
+                        </div>
+
+                        <div class="settings-row">
+                            <div>
+                                <div class="settings-label" id="gen-video-analysis-model-label">Modèle vision pour vidéo</div>
+                                <div class="settings-label-desc" id="gen-video-analysis-model-desc">Modèle Ollama local utilisé pour comprendre les keyframes.</div>
+                            </div>
+                            <input class="settings-input" id="settings-video-analysis-model" value="qwen3-vl:32b-instruct-q8_0" onchange="saveSetting('videoAnalysisModel', this.value.trim())">
+                        </div>
+
+                        <div class="settings-row">
+                            <div>
                                 <div class="settings-label" id="gen-video-face-restore-label">Restauration faciale</div>
                                 <div class="settings-label-desc" id="gen-video-face-restore-desc">GFPGAN = meilleur pour les yeux IA, CodeFormer = dégradations fortes</div>
                             </div>

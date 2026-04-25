@@ -136,6 +136,18 @@ class ModulesStaticTests(unittest.TestCase):
         self.assertIn("template: 'cloudflare-docs'", extensions_js)
         self.assertIn("template: 'figma'", extensions_js)
         self.assertIn("template: 'linear'", extensions_js)
+        self.assertIn("template: 'google-workspace-docs'", extensions_js)
+        self.assertIn("template: 'google-workspace-sheets'", extensions_js)
+        self.assertIn("template: 'google-workspace-slides'", extensions_js)
+        self.assertIn("template: 'google-workspace-gmail'", extensions_js)
+        self.assertIn("template: 'canva'", extensions_js)
+        self.assertIn("template: 'slack'", extensions_js)
+        self.assertIn("template: 'expo'", extensions_js)
+        self.assertIn("template: 'remotion'", extensions_js)
+        self.assertIn("template: 'life-science'", extensions_js)
+        self.assertIn("template: 'market-research'", extensions_js)
+        self.assertIn("mode: 'env'", extensions_js)
+        self.assertIn("connectEnvBody", extensions_js)
         self.assertIn("id: 'hugging-face'", extensions_js)
         self.assertIn("icon: 'bot'", extensions_js)
         self.assertIn("return icons[pascalName] ? clean : 'box';", extensions_js)
@@ -188,6 +200,16 @@ class ModulesStaticTests(unittest.TestCase):
             '"sentry"',
             '"circleci"',
             '"google-drive"',
+            '"google-workspace-docs"',
+            '"google-workspace-sheets"',
+            '"google-workspace-slides"',
+            '"google-workspace-gmail"',
+            '"canva"',
+            '"slack"',
+            '"expo"',
+            '"remotion"',
+            '"life-science"',
+            '"market-research"',
             '"postgres"',
         ):
             with self.subTest(template=template):
@@ -205,6 +227,13 @@ class ModulesStaticTests(unittest.TestCase):
         self.assertIn("https://mcp.sentry.dev/mcp", mcp_runtime)
         self.assertIn("@circleci/mcp-server-circleci", mcp_runtime)
         self.assertIn("@modelcontextprotocol/server-gdrive", mcp_runtime)
+        self.assertIn("workspace-mcp", mcp_runtime)
+        self.assertIn("https://mcp.canva.com/mcp", mcp_runtime)
+        self.assertIn("https://mcp.slack.com/mcp", mcp_runtime)
+        self.assertIn("metro-mcp", mcp_runtime)
+        self.assertIn("@remotion/mcp", mcp_runtime)
+        self.assertIn("@cyanheads/pubmed-mcp-server", mcp_runtime)
+        self.assertIn("@modelcontextprotocol/server-brave-search", mcp_runtime)
         self.assertIn("DEFAULT_MCP_TOOL_LOAD_TIMEOUT_SECONDS", mcp_runtime)
         self.assertIn("def test_mcp_server", mcp_runtime)
 

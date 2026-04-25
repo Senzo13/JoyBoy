@@ -539,7 +539,7 @@ class TerminalGuardrailsMixin:
         return all(tool in passive_tools for tool in recent)
 
     def _should_continue_write_after_guard(self, tool_name: str, executed_tools: List[Dict]) -> bool:
-        passive_guard_tools = {"list_files", "glob", "search", "tool_search", "write_todos", "bash"}
+        passive_guard_tools = {"list_files", "read_file", "glob", "search", "tool_search", "write_todos", "bash"}
         return (
             self.current_intent in {"write", "execute"}
             and tool_name in passive_guard_tools

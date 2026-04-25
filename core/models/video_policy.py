@@ -13,6 +13,7 @@ from typing import Any
 
 
 LOW_VRAM_LIMIT_GB = 10.0
+HIGH_END_VIDEO_LIMIT_GB = 48.0
 LOW_VRAM_SAFE_DEFAULT = "svd"
 MISSING_VIDEO_BACKEND_MODELS = set()
 LOW_VRAM_BLOCKED_MODELS = {
@@ -140,6 +141,14 @@ def _public_model_entry(
         "category": category,
         "supports_prompt": bool(meta.get("supports_prompt", False)),
         "supports_image": bool(meta.get("supports_image", False)),
+        "supports_t2v": model_supports_text_to_video(meta),
+        "supports_i2v": model_supports_image_to_video(meta),
+        "supports_continue": model_supports_continuation(meta),
+        "supports_audio_native": bool(meta.get("supports_audio_native", False)),
+        "continuation_strategy": meta.get("continuation_strategy", "last_frame_i2v"),
+        "recommended_for": list(meta.get("recommended_for", [])),
+        "min_vram_gb": meta.get("min_vram_gb"),
+        "min_ram_gb": meta.get("min_ram_gb"),
         "default_frames": int(meta.get("default_frames", 32)),
         "default_steps": int(meta.get("default_steps", 20)),
         "default_fps": int(meta.get("default_fps", 8)),
@@ -193,14 +202,36 @@ def _low_vram_category(model_id: str, meta: dict[str, Any]) -> str:
     return "try"
 
 
-def _normal_vram_category(meta: dict[str, Any]) -> str:
+def _normal_vram_category(model_id: str, meta: dict[str, Any], *, high_end: bool = False) -> str:
     if meta.get("hidden"):
         return "hidden"
     if meta.get("backend_status") == "adapter_required":
         return "unavailable"
+    if high_end and "high_end_video" in set(meta.get("recommended_for", [])):
+        return "recommended"
     if meta.get("experimental_low_vram"):
         return "try"
     return "compatible"
+
+
+def is_high_end_video_machine(vram_gb: float | int | None) -> bool:
+    return bool(vram_gb and float(vram_gb) >= HIGH_END_VIDEO_LIMIT_GB)
+
+
+def model_supports_text_to_video(meta: dict[str, Any] | None) -> bool:
+    return bool((meta or {}).get("supports_t2v", False))
+
+
+def model_supports_image_to_video(meta: dict[str, Any] | None) -> bool:
+    meta = meta or {}
+    return bool(meta.get("supports_i2v", meta.get("supports_image", False)))
+
+
+def model_supports_continuation(meta: dict[str, Any] | None) -> bool:
+    meta = meta or {}
+    if "supports_continue" in meta:
+        return bool(meta.get("supports_continue"))
+    return model_supports_image_to_video(meta)
 
 
 def build_video_model_catalog(
@@ -216,6 +247,7 @@ def build_video_model_catalog(
     this catalog and only renders the models the backend marks as visible.
     """
     low_vram = is_low_vram(vram_gb)
+    high_end = is_high_end_video_machine(vram_gb)
     experimental_enabled = allow_experimental_video(allow_experimental)
     visible: list[dict[str, Any]] = []
     advanced: list[dict[str, Any]] = []
@@ -224,7 +256,7 @@ def build_video_model_catalog(
     for model_id, meta in video_models.items():
         if low_vram:
             meta = _apply_low_vram_defaults(model_id, meta)
-        category = _low_vram_category(model_id, meta) if low_vram else _normal_vram_category(meta)
+        category = _low_vram_category(model_id, meta) if low_vram else _normal_vram_category(model_id, meta, high_end=high_end)
         entry = _public_model_entry(
             model_id,
             meta,
@@ -248,13 +280,22 @@ def build_video_model_catalog(
     advanced.sort(key=lambda item: item["name"].lower())
     roadmap.sort(key=lambda item: item["name"].lower())
 
-    default_model = LOW_VRAM_SAFE_DEFAULT if low_vram else (visible[0]["id"] if visible else LOW_VRAM_SAFE_DEFAULT)
+    if low_vram:
+        default_model = LOW_VRAM_SAFE_DEFAULT
+    elif high_end:
+        high_end_preference = ("wan-native-14b", "wan22", "ltx2", "framepack", "hunyuan")
+        visible_ids = {item["id"] for item in visible}
+        default_model = next((model_id for model_id in high_end_preference if model_id in visible_ids), None)
+        default_model = default_model or (visible[0]["id"] if visible else LOW_VRAM_SAFE_DEFAULT)
+    else:
+        default_model = visible[0]["id"] if visible else LOW_VRAM_SAFE_DEFAULT
     if not any(item["id"] == default_model for item in visible) and visible:
         default_model = visible[0]["id"]
 
     return {
         "vram_gb": float(vram_gb or 0),
         "low_vram": low_vram,
+        "high_end_video": high_end,
         "default_model": default_model,
         "models": visible,
         "advanced_models": advanced,

@@ -75,10 +75,37 @@ def generate_video_endpoint():
         quality = data.get('quality', '720p')
         refine_passes = int(data.get('refine_passes', 0))
         allow_experimental_video = bool(data.get('allow_experimental_video', False))
+        source_video_session_id = (
+            data.get('source_video_session_id')
+            or data.get('videoSessionId')
+            or data.get('video_session_id')
+        )
+        try:
+            anchor_frame_index = int(data.get('anchor_frame_index')) if data.get('anchor_frame_index') is not None else None
+        except (TypeError, ValueError):
+            anchor_frame_index = None
+        continuation_prompt = str(data.get('continuation_prompt') or '').strip()
+        analyze_video = data.get('analyze_video', True) is not False
+        video_analysis_model = str(data.get('video_analysis_model') or '').strip() or None
+        audio_engine = str(data.get('audio_engine') or ('mmaudio' if add_audio else 'auto')).strip() or 'auto'
+        audio_prompt = str(data.get('audio_prompt') or '').strip()
 
         # Politique runtime: evite les backends connus comme instables en low VRAM.
         from core.models import VIDEO_MODELS as _VM, VRAM_GB
-        from core.models.video_policy import get_runtime_video_defaults, is_low_vram, resolve_video_model_for_runtime
+        from core.models.video_policy import (
+            get_runtime_video_defaults,
+            is_low_vram,
+            model_supports_continuation,
+            model_supports_text_to_video,
+            resolve_video_model_for_runtime,
+        )
+        from core.generation.video_sessions import (
+            analyze_video_session,
+            build_continuation_prompt,
+            find_latest_video_session,
+            get_anchor_image,
+            load_video_session,
+        )
 
         model_policy = resolve_video_model_for_runtime(
             video_model,
@@ -110,10 +137,58 @@ def generate_video_endpoint():
             num_steps = data.get('num_steps', default_steps)
             fps = data.get('fps', default_fps)
 
+        source_video_session = None
+        continuation_context = {}
+        analysis_summary = {}
+        if continue_from_last:
+            if source_video_session_id:
+                source_video_session = load_video_session(source_video_session_id)
+            elif chat_id:
+                source_video_session = find_latest_video_session(chat_id)
+
+            if source_video_session:
+                if not model_supports_continuation(_model_defaults):
+                    return validation_error('Ce modele video ne supporte pas la continuation depuis une video source')
+                anchor_image = get_anchor_image(source_video_session, anchor_frame_index)
+                if anchor_image is None:
+                    return validation_error('Impossible de charger la frame d ancrage de cette video')
+                user_continuation = continuation_prompt or prompt
+                if analyze_video:
+                    analysis_summary = analyze_video_session(
+                        source_video_session,
+                        user_prompt=user_continuation,
+                        model=video_analysis_model,
+                    )
+                prompt = build_continuation_prompt(
+                    source_video_session.get('final_prompt') or source_video_session.get('prompt') or '',
+                    user_continuation,
+                    analysis_summary,
+                )
+                if not audio_prompt:
+                    audio_prompt = (
+                        analysis_summary.get('audio_prompt')
+                        or user_continuation
+                        or source_video_session.get('final_prompt')
+                        or source_video_session.get('prompt')
+                        or ''
+                    )
+                image_b64 = None
+                continuation_context = {
+                    "source_session_id": source_video_session.get("id"),
+                    "source_video_path": source_video_session.get("video_path"),
+                    "source_frames": source_video_session.get("frames") or 0,
+                    "source_keyframes": source_video_session.get("keyframes") or [],
+                    "anchor_frame_index": anchor_frame_index,
+                    "continuation_prompt": user_continuation,
+                    "analysis_summary": analysis_summary,
+                    "anchor_image": anchor_image,
+                }
+            elif continuation_prompt and not prompt:
+                prompt = continuation_prompt
+
         # T2V mode: allow no image for models that support it
-        t2v_models = ("wan22-5b", "fastwan", "wan-native-5b", "wan22-t2v-14b")
         if not image_b64 and not continue_from_last:
-            if video_model not in t2v_models:
+            if not model_supports_text_to_video(_model_defaults):
                 return validation_error('Image requise (ce modele ne supporte pas T2V)')
             else:
                 print(f"  [T2V MODE] Generation sans image avec {video_model}")
@@ -130,7 +205,9 @@ def generate_video_endpoint():
         print(f"  Quality:  {quality}")
         print(f"  Steps:    {num_steps} | FPS: {fps}")
         print(f"  Continue: {continue_from_last}")
+        print(f"  SourceID: {source_video_session.get('id') if source_video_session else '-'}")
         print(f"  Audio:    {add_audio}")
+        print(f"  AudioEng: {audio_engine}")
         print(f"  FaceRest: {face_restore}")
         print(f"  Refine:   {refine_passes} passes")
         print(f"  Image:    {'OUI (' + str(len(image_b64) // 1024) + 'KB)' if image_b64 else 'NON (T2V mode)'}")
@@ -162,6 +239,8 @@ def generate_video_endpoint():
                 "steps": num_steps,
                 "fps": fps,
                 "add_audio": add_audio,
+                "audio_engine": audio_engine,
+                "source_video_session_id": source_video_session.get("id") if source_video_session else None,
                 "face_restore": face_restore,
             },
         )
@@ -187,7 +266,7 @@ def generate_video_endpoint():
                 job_manager.cancel(generation_id)
                 return cancelled_response()
 
-            img = base64_to_pil(image_b64) if image_b64 else None
+            img = continuation_context.get("anchor_image") or (base64_to_pil(image_b64) if image_b64 else None)
             pipe = mgr.get_pipeline('video')
             upscale_pipe = mgr.get_pipeline('video_upscale')
             job_manager.update(generation_id, phase="generating", progress=12, message="Génération vidéo en cours")
@@ -208,6 +287,9 @@ def generate_video_endpoint():
                 quality=quality,
                 face_restore=face_restore,
                 refine_passes=refine_passes,
+                continuation_context=continuation_context,
+                audio_engine=audio_engine,
+                audio_prompt=audio_prompt,
                 release_pipe_before_export=mgr._unload_video if video_model in ("framepack", "framepack-fast") else None,
             )
 
@@ -244,6 +326,11 @@ def generate_video_endpoint():
                     warning=video_policy_warning,
                     requestedModel=model_policy.requested_model,
                     effectiveModel=video_model,
+                    videoSessionId=video_info.get('video_session_id'),
+                    sourceVideoSessionId=video_info.get('source_video_session_id'),
+                    continuationAnchors=video_info.get('continuation_anchors') or [],
+                    analysisSummary=video_info.get('analysis_summary') or analysis_summary,
+                    audioEngine=audio_engine,
                 )
             else:
                 print(f"[VIDEO] Erreur: {video_format}")
@@ -397,3 +484,25 @@ def serve_video(chat_id):
         return response
 
     return jsonify({'error': 'Video not found'}), 404
+
+
+@video_bp.route('/videos/session/<session_id>')
+def serve_video_session(session_id):
+    """Sert une video exacte depuis une session de continuation."""
+    from flask import send_from_directory, make_response
+    from pathlib import Path
+    from core.generation.video_sessions import load_video_session
+
+    session = load_video_session(session_id)
+    if not session:
+        return jsonify({'error': 'Video session not found'}), 404
+
+    video_path = Path(session.get('video_path') or '')
+    if not video_path.exists() or video_path.suffix.lower() not in {'.mp4', '.webm', '.gif'}:
+        return jsonify({'error': 'Video file not found'}), 404
+
+    response = make_response(send_from_directory(video_path.parent, video_path.name))
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response

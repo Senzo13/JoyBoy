@@ -625,7 +625,7 @@ def hardware_info():
         vram_gb = round(torch.cuda.get_device_properties(0).total_memory / (1024**3), 1)
 
         # Déterminer le niveau VRAM (du plus haut au plus bas)
-        for level in ["extreme", "ultra", "very_high", "high", "medium", "low"]:
+        for level in ["high_end", "extreme", "ultra", "very_high", "high", "medium", "low"]:
             if level in VRAM_THRESHOLDS and vram_gb >= VRAM_THRESHOLDS[level]:
                 vram_level = level
                 break

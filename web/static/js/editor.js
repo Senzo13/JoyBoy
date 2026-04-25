@@ -1495,6 +1495,7 @@ async function generateVideoFromEdit() {
             num_steps: numSteps,
             fps: videoDefaults.fps,
             add_audio: userSettings.videoAudio === true,
+            audio_engine: userSettings.videoAudioEngine || 'auto',
             face_restore: userSettings.faceRestore || 'off',
             chat_model: userSettings.chatModel || 'qwen3.5:2b',
             chatId: typeof currentChatId !== 'undefined' ? currentChatId : null,
@@ -1510,10 +1511,14 @@ async function generateVideoFromEdit() {
         if (data?.success && data.video) {
             const videoFormat = data.format || 'mp4';
             if (typeof _lastVideoContext !== 'undefined') {
-                _lastVideoContext.prompt = prompt;
-                _lastVideoContext.canContinue = data.canContinue;
+                if (typeof updateLastVideoContextFromResult === 'function') {
+                    updateLastVideoContextFromResult(data, prompt, sourceImage, currentChatId);
+                } else {
+                    _lastVideoContext.prompt = prompt;
+                    _lastVideoContext.canContinue = data.canContinue;
+                }
             }
-            replaceVideoSkeletonWithReal(null, videoFormat, genTime, currentChatId);
+            replaceVideoSkeletonWithReal(null, videoFormat, genTime, currentChatId, data);
         } else {
             replaceVideoSkeletonWithError(data?.error || 'Erreur génération vidéo');
         }

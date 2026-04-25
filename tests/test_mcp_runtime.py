@@ -152,7 +152,23 @@ class McpRuntimeConfigTests(unittest.TestCase):
     def test_runtime_templates_include_public_ready_connectors(self) -> None:
         templates = self.mcp_runtime.get_mcp_server_templates()
 
-        for name in ("notion", "stripe", "sentry", "circleci", "google-drive"):
+        for name in (
+            "notion",
+            "stripe",
+            "sentry",
+            "circleci",
+            "google-drive",
+            "google-workspace-docs",
+            "google-workspace-sheets",
+            "google-workspace-slides",
+            "google-workspace-gmail",
+            "canva",
+            "slack",
+            "expo",
+            "remotion",
+            "life-science",
+            "market-research",
+        ):
             with self.subTest(name=name):
                 self.assertIn(name, templates)
                 self.assertFalse(templates[name]["enabled"])

@@ -1403,6 +1403,7 @@ async function generateVideoFromImage() {
             num_steps: numSteps,
             fps: videoDefaults.fps,
             add_audio: userSettings.videoAudio === true,
+            audio_engine: userSettings.videoAudioEngine || 'auto',
             face_restore: userSettings.faceRestore || 'off',
             chat_model: userSettings.chatModel || 'qwen3.5:2b',
             chatId: typeof currentChatId !== 'undefined' ? currentChatId : null,
@@ -1415,7 +1416,10 @@ async function generateVideoFromImage() {
 
         if (result.data?.success && result.data?.video) {
             const videoFormat = result.data.format || 'mp4';
-            replaceVideoSkeletonWithReal(null, videoFormat, genTime, currentChatId);
+            if (typeof updateLastVideoContextFromResult === 'function') {
+                updateLastVideoContextFromResult(result.data, '', sourceImage, currentChatId);
+            }
+            replaceVideoSkeletonWithReal(null, videoFormat, genTime, currentChatId, result.data);
         } else {
             replaceVideoSkeletonWithError(result.data?.error || 'Erreur génération vidéo');
         }
@@ -1465,7 +1469,7 @@ function addVideoSkeletonToChat(imageSrc, chatId = (typeof currentChatId !== 'un
  * Remplace le skeleton vidéo par la vraie vidéo
  * Utilise l'URL serveur pour la persistance (pas le base64)
  */
-function replaceVideoSkeletonWithReal(videoSrc, format, genTime, chatId) {
+function replaceVideoSkeletonWithReal(videoSrc, format, genTime, chatId, metadata = {}) {
     // Multiple generations can exist in one chat. Replace the newest active
     // video skeleton for this chat, not the first historical result from
     // another conversation.
@@ -1485,13 +1489,22 @@ function replaceVideoSkeletonWithReal(videoSrc, format, genTime, chatId) {
     const timeText = genTime ? `${Math.round(genTime / 1000)}s` : '';
 
     // Utiliser l'URL serveur pour la persistance (le fichier est sauvé sur le serveur)
-    const videoUrl = chatId ? `/videos/${chatId}` : videoSrc;
-    const downloadUrl = chatId ? `/videos/${chatId}` : videoSrc;
+    const metadataSessionId = metadata?.videoSessionId || metadata?.video_session_id || null;
+    const exactVideoUrl = metadataSessionId ? `/videos/session/${metadataSessionId}` : null;
+    const videoUrl = exactVideoUrl || (chatId ? `/videos/${chatId}` : videoSrc);
+    const downloadUrl = videoUrl;
 
     // Bouton Continuer si la continuation est dispo
+    if (typeof updateLastVideoContextFromResult === 'function' && metadata && Object.keys(metadata).length) {
+        updateLastVideoContextFromResult(metadata, metadata.prompt || '', null, chatId);
+    }
     const canContinue = typeof _lastVideoContext !== 'undefined' && _lastVideoContext.canContinue;
+    const videoSessionId = typeof _lastVideoContext !== 'undefined' ? _lastVideoContext.videoSessionId : null;
+    const keyframeRail = typeof buildVideoKeyframeRail === 'function' && typeof _lastVideoContext !== 'undefined'
+        ? buildVideoKeyframeRail(_lastVideoContext.anchors || [], videoSessionId)
+        : '';
     const continueBtn = canContinue ? `
-        <button class="video-control-btn" onclick="continueLastVideo()" title="Continuer la vidéo" style="display:flex;align-items:center;gap:4px;">
+        <button class="video-control-btn video-control-btn-wide" onclick="openVideoContinuationPanel({ videoSessionId: '${videoSessionId || ''}' })" title="Continuer la vidéo" style="display:flex;align-items:center;gap:4px;">
             <i data-lucide="play"></i> Continuer
         </button>
     ` : '';
@@ -1519,6 +1532,7 @@ function replaceVideoSkeletonWithReal(videoSrc, format, genTime, chatId) {
                         <a class="video-control-btn" href="${downloadUrl}" download="animation.mp4"><i data-lucide="download"></i></a>
                         ${continueBtn}
                     </div>
+                    ${keyframeRail}
                 </div>
                 <div class="generation-time">${timeText}</div>
             </div>

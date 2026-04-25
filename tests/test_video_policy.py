@@ -3,6 +3,7 @@ import unittest
 from unittest.mock import patch
 
 from core.models.video_policy import (
+    HIGH_END_VIDEO_LIMIT_GB,
     LOW_VRAM_SAFE_DEFAULT,
     build_video_model_catalog,
     get_runtime_video_defaults,
@@ -199,6 +200,41 @@ class VideoPolicyTests(unittest.TestCase):
         )
 
         self.assertEqual(defaults, {"default_frames": 60, "default_steps": 7, "default_fps": 12})
+
+    def test_high_end_catalog_promotes_local_video_models(self):
+        catalog = build_video_model_catalog(
+            {
+                "svd": {"name": "SVD", "supports_image": True},
+                "wan-native-14b": {
+                    "name": "Wan Native 14B",
+                    "supports_image": True,
+                    "supports_prompt": True,
+                    "supports_i2v": True,
+                    "supports_continue": True,
+                    "recommended_for": ["high_end_video"],
+                    "min_vram_gb": 24,
+                    "min_ram_gb": 96,
+                },
+                "ltx2": {
+                    "name": "LTX-2",
+                    "supports_image": True,
+                    "supports_prompt": True,
+                    "supports_t2v": True,
+                    "supports_continue": True,
+                    "supports_audio_native": True,
+                    "recommended_for": ["high_end_video", "audio_video"],
+                },
+            },
+            vram_gb=HIGH_END_VIDEO_LIMIT_GB,
+        )
+
+        by_id = {model["id"]: model for model in catalog["models"]}
+        self.assertTrue(catalog["high_end_video"])
+        self.assertEqual(catalog["default_model"], "wan-native-14b")
+        self.assertEqual(by_id["wan-native-14b"]["category"], "recommended")
+        self.assertTrue(by_id["wan-native-14b"]["supports_continue"])
+        self.assertTrue(by_id["ltx2"]["supports_t2v"])
+        self.assertTrue(by_id["ltx2"]["supports_audio_native"])
 
 
 if __name__ == "__main__":
