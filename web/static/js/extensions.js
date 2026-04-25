@@ -698,6 +698,23 @@ function renderExtensionsRuntimeSummary() {
     `;
 }
 
+function getMissingMcpRuntimePackages(runtime = getExtensionRuntime()) {
+    const packageState = runtime?.package_state || {};
+    return Object.entries(packageState)
+        .filter(([, available]) => available === false)
+        .map(([name]) => name);
+}
+
+function formatMcpRuntimeMissingMessage(runtime = getExtensionRuntime()) {
+    const missing = getMissingMcpRuntimePackages(runtime);
+    const packages = missing.length ? missing.join(', ') : extensionT('extensions.runtimeMissingUnknown', 'inconnus');
+    return extensionT(
+        'extensions.runtimeMissingPackagesHint',
+        'Runtime MCP incomplet : packages manquants : {packages}. Lance le setup complet/réparation puis rafraîchis JoyBoy.',
+        { packages }
+    );
+}
+
 function renderExtensionCard(item) {
     const state = getExtensionState(item);
     const actionLabel = state.label;
@@ -833,6 +850,20 @@ function renderExtensionConnectionControls(item, state) {
     const servers = getExtensionMcpServers();
     const server = servers[item.template] || null;
     const hasStoredConnection = extensionHasStoredConnection(item, server);
+    const runtime = getExtensionRuntime();
+    const missingPackages = getMissingMcpRuntimePackages(runtime);
+
+    if (runtime && runtime.package_available === false) {
+        return `
+            <div class="extension-modal-section extension-modal-connect">
+                <div class="extension-modal-section-title">${extensionEscapeHtml(extensionT('extensions.runtimeBlockedTitle', 'Runtime MCP à réparer'))}</div>
+                <div class="extension-modal-about">${extensionEscapeHtml(formatMcpRuntimeMissingMessage(runtime))}</div>
+                <button class="extension-modal-secondary compact" type="button" onclick="refreshExtensionsCatalogFromButton(this)">
+                    ${extensionEscapeHtml(extensionT('extensions.actions.refreshRuntime', 'Rafraîchir le runtime'))}
+                </button>
+            </div>
+        `;
+    }
 
     if (connection.mode === 'token') {
         const inputId = `extension-connection-token-${item.id}`;
@@ -1020,7 +1051,9 @@ async function testConnectedMcpExtension(item) {
     const result = await apiSettings.testMcpServer(item.template);
     const data = result.data || {};
     if (!result.ok || !data.success || Number(data.loaded_tool_count || 0) <= 0) {
-        const error = data.error || result.error || extensionT('extensions.connectTestFailed', 'Connexion MCP non validée.');
+        const error = data.package_available === false
+            ? formatMcpRuntimeMissingMessage(data)
+            : data.error || result.error || extensionT('extensions.connectTestFailed', 'Connexion MCP non validée.');
         throw new Error(error);
     }
     return data;

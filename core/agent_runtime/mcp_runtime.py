@@ -18,6 +18,8 @@ import inspect
 import json
 import logging
 import os
+import site
+import sys
 import threading
 from copy import deepcopy
 from dataclasses import dataclass, field
@@ -42,6 +44,8 @@ _MCP_LOCK = threading.Lock()
 _MCP_LOAD_CONDITION = threading.Condition(_MCP_LOCK)
 _MCP_LOADING = False
 _MCP_LOADING_SIGNATURE = ""
+_PYWIN32_PATHS_READY = False
+_PYWIN32_DLL_HANDLES: list[Any] = []
 DEFAULT_MCP_TOOL_LOAD_TIMEOUT_SECONDS = 45
 
 MCP_SERVER_TEMPLATES: dict[str, dict[str, Any]] = {
@@ -315,12 +319,53 @@ def _collect_env_placeholders(value: Any) -> list[str]:
     return ordered
 
 
+def _ensure_windows_pywin32_paths() -> None:
+    """Make pywin32 visible when it was installed after the process started."""
+    global _PYWIN32_PATHS_READY
+
+    if os.name != "nt" or _PYWIN32_PATHS_READY:
+        return
+
+    site_packages: list[str] = []
+    try:
+        site_packages.extend(site.getsitepackages())
+    except Exception:
+        pass
+    try:
+        site_packages.append(site.getusersitepackages())
+    except Exception:
+        pass
+
+    seen: set[str] = set()
+    for root in site_packages:
+        if not root or root in seen:
+            continue
+        seen.add(root)
+        for relative in ("win32", os.path.join("win32", "lib"), "Pythonwin", "pywin32_system32"):
+            candidate = os.path.join(root, relative)
+            if os.path.isdir(candidate) and candidate not in sys.path:
+                sys.path.append(candidate)
+        dll_dir = os.path.join(root, "pywin32_system32")
+        if os.path.isdir(dll_dir) and hasattr(os, "add_dll_directory"):
+            try:
+                _PYWIN32_DLL_HANDLES.append(os.add_dll_directory(dll_dir))
+            except OSError:
+                pass
+
+    _PYWIN32_PATHS_READY = True
+
+
 def _package_state() -> dict[str, bool]:
-    return {
-        "langchain_core": bool(importlib.util.find_spec("langchain_core")),
-        "langchain_mcp_adapters": bool(importlib.util.find_spec("langchain_mcp_adapters")),
-        "mcp": bool(importlib.util.find_spec("mcp")),
-    }
+    _ensure_windows_pywin32_paths()
+    importlib.invalidate_caches()
+    required_modules = [
+        "langchain_core",
+        "langchain_mcp_adapters",
+        "mcp",
+    ]
+    if os.name == "nt":
+        required_modules.append("pywintypes")
+    return {name: bool(importlib.util.find_spec(name)) for name in required_modules}
 
 
 def _config_signature(raw_servers: dict[str, Any]) -> str:

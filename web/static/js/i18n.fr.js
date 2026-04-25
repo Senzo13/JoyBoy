@@ -2013,6 +2013,9 @@ Object.assign(MESSAGES.fr, {
             runtimeEnabled: '{count} actifs',
             runtimeTools: '{count} tools',
             runtimeTemplates: '{count} templates',
+            runtimeMissingUnknown: 'inconnus',
+            runtimeBlockedTitle: 'Runtime MCP à réparer',
+            runtimeMissingPackagesHint: 'Runtime MCP incomplet : packages manquants : {packages}. Lance le setup complet/réparation puis rafraîchis JoyBoy.',
             emptyTitle: 'Aucune extension trouvée',
             emptyBody: 'Essaie un autre filtre ou une autre recherche.',
             installTitle: 'Installer {name}',
@@ -2067,6 +2070,7 @@ Object.assign(MESSAGES.fr, {
                 included: 'Inclus dans JoyBoy',
                 openAddons: 'Ouvrir les packs locaux',
                 openModels: 'Ouvrir les providers',
+                refreshRuntime: 'Rafraîchir le runtime',
                 comingSoon: 'À brancher via MCP custom',
             },
             capabilities: {

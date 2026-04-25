@@ -71,5 +71,6 @@ paramiko>=3.4.0
 langchain-core>=0.3.0
 langchain-mcp-adapters>=0.1.0
 mcp>=1.0.0
+pywin32>=306; platform_system == "Windows"
 starlette<0.48
 sse-starlette<3

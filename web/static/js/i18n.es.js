@@ -1747,6 +1747,9 @@ Object.assign(MESSAGES.es, {
             runtimeEnabled: '{count} activos',
             runtimeTools: '{count} tools',
             runtimeTemplates: '{count} templates',
+            runtimeMissingUnknown: 'desconocidos',
+            runtimeBlockedTitle: 'Runtime MCP por reparar',
+            runtimeMissingPackagesHint: 'Runtime MCP incompleto: paquetes faltantes: {packages}. Ejecuta setup/reparación completa y luego actualiza JoyBoy.',
             emptyTitle: 'No se encontró ninguna extensión',
             emptyBody: 'Prueba otro filtro u otra búsqueda.',
             installTitle: 'Instalar {name}',
@@ -1801,6 +1804,7 @@ Object.assign(MESSAGES.es, {
                 included: 'Incluido en JoyBoy',
                 openAddons: 'Abrir packs locales',
                 openModels: 'Abrir providers',
+                refreshRuntime: 'Actualizar runtime',
                 comingSoon: 'Conectar vía MCP custom',
             },
             capabilities: {

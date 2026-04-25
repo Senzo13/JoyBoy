@@ -2003,6 +2003,9 @@ Object.assign(MESSAGES.en, {
             runtimeEnabled: '{count} enabled',
             runtimeTools: '{count} tools',
             runtimeTemplates: '{count} templates',
+            runtimeMissingUnknown: 'unknown',
+            runtimeBlockedTitle: 'MCP runtime needs repair',
+            runtimeMissingPackagesHint: 'MCP runtime incomplete: missing packages: {packages}. Run full setup/repair, then refresh JoyBoy.',
             emptyTitle: 'No extension found',
             emptyBody: 'Try another filter or search term.',
             installTitle: 'Install {name}',
@@ -2057,6 +2060,7 @@ Object.assign(MESSAGES.en, {
                 included: 'Included in JoyBoy',
                 openAddons: 'Open local packs',
                 openModels: 'Open providers',
+                refreshRuntime: 'Refresh runtime',
                 comingSoon: 'Wire through custom MCP',
             },
             capabilities: {
