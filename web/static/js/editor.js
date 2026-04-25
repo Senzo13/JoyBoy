@@ -702,12 +702,20 @@ async function generateEdit() {
     if (!currentChatId) {
         await createNewChat();
     }
+    const editChatId = currentChatId;
 
     showChat();
 
     const displayPrompt = isGenerativeFill ? editT('editor.autoFillLabel', 'Remplissage auto') : prompt;
     // Passer le masque au skeleton pour l'afficher en overlay sur l'image originale
-    addSkeletonMessage(displayPrompt, savedEditImageSrc, true, maskDataUrl);
+    const editSkeletonId = addSkeletonMessage(
+        displayPrompt,
+        savedEditImageSrc,
+        true,
+        maskDataUrl,
+        editChatId,
+        { allowMultiple: true }
+    );
 
     // Activer le mode génération (bouton stop)
     isGenerating = true;
@@ -738,7 +746,7 @@ async function generateEdit() {
         stopPreviewPolling();
 
         if (result.aborted || currentController?.signal?.aborted) {
-            removeSkeletonMessage();
+            removeSkeletonMessage(editChatId, { skeletonId: editSkeletonId });
             return;
         }
 
@@ -747,16 +755,16 @@ async function generateEdit() {
         if (data?.success) {
             const newImage = 'data:image/png;base64,' + data.modified;
             const genTime = data.generationTime || null;
-            addMessage(displayPrompt, savedEditImageSrc, savedEditImageSrc, newImage, genTime);
+            addMessage(displayPrompt, savedEditImageSrc, savedEditImageSrc, newImage, genTime, editChatId, null, editSkeletonId);
         } else {
-            removeSkeletonMessage();
+            removeSkeletonMessage(editChatId, { skeletonId: editSkeletonId });
             Toast.error(editT('common.errorWithMessage', 'Erreur : {error}', {
                 error: data?.error || result.error || editT('common.unknownError', 'Erreur inconnue'),
             }));
         }
     } catch (err) {
         stopPreviewPolling();
-        removeSkeletonMessage();
+        removeSkeletonMessage(editChatId, { skeletonId: editSkeletonId });
         if (err.name !== 'AbortError') {
             Toast.error(editT('common.errorWithMessage', 'Erreur : {error}', { error: err.message }));
         }

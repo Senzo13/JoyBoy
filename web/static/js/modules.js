@@ -20,8 +20,10 @@ let signalAtlasLastInteractionAt = 0;
 let signalAtlasDeferredRefreshTimer = null;
 let signalAtlasPendingRefresh = false;
 let signalAtlasInteractionTrackingReady = false;
+let signalAtlasRefreshInFlight = false;
 const signalAtlasCompletionNotifiedAuditIds = new Set();
 const signalAtlasAnimatedScoreRingKeys = new Set();
+const auditProgressDisplayState = new Map();
 const SIGNALATLAS_SERP_PAGE_SIZE = 10;
 const SIGNALATLAS_INTERACTION_IDLE_MS = 1400;
 const SIGNALATLAS_DEFAULT_PAGE_BUDGET = 12;
@@ -74,6 +76,7 @@ let perfAtlasRefreshTimer = null;
 let perfAtlasOpenPickerId = null;
 let perfAtlasLaunchPending = false;
 let perfAtlasAdvancedVisible = false;
+let perfAtlasRefreshInFlight = false;
 const PERFATLAS_DEFAULT_PAGE_BUDGET = 8;
 const PERFATLAS_MAX_PAGE_BUDGET = 20;
 const PERFATLAS_UNLIMITED_PAGE_BUDGET = 'unlimited';
@@ -481,6 +484,11 @@ function perfAtlasProviderSummary(provider) {
         return status === 'configured' || status === 'confirmed'
             ? moduleT('perfatlas.providerSummaryPagespeedReady', 'PageSpeed Insights can add remote Lighthouse runs and opportunity hints when local lab probes are limited.')
             : moduleT('perfatlas.providerSummaryPagespeedMissing', 'Add PAGESPEED_API_KEY or GOOGLE_API_KEY to stabilize PageSpeed Insights quota and richer lab checks.');
+    }
+    if (id === 'webpagetest') {
+        return status === 'configured' || status === 'confirmed'
+            ? moduleT('perfatlas.providerSummaryWebPageTestReady', 'WebPageTest is configured for future deep-lab waterfall and filmstrip enrichment.')
+            : moduleT('perfatlas.providerSummaryWebPageTestMissing', 'Add WEBPAGETEST_API_KEY to prepare deep-lab waterfall, filmstrip, and location-based runs.');
     }
     if (id === 'vercel' || id === 'netlify' || id === 'cloudflare') {
         return perfAtlasOwnerConnectorSummary(provider);
@@ -1339,6 +1347,24 @@ function signalAtlasIsActiveJob(job) {
     return !['done', 'error', 'cancelled'].includes(String(job?.status || '').toLowerCase());
 }
 
+function signalAtlasIsTerminalAuditStatus(status) {
+    return ['done', 'error', 'cancelled'].includes(String(status || '').trim().toLowerCase());
+}
+
+function signalAtlasKnownAuditStatus(auditId) {
+    const cleanAuditId = String(auditId || '').trim();
+    if (!cleanAuditId) return '';
+    const audit = (signalAtlasAudits || []).find(item => String(item?.id || '') === cleanAuditId);
+    const summaryStatus = String(audit?.status || '').trim().toLowerCase();
+    if (String(signalAtlasCurrentAudit?.id || '') === cleanAuditId) {
+        const currentStatus = String(signalAtlasCurrentAudit?.status || '').trim().toLowerCase();
+        if (signalAtlasIsTerminalAuditStatus(currentStatus)) return currentStatus;
+        if (signalAtlasIsTerminalAuditStatus(summaryStatus)) return summaryStatus;
+        return currentStatus || summaryStatus;
+    }
+    return summaryStatus;
+}
+
 function signalAtlasRuntimeJobs() {
     if (typeof runtimeJobsCache === 'undefined' || !Array.isArray(runtimeJobsCache)) return [];
     return runtimeJobsCache.filter(job => job?.metadata?.module_id === 'signalatlas');
@@ -1346,7 +1372,7 @@ function signalAtlasRuntimeJobs() {
 
 function activeSignalAtlasJobs() {
     return signalAtlasRuntimeJobs()
-        .filter(signalAtlasIsActiveJob)
+        .filter(job => signalAtlasIsActiveJob(job) && !signalAtlasIsTerminalAuditStatus(signalAtlasKnownAuditStatus(job?.metadata?.audit_id)))
         .sort((left, right) => String(right?.updated_at || '').localeCompare(String(left?.updated_at || '')));
 }
 
@@ -1399,7 +1425,107 @@ function signalAtlasJobStartedAt(job) {
     return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
-function signalAtlasProgressEtaLabel(progressState, audit = null) {
+function auditProgressKey(namespace, progressState) {
+    const job = progressState?.job || progressState || {};
+    const auditId = String(progressState?.auditId || job?.metadata?.audit_id || '').trim();
+    const jobId = String(job?.id || job?.job_id || job?.task_id || '').trim();
+    return `${namespace}:${auditId || jobId || 'launch'}`;
+}
+
+function auditProgressRawPhase(progressState) {
+    return String(progressState?.job?.phase || progressState?.status || '').trim().toLowerCase();
+}
+
+function auditProgressPhaseRange(namespace, phase) {
+    const clean = String(phase || '').toLowerCase();
+    if (namespace === 'perfatlas') {
+        if (clean === 'queued') return [3, 7];
+        if (clean === 'crawl') return [7, 30];
+        if (clean === 'extract') return [30, 40];
+        if (clean === 'field') return [40, 52];
+        if (clean === 'lab') return [52, 72];
+        if (clean === 'owner') return [72, 78];
+        if (clean === 'score') return [78, 84];
+        if (clean === 'ai' || clean === 'report') return [84, 98.6];
+        if (clean === 'cancelling') return [90, 99];
+        return [8, 90];
+    }
+    if (clean === 'queued') return [3, 7];
+    if (clean === 'crawl') return [7, 48];
+    if (clean === 'render') return [48, 62];
+    if (clean === 'extract') return [62, 72];
+    if (clean === 'score') return [72, 80];
+    if (clean === 'report') return [80, 84];
+    if (clean === 'ai') return [84, 98.6];
+    if (clean === 'cancelling') return [90, 99];
+    return [8, 90];
+}
+
+function auditProgressPhaseDurationSeconds(namespace, phase, audit = null) {
+    const clean = String(phase || '').toLowerCase();
+    const estimate = namespace === 'perfatlas'
+        ? perfAtlasEstimateSecondsForAudit(audit)
+        : signalAtlasEstimateSecondsForAudit(audit);
+    const base = Math.max(35, Number(estimate) || 90);
+    if (clean === 'queued') return 10;
+    if (clean === 'crawl') return Math.max(18, base * (namespace === 'perfatlas' ? 0.24 : 0.36));
+    if (clean === 'render') return Math.max(20, base * 0.16);
+    if (clean === 'extract') return Math.max(12, base * 0.09);
+    if (clean === 'field') return Math.max(12, base * 0.10);
+    if (clean === 'lab') return Math.max(28, base * 0.30);
+    if (clean === 'owner') return Math.max(10, base * 0.08);
+    if (clean === 'score') return Math.max(10, base * 0.08);
+    if (clean === 'report') return Math.max(12, base * 0.08);
+    if (clean === 'ai') return Math.max(55, base * 0.34);
+    return Math.max(20, base * 0.18);
+}
+
+function auditDisplayProgress(namespace, progressState, audit = null, launchPending = false) {
+    if (!progressState && !launchPending) return 0;
+    if (launchPending && !progressState) return 4;
+    const raw = signalAtlasJobProgress(progressState);
+    const status = String(progressState?.status || '').toLowerCase();
+    const key = auditProgressKey(namespace, progressState);
+    if (!signalAtlasIsLiveProgressStatus(status) || raw >= 100) {
+        auditProgressDisplayState.delete(key);
+        return raw;
+    }
+    const phase = auditProgressRawPhase(progressState) || 'running';
+    const [start, end] = auditProgressPhaseRange(namespace, phase);
+    const now = Date.now();
+    const previous = auditProgressDisplayState.get(key);
+    const phaseStartedAt = previous?.phase === phase ? previous.phaseStartedAt : now;
+    const duration = auditProgressPhaseDurationSeconds(namespace, phase, audit);
+    const elapsed = Math.max(0, (now - phaseStartedAt) / 1000);
+    const ratio = Math.max(0, Math.min(0.96, elapsed / Math.max(1, duration)));
+    const eased = 1 - Math.pow(1 - ratio, 2);
+    const phaseProgress = start + (end - start) * eased;
+    const floor = previous?.phase === phase ? Number(previous.value) || start : start;
+    const value = Math.max(floor, phaseProgress);
+    const capped = Math.min(raw >= 99 ? 99 : end, value);
+    auditProgressDisplayState.set(key, { phase, phaseStartedAt, value: capped, updatedAt: now });
+    return Math.max(0, Math.min(99, Math.floor(capped)));
+}
+
+function auditProgressRemainingSeconds(namespace, progressState, audit = null, displayProgress = null) {
+    if (!progressState) return namespace === 'perfatlas'
+        ? perfAtlasEstimateSecondsForAudit(audit)
+        : signalAtlasEstimateSecondsForAudit(audit);
+    const phase = auditProgressRawPhase(progressState) || 'running';
+    const key = auditProgressKey(namespace, progressState);
+    const state = auditProgressDisplayState.get(key);
+    const duration = auditProgressPhaseDurationSeconds(namespace, phase, audit);
+    const elapsed = state?.phase === phase ? Math.max(0, (Date.now() - state.phaseStartedAt) / 1000) : 0;
+    const phaseRemaining = Math.max(8, duration - elapsed);
+    const estimate = namespace === 'perfatlas'
+        ? perfAtlasEstimateSecondsForAudit(audit)
+        : signalAtlasEstimateSecondsForAudit(audit);
+    const progress = Math.max(1, Number(displayProgress) || signalAtlasJobProgress(progressState));
+    const globalRemaining = estimate * ((99 - progress) / Math.max(progress, 1));
+    return Math.max(8, Math.min(estimate * 1.8, Math.max(phaseRemaining, globalRemaining)));
+}
+
+function signalAtlasProgressEtaLabel(progressState, audit = null, displayProgress = null) {
     const status = String(progressState?.status || '').toLowerCase();
     if (!progressState && signalAtlasLaunchPending) {
         return moduleT('signalatlas.etaInitial', 'durée estimée {duration}', {
@@ -1407,17 +1533,13 @@ function signalAtlasProgressEtaLabel(progressState, audit = null) {
         });
     }
     if (!progressState || !signalAtlasIsLiveProgressStatus(status)) return '';
-    const progress = signalAtlasJobProgress(progressState);
+    const progress = Number.isFinite(Number(displayProgress)) ? Number(displayProgress) : signalAtlasJobProgress(progressState);
     if (progress >= 96) return moduleT('signalatlas.etaFinalizing', 'finalisation');
-    const startedAt = signalAtlasJobStartedAt(progressState.job);
-    if (startedAt && progress >= 6) {
-        const elapsedSeconds = Math.max(1, (Date.now() - startedAt.getTime()) / 1000);
-        const remainingSeconds = elapsedSeconds * ((100 - progress) / Math.max(progress, 1));
-        if (Number.isFinite(remainingSeconds) && remainingSeconds > 0) {
-            return moduleT('signalatlas.etaRemaining', 'reste {duration}', {
-                duration: signalAtlasFormatDuration(Math.min(remainingSeconds, signalAtlasEstimateSecondsForAudit(audit) * 1.8)),
-            });
-        }
+    const remainingSeconds = auditProgressRemainingSeconds('signalatlas', progressState, audit, progress);
+    if (Number.isFinite(remainingSeconds) && remainingSeconds > 0) {
+        return moduleT('signalatlas.etaRemaining', 'reste {duration}', {
+            duration: signalAtlasFormatDuration(remainingSeconds),
+        });
     }
     return moduleT('signalatlas.etaInitial', 'durée estimée {duration}', {
         duration: signalAtlasFormatDuration(signalAtlasEstimateSecondsForAudit(audit)),
@@ -1534,6 +1656,14 @@ function signalAtlasProgressSupportCopy(progressState, fallbackHint = '') {
 
 function signalAtlasAuditProgressState(audit) {
     const auditId = typeof audit === 'string' ? audit : audit?.id;
+    const localStatus = String((typeof audit === 'object' && audit?.status) || '').trim().toLowerCase();
+    const resolvedStatus = signalAtlasKnownAuditStatus(auditId);
+    const knownStatus = signalAtlasIsTerminalAuditStatus(resolvedStatus)
+        ? resolvedStatus
+        : (localStatus || resolvedStatus);
+    if (signalAtlasIsTerminalAuditStatus(knownStatus)) {
+        return null;
+    }
     const liveJob = auditId ? activeSignalAtlasJobForAudit(auditId) : null;
     if (liveJob) {
         return {
@@ -1545,7 +1675,7 @@ function signalAtlasAuditProgressState(audit) {
             message: signalAtlasJobMessage(liveJob),
         };
     }
-    const currentStatus = String((typeof audit === 'object' && audit?.status) || '').toLowerCase();
+    const currentStatus = knownStatus;
     if (currentStatus === 'running' || currentStatus === 'queued') {
         return {
             job: null,
@@ -2017,6 +2147,7 @@ function renderAuditProgressBanner({
     namespace,
     progressState,
     launchPending = false,
+    displayProgress = null,
     targetLabel = '',
     statusLabel,
     supportCopy,
@@ -2025,7 +2156,9 @@ function renderAuditProgressBanner({
     etaLabel = '',
 }) {
     if (!progressState && !launchPending) return '';
-    const progress = launchPending && !progressState ? 4 : signalAtlasJobProgress(progressState);
+    const progress = Number.isFinite(Number(displayProgress))
+        ? Math.max(0, Math.min(100, Math.round(Number(displayProgress))))
+        : launchPending && !progressState ? 4 : signalAtlasJobProgress(progressState);
     const phase = launchPending && !progressState ? launchingLabel : progressState.phase;
     const message = launchPending && !progressState ? launchingMessage : progressState.message;
     const liveStatus = launchPending && !progressState
@@ -2061,16 +2194,18 @@ function renderAuditProgressBanner({
 }
 
 function renderSignalAtlasProgressBanner(progressState, targetLabel = '') {
+    const displayProgress = auditDisplayProgress('signalatlas', progressState, signalAtlasCurrentAudit, signalAtlasLaunchPending);
     return renderAuditProgressBanner({
         namespace: 'signalatlas',
         progressState,
         launchPending: signalAtlasLaunchPending,
+        displayProgress,
         targetLabel,
         statusLabel: signalAtlasStatusLabel,
         supportCopy: signalAtlasProgressSupportCopy(progressState, targetLabel),
         launchingLabel: moduleT('signalatlas.launching', 'Lancement'),
         launchingMessage: moduleT('signalatlas.launchingAudit', 'Démarrage du runtime d’audit...'),
-        etaLabel: signalAtlasProgressEtaLabel(progressState, signalAtlasCurrentAudit),
+        etaLabel: signalAtlasProgressEtaLabel(progressState, signalAtlasCurrentAudit, displayProgress),
     });
 }
 
@@ -2349,6 +2484,9 @@ async function loadSignalAtlasAudit(auditId, options = {}) {
         signalAtlasSerpPage = 1;
     }
     signalAtlasCurrentAudit = result.data.audit;
+    if (signalAtlasIsTerminalAuditStatus(signalAtlasCurrentAudit.status)) {
+        clearSignalAtlasRuntimeJobsForAudit(auditId);
+    }
     const existing = signalAtlasAudits.findIndex(item => item.id === auditId);
     const summaryCard = summarizeSignalAtlasAudit(signalAtlasCurrentAudit);
     if (existing >= 0) signalAtlasAudits.splice(existing, 1, summaryCard);
@@ -2462,6 +2600,9 @@ async function loadPerfAtlasAudit(auditId, options = {}) {
     }
     perfAtlasCurrentAuditId = auditId;
     perfAtlasCurrentAudit = result.data.audit;
+    if (perfAtlasIsTerminalStatus(perfAtlasCurrentAudit.status)) {
+        clearPerfAtlasRuntimeJobsForAudit(auditId);
+    }
     const existing = perfAtlasAudits.findIndex(item => item.id === auditId);
     const summaryCard = summarizePerfAtlasAudit(perfAtlasCurrentAudit);
     if (existing >= 0) perfAtlasAudits.splice(existing, 1, summaryCard);
@@ -2533,12 +2674,36 @@ function seedAuditModuleRuntimeJob(job, moduleId, fallbackAuditId = '', launchMe
     if (typeof renderRuntimeJobs === 'function') renderRuntimeJobs();
 }
 
+function clearSignalAtlasRuntimeJobsForAudit(auditId) {
+    const cleanAuditId = String(auditId || '').trim();
+    if (!cleanAuditId || typeof runtimeJobsCache === 'undefined' || !Array.isArray(runtimeJobsCache)) return;
+    const before = runtimeJobsCache.length;
+    runtimeJobsCache = runtimeJobsCache.filter(job =>
+        job?.metadata?.module_id !== 'signalatlas'
+        || String(job?.metadata?.audit_id || '') !== cleanAuditId
+        || !signalAtlasIsActiveJob(job)
+    );
+    if (runtimeJobsCache.length !== before && typeof renderRuntimeJobs === 'function') renderRuntimeJobs();
+}
+
 function seedSignalAtlasRuntimeJob(job, fallbackAuditId = '') {
     seedAuditModuleRuntimeJob(job, 'signalatlas', fallbackAuditId, moduleT('signalatlas.launchingAudit', 'Démarrage du runtime d’audit...'));
 }
 
 function seedPerfAtlasRuntimeJob(job, fallbackAuditId = '') {
     seedAuditModuleRuntimeJob(job, 'perfatlas', fallbackAuditId, moduleT('perfatlas.launchingAudit', 'Starting the performance runtime...'));
+}
+
+function clearPerfAtlasRuntimeJobsForAudit(auditId) {
+    const cleanAuditId = String(auditId || '').trim();
+    if (!cleanAuditId || typeof runtimeJobsCache === 'undefined' || !Array.isArray(runtimeJobsCache)) return;
+    const before = runtimeJobsCache.length;
+    runtimeJobsCache = runtimeJobsCache.filter(job =>
+        job?.metadata?.module_id !== 'perfatlas'
+        || String(job?.metadata?.audit_id || '') !== cleanAuditId
+        || !signalAtlasIsActiveJob(job)
+    );
+    if (runtimeJobsCache.length !== before && typeof renderRuntimeJobs === 'function') renderRuntimeJobs();
 }
 
 function signalAtlasStatusLabel(status) {
@@ -2574,10 +2739,76 @@ function perfAtlasCurrentProfiles() {
     return auditModuleCurrentProfiles(perfAtlasModelContext);
 }
 
+function perfAtlasEstimateSecondsForAudit(audit = null) {
+    const options = audit?.options || perfAtlasDraft || {};
+    const metadata = audit?.metadata || {};
+    const metadataEstimate = Number(metadata.estimated_seconds);
+    if (Number.isFinite(metadataEstimate) && metadataEstimate > 0) return metadataEstimate;
+    const maxPages = perfAtlasResolvedPageBudget(options.max_pages ?? perfAtlasDraft.max_pages, PERFATLAS_DEFAULT_PAGE_BUDGET);
+    const aiLevel = String(metadata.ai?.level || perfAtlasDraft.level || 'basic_summary').toLowerCase();
+    const crawlSeconds = 10 + Math.min(maxPages, PERFATLAS_MAX_PAGE_BUDGET) * 4;
+    const fieldSeconds = 8;
+    const labProbeRuns = maxPages <= 3 ? 1 : maxPages <= 8 ? 3 : 7;
+    const labSeconds = labProbeRuns * 10;
+    const ownerSeconds = 6;
+    const aiSeconds = aiLevel === 'no_ai'
+        ? 0
+        : aiLevel === 'ai_remediation_pack'
+            ? 70
+            : aiLevel === 'full_expert_analysis'
+                ? 45
+                : 18;
+    return Math.max(35, Math.min(900, crawlSeconds + fieldSeconds + labSeconds + ownerSeconds + aiSeconds));
+}
+
+function perfAtlasProgressEtaLabel(progressState, audit = null, displayProgress = null) {
+    const status = String(progressState?.status || '').toLowerCase();
+    if (!progressState && perfAtlasLaunchPending) {
+        return moduleT('perfatlas.etaInitial', 'estimated {duration}', {
+            duration: signalAtlasFormatDuration(perfAtlasEstimateSecondsForAudit(audit)),
+        });
+    }
+    if (!progressState || !signalAtlasIsLiveProgressStatus(status)) return '';
+    const progress = Number.isFinite(Number(displayProgress)) ? Number(displayProgress) : signalAtlasJobProgress(progressState);
+    if (progress >= 96) return moduleT('perfatlas.etaFinalizing', 'finalizing');
+    const remainingSeconds = auditProgressRemainingSeconds('perfatlas', progressState, audit, progress);
+    if (Number.isFinite(remainingSeconds) && remainingSeconds > 0) {
+        return moduleT('perfatlas.etaRemaining', 'remaining {duration}', {
+            duration: signalAtlasFormatDuration(remainingSeconds),
+        });
+    }
+    return moduleT('perfatlas.etaInitial', 'estimated {duration}', {
+        duration: signalAtlasFormatDuration(perfAtlasEstimateSecondsForAudit(audit)),
+    });
+}
+
 function activePerfAtlasJobs() {
     return activeAuditModuleJobs('perfatlas')
-        .filter(job => String(job?.metadata?.audit_id || '').trim())
+        .filter(job => {
+            const auditId = String(job?.metadata?.audit_id || '').trim();
+            return auditId && !perfAtlasIsTerminalStatus(perfAtlasKnownAuditStatus(auditId));
+        })
         .sort((left, right) => String(right?.updated_at || '').localeCompare(String(left?.updated_at || '')));
+}
+
+function perfAtlasIsTerminalStatus(status) {
+    return ['done', 'error', 'cancelled'].includes(String(status || '').trim().toLowerCase());
+}
+
+function perfAtlasKnownAuditStatus(auditId) {
+    const cleanId = String(auditId || '').trim();
+    if (!cleanId) return '';
+    const summary = Array.isArray(perfAtlasAudits)
+        ? perfAtlasAudits.find(item => String(item?.id || '').trim() === cleanId)
+        : null;
+    const summaryStatus = String(summary?.status || '').trim().toLowerCase();
+    if (String(perfAtlasCurrentAudit?.id || '').trim() === cleanId) {
+        const currentStatus = String(perfAtlasCurrentAudit?.status || '').trim().toLowerCase();
+        if (perfAtlasIsTerminalStatus(currentStatus)) return currentStatus;
+        if (perfAtlasIsTerminalStatus(summaryStatus)) return summaryStatus;
+        return currentStatus || summaryStatus;
+    }
+    return summaryStatus;
 }
 
 function perfAtlasStatusLabel(status) {
@@ -2586,8 +2817,44 @@ function perfAtlasStatusLabel(status) {
     if (clean === 'running') return moduleT('perfatlas.statusRunning', 'Running');
     if (clean === 'done') return moduleT('perfatlas.statusDone', 'Ready');
     if (clean === 'error') return moduleT('perfatlas.statusError', 'Error');
+    if (clean === 'cancelling') return moduleT('perfatlas.statusCancelling', 'Cancelling');
     if (clean === 'cancelled') return moduleT('perfatlas.statusCancelled', 'Cancelled');
     return clean || moduleT('perfatlas.statusUnknown', 'Unknown');
+}
+
+function perfAtlasFallbackJobForAudit(audit, status = '') {
+    const auditId = typeof audit === 'string' ? audit : audit?.id;
+    if (!auditId) return null;
+    const cleanStatus = String(status || (typeof audit === 'object' ? audit?.status : '') || 'running').toLowerCase();
+    const target = typeof audit === 'object'
+        ? (audit?.target?.normalized_url || audit?.target_url || audit?.host || audit?.title || '')
+        : (perfAtlasDraft.target || 'PerfAtlas');
+    return {
+        id: `perfatlas-audit-${auditId}`,
+        kind: 'perfatlas',
+        status: cleanStatus,
+        phase: cleanStatus,
+        progress: cleanStatus === 'queued' ? 2 : 8,
+        prompt: target || 'PerfAtlas',
+        message: cleanStatus === 'queued'
+            ? moduleT('perfatlas.phaseQueued', 'Queued')
+            : moduleT('perfatlas.auditRunning', 'Audit running...'),
+        metadata: {
+            module_id: 'perfatlas',
+            audit_id: auditId,
+        },
+        synthetic: true,
+    };
+}
+
+function ensurePerfAtlasRuntimeJobForProgress(progressState) {
+    if (!progressState?.job?.synthetic) return;
+    seedAuditModuleRuntimeJob(
+        progressState.job,
+        'perfatlas',
+        progressState.auditId,
+        progressState.message || moduleT('perfatlas.auditRunning', 'Audit running...')
+    );
 }
 
 function perfAtlasJobPhaseLabel(phase) {
@@ -2600,6 +2867,7 @@ function perfAtlasJobPhaseLabel(phase) {
     if (clean === 'score') return moduleT('perfatlas.phaseScore', 'Scoring');
     if (clean === 'ai') return moduleT('perfatlas.phaseAi', 'AI interpretation');
     if (clean === 'queued') return moduleT('perfatlas.phaseQueued', 'Queued');
+    if (clean === 'cancelling') return moduleT('perfatlas.statusCancelling', 'Cancelling');
     if (clean === 'done') return moduleT('perfatlas.phaseDone', 'Done');
     if (clean === 'error') return moduleT('perfatlas.phaseError', 'Error');
     if (clean === 'cancelled') return moduleT('perfatlas.phaseCancelled', 'Cancelled');
@@ -2707,7 +2975,7 @@ function renderPerfAtlasTargetValidationUi() {
         feedback.textContent = showError ? validation.message : '';
         feedback.classList.toggle('is-visible', showError);
     }
-    if (launchButton) {
+    if (launchButton && launchButton.dataset.action !== 'cancel') {
         launchButton.disabled = perfAtlasLaunchPending || !validation.valid;
     }
     return validation;
@@ -2779,6 +3047,14 @@ function perfAtlasFormatBytes(value) {
 
 function perfAtlasAuditProgressState(audit) {
     const auditId = typeof audit === 'string' ? audit : audit?.id;
+    const localStatus = String((typeof audit === 'object' && audit?.status) || '').trim().toLowerCase();
+    const resolvedStatus = perfAtlasKnownAuditStatus(auditId);
+    const currentStatus = perfAtlasIsTerminalStatus(resolvedStatus)
+        ? resolvedStatus
+        : (localStatus || resolvedStatus);
+    if (perfAtlasIsTerminalStatus(currentStatus)) {
+        return null;
+    }
     const liveJob = auditId ? activePerfAtlasJobForAudit(auditId) : null;
     if (liveJob) {
         return {
@@ -2790,10 +3066,10 @@ function perfAtlasAuditProgressState(audit) {
             message: perfAtlasJobMessage(liveJob),
         };
     }
-    const currentStatus = String((typeof audit === 'object' && audit?.status) || '').toLowerCase();
     if (currentStatus === 'running' || currentStatus === 'queued') {
+        const fallbackJob = perfAtlasFallbackJobForAudit(audit, currentStatus);
         return {
-            job: null,
+            job: fallbackJob,
             auditId,
             status: currentStatus,
             phase: perfAtlasJobPhaseLabel(currentStatus),
@@ -2964,6 +3240,7 @@ function renderSignalAtlasHistory() {
         const progressState = signalAtlasAuditProgressState(audit);
         const canDelete = !progressState;
         const isLive = signalAtlasIsLiveProgressStatus(progressState?.status || '');
+        const displayProgress = progressState ? auditDisplayProgress('signalatlas', progressState, audit, false) : 0;
         const supportCopy = progressState ? signalAtlasProgressSupportCopy(progressState) : '';
         const auditTimestamp = nativeAuditTimestampLabel('signalatlas', audit);
         return `
@@ -3014,10 +3291,10 @@ function renderSignalAtlasHistory() {
                 ${progressState ? `
                     <div class="signalatlas-history-progress-meta">
                         <span class="signalatlas-progress-chip is-phase">${escapeHtml(progressState.phase)}</span>
-                        <span class="signalatlas-progress-chip is-percent">${escapeHtml(moduleT('signalatlas.progressPercent', '{value}%', { value: progressState.progress }))}</span>
+                        <span class="signalatlas-progress-chip is-percent">${escapeHtml(moduleT('signalatlas.progressPercent', '{value}%', { value: displayProgress }))}</span>
                     </div>
                     <div class="signalatlas-history-progress-bar${isLive ? ' is-live' : ''}">
-                        <div class="signalatlas-history-progress-fill${isLive ? ' is-live' : ''}" style="width:${escapeHtml(String(progressState.progress))}%"></div>
+                        <div class="signalatlas-history-progress-fill${isLive ? ' is-live' : ''}" style="width:${escapeHtml(String(displayProgress))}%"></div>
                     </div>
                     <div class="signalatlas-history-progress-copy${isLive ? ' signalatlas-shimmer-text' : ''}" aria-live="polite">${escapeHtml(progressState.message)}</div>
                     <div class="signalatlas-history-progress-detail">${escapeHtml(supportCopy)}</div>
@@ -4082,7 +4359,7 @@ async function refreshSignalAtlasWorkspace(options = {}) {
     if (allowDefer && signalAtlasShouldDeferRefresh()) {
         signalAtlasPendingRefresh = true;
         scheduleSignalAtlasDeferredRefresh();
-        return;
+        return { deferred: true };
     }
     const previousState = {
         auditId: signalAtlasCurrentAuditId,
@@ -4098,6 +4375,7 @@ async function refreshSignalAtlasWorkspace(options = {}) {
         notifySignalAtlasAuditCompleted(signalAtlasCurrentAudit, previousState);
     }
     renderSignalAtlasWorkspace();
+    return { refreshed: true };
 }
 
 function startSignalAtlasRefresh() {
@@ -4107,12 +4385,18 @@ function startSignalAtlasRefresh() {
             stopSignalAtlasRefresh();
             return;
         }
-        const activeJob = signalAtlasCurrentAuditId ? activeSignalAtlasJobForAudit(signalAtlasCurrentAuditId) : null;
-        if (!activeJob && !(signalAtlasAudits || []).some(audit => signalAtlasAuditProgressState(audit))) {
-            stopSignalAtlasRefresh();
-            return;
+        if (signalAtlasRefreshInFlight) return;
+        signalAtlasRefreshInFlight = true;
+        let refreshResult = null;
+        try {
+            refreshResult = await refreshSignalAtlasWorkspace({ allowDefer: true });
+        } finally {
+            signalAtlasRefreshInFlight = false;
         }
-        await refreshSignalAtlasWorkspace({ allowDefer: true });
+        if (refreshResult?.deferred) return;
+        if (!signalAtlasAnyProgressState()) {
+            stopSignalAtlasRefresh();
+        }
     }, 3500);
 }
 
@@ -4126,6 +4410,7 @@ function stopSignalAtlasRefresh() {
         signalAtlasDeferredRefreshTimer = null;
     }
     signalAtlasPendingRefresh = false;
+    signalAtlasRefreshInFlight = false;
 }
 
 function downloadSignalAtlasExport(auditId, formatName) {
@@ -4159,9 +4444,15 @@ async function openSignalAtlasPromptInChat(auditId) {
 
 function renderPerfAtlasProviderStrip() {
     if (!Array.isArray(perfAtlasProviders) || !perfAtlasProviders.length) return '';
+    const visibleProviders = perfAtlasProviders.filter(provider => {
+        const status = String(provider?.status || '').trim().toLowerCase();
+        return Boolean(provider?.configured)
+            || ['confirmed', 'configured', 'ready', 'target_mismatch', 'property_unverified', 'auth_error', 'connector_missing', 'error'].includes(status);
+    });
+    if (!visibleProviders.length) return '';
     return `
         <section class="signalatlas-owner-strip perfatlas-owner-strip">
-            ${perfAtlasProviders.map(provider => `
+            ${visibleProviders.map(provider => `
                 <div class="signalatlas-owner-card">
                     <div class="signalatlas-owner-card-top">
                         <span class="signalatlas-owner-name">${escapeHtml(provider.name || provider.id || 'Provider')}</span>
@@ -4333,6 +4624,221 @@ function renderPerfAtlasResources(audit) {
                     <div class="signalatlas-metric-row"><span>HTML</span><strong>${escapeHtml(perfAtlasFormatBytes((Number(cluster.avg_html_kb) || 0) * 1024))}</strong></div>
                 </article>
             `).join('')}
+        </div>
+    `;
+}
+
+function perfAtlasPerformanceIntelligence(audit) {
+    const intelligence = audit?.snapshot?.performance_intelligence;
+    return intelligence && typeof intelligence === 'object' ? intelligence : null;
+}
+
+function perfAtlasRegression(audit) {
+    const regression = audit?.snapshot?.regression;
+    return regression && typeof regression === 'object' ? regression : null;
+}
+
+function perfAtlasRegressionTone(value) {
+    const clean = String(value || '').trim().toLowerCase();
+    if (clean === 'improved') return 'is-good';
+    if (clean === 'regressed') return 'is-danger';
+    if (clean === 'stable') return 'is-warn';
+    return '';
+}
+
+function perfAtlasRegressionLabel(value) {
+    const key = auditTranslationKey(value || 'unknown');
+    return moduleT(`perfatlas.regression_${key}`, value || moduleT('perfatlas.diagnosticUnknown', 'Inconnu'));
+}
+
+function perfAtlasDiagnosticStatusLabel(status) {
+    const clean = String(status || '').trim().toLowerCase();
+    if (clean === 'ok' || clean === 'good') return moduleT('perfatlas.diagnosticGood', 'Bon');
+    if (clean === 'warn') return moduleT('perfatlas.diagnosticWarn', 'À surveiller');
+    if (clean === 'fail' || clean === 'bad') return moduleT('perfatlas.diagnosticBad', 'Critique');
+    return moduleT('perfatlas.diagnosticUnknown', 'Inconnu');
+}
+
+function perfAtlasDiagnosticTone(status) {
+    const clean = String(status || '').trim().toLowerCase();
+    if (clean === 'ok' || clean === 'good') return 'is-good';
+    if (clean === 'warn') return 'is-warn';
+    if (clean === 'fail' || clean === 'bad') return 'is-danger';
+    return '';
+}
+
+function perfAtlasFormatBudgetValue(value, unit) {
+    if (value === null || value === undefined || value === '') return 'n/a';
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return String(value);
+    if (unit === 'bytes') return perfAtlasFormatBytes(numeric);
+    if (unit === 'ms') return perfAtlasFormatMs(numeric);
+    if (unit === 'score') return String(Math.round(numeric * 1000) / 1000);
+    return String(Math.round(numeric * 10) / 10);
+}
+
+function renderPerfAtlasIntelligence(audit) {
+    const intelligence = perfAtlasPerformanceIntelligence(audit);
+    if (!intelligence) {
+        return `<div class="signalatlas-empty-panel">${escapeHtml(moduleT('perfatlas.noPerformanceIntelligence', 'Aucune intelligence performance structurée n’est attachée à cet audit.'))}</div>`;
+    }
+    const summary = intelligence.summary || {};
+    const budgets = Array.isArray(intelligence.budgets) ? intelligence.budgets : [];
+    const detectives = Array.isArray(intelligence.detectives) ? intelligence.detectives : [];
+    const actions = Array.isArray(intelligence.action_plan) ? intelligence.action_plan : [];
+    const waterfall = intelligence.waterfall || {};
+    const thirdParty = intelligence.third_party_tax || {};
+    const cache = intelligence.cache_simulation || {};
+    const regression = perfAtlasRegression(audit);
+    const pageTypes = Array.isArray(intelligence.page_types) ? intelligence.page_types : [];
+    const topHosts = Array.isArray(thirdParty.top_hosts) ? thirdParty.top_hosts : [];
+    return `
+        <div class="signalatlas-overview-stack">
+            <section class="signalatlas-panel">
+                <div class="signalatlas-section-top">
+                    <div>
+                        <div class="signalatlas-panel-kicker">${escapeHtml(moduleT('perfatlas.intelligenceKicker', 'Performance Intelligence'))}</div>
+                        <div class="signalatlas-panel-title">${escapeHtml(moduleT('perfatlas.intelligenceTitle', 'Lecture technique exploitable'))}</div>
+                    </div>
+                    <span class="signalatlas-tag ${summary.diagnostic_confidence === 'high' ? 'is-good' : summary.diagnostic_confidence === 'limited' ? 'is-warn' : ''}">
+                        ${escapeHtml(moduleT(`perfatlas.confidence_${auditTranslationKey(summary.diagnostic_confidence || 'limited')}`, summary.diagnostic_confidence || 'limited'))}
+                    </span>
+                </div>
+                <div class="signalatlas-metric-grid">
+                    <div class="signalatlas-metric-card"><span>${escapeHtml(moduleT('perfatlas.failedBudgets', 'Budgets rouges'))}</span><strong>${escapeHtml(String(summary.failed_budget_count || 0))}</strong></div>
+                    <div class="signalatlas-metric-card"><span>${escapeHtml(moduleT('perfatlas.warningBudgets', 'Budgets orange'))}</span><strong>${escapeHtml(String(summary.warning_budget_count || 0))}</strong></div>
+                    <div class="signalatlas-metric-card"><span>${escapeHtml(moduleT('perfatlas.redDetectives', 'Détectives rouges'))}</span><strong>${escapeHtml(String(summary.bad_detector_count || 0))}</strong></div>
+                    <div class="signalatlas-metric-card"><span>${escapeHtml(moduleT('perfatlas.thirdPartyHosts', 'Tiers'))}</span><strong>${escapeHtml(String(thirdParty.host_count || 0))}</strong></div>
+                </div>
+                ${summary.top_action ? `<div class="signalatlas-panel-copy">${escapeHtml(moduleT('perfatlas.topActionLabel', 'Action prioritaire'))}: ${escapeHtml(summary.top_action)}</div>` : ''}
+            </section>
+            <div class="signalatlas-detail-grid">
+                <section class="signalatlas-panel">
+                    <div class="signalatlas-panel-kicker">${escapeHtml(moduleT('perfatlas.budgetsTitle', 'Budgets de performance'))}</div>
+                    <div class="signalatlas-finding-list">
+                        ${budgets.map(item => `
+                            <div class="signalatlas-mini-finding-card">
+                                <div class="signalatlas-mini-finding-title">
+                                    ${escapeHtml(item.label || item.id || '')}
+                                    <span class="signalatlas-tag ${perfAtlasDiagnosticTone(item.status)}">${escapeHtml(perfAtlasDiagnosticStatusLabel(item.status))}</span>
+                                </div>
+                                <div class="signalatlas-mini-finding-copy">${escapeHtml(perfAtlasFormatBudgetValue(item.actual, item.unit))} / ${escapeHtml(perfAtlasFormatBudgetValue(item.limit, item.unit))}</div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </section>
+                <section class="signalatlas-panel">
+                    <div class="signalatlas-panel-kicker">${escapeHtml(moduleT('perfatlas.detectivesTitle', 'Détectives'))}</div>
+                    <div class="signalatlas-finding-list">
+                        ${detectives.map(item => `
+                            <div class="signalatlas-mini-finding-card">
+                                <div class="signalatlas-mini-finding-title">
+                                    ${escapeHtml(item.title || item.id || '')}
+                                    <span class="signalatlas-tag ${perfAtlasDiagnosticTone(item.status)}">${escapeHtml(perfAtlasDiagnosticStatusLabel(item.status))}</span>
+                                </div>
+                                <div class="signalatlas-mini-finding-copy">${escapeHtml(item.summary || '')}</div>
+                                ${(item.evidence || []).length ? `<div class="signalatlas-mini-finding-copy">${escapeHtml((item.evidence || []).slice(0, 3).join(' · '))}</div>` : ''}
+                            </div>
+                        `).join('')}
+                    </div>
+                </section>
+            </div>
+            <div class="signalatlas-detail-grid">
+                <section class="signalatlas-panel">
+                    <div class="signalatlas-panel-kicker">${escapeHtml(moduleT('perfatlas.waterfallTitle', 'Waterfall & cache'))}</div>
+                    <div class="signalatlas-metric-grid">
+                        <div class="signalatlas-metric-card"><span>${escapeHtml(moduleT('perfatlas.sampledAssets', 'Ressources échantillonnées'))}</span><strong>${escapeHtml(String(waterfall.asset_count || 0))}</strong></div>
+                        <div class="signalatlas-metric-card"><span>${escapeHtml(moduleT('perfatlas.firstPartyBytes', 'First-party'))}</span><strong>${escapeHtml(perfAtlasFormatBytes(waterfall.first_party_bytes || 0))}</strong></div>
+                        <div class="signalatlas-metric-card"><span>${escapeHtml(moduleT('perfatlas.thirdPartyBytes', 'Third-party'))}</span><strong>${escapeHtml(perfAtlasFormatBytes(waterfall.third_party_bytes || 0))}</strong></div>
+                        <div class="signalatlas-metric-card"><span>${escapeHtml(moduleT('perfatlas.repeatVisitRisk', 'Risque cache'))}</span><strong>${escapeHtml(perfAtlasDiagnosticStatusLabel(cache.repeat_visit_risk === 'high' ? 'bad' : cache.repeat_visit_risk === 'medium' ? 'warn' : 'good'))}</strong></div>
+                    </div>
+                    <div class="signalatlas-panel-copy">${escapeHtml(cache.summary || '')}</div>
+                </section>
+                <section class="signalatlas-panel">
+                    <div class="signalatlas-panel-kicker">${escapeHtml(moduleT('perfatlas.thirdPartyTaxTitle', 'Taxe third-party'))}</div>
+                    <div class="signalatlas-finding-list">
+                        ${topHosts.length ? topHosts.slice(0, 6).map(host => `
+                            <div class="signalatlas-mini-finding-card">
+                                <div class="signalatlas-mini-finding-title">
+                                    ${escapeHtml(host.host || '')}
+                                    <span class="signalatlas-tag ${perfAtlasDiagnosticTone(host.risk === 'high' ? 'bad' : host.risk === 'medium' ? 'warn' : 'good')}">${escapeHtml(perfAtlasDiagnosticStatusLabel(host.risk === 'high' ? 'bad' : host.risk === 'medium' ? 'warn' : 'good'))}</span>
+                                </div>
+                                <div class="signalatlas-mini-finding-copy">${escapeHtml(String(host.page_mentions || 0))} ${escapeHtml(moduleT('perfatlas.pageMentions', 'mentions'))} · ${escapeHtml(perfAtlasFormatBytes(host.sampled_bytes || 0))}</div>
+                            </div>
+                        `).join('') : `<div class="signalatlas-empty-panel">${escapeHtml(moduleT('perfatlas.noThirdPartyHotspot', 'Aucun hotspot tiers dominant confirmé.'))}</div>`}
+                    </div>
+                </section>
+            </div>
+            ${regression ? `
+                <section class="signalatlas-panel">
+                    <div class="signalatlas-section-top">
+                        <div>
+                            <div class="signalatlas-panel-kicker">${escapeHtml(moduleT('perfatlas.regressionTitle', 'Comparaison précédente'))}</div>
+                            <div class="signalatlas-panel-title">${escapeHtml(regression.summary || '')}</div>
+                        </div>
+                        <span class="signalatlas-tag ${perfAtlasRegressionTone(regression.risk)}">${escapeHtml(perfAtlasRegressionLabel(regression.risk))}</span>
+                    </div>
+                    ${regression.available ? `
+                        <div class="signalatlas-metric-grid">
+                            ${Object.entries(regression.deltas || {}).slice(0, 6).map(([key, value]) => `
+                                <div class="signalatlas-metric-card">
+                                    <span>${escapeHtml(moduleT(`perfatlas.regressionMetric_${auditTranslationKey(key)}`, key.replace(/_/g, ' ')))}</span>
+                                    <strong>${escapeHtml(String(value?.delta ?? 'n/a'))}</strong>
+                                    <small>${escapeHtml(String(value?.previous ?? 'n/a'))} → ${escapeHtml(String(value?.current ?? 'n/a'))}</small>
+                                </div>
+                            `).join('')}
+                        </div>
+                        ${(regression.regressions || []).length ? `
+                            <div class="signalatlas-finding-list">
+                                ${(regression.regressions || []).map(item => `
+                                    <div class="signalatlas-mini-finding-card">
+                                        <div class="signalatlas-mini-finding-title">${escapeHtml(moduleT('perfatlas.regressionDetected', 'Régression détectée'))}</div>
+                                        <div class="signalatlas-mini-finding-copy">${escapeHtml(item)}</div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        ` : ''}
+                        ${(regression.improvements || []).length ? `
+                            <div class="signalatlas-finding-list">
+                                ${(regression.improvements || []).map(item => `
+                                    <div class="signalatlas-mini-finding-card">
+                                        <div class="signalatlas-mini-finding-title">${escapeHtml(moduleT('perfatlas.improvementDetected', 'Amélioration détectée'))}</div>
+                                        <div class="signalatlas-mini-finding-copy">${escapeHtml(item)}</div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        ` : ''}
+                    ` : `<div class="signalatlas-panel-copy">${escapeHtml(regression.summary || moduleT('perfatlas.noRegressionBaseline', 'Aucun audit précédent terminé pour comparer.'))}</div>`}
+                </section>
+            ` : ''}
+            <section class="signalatlas-panel">
+                <div class="signalatlas-panel-kicker">${escapeHtml(moduleT('perfatlas.actionPlanTitle', 'Plan d’action'))}</div>
+                <div class="signalatlas-finding-list">
+                    ${actions.length ? actions.map(action => `
+                        <div class="signalatlas-mini-finding-card">
+                            <div class="signalatlas-mini-finding-title">P${escapeHtml(String(action.priority || ''))} · ${escapeHtml(action.title || '')}</div>
+                            <div class="signalatlas-mini-finding-copy">${escapeHtml(moduleT('perfatlas.impactLabel', 'Impact'))}: ${escapeHtml(action.impact || '')} · ${escapeHtml(moduleT('perfatlas.effortLabel', 'Effort'))}: ${escapeHtml(action.effort || '')}</div>
+                            <div class="signalatlas-mini-finding-copy">${escapeHtml(action.dev_prompt || '')}</div>
+                            <div class="signalatlas-mini-finding-copy">${escapeHtml(moduleT('perfatlas.validationLabel', 'Validation'))}: ${escapeHtml(action.validation || '')}</div>
+                        </div>
+                    `).join('') : `<div class="signalatlas-empty-panel">${escapeHtml(moduleT('perfatlas.noActionPlan', 'Aucun plan prioritaire généré.'))}</div>`}
+                </div>
+            </section>
+            ${pageTypes.length ? `
+                <section class="signalatlas-panel">
+                    <div class="signalatlas-panel-kicker">${escapeHtml(moduleT('perfatlas.pageTypesTitle', 'Types de pages'))}</div>
+                    <div class="signalatlas-template-grid">
+                        ${pageTypes.map(item => `
+                            <article class="signalatlas-template-card">
+                                <div class="signalatlas-template-title">${escapeHtml(moduleT(`perfatlas.pageType_${auditTranslationKey(item.type)}`, item.type || 'page'))}</div>
+                                <div class="signalatlas-template-meta">${escapeHtml(moduleT('perfatlas.clusterCount', '{count} page(s)', { count: item.count || 0 }))}</div>
+                                <div class="signalatlas-metric-row"><span>TTFB</span><strong>${escapeHtml(perfAtlasFormatMs(item.avg_ttfb_ms))}</strong></div>
+                                <div class="signalatlas-metric-row"><span>HTML</span><strong>${escapeHtml(perfAtlasFormatBytes((Number(item.avg_html_kb) || 0) * 1024))}</strong></div>
+                            </article>
+                        `).join('')}
+                    </div>
+                </section>
+            ` : ''}
         </div>
     `;
 }
@@ -4533,6 +5039,8 @@ function renderPerfAtlasExports(audit) {
         ['markdown', moduleT('perfatlas.exportMarkdown', 'Markdown')],
         ['prompt', moduleT('perfatlas.exportPrompt', 'AI prompt')],
         ['remediation', moduleT('perfatlas.exportRemediation', 'Remediation plan')],
+        ['ci', moduleT('perfatlas.exportCiGate', 'CI gate')],
+        ['evidence', moduleT('perfatlas.exportEvidencePack', 'Evidence pack')],
         ['pdf', moduleT('perfatlas.exportPdf', 'PDF')],
     ];
     return `
@@ -4612,6 +5120,8 @@ function renderPerfAtlasTabContent(audit) {
             return renderPerfAtlasDelivery(audit);
         case 'resources':
             return renderPerfAtlasResources(audit);
+        case 'intelligence':
+            return renderPerfAtlasIntelligence(audit);
         case 'owner':
             return renderPerfAtlasOwnerContext(audit);
         case 'ai':
@@ -4631,6 +5141,7 @@ function renderPerfAtlasHistory() {
         const active = audit.id === perfAtlasCurrentAuditId;
         const progressState = perfAtlasAuditProgressState(audit);
         const isLive = signalAtlasIsLiveProgressStatus(progressState?.status || '');
+        const displayProgress = progressState ? auditDisplayProgress('perfatlas', progressState, audit, false) : 0;
         const supportCopy = progressState ? perfAtlasProgressSupportCopy(progressState) : '';
         const auditTimestamp = nativeAuditTimestampLabel('perfatlas', audit);
         return `
@@ -4668,10 +5179,10 @@ function renderPerfAtlasHistory() {
                 ${progressState ? `
                     <div class="signalatlas-history-progress-meta">
                         <span class="signalatlas-progress-chip is-phase">${escapeHtml(progressState.phase)}</span>
-                        <span class="signalatlas-progress-chip is-percent">${escapeHtml(moduleT('perfatlas.progressPercent', '{value}%', { value: progressState.progress }))}</span>
+                        <span class="signalatlas-progress-chip is-percent">${escapeHtml(moduleT('perfatlas.progressPercent', '{value}%', { value: displayProgress }))}</span>
                     </div>
                     <div class="signalatlas-history-progress-bar${isLive ? ' is-live' : ''}">
-                        <div class="signalatlas-history-progress-fill${isLive ? ' is-live' : ''}" style="width:${escapeHtml(String(progressState.progress))}%"></div>
+                        <div class="signalatlas-history-progress-fill${isLive ? ' is-live' : ''}" style="width:${escapeHtml(String(displayProgress))}%"></div>
                     </div>
                     <div class="signalatlas-history-progress-copy${isLive ? ' signalatlas-shimmer-text' : ''}" aria-live="polite">${escapeHtml(progressState.message)}</div>
                     <div class="signalatlas-history-progress-detail">${escapeHtml(supportCopy)}</div>
@@ -4698,8 +5209,10 @@ function renderPerfAtlasWorkspace() {
     const audit = perfAtlasCurrentAudit;
     const summary = audit?.summary || {};
     const progressState = perfAtlasAuditProgressState(audit) || perfAtlasAnyProgressState();
+    const displayProgress = auditDisplayProgress('perfatlas', progressState, audit, perfAtlasLaunchPending);
     const progressStatus = String(progressState?.status || '').toLowerCase();
-    const canCancelAudit = !!progressState?.job && ['queued', 'running', 'cancelling'].includes(progressStatus);
+    const canCancelAudit = !!progressState && ['queued', 'running', 'cancelling'].includes(progressStatus);
+    ensurePerfAtlasRuntimeJobForProgress(progressState);
     const targetValidation = perfAtlasValidateTarget(perfAtlasDraft.target);
     const reportModelInfo = perfAtlasReportModelInfo(audit);
     const selectedProfile = perfAtlasDraft.profile || 'elevated';
@@ -4710,6 +5223,7 @@ function renderPerfAtlasWorkspace() {
         ['opportunities', moduleT('perfatlas.tabOpportunities', 'Opportunities')],
         ['delivery', moduleT('perfatlas.tabDelivery', 'Delivery')],
         ['resources', moduleT('perfatlas.tabResources', 'Resources')],
+        ['intelligence', moduleT('perfatlas.tabIntelligence', 'Intelligence')],
         ['owner', moduleT('perfatlas.tabOwner', 'Owner context')],
         ['ai', moduleT('perfatlas.tabAi', 'AI')],
         ['exports', moduleT('perfatlas.tabExports', 'Exports')],
@@ -4724,9 +5238,20 @@ function renderPerfAtlasWorkspace() {
                 <div class="signalatlas-input-row">
                     <input id="perfatlas-target-input" class="signalatlas-target-input${targetValidation.present && !targetValidation.valid ? ' is-invalid' : ''}" type="text" value="${escapeHtml(perfAtlasDraft.target)}" placeholder="${escapeHtml(moduleT('perfatlas.targetPlaceholder', 'Example: https://nevomove.com/'))}" oninput="perfAtlasTargetInputChanged(event)" onblur="perfAtlasControlsChanged()" aria-invalid="${targetValidation.present && !targetValidation.valid ? 'true' : 'false'}" inputmode="url" autocapitalize="off" spellcheck="false">
                     ${canCancelAudit ? `
-                        <button id="perfatlas-launch-btn" class="signalatlas-btn secondary" type="button" onclick="cancelPerfAtlasAudit('${escapeHtml(progressState?.auditId || perfAtlasCurrentAuditId || '')}')" ${!progressState?.job ? 'disabled' : ''}>${escapeHtml(moduleT('perfatlas.cancelAudit', 'Cancel audit'))}</button>
+                        <button
+                            id="perfatlas-launch-btn"
+                            class="signalatlas-btn launch signalatlas-stop-btn"
+                            type="button"
+                            data-action="cancel"
+                            onclick="cancelPerfAtlasAudit('${escapeHtml(progressState?.auditId || perfAtlasCurrentAuditId || '')}')"
+                            aria-label="${escapeHtml(progressStatus === 'cancelling' ? moduleT('perfatlas.cancelling', 'Cancelling...') : moduleT('perfatlas.cancelAudit', 'Cancel audit'))}"
+                            title="${escapeHtml(progressStatus === 'cancelling' ? moduleT('perfatlas.cancelling', 'Cancelling...') : moduleT('perfatlas.cancelAudit', 'Cancel audit'))}"
+                            ${progressStatus === 'cancelling' ? 'disabled' : ''}
+                        >
+                            <i data-lucide="square"></i>
+                        </button>
                     ` : `
-                        <button id="perfatlas-launch-btn" class="signalatlas-btn" type="button" onclick="launchPerfAtlasAudit()" ${perfAtlasLaunchPending || !targetValidation.valid ? 'disabled' : ''}>${escapeHtml(moduleT('perfatlas.runAudit', 'Launch audit'))}</button>
+                        <button id="perfatlas-launch-btn" class="signalatlas-btn" type="button" data-action="launch" onclick="launchPerfAtlasAudit()" ${perfAtlasLaunchPending || !targetValidation.valid ? 'disabled' : ''}>${escapeHtml(moduleT('perfatlas.runAudit', 'Launch audit'))}</button>
                     `}
                     <div id="perfatlas-target-feedback" class="signalatlas-target-feedback${targetValidation.present && !targetValidation.valid ? ' is-visible' : ''}">${escapeHtml(targetValidation.present && !targetValidation.valid ? targetValidation.message : '')}</div>
                 </div>
@@ -4784,11 +5309,13 @@ function renderPerfAtlasWorkspace() {
                     namespace: 'perfatlas',
                     progressState,
                     launchPending: perfAtlasLaunchPending,
+                    displayProgress,
                     targetLabel: perfAtlasDraft.target,
                     statusLabel: perfAtlasStatusLabel,
                     supportCopy: perfAtlasProgressSupportCopy(progressState, perfAtlasDraft.target),
                     launchingLabel: moduleT('perfatlas.launching', 'Launching'),
                     launchingMessage: moduleT('perfatlas.launchingAudit', 'Starting the performance runtime...'),
+                    etaLabel: perfAtlasProgressEtaLabel(progressState, audit, displayProgress),
                 })}
             </section>
 
@@ -4939,7 +5466,7 @@ async function cancelPerfAtlasAudit(auditId = '') {
     const targetAuditId = String(auditId || perfAtlasCurrentAuditId || '').trim();
     if (!targetAuditId || typeof apiRuntime === 'undefined') return;
     const progressState = perfAtlasAuditProgressState(targetAuditId);
-    const jobId = String(progressState?.job?.id || '').trim();
+    const jobId = String(progressState?.job?.id || `perfatlas-audit-${targetAuditId}`).trim();
     if (!jobId) return;
 
     const result = await apiRuntime.cancelJob(jobId, {});
@@ -5035,12 +5562,16 @@ function startPerfAtlasRefresh() {
             stopPerfAtlasRefresh();
             return;
         }
-        const activeJob = perfAtlasCurrentAuditId ? activePerfAtlasJobForAudit(perfAtlasCurrentAuditId) : null;
-        if (!activeJob && !(perfAtlasAudits || []).some(audit => perfAtlasAuditProgressState(audit))) {
-            stopPerfAtlasRefresh();
-            return;
+        if (perfAtlasRefreshInFlight) return;
+        perfAtlasRefreshInFlight = true;
+        try {
+            await refreshPerfAtlasWorkspace();
+        } finally {
+            perfAtlasRefreshInFlight = false;
         }
-        await refreshPerfAtlasWorkspace();
+        if (!perfAtlasAnyProgressState()) {
+            stopPerfAtlasRefresh();
+        }
     }, 3500);
 }
 
@@ -5049,6 +5580,7 @@ function stopPerfAtlasRefresh() {
         clearInterval(perfAtlasRefreshTimer);
         perfAtlasRefreshTimer = null;
     }
+    perfAtlasRefreshInFlight = false;
 }
 
 window.addEventListener('joyboy:locale-changed', () => {

@@ -76,6 +76,10 @@ def get_crux_api_key() -> str:
     return _env_or_local(["CRUX_API_KEY", "GOOGLE_API_KEY"], "crux_api", "api_key")
 
 
+def get_webpagetest_api_key() -> str:
+    return _env_or_local(["WEBPAGETEST_API_KEY", "WPT_API_KEY"], "webpagetest", "api_key")
+
+
 def _vercel_config() -> Dict[str, str]:
     settings = get_perfatlas_provider_settings("vercel")
     return {
@@ -633,6 +637,7 @@ def get_perfatlas_provider_status(target_url: str = "", mode: str = "public") ->
     gsc_entry = next((item for item in google_entries if item.get("id") == "google_search_console"), None)
     pagespeed_key = get_pagespeed_api_key()
     crux_key = get_crux_api_key()
+    webpagetest_key = get_webpagetest_api_key()
     vercel_config = _vercel_config()
     netlify_config = _netlify_config()
     cloudflare_config = _cloudflare_config()
@@ -673,6 +678,17 @@ def get_perfatlas_provider_status(target_url: str = "", mode: str = "public") ->
             auth_mode="api_key",
             status="configured" if pagespeed_key else "scaffolded",
             detail="" if pagespeed_key else "A key is optional for light public use, but required for stable quota.",
+        ),
+        _base_provider_entry(
+            provider_id="webpagetest",
+            name="WebPageTest",
+            configured=bool(webpagetest_key),
+            source=_config_source(["WEBPAGETEST_API_KEY", "WPT_API_KEY"], "webpagetest"),
+            priority=4,
+            owner_required=False,
+            auth_mode="api_key",
+            status="configured" if webpagetest_key else "scaffolded",
+            detail="" if webpagetest_key else "Optional deep-lab provider for future filmstrip, waterfall, and location-based runs.",
         ),
     ])
     if clean_mode == "verified_owner":

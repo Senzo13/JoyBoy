@@ -60,6 +60,8 @@ Provider keys are optional at startup. Add them only when you need downloads tha
 - `CIVITAI_API_KEY`: useful for importing CivitAI model sources.
 - `OLLAMA_BASE_URL`: optional if your Ollama server is not on `http://127.0.0.1:11434`.
 - SignalAtlas GSC CSV imports do not need credentials. Optional direct/provider enrichments use `SIGNALATLAS_GSC_*` settings and `SEMRUSH_API_KEY`.
+- PerfAtlas runs without credentials, then enriches performance evidence when optional keys are present: `PAGESPEED_API_KEY` or `GOOGLE_API_KEY` for PageSpeed Insights, `CRUX_API_KEY` or `GOOGLE_API_KEY` for CrUX/CrUX History, and `WEBPAGETEST_API_KEY` for future deep-lab waterfall/filmstrip enrichment.
+- PerfAtlas exports include Markdown, AI prompt, remediation JSON, PDF, a CI gate JSON, and an evidence pack JSON with the deterministic crawl/lab/field/provider data used by the report.
 
 If you only use already-installed local models, you can skip keys and add them later.
 

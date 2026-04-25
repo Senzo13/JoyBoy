@@ -481,6 +481,22 @@ body.privacy-active .prompt-input {
   max-width: 850px;
   z-index: 50;
   transition: left 0.3s ease;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.chat-input-bar input,
+.chat-input-bar textarea,
+.chat-input-bar [contenteditable="true"] {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.chat-input-bar:focus-within input,
+.chat-input-bar:focus-within textarea,
+.chat-input-bar:focus-within [contenteditable="true"] {
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 body.sidebar-collapsed .chat-input-bar {

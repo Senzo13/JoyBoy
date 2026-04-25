@@ -40,6 +40,28 @@ class PerfAtlasStorageTests(unittest.TestCase):
             self.assertEqual(listed["report_model_label"], "openai:gpt-5.4")
             self.assertEqual(listed["report_model_state"], "planned")
 
+    def test_find_previous_completed_audit_skips_current_and_non_done(self):
+        with TemporaryDirectory() as tmp:
+            storage = PerfAtlasStorage(Path(tmp))
+            target = {
+                "raw": "nevomove.com",
+                "normalized_url": "https://nevomove.com/",
+                "host": "nevomove.com",
+                "mode": "public",
+            }
+            previous = storage.create_audit_stub(target=target, title="previous", options={}, metadata={})
+            previous["status"] = "done"
+            previous["summary"] = {"global_score": 80}
+            storage.save_audit(previous)
+            current = storage.create_audit_stub(target=target, title="current", options={}, metadata={})
+            current["status"] = "done"
+            storage.save_audit(current)
+
+            found = storage.find_previous_completed_audit(host="nevomove.com", exclude_id=current["id"])
+
+        self.assertIsNotNone(found)
+        self.assertEqual(found["id"], previous["id"])
+
 
 if __name__ == "__main__":
     unittest.main()

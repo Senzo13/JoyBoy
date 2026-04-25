@@ -102,6 +102,18 @@ def _preset_note(preset: str) -> str:
     return "Balance clarity, precision, and depth."
 
 
+def _generation_budget(level: str, excerpt: Dict[str, Any]) -> Dict[str, int]:
+    summary = excerpt.get("summary") or {}
+    pages_crawled = int(summary.get("pages_crawled") or summary.get("pages_sampled") or 0)
+    finding_count = len(excerpt.get("top_findings") or [])
+    small_audit = pages_crawled <= 12 and finding_count <= 8
+    if str(level or "").strip().lower() == "basic_summary":
+        return {"num_predict": 500 if small_audit else 700, "timeout": 45 if small_audit else 70}
+    if small_audit:
+        return {"num_predict": 850, "timeout": 60}
+    return {"num_predict": 1200, "timeout": 90}
+
+
 def generate_interpretation(
     audit: Dict[str, Any],
     *,
@@ -113,6 +125,7 @@ def generate_interpretation(
     clean_level = str(level or "basic_summary").strip().lower()
     prompt_goal = AI_LEVEL_PROMPTS.get(clean_level, AI_LEVEL_PROMPTS["basic_summary"])
     excerpt = _audit_excerpt(audit)
+    budget = _generation_budget(clean_level, excerpt)
     system_message = (
         "You are SignalAtlas AI inside JoyBoy. The deterministic audit is the source of truth. "
         "Never invent crawl data, indexing facts, or unsupported metrics. "
@@ -141,9 +154,9 @@ def generate_interpretation(
         ],
         purpose="utility",
         model=model,
-        num_predict=1200 if clean_level != "basic_summary" else 700,
+        num_predict=budget["num_predict"],
         temperature=0.2,
-        timeout=90,
+        timeout=budget["timeout"],
     )
     if not content:
         content = (

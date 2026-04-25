@@ -155,24 +155,28 @@ async function fixDetailsImage(imageUrl) {
     }
 }
 
-function findScopedChatElement(selector, chatId, root = document) {
+function findScopedChatElement(selector, chatId, root = document, options = {}) {
     const nodes = Array.from(root.querySelectorAll(selector));
+    const skeletonId = String(options?.skeletonId || '').trim();
+    if (skeletonId) {
+        return nodes.find(node => String(node.dataset?.skeletonId || '') === skeletonId) || null;
+    }
     if (!chatId) return nodes[0] || null;
     return nodes.find(node => node.dataset?.chatId === chatId) || null;
 }
 
-function removeSkeletonMessage(chatId = (typeof currentChatId !== 'undefined' ? currentChatId : null)) {
+function removeSkeletonMessage(chatId = (typeof currentChatId !== 'undefined' ? currentChatId : null), options = {}) {
     const root = getChatMessages() || document;
     const activeChatId = typeof currentChatId !== 'undefined' ? currentChatId : null;
     const allowLegacyFallback = !chatId || chatId === activeChatId;
 
     // Supprimer les skeletons texte
-    const textSkeleton = findScopedChatElement('.skeleton-message', chatId, root)
+    const textSkeleton = findScopedChatElement('.skeleton-message', chatId, root, options)
         || (allowLegacyFallback ? root.querySelector('.skeleton-message:not([data-chat-id])') : null);
     if (textSkeleton) textSkeleton.remove();
 
     // Supprimer aussi les skeletons image (inpainting)
-    const imageSkeleton = findScopedChatElement('.image-skeleton-message', chatId, root)
+    const imageSkeleton = findScopedChatElement('.image-skeleton-message', chatId, root, options)
         || (allowLegacyFallback ? root.querySelector('.image-skeleton-message:not([data-chat-id])') : null);
     if (imageSkeleton) imageSkeleton.remove();
 
@@ -249,18 +253,20 @@ function extractFencedCodeBlocks(formatted, codeBlocks, allowIncomplete = false)
     return output.join('\n');
 }
 
-function addSkeletonMessage(prompt, userImage, hasImage, maskImage = null, chatId = (typeof currentChatId !== 'undefined' ? currentChatId : '')) {
+function addSkeletonMessage(prompt, userImage, hasImage, maskImage = null, chatId = (typeof currentChatId !== 'undefined' ? currentChatId : ''), options = {}) {
     const messagesDiv = getChatMessages();
     const startedAt = Date.now();
+    const allowMultiple = options?.allowMultiple === true;
+    const skeletonId = String(options?.skeletonId || `image-skeleton-${startedAt}-${Math.random().toString(36).slice(2, 8)}`);
 
     // IMPORTANT: Si un skeleton existe déjà (réutilisé depuis la queue), ne pas en créer un autre.
     // Toujours chercher par data-chat-id: une génération peut finir après un
     // switch de conversation, et le premier skeleton du DOM n'est pas forcément
     // celui du job courant.
     const existingSkeleton = findScopedChatElement('.image-skeleton-message', chatId, messagesDiv);
-    if (existingSkeleton) {
+    if (existingSkeleton && !allowMultiple) {
         console.log(`%c[SKELETON] Skeleton existe déjà pour chat ${chatId?.substring(0, 10)}, skip`, 'color: #f59e0b; font-weight: bold');
-        return;
+        return existingSkeleton.dataset?.skeletonId || '';
     }
 
     console.log(`%c[SKELETON] Ajout skeleton pour chat ${chatId?.substring(0, 10)}`, 'color: #22c55e; font-weight: bold');
@@ -270,7 +276,7 @@ function addSkeletonMessage(prompt, userImage, hasImage, maskImage = null, chatI
     const resultLabelKey = hasImage ? 'modified' : 'generated';
     const resultLabelFallback = hasImage ? 'Modifié' : 'Généré';
     const skeletonHtml = `
-        <div class="message image-skeleton-message" data-chat-id="${chatId}" data-started-at="${startedAt}">
+        <div class="message image-skeleton-message" data-chat-id="${chatId}" data-skeleton-id="${skeletonId}" data-started-at="${startedAt}">
             <div class="user-message">
                 <div class="user-bubble">${formatUserPromptForChat(prompt)}</div>
                 ${hasImage && userImage ? `<img src="${userImage}" class="user-thumb">` : ''}
@@ -398,6 +404,7 @@ function addSkeletonMessage(prompt, userImage, hasImage, maskImage = null, chatI
     if (hasImage && userImage) {
         startPreviewPolling();
     }
+    return skeletonId;
 }
 
 /**
@@ -845,9 +852,7 @@ function addImageAnalysisMessage(prompt, attachedImage, response, responseTime =
     saveCurrentChat(prompt, response || '', messageHtml, chatId);
 }
 
-function addMessage(prompt, userImage, original, modified, generationTime = null, chatId = (typeof currentChatId !== 'undefined' ? currentChatId : null), totalTime = null) {
-    removeSkeletonMessage(chatId);
-
+function addMessage(prompt, userImage, original, modified, generationTime = null, chatId = (typeof currentChatId !== 'undefined' ? currentChatId : null), totalTime = null, skeletonId = '') {
     const messagesDiv = getChatMessages();
     const editIcon = ICON_EDIT;
     const fixDetailsIcon = ICON_FIX_DETAILS;
@@ -883,7 +888,13 @@ function addMessage(prompt, userImage, original, modified, generationTime = null
         </div>
     `;
 
-    messagesDiv.insertAdjacentHTML('beforeend', messageHtml);
+    const targetSkeleton = skeletonId ? findScopedChatElement('.image-skeleton-message', chatId, messagesDiv, { skeletonId }) : null;
+    if (targetSkeleton) {
+        targetSkeleton.outerHTML = messageHtml;
+    } else {
+        removeSkeletonMessage(chatId, { skeletonId });
+        messagesDiv.insertAdjacentHTML('beforeend', messageHtml);
+    }
     scrollToBottom(true);
     saveCurrentChat(prompt, '[Image generee]', messageHtml, chatId);
 
@@ -903,9 +914,7 @@ function addMessage(prompt, userImage, original, modified, generationTime = null
  * @param {string} mask - Le masque utilisé (optionnel)
  * @param {number} generationTime - Temps de génération (optionnel)
  */
-function addMessageEdit(prompt, original, modified, mask = null, generationTime = null, chatId = (typeof currentChatId !== 'undefined' ? currentChatId : null), totalTime = null) {
-    removeSkeletonMessage(chatId);
-
+function addMessageEdit(prompt, original, modified, mask = null, generationTime = null, chatId = (typeof currentChatId !== 'undefined' ? currentChatId : null), totalTime = null, skeletonId = '') {
     const messagesDiv = getChatMessages();
     const editIcon = ICON_EDIT;
     const fixDetailsIcon = ICON_FIX_DETAILS;
@@ -977,7 +986,13 @@ function addMessageEdit(prompt, original, modified, mask = null, generationTime 
         </div>
     `;
 
-    messagesDiv.insertAdjacentHTML('beforeend', messageHtml);
+    const targetSkeleton = skeletonId ? findScopedChatElement('.image-skeleton-message', chatId, messagesDiv, { skeletonId }) : null;
+    if (targetSkeleton) {
+        targetSkeleton.outerHTML = messageHtml;
+    } else {
+        removeSkeletonMessage(chatId, { skeletonId });
+        messagesDiv.insertAdjacentHTML('beforeend', messageHtml);
+    }
     scrollToBottom(true);
     saveCurrentChat(prompt, '[Image editee]', messageHtml, chatId);
 

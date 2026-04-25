@@ -28,6 +28,23 @@ class PerfAtlasStorage(AuditModuleStorage):
         })
         return record
 
+    def find_previous_completed_audit(self, *, host: str, exclude_id: str = "") -> Optional[Dict[str, Any]]:
+        clean_host = str(host or "").strip().lower()
+        clean_exclude = str(exclude_id or "").strip()
+        if not clean_host:
+            return None
+        for item in self.list_audits(200):
+            if str(item.get("id") or "").strip() == clean_exclude:
+                continue
+            if str(item.get("status") or "").strip().lower() != "done":
+                continue
+            if str(item.get("host") or "").strip().lower() != clean_host:
+                continue
+            audit = self.get_audit(str(item.get("id") or ""))
+            if audit:
+                return audit
+        return None
+
 
 _STORAGE: Optional[PerfAtlasStorage] = None
 

@@ -9,6 +9,7 @@ class PerfAtlasProviderTests(unittest.TestCase):
         with patch.object(providers, "get_signalatlas_provider_status", return_value=[]), \
              patch.object(providers, "get_pagespeed_api_key", return_value=""), \
              patch.object(providers, "get_crux_api_key", return_value=""), \
+             patch.object(providers, "get_webpagetest_api_key", return_value=""), \
              patch.object(providers, "_vercel_config", return_value={"token": "", "source": "missing", "team_id": "", "project_id": ""}), \
              patch.object(providers, "_netlify_config", return_value={"token": "", "source": "missing", "site_id": ""}), \
              patch.object(providers, "_cloudflare_config", return_value={"api_token": "", "source": "missing", "zone_id": "", "account_id": ""}):
@@ -17,6 +18,7 @@ class PerfAtlasProviderTests(unittest.TestCase):
         by_id = {item["id"]: item for item in status}
         self.assertEqual(by_id["crux_api"]["status"], "scaffolded")
         self.assertEqual(by_id["pagespeed_insights"]["status"], "scaffolded")
+        self.assertEqual(by_id["webpagetest"]["status"], "scaffolded")
         self.assertEqual(by_id["vercel"]["status"], "scaffolded")
         self.assertEqual(by_id["netlify"]["status"], "scaffolded")
         self.assertEqual(by_id["cloudflare"]["status"], "scaffolded")
@@ -29,6 +31,7 @@ class PerfAtlasProviderTests(unittest.TestCase):
         with patch.object(providers, "get_signalatlas_provider_status", return_value=[fake_gsc]), \
              patch.object(providers, "get_pagespeed_api_key", return_value="key"), \
              patch.object(providers, "get_crux_api_key", return_value="key"), \
+             patch.object(providers, "get_webpagetest_api_key", return_value="key"), \
              patch.object(providers, "_vercel_context", return_value=fake_vercel), \
              patch.object(providers, "_netlify_context", return_value=fake_netlify), \
              patch.object(providers, "_cloudflare_context", return_value=fake_cloudflare):
@@ -39,6 +42,7 @@ class PerfAtlasProviderTests(unittest.TestCase):
         self.assertEqual(by_id["crux_api"]["status"], "configured")
         self.assertEqual(by_id["crux_history_api"]["status"], "configured")
         self.assertEqual(by_id["pagespeed_insights"]["status"], "configured")
+        self.assertEqual(by_id["webpagetest"]["status"], "configured")
         self.assertEqual(by_id["vercel"]["status"], "ready")
         self.assertEqual(by_id["netlify"]["status"], "target_mismatch")
         self.assertEqual(by_id["cloudflare"]["status"], "partial")

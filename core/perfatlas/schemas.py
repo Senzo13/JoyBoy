@@ -35,6 +35,7 @@ class PerfPageSnapshot:
     stylesheet_count: int = 0
     image_count: int = 0
     lazy_image_count: int = 0
+    image_missing_dimension_count: int = 0
     preload_count: int = 0
     preconnect_count: int = 0
     font_host_count: int = 0

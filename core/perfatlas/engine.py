@@ -8,6 +8,7 @@ import os
 import shutil
 import statistics
 import subprocess
+import time
 from collections import Counter
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
@@ -18,7 +19,8 @@ from bs4 import BeautifulSoup
 
 from core.audit_modules.targets import normalize_public_target
 
-from .providers import build_owner_context, get_crux_api_key, get_pagespeed_api_key, get_perfatlas_provider_status
+from .intelligence import build_performance_intelligence, intelligence_finding_specs
+from .providers import build_owner_context, get_crux_api_key, get_pagespeed_api_key, get_perfatlas_provider_status, get_webpagetest_api_key
 from .scoring import score_findings
 
 
@@ -235,6 +237,10 @@ def _collect_page_snapshot(
         tag for tag in images
         if str(tag.get("loading") or "").strip().lower() == "lazy"
     ]
+    image_missing_dimensions = [
+        tag for tag in images
+        if not str(tag.get("width") or "").strip() or not str(tag.get("height") or "").strip()
+    ]
     preloads = [tag for tag in soup.select("link[rel]") if "preload" in " ".join(tag.get("rel") or []).lower()]
     preconnects = [tag for tag in soup.select("link[rel]") if "preconnect" in " ".join(tag.get("rel") or []).lower()]
     third_party_hosts = {
@@ -274,6 +280,7 @@ def _collect_page_snapshot(
         "stylesheet_count": len(stylesheets),
         "image_count": len(images),
         "lazy_image_count": len(lazy_images),
+        "image_missing_dimension_count": len(image_missing_dimensions),
         "preload_count": len(preloads),
         "preconnect_count": len(preconnects),
         "font_host_count": len(font_hosts),
@@ -601,6 +608,35 @@ def _run_local_lighthouse(url: str, strategy: str, runs: int, runtime_status: Di
     chosen = _median_run(collected)
     chosen["runs_attempted"] = runs
     chosen["runs_completed"] = len(collected)
+    scores = [_safe_float(item.get("score"), math.nan) for item in collected if item.get("score") is not None]
+    lcps = [_safe_float(item.get("largest_contentful_paint_ms"), math.nan) for item in collected if item.get("largest_contentful_paint_ms") is not None]
+    tbts = [_safe_float(item.get("total_blocking_time_ms"), math.nan) for item in collected if item.get("total_blocking_time_ms") is not None]
+    multi_run_summary = {
+        "policy": "median_score_run",
+        "runs_completed": len(collected),
+        "score_min": round(min(scores), 1) if scores else None,
+        "score_max": round(max(scores), 1) if scores else None,
+        "score_range": round(max(scores) - min(scores), 1) if len(scores) >= 2 else 0,
+        "lcp_min_ms": round(min(lcps), 1) if lcps else None,
+        "lcp_max_ms": round(max(lcps), 1) if lcps else None,
+        "lcp_range_ms": round(max(lcps) - min(lcps), 1) if len(lcps) >= 2 else 0,
+        "tbt_min_ms": round(min(tbts), 1) if tbts else None,
+        "tbt_max_ms": round(max(tbts), 1) if tbts else None,
+        "tbt_range_ms": round(max(tbts) - min(tbts), 1) if len(tbts) >= 2 else 0,
+    }
+    chosen.setdefault("diagnostics", {})
+    chosen["diagnostics"]["multi_run_summary"] = multi_run_summary
+    chosen["diagnostics"]["raw_run_summaries"] = [
+        {
+            "score": item.get("score"),
+            "lcp_ms": item.get("largest_contentful_paint_ms"),
+            "tbt_ms": item.get("total_blocking_time_ms"),
+            "cls": item.get("cumulative_layout_shift"),
+            "total_byte_weight": item.get("total_byte_weight"),
+            "request_count": item.get("request_count"),
+        }
+        for item in collected[:10]
+    ]
     return chosen
 
 
@@ -622,6 +658,186 @@ def _run_pagespeed_insights(url: str, strategy: str) -> Dict[str, Any]:
         return {
             "url": url,
             "runner": "pagespeed_insights",
+            "strategy": strategy,
+            "runs_attempted": 1,
+            "runs_completed": 0,
+            "note": str(exc),
+            "opportunities": [],
+            "diagnostics": {},
+        }
+
+
+def _webpagetest_metric(data: Dict[str, Any], *names: str) -> Optional[float]:
+    for name in names:
+        value: Any = data
+        for part in str(name).split("."):
+            if not isinstance(value, dict):
+                value = None
+                break
+            value = value.get(part)
+        if value is None:
+            continue
+        numeric = _safe_float(value, math.nan)
+        if not math.isnan(numeric):
+            return round(numeric, 1)
+    return None
+
+
+def _score_webpagetest_result(first_view: Dict[str, Any]) -> Optional[float]:
+    lcp = _webpagetest_metric(first_view, "LargestContentfulPaint", "largestContentfulPaint", "chromeUserTiming.LargestContentfulPaint")
+    tbt = _webpagetest_metric(first_view, "TotalBlockingTime", "totalBlockingTime")
+    ttfb = _webpagetest_metric(first_view, "TTFB", "ttfb")
+    speed_index = _webpagetest_metric(first_view, "SpeedIndex", "speedIndex")
+    if not any(value is not None for value in (lcp, tbt, ttfb, speed_index)):
+        return None
+    score = 100.0
+    if lcp:
+        score -= max(0.0, min(35.0, (lcp - LCP_GOOD) / 90.0))
+    if tbt:
+        score -= max(0.0, min(25.0, (tbt - TBT_GOOD) / 32.0))
+    if ttfb:
+        score -= max(0.0, min(18.0, (ttfb - TTFB_GOOD) / 70.0))
+    if speed_index:
+        score -= max(0.0, min(22.0, (speed_index - 3400.0) / 170.0))
+    return round(max(0.0, min(100.0, score)), 1)
+
+
+def _parse_webpagetest_result(url: str, strategy: str, payload: Dict[str, Any], note: str = "") -> Dict[str, Any]:
+    data = payload.get("data") if isinstance(payload.get("data"), dict) else payload
+    median = data.get("median") or {}
+    first_view = (median.get("firstView") or {})
+    if not first_view:
+        runs = data.get("runs") or {}
+        first_run = next((item for item in runs.values() if isinstance(item, dict)), {})
+        first_view = first_run.get("firstView") or {}
+    if not first_view:
+        return {
+            "url": url,
+            "runner": "webpagetest",
+            "strategy": strategy,
+            "runs_attempted": 1,
+            "runs_completed": 0,
+            "note": note or "WebPageTest result did not include a first-view payload.",
+            "opportunities": [],
+            "diagnostics": {},
+        }
+    total_bytes = _safe_int(first_view.get("bytesIn") or first_view.get("bytesInDoc"), 0) or None
+    request_count = _safe_int(first_view.get("requestsFull") or first_view.get("requests"), 0) or None
+    lcp = _webpagetest_metric(first_view, "LargestContentfulPaint", "largestContentfulPaint", "chromeUserTiming.LargestContentfulPaint")
+    tbt = _webpagetest_metric(first_view, "TotalBlockingTime", "totalBlockingTime")
+    ttfb = _webpagetest_metric(first_view, "TTFB", "ttfb")
+    opportunities: List[Dict[str, Any]] = []
+    if ttfb and ttfb > TTFB_GOOD:
+        opportunities.append({
+            "id": "server-response-time",
+            "title": "Reduce initial server response time",
+            "display_value": f"{round(ttfb)} ms",
+            "numeric_value": ttfb,
+            "description": "WebPageTest measured a slow time to first byte.",
+        })
+    if total_bytes and total_bytes > 1_600_000:
+        opportunities.append({
+            "id": "total-byte-weight",
+            "title": "Reduce total page weight",
+            "display_value": f"{round(total_bytes / 1024)} KiB",
+            "numeric_value": total_bytes,
+            "description": "WebPageTest measured a heavy first-view payload.",
+        })
+    return {
+        "url": url,
+        "runner": "webpagetest",
+        "strategy": strategy,
+        "runs_attempted": 1,
+        "runs_completed": 1,
+        "score": _score_webpagetest_result(first_view),
+        "first_contentful_paint_ms": _webpagetest_metric(first_view, "firstContentfulPaint", "chromeUserTiming.firstContentfulPaint"),
+        "largest_contentful_paint_ms": lcp,
+        "cumulative_layout_shift": _webpagetest_metric(first_view, "CumulativeLayoutShift", "cumulativeLayoutShift"),
+        "total_blocking_time_ms": tbt,
+        "speed_index_ms": _webpagetest_metric(first_view, "SpeedIndex", "speedIndex"),
+        "interactive_ms": _webpagetest_metric(first_view, "domInteractive"),
+        "server_response_time_ms": ttfb,
+        "total_byte_weight": total_bytes,
+        "request_count": request_count,
+        "diagnostics": {
+            "webpagetest": {
+                "test_id": data.get("id") or data.get("testId") or "",
+                "summary": data.get("summary") or "",
+                "test_url": data.get("userUrl") or url,
+            }
+        },
+        "opportunities": opportunities,
+        "note": note or "Remote lab data via WebPageTest.",
+    }
+
+
+def _run_webpagetest(url: str, strategy: str) -> Dict[str, Any]:
+    api_key = get_webpagetest_api_key()
+    if not api_key:
+        return {
+            "url": url,
+            "runner": "webpagetest",
+            "strategy": strategy,
+            "runs_attempted": 1,
+            "runs_completed": 0,
+            "note": "WEBPAGETEST_API_KEY is not configured.",
+            "opportunities": [],
+            "diagnostics": {},
+        }
+    headers = {"X-WPT-API-KEY": api_key}
+    params = {
+        "url": url,
+        "f": "json",
+        "runs": 1,
+        "video": 1,
+        "mobile": 1 if strategy == "mobile" else 0,
+    }
+    try:
+        response = requests.get("https://www.webpagetest.org/runtest.php", params=params, headers=headers, timeout=30)
+        response.raise_for_status()
+        submitted_payload = response.json()
+        submitted = submitted_payload if isinstance(submitted_payload, dict) else {}
+        data = submitted.get("data") or {}
+        json_url = str(data.get("jsonUrl") or "").strip()
+        test_id = str(data.get("testId") or data.get("id") or "").strip()
+        if not json_url and test_id:
+            json_url = f"https://www.webpagetest.org/jsonResult.php?test={test_id}"
+        if not json_url:
+            return {
+                "url": url,
+                "runner": "webpagetest",
+                "strategy": strategy,
+                "runs_attempted": 1,
+                "runs_completed": 0,
+                "note": str(submitted.get("statusText") or "WebPageTest did not return a result URL."),
+                "opportunities": [],
+                "diagnostics": {},
+            }
+        for attempt in range(8):
+            poll = requests.get(json_url, headers=headers, timeout=30)
+            poll.raise_for_status()
+            poll_payload = poll.json()
+            payload = poll_payload if isinstance(poll_payload, dict) else {}
+            status_code = _safe_int(payload.get("statusCode"), 0)
+            if status_code == 200 or (payload.get("data") or {}).get("median"):
+                return _parse_webpagetest_result(url, strategy, payload, note="Remote lab data via WebPageTest.")
+            if status_code >= 400:
+                break
+            time.sleep(5 + attempt)
+        return {
+            "url": url,
+            "runner": "webpagetest",
+            "strategy": strategy,
+            "runs_attempted": 1,
+            "runs_completed": 0,
+            "note": "WebPageTest did not finish before the PerfAtlas polling window closed.",
+            "opportunities": [],
+            "diagnostics": {},
+        }
+    except Exception as exc:
+        return {
+            "url": url,
+            "runner": "webpagetest",
             "strategy": strategy,
             "runs_attempted": 1,
             "runs_completed": 0,
@@ -1887,6 +2103,42 @@ def _profile_settings(max_pages: int) -> Dict[str, Any]:
     return {"label": "ultra", "sample_pages": min(max_pages, 20), "lab_pages": 5, "lab_runs": 5}
 
 
+def _lab_probe_plan(pages: List[Dict[str, Any]], profile: Dict[str, Any]) -> List[Dict[str, Any]]:
+    if not pages:
+        return []
+    label = str(profile.get("label") or "basic")
+    page_count = len(pages)
+    if label == "ultra":
+        max_pages = 2 if page_count <= 8 else min(5, int(profile.get("lab_pages") or 5))
+        primary_runs = 2 if page_count <= 8 else 3
+    elif label == "elevated":
+        max_pages = 2
+        primary_runs = 2
+    else:
+        max_pages = 1
+        primary_runs = 1
+
+    selected: List[Dict[str, Any]] = []
+    seen_templates = set()
+    for page in pages:
+        url = page.get("final_url") or page.get("url")
+        if not url:
+            continue
+        template = str(page.get("template_signature") or url)
+        if template in seen_templates and len(selected) >= 1:
+            continue
+        seen_templates.add(template)
+        selected.append({"url": url, "runs": primary_runs if not selected else 1})
+        if len(selected) >= max_pages:
+            break
+
+    if not selected:
+        url = pages[0].get("final_url") or pages[0].get("url")
+        if url:
+            selected.append({"url": url, "runs": primary_runs})
+    return selected
+
+
 def run_site_audit(
     target_url: str,
     *,
@@ -1956,18 +2208,35 @@ def run_site_audit(
     field_data = _build_field_snapshots(entry_url)
 
     _emit(progress_callback, "lab", 66, "Running lab performance probes")
-    representative_urls = [page.get("final_url") or page.get("url") for page in pages[: profile["lab_pages"]]]
+    lab_plan = _lab_probe_plan(pages, profile)
     lab_runs: List[Dict[str, Any]] = []
-    for url in representative_urls:
+    for item in lab_plan:
         if _cancelled(cancel_check):
             break
+        url = str(item.get("url") or "")
+        runs = max(1, int(item.get("runs") or 1))
         if runtime_status.get("available"):
-            lab_runs.append(_run_local_lighthouse(url, "mobile", profile["lab_runs"], runtime_status))
+            lab_runs.append(_run_local_lighthouse(url, "mobile", runs, runtime_status))
         else:
-            lab_runs.append(_run_pagespeed_insights(url, "mobile"))
+            remote_lab = _run_pagespeed_insights(url, "mobile")
+            if remote_lab.get("score") is None and get_webpagetest_api_key():
+                remote_lab = _run_webpagetest(url, "mobile")
+            lab_runs.append(remote_lab)
 
     _emit(progress_callback, "owner", 78, "Collecting owner context")
     owner_context = build_owner_context(entry_url, mode=mode)
+    template_clusters = _aggregate_template_clusters(pages)
+    intelligence = build_performance_intelligence(
+        target_url=entry_url,
+        profile=profile,
+        pages=pages,
+        assets=asset_samples,
+        lab_runs=lab_runs,
+        field_data=field_data,
+        template_clusters=template_clusters,
+        provider_statuses=provider_statuses,
+        owner_context=owner_context,
+    )
 
     _emit(progress_callback, "score", 88, "Scoring performance findings")
     findings: List[Dict[str, Any]] = []
@@ -1976,6 +2245,8 @@ def run_site_audit(
     findings.extend(_delivery_findings(pages, asset_samples, entry_url))
     findings.extend(_resource_findings(pages, entry_url))
     findings.extend(_owner_context_findings(owner_context, pages, asset_samples, entry_url))
+    for spec in intelligence_finding_specs(intelligence):
+        findings.append(_make_finding(url=entry_url, **spec))
     findings.sort(key=lambda item: ({"critical": 4, "high": 3, "medium": 2, "low": 1, "info": 0}.get(str(item.get("severity")).lower(), 0)), reverse=True)
     lab_ready = any(item.get("score") is not None for item in lab_runs)
     field_ready = bool(field_data)
@@ -1990,7 +2261,6 @@ def run_site_audit(
     )
     remediation_items = _build_remediation_items(findings)
     platform = _detect_platform(page_html.get(pages[0].get("final_url") or "", ""), pages[0].get("headers") or {})
-    template_clusters = _aggregate_template_clusters(pages)
 
     blocking_risk = scores.get("blocking_risk") or {}
     summary = {
@@ -2005,12 +2275,16 @@ def run_site_audit(
         "lab_pages_analyzed": len(lab_runs),
         "runtime_runner": runtime_status.get("runner") or "unavailable",
         "runtime_note": runtime_status.get("note") or "",
+        "lab_probe_plan": lab_plan,
         "field_data_available": field_ready,
         "lab_data_available": lab_ready,
         "top_risk": findings[0]["title"] if findings else "",
         "blocking_risk": blocking_risk,
         "score_guardrails": scores.get("guardrails") or [],
         "owner_integrations_count": len(owner_context.get("integrations") or []),
+        "performance_budget": intelligence.get("summary") or {},
+        "top_performance_action": (intelligence.get("summary") or {}).get("top_action") or "",
+        "diagnostic_confidence": (intelligence.get("summary") or {}).get("diagnostic_confidence") or "limited",
     }
     snapshot = {
         "started_at": started_at,
@@ -2022,8 +2296,10 @@ def run_site_audit(
         "lab_runs": lab_runs,
         "asset_samples": asset_samples,
         "template_clusters": template_clusters,
+        "performance_intelligence": intelligence,
         "provider_statuses": provider_statuses,
         "runtime": runtime_status,
+        "lab_probe_plan": lab_plan,
     }
     return {
         "summary": summary,

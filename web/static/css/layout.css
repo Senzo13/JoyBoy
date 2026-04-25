@@ -144,6 +144,8 @@ body.sidebar-collapsed #perfatlas-view {
     flex-direction: column;
     overflow-x: hidden;
     transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    user-select: none;
+    -webkit-user-select: none;
 }
 
 /* Logo en haut de la sidebar */
@@ -810,6 +812,24 @@ body.sidebar-collapsed #perfatlas-view {
     flex-direction: column;
     gap: 8px;
     transition: left 0.3s ease;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.conversations-sidebar input,
+.conversations-sidebar textarea,
+.sidebar input,
+.sidebar textarea {
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.conversations-sidebar input:focus,
+.conversations-sidebar textarea:focus,
+.sidebar input:focus,
+.sidebar textarea:focus {
+    user-select: text;
+    -webkit-user-select: text;
 }
 
 body.sidebar-collapsed .sidebar {

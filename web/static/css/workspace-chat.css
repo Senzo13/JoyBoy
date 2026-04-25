@@ -43,6 +43,8 @@ body.terminal-mode .terminal-header {
     color: #dbeafe;
     box-shadow: 0 16px 45px rgba(0, 0, 0, 0.22);
     backdrop-filter: blur(14px);
+    user-select: none;
+    -webkit-user-select: none;
 }
 
 body.sidebar-collapsed.terminal-mode .terminal-header {

@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch
 
-from core.perfatlas.engine import _parse_lighthouse_result, run_site_audit
+from core.perfatlas.engine import _lab_probe_plan, _parse_lighthouse_result, _parse_webpagetest_result, run_site_audit
 
 
 class _FakeSession:
@@ -43,6 +43,20 @@ def _sample_page(final_url="https://nevomove.com/"):
 
 
 class PerfAtlasEngineTests(unittest.TestCase):
+    def test_ultra_lab_probe_plan_stays_small_for_tiny_sites(self):
+        pages = [
+            _sample_page("https://nevomove.com/"),
+            _sample_page("https://nevomove.com/pricing"),
+            _sample_page("https://nevomove.com/about"),
+        ]
+        pages[1]["template_signature"] = "/pricing"
+        pages[2]["template_signature"] = "/about"
+
+        plan = _lab_probe_plan(pages, {"label": "ultra", "lab_pages": 5, "lab_runs": 5})
+
+        self.assertEqual(len(plan), 2)
+        self.assertEqual(sum(item["runs"] for item in plan), 3)
+
     def test_parse_lighthouse_keeps_zero_performance_score(self):
         parsed = _parse_lighthouse_result(
             "https://example.com/",
@@ -54,6 +68,34 @@ class PerfAtlasEngineTests(unittest.TestCase):
         )
 
         self.assertEqual(parsed["score"], 0)
+
+    def test_parse_webpagetest_result_maps_core_metrics(self):
+        parsed = _parse_webpagetest_result(
+            "https://example.com/",
+            "mobile",
+            {
+                "data": {
+                    "id": "test-123",
+                    "median": {
+                        "firstView": {
+                            "LargestContentfulPaint": 3200,
+                            "TotalBlockingTime": 280,
+                            "CumulativeLayoutShift": 0.04,
+                            "TTFB": 700,
+                            "SpeedIndex": 4100,
+                            "bytesIn": 1800000,
+                            "requestsFull": 92,
+                        }
+                    },
+                }
+            },
+        )
+
+        self.assertEqual(parsed["runner"], "webpagetest")
+        self.assertEqual(parsed["largest_contentful_paint_ms"], 3200)
+        self.assertEqual(parsed["total_blocking_time_ms"], 280)
+        self.assertEqual(parsed["request_count"], 92)
+        self.assertIsNotNone(parsed["score"])
 
     def test_run_site_audit_reports_degraded_runtime_honestly(self):
         pages = [_sample_page()]
@@ -92,6 +134,7 @@ class PerfAtlasEngineTests(unittest.TestCase):
              patch("core.perfatlas.engine._lighthouse_runtime_status", return_value={"available": False, "runner": "unavailable", "note": "No Chrome/Chromium runtime was detected for local Lighthouse."}), \
              patch("core.perfatlas.engine._build_field_snapshots", return_value=[]), \
              patch("core.perfatlas.engine._run_pagespeed_insights", return_value={"url": "https://nevomove.com/", "runner": "pagespeed_insights", "strategy": "mobile", "runs_attempted": 1, "runs_completed": 0, "note": "PSI unavailable", "opportunities": [], "diagnostics": {}}), \
+             patch("core.perfatlas.engine.get_webpagetest_api_key", return_value=""), \
              patch("core.perfatlas.engine.build_owner_context", return_value={"integrations": [{"id": "vercel", "status": "ready"}]}), \
              patch("core.perfatlas.engine._collect_page_snapshot", side_effect=[(pages[0], assets, "<html><head><title>NevoMove</title></head><body><h1>Move</h1></body></html>")]), \
              patch("core.perfatlas.engine._fetch_asset_sample", side_effect=asset_samples):
@@ -196,6 +239,7 @@ class PerfAtlasEngineTests(unittest.TestCase):
              patch("core.perfatlas.engine._lighthouse_runtime_status", return_value={"available": False, "runner": "unavailable", "note": "No Chrome/Chromium runtime was detected for local Lighthouse."}), \
              patch("core.perfatlas.engine._build_field_snapshots", return_value=[]), \
              patch("core.perfatlas.engine._run_pagespeed_insights", return_value={"url": "https://nevomove.com/", "runner": "pagespeed_insights", "strategy": "mobile", "runs_attempted": 1, "runs_completed": 0, "note": "PSI unavailable", "opportunities": [], "diagnostics": {}}), \
+             patch("core.perfatlas.engine.get_webpagetest_api_key", return_value=""), \
              patch("core.perfatlas.engine.build_owner_context", return_value=owner_context), \
              patch("core.perfatlas.engine._collect_page_snapshot", side_effect=[(pages[0], assets, "<html><head><title>NevoMove</title></head><body><h1>Move</h1></body></html>")]), \
              patch("core.perfatlas.engine._fetch_asset_sample", side_effect=asset_samples):
@@ -232,6 +276,7 @@ class PerfAtlasEngineTests(unittest.TestCase):
              patch("core.perfatlas.engine._lighthouse_runtime_status", return_value={"available": False, "runner": "unavailable", "note": "No Chrome/Chromium runtime was detected for local Lighthouse."}), \
              patch("core.perfatlas.engine._build_field_snapshots", return_value=[]), \
              patch("core.perfatlas.engine._run_pagespeed_insights", return_value={"url": "https://nevomove.com/", "runner": "pagespeed_insights", "strategy": "mobile", "runs_attempted": 1, "runs_completed": 0, "note": "PSI unavailable", "opportunities": [], "diagnostics": {}}), \
+             patch("core.perfatlas.engine.get_webpagetest_api_key", return_value=""), \
              patch("core.perfatlas.engine.build_owner_context", return_value=owner_context), \
              patch("core.perfatlas.engine._collect_page_snapshot", side_effect=[(pages[0], [], "<html><head><title>NevoMove</title></head><body><h1>Move</h1></body></html>")]):
             result = run_site_audit("https://nevomove.com/", max_pages=3)
@@ -261,6 +306,7 @@ class PerfAtlasEngineTests(unittest.TestCase):
              patch("core.perfatlas.engine._lighthouse_runtime_status", return_value={"available": False, "runner": "unavailable", "note": "No Chrome/Chromium runtime was detected for local Lighthouse."}), \
              patch("core.perfatlas.engine._build_field_snapshots", return_value=[]), \
              patch("core.perfatlas.engine._run_pagespeed_insights", return_value={"url": "https://nevomove.com/", "runner": "pagespeed_insights", "strategy": "mobile", "runs_attempted": 1, "runs_completed": 0, "note": "PSI unavailable", "opportunities": [], "diagnostics": {}}), \
+             patch("core.perfatlas.engine.get_webpagetest_api_key", return_value=""), \
              patch("core.perfatlas.engine.build_owner_context", return_value=owner_context), \
              patch("core.perfatlas.engine._collect_page_snapshot", side_effect=[(pages[0], [], "<html><head><title>NevoMove</title></head><body><h1>Move</h1></body></html>")]):
             result = run_site_audit("https://nevomove.com/", max_pages=3)

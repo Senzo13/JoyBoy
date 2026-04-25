@@ -10,6 +10,7 @@ from core.runtime import get_job_manager
 from core.runtime.storage import utc_now_iso
 
 from .engine import run_site_audit
+from .intelligence import build_regression_summary
 from .llm_adapter import generate_interpretation
 from .storage import get_perfatlas_storage
 
@@ -20,6 +21,31 @@ def _job_id(prefix: str, audit_id: str) -> str:
 
 def _update_progress(job_id: str, phase: str, progress: float, message: str) -> None:
     update_module_progress(job_id, "perfatlas", phase, progress, message)
+
+
+def _estimate_audit_seconds(options: Dict[str, Any], ai_config: Dict[str, Any]) -> int:
+    try:
+        max_pages = max(1, int(options.get("max_pages") or 8))
+    except (TypeError, ValueError):
+        max_pages = 8
+    crawl_seconds = 10 + min(max_pages, 20) * 4
+    field_seconds = 8
+    if max_pages <= 3:
+        lab_probe_runs = 1
+    elif max_pages <= 8:
+        lab_probe_runs = 3
+    else:
+        lab_probe_runs = 7
+    lab_seconds = lab_probe_runs * 10
+    owner_seconds = 6
+    level = str(ai_config.get("level") or "basic_summary").strip().lower()
+    ai_seconds = {
+        "no_ai": 0,
+        "basic_summary": 18,
+        "full_expert_analysis": 45,
+        "ai_remediation_pack": 70,
+    }.get(level, 35)
+    return int(max(35, min(900, crawl_seconds + field_seconds + lab_seconds + owner_seconds + ai_seconds)))
 
 
 def _run_audit_job(job_id: str, audit_id: str, payload: Dict[str, Any]) -> None:
@@ -60,6 +86,14 @@ def _run_audit_job(job_id: str, audit_id: str, payload: Dict[str, Any]) -> None:
             status="done",
             updated_at=utc_now_iso(),
         )
+        previous = storage.find_previous_completed_audit(
+            host=str((updated.get("target") or {}).get("host") or ""),
+            exclude_id=audit_id,
+        )
+        regression = build_regression_summary(updated, previous)
+        updated.setdefault("snapshot", {})["regression"] = regression
+        updated.setdefault("summary", {})["regression_risk"] = regression.get("risk") or "unknown"
+        updated.setdefault("summary", {})["previous_audit_id"] = regression.get("previous_audit_id") or ""
 
         ai_config = payload.get("ai") or {}
         if ai_config.get("level") and str(ai_config.get("level")).lower() != "no_ai":
@@ -92,13 +126,17 @@ def start_perfatlas_audit(payload: Dict[str, Any]) -> Dict[str, Any]:
     storage = get_perfatlas_storage()
     target = payload.get("target") or {}
     title = payload.get("title") or (target.get("host") or target.get("normalized_url") or "PerfAtlas audit")
+    options = payload.get("options") or {}
+    ai_config = payload.get("ai") or {}
+    estimated_seconds = _estimate_audit_seconds(options, ai_config)
     audit = storage.create_audit_stub(
         target=target,
         title=title,
-        options=payload.get("options") or {},
+        options=options,
         metadata={
             "module_id": "perfatlas",
-            "ai": payload.get("ai") or {},
+            "ai": ai_config,
+            "estimated_seconds": estimated_seconds,
         },
     )
     job_id = _job_id("audit", audit["id"])
@@ -106,7 +144,13 @@ def start_perfatlas_audit(payload: Dict[str, Any]) -> Dict[str, Any]:
         "perfatlas",
         job_id=job_id,
         prompt=audit["target"]["normalized_url"],
-        metadata={"module_id": "perfatlas", "audit_id": audit["id"]},
+        metadata={
+            "module_id": "perfatlas",
+            "audit_id": audit["id"],
+            "estimated_seconds": estimated_seconds,
+            "requested_max_pages": options.get("max_pages"),
+            "ai_level": ai_config.get("level") or "",
+        },
     )
     thread = threading.Thread(target=_run_audit_job, args=(job_id, audit["id"], payload), daemon=True)
     thread.start()
