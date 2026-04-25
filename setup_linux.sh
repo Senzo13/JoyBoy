@@ -19,6 +19,42 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
+ensure_ubuntu_python_bootstrap() {
+    if python3 -c "import ensurepip, venv" >/dev/null 2>&1; then
+        return 0
+    fi
+
+    echo -e "${YELLOW}[SETUP]${NC} Python venv/ensurepip support is missing."
+
+    if ! command -v apt-get >/dev/null 2>&1; then
+        echo -e "${RED}[ERROR]${NC} Install Python venv support for your distro, then rerun this script."
+        exit 1
+    fi
+
+    local python_minor
+    python_minor=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
+    local venv_pkg="python${python_minor}-venv"
+    local packages=("$venv_pkg" "python3-venv" "python3-pip")
+
+    echo -e "${YELLOW}[SETUP]${NC} Installing ${packages[*]}..."
+    if [ "$(id -u)" -eq 0 ]; then
+        apt-get update
+        apt-get install -y "${packages[@]}" || apt-get install -y python3-venv python3-pip
+    elif command -v sudo >/dev/null 2>&1; then
+        sudo apt-get update
+        sudo apt-get install -y "${packages[@]}" || sudo apt-get install -y python3-venv python3-pip
+    else
+        echo -e "${RED}[ERROR]${NC} sudo is not available. Run as root:"
+        echo "  apt-get update && apt-get install -y ${packages[*]}"
+        exit 1
+    fi
+
+    python3 -c "import ensurepip, venv" >/dev/null 2>&1 || {
+        echo -e "${RED}[ERROR]${NC} Python venv support is still unavailable after apt install."
+        exit 1
+    }
+}
+
 # Check CUDA
 if ! command -v nvidia-smi &> /dev/null; then
     echo -e "${RED}[ERROR] nvidia-smi not found. Is CUDA installed?${NC}"
@@ -41,6 +77,8 @@ echo -e "${GREEN}[OK]${NC} $PYTHON_VERSION"
 # Add ~/.local/bin to PATH (pip installs binaries there)
 export PATH="$HOME/.local/bin:$PATH"
 
+ensure_ubuntu_python_bootstrap
+
 # Check if PyTorch already installed (Lambda Labs has it)
 if python3 -c "import torch; print(torch.cuda.is_available())" 2>/dev/null | grep -q "True"; then
     echo -e "${GREEN}[OK]${NC} PyTorch + CUDA already installed (Lambda Labs)"
@@ -51,6 +89,10 @@ fi
 
 # Create venv if not using system Python
 if [ "$USE_SYSTEM_PYTHON" = false ]; then
+    if [ -d "venv" ] && [ ! -f "venv/bin/activate" ]; then
+        echo -e "${YELLOW}[SETUP]${NC} Removing incomplete virtual environment..."
+        rm -rf venv
+    fi
     if [ ! -d "venv" ]; then
         echo -e "${YELLOW}[SETUP]${NC} Creating virtual environment..."
         python3 -m venv venv
