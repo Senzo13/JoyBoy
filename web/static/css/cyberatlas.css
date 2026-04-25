@@ -1,11 +1,43 @@
 /* ===== CYBERATLAS THEME ===== */
 
 body.cyberatlas-mode {
-    --cyberatlas-accent: #34d399;
-    --cyberatlas-accent-strong: #10b981;
-    --cyberatlas-danger: #fb7185;
-    --cyberatlas-warn: #fbbf24;
-    --cyberatlas-soft: rgba(16, 185, 129, 0.14);
+    --cyberatlas-accent: #22d3ee;
+    --cyberatlas-accent-strong: #a3e635;
+    --cyberatlas-danger: #fb4f93;
+    --cyberatlas-warn: #fde047;
+    --cyberatlas-soft: rgba(34, 211, 238, 0.14);
+    --cyberatlas-panel: rgba(2, 12, 22, 0.94);
+    --cyberatlas-grid: rgba(34, 211, 238, 0.07);
+}
+
+#cyberatlas-view {
+    position: relative;
+    isolation: isolate;
+    background:
+        radial-gradient(circle at 86% 4%, rgba(34, 211, 238, 0.13), transparent 28%),
+        radial-gradient(circle at 4% 18%, rgba(251, 79, 147, 0.10), transparent 24%),
+        radial-gradient(circle at 58% 104%, rgba(163, 230, 53, 0.08), transparent 30%),
+        linear-gradient(145deg, #01050d 0%, #02111b 46%, #02060f 100%);
+}
+
+#cyberatlas-view::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background-image:
+        linear-gradient(var(--cyberatlas-grid) 1px, transparent 1px),
+        linear-gradient(90deg, var(--cyberatlas-grid) 1px, transparent 1px),
+        linear-gradient(135deg, transparent 0 48%, rgba(34, 211, 238, 0.05) 49% 51%, transparent 52% 100%);
+    background-size: 52px 52px, 52px 52px, 180px 180px;
+    mask-image: radial-gradient(circle at 50% 16%, black 0%, transparent 74%);
+    opacity: 0.85;
+}
+
+#cyberatlas-view > * {
+    position: relative;
+    z-index: 1;
 }
 
 #cyberatlas-view .signalatlas-hero-copy,
@@ -19,10 +51,14 @@ body.cyberatlas-mode {
 #cyberatlas-view .signalatlas-template-card,
 #cyberatlas-view .signalatlas-interpretation-card,
 #cyberatlas-view .signalatlas-model-used-card {
-    border-color: rgba(52, 211, 153, 0.16);
+    border-color: rgba(34, 211, 238, 0.20);
     background:
-        radial-gradient(circle at 5% 0%, rgba(244, 63, 94, 0.08), transparent 24%),
-        linear-gradient(180deg, rgba(6, 24, 22, 0.88), rgba(2, 8, 12, 0.97));
+        radial-gradient(circle at 4% 0%, rgba(251, 79, 147, 0.10), transparent 24%),
+        radial-gradient(circle at 100% 0%, rgba(34, 211, 238, 0.10), transparent 30%),
+        linear-gradient(180deg, var(--cyberatlas-panel), rgba(1, 6, 13, 0.98));
+    box-shadow:
+        0 24px 70px rgba(0, 0, 0, 0.38),
+        inset 0 1px 0 rgba(255, 255, 255, 0.035);
 }
 
 #cyberatlas-view .signalatlas-kicker,
@@ -30,58 +66,62 @@ body.cyberatlas-mode {
 #cyberatlas-view .signalatlas-help-btn:hover,
 #cyberatlas-view .signalatlas-model-used-meta {
     color: var(--cyberatlas-accent);
+    text-shadow: 0 0 16px rgba(34, 211, 238, 0.25);
 }
 
 #cyberatlas-view .signalatlas-target-input:focus,
 #cyberatlas-view .signalatlas-advanced-toggle:hover,
 #cyberatlas-view .signalatlas-picker-btn:hover {
-    border-color: rgba(52, 211, 153, 0.34);
-    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.12);
+    border-color: rgba(34, 211, 238, 0.42);
+    box-shadow:
+        0 0 0 3px rgba(34, 211, 238, 0.13),
+        0 0 22px rgba(34, 211, 238, 0.10);
 }
 
 #cyberatlas-view .signalatlas-btn,
 #cyberatlas-view .perfatlas-export-btn:last-child {
-    background: linear-gradient(135deg, rgba(16, 185, 129, 0.94), rgba(52, 211, 153, 0.92));
-    color: #031412;
-    border-color: rgba(52, 211, 153, 0.38);
+    background: linear-gradient(135deg, rgba(34, 211, 238, 0.96), rgba(163, 230, 53, 0.92));
+    color: #011016;
+    border-color: rgba(34, 211, 238, 0.44);
+    box-shadow: 0 14px 32px rgba(34, 211, 238, 0.14);
 }
 
 #cyberatlas-view .signalatlas-btn.secondary,
 #cyberatlas-view .perfatlas-export-btn {
-    background: rgba(16, 185, 129, 0.08);
-    color: #d1fae5;
-    border-color: rgba(52, 211, 153, 0.2);
+    background: rgba(34, 211, 238, 0.08);
+    color: #cffafe;
+    border-color: rgba(34, 211, 238, 0.22);
 }
 
 #cyberatlas-view .signalatlas-inline-chip,
 #cyberatlas-view .signalatlas-summary-badges .signalatlas-inline-chip,
 #cyberatlas-view .signalatlas-tag.is-soft {
-    background: rgba(16, 185, 129, 0.1);
-    border-color: rgba(52, 211, 153, 0.22);
-    color: #d1fae5;
+    background: rgba(34, 211, 238, 0.10);
+    border-color: rgba(34, 211, 238, 0.24);
+    color: #cffafe;
 }
 
 #cyberatlas-view .signalatlas-progress-fill,
 #cyberatlas-view .signalatlas-history-progress-fill,
 #cyberatlas-view .modules-card-runtime-fill {
-    background: linear-gradient(90deg, #10b981, #34d399);
+    background: linear-gradient(90deg, #fb4f93, #22d3ee 48%, #a3e635);
 }
 
 #cyberatlas-view .signalatlas-progress-spinner {
-    background: #34d399;
-    box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.55);
+    background: #22d3ee;
+    box-shadow: 0 0 0 0 rgba(34, 211, 238, 0.55);
 }
 
 #cyberatlas-view .signalatlas-score-ring.is-good .signalatlas-score-ring-progress {
-    stroke: #34d399;
+    stroke: #22d3ee;
 }
 
 #cyberatlas-view .signalatlas-score-ring.is-warn .signalatlas-score-ring-progress {
-    stroke: #fbbf24;
+    stroke: #fde047;
 }
 
 #cyberatlas-view .signalatlas-score-ring.is-danger .signalatlas-score-ring-progress {
-    stroke: #fb7185;
+    stroke: #fb4f93;
 }
 
 .cyberatlas-risk-grid {
@@ -125,20 +165,20 @@ body.cyberatlas-mode {
     position: absolute;
     inset: 0 auto 0 0;
     width: 3px;
-    background: linear-gradient(180deg, #34d399, #fb7185);
+    background: linear-gradient(180deg, #22d3ee, #a3e635 48%, #fb4f93);
     opacity: 0.8;
 }
 
 .cyberatlas-owner-check-card {
-    border-color: rgba(52, 211, 153, 0.22) !important;
+    border-color: rgba(34, 211, 238, 0.26) !important;
 }
 
 .cyberatlas-ticket-card {
-    border-color: rgba(96, 165, 250, 0.22) !important;
+    border-color: rgba(163, 230, 53, 0.26) !important;
 }
 
 .cyberatlas-risk-path-card {
-    border-color: rgba(251, 191, 36, 0.22) !important;
+    border-color: rgba(251, 79, 147, 0.26) !important;
 }
 
 .cyberatlas-risk-path-columns {
@@ -168,11 +208,11 @@ body.cyberatlas-mode {
     width: 7px;
     height: 7px;
     border-radius: 999px;
-    background: #fbbf24;
+    background: #fb4f93;
 }
 
 .cyberatlas-path-step.is-break::before {
-    background: #34d399;
+    background: #22d3ee;
 }
 
 .cyberatlas-surface-grid {
@@ -189,15 +229,15 @@ body.cyberatlas-mode {
 }
 
 .cyberatlas-surface-card.is-good {
-    border-color: rgba(52, 211, 153, 0.24);
+    border-color: rgba(34, 211, 238, 0.28);
 }
 
 .cyberatlas-surface-card.is-warn {
-    border-color: rgba(251, 191, 36, 0.28);
+    border-color: rgba(253, 224, 71, 0.30);
 }
 
 .cyberatlas-surface-card.is-danger {
-    border-color: rgba(251, 113, 133, 0.28);
+    border-color: rgba(251, 79, 147, 0.32);
 }
 
 .cyberatlas-surface-top {
@@ -222,7 +262,7 @@ body.cyberatlas-mode {
 
 .cyberatlas-surface-card p {
     margin: 0;
-    color: #d1fae5;
+    color: #cffafe;
     font-size: 12px;
     line-height: 1.55;
 }
@@ -240,23 +280,23 @@ body.cyberatlas-mode {
     border-radius: 18px;
     padding: 16px;
     background:
-        radial-gradient(circle at 0 0, rgba(52, 211, 153, 0.08), transparent 36%),
+        radial-gradient(circle at 0 0, rgba(34, 211, 238, 0.10), transparent 36%),
         rgba(2, 6, 23, 0.46);
 }
 
 .cyberatlas-standard-card.is-danger,
 .cyberatlas-graph-node.is-danger {
-    border-color: rgba(251, 113, 133, 0.32);
+    border-color: rgba(251, 79, 147, 0.36);
 }
 
 .cyberatlas-standard-card.is-warn,
 .cyberatlas-graph-node.is-warn {
-    border-color: rgba(251, 191, 36, 0.32);
+    border-color: rgba(253, 224, 71, 0.34);
 }
 
 .cyberatlas-standard-card.is-good,
 .cyberatlas-graph-node.is-good {
-    border-color: rgba(52, 211, 153, 0.28);
+    border-color: rgba(34, 211, 238, 0.30);
 }
 
 .cyberatlas-standard-top {
@@ -269,7 +309,7 @@ body.cyberatlas-mode {
 
 .cyberatlas-standard-ref {
     margin-bottom: 4px;
-    color: #34d399;
+    color: #22d3ee;
     font-size: 11px;
     font-weight: 800;
     letter-spacing: 0.08em;
