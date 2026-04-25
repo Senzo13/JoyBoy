@@ -143,7 +143,12 @@ class TerminalIntentMixin:
         msg = self._intent_text(message)
         overview_words = ("analyse", "audit", "regarde", "explore", "inspecte", "comprendre")
         repo_words = ("repo", "projet", "codebase", "workspace", "dossier")
-        write_words = ("corrige", "fix", "modifie", "ajoute", "supprime", "implémente", "implemente")
+        write_words = (
+            "corrige", "fix", "modifie", "ajoute", "supprime", "implémente", "implemente",
+            "ameliore", "améliore", "ameliorer", "améliorer", "improve", "upgrade",
+            "refactor", "refacto", "modernise", "modernize", "transforme", "transform",
+            "cree", "crée", "creer", "créer", "build", "developpe", "développe",
+        )
         if any(word in msg for word in write_words):
             return False
         if not any(word in msg for word in overview_words):

@@ -80,6 +80,23 @@ class TerminalBrainSmokeTests(unittest.TestCase):
         self.assertEqual({"path": "src/main.jsx", "max_lines": 80}, brain._tool_call_args(calls[0]))
         self.assertEqual("Je vais lire le fichier.", cleaned)
 
+    def test_recovered_text_tool_calls_normalize_aliases_and_drop_empty_calls(self):
+        brain = TerminalBrain()
+
+        calls, _ = brain._recover_text_tool_calls(
+            '<bash>{"cmd":"npm run build"}</bash>\n'
+            '<read_file>{"code_path":"src/App.jsx"}</read_file>\n'
+            '<bash></bash>\n'
+            '<read_file></read_file>\n'
+            '<write_todos><todo content="Analyser" status="in_progress" /></write_todos>\n'
+            '<write_todos><todo content="Analyser" status="in_progress" /></write_todos>'
+        )
+
+        names = [brain._tool_call_name(call) for call in calls]
+        self.assertEqual(["bash", "read_file", "write_todos"], names)
+        self.assertEqual("npm run build", brain._tool_call_args(calls[0])["command"])
+        self.assertEqual("src/App.jsx", brain._tool_call_args(calls[1])["path"])
+
     @patch("core.backends.terminal_brain.chat_with_cloud_model")
     def test_run_loop_executes_recovered_text_tool_call(self, mock_chat):
         mock_chat.side_effect = [
@@ -109,6 +126,29 @@ class TerminalBrainSmokeTests(unittest.TestCase):
         self.assertEqual(2, mock_chat.call_count)
         self.assertIn("README lu", content)
         self.assertNotIn("<tool_call>", content)
+
+    @patch("core.backends.terminal_brain.chat_with_cloud_model")
+    def test_auto_improve_request_keeps_real_tools_available(self, mock_chat):
+        mock_chat.return_value = {
+            "message": {"role": "assistant", "content": "Je suis prêt à modifier le projet."},
+            "prompt_eval_count": 30,
+            "eval_count": 8,
+        }
+        brain = TerminalBrain()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            Path(tmp, "README.md").write_text("# Demo\n", encoding="utf-8")
+            list(brain.run_agentic_loop(
+                "/auto analyse le projet puis améliore le frontend pour un SaaS",
+                tmp,
+                model="openai:gpt-5.4",
+            ))
+
+        tools = mock_chat.call_args.kwargs.get("tools") or []
+        tool_names = [tool.get("function", {}).get("name") for tool in tools]
+        self.assertIn("read_file", tool_names)
+        self.assertIn("write_files", tool_names)
+        self.assertGreater(len(tools), 0)
 
     @patch("core.backends.terminal_brain.get_cached_mcp_tools")
     def test_terminal_brain_init_does_not_autoload_mcp(self, mock_get_mcp_tools):
@@ -141,6 +181,7 @@ class TerminalBrainSmokeTests(unittest.TestCase):
         self.assertTrue(brain._is_repo_overview_request("inspecte le codebase"))
         self.assertTrue(brain._is_repo_overview_request("regarde ce repo"))
         self.assertFalse(brain._is_repo_overview_request("analyse core/backends/terminal_brain.py"))
+        self.assertFalse(brain._is_repo_overview_request("analyse le projet puis améliore le frontend"))
 
     @patch("core.backends.terminal_brain.chat_with_cloud_model")
     def test_repo_overview_brief_reads_local_files_without_subagent(self, mock_chat):

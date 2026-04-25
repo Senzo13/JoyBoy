@@ -251,6 +251,10 @@ class TerminalBrain(
         if not calls:
             return [], source
 
+        calls = self._dedupe_recovered_tool_calls(calls)
+        if not calls:
+            return [], source
+
         cleaned = self._remove_text_spans(source, spans)
         return self._normalise_tool_calls_for_history(calls, prefix="text_call"), cleaned
 
@@ -291,7 +295,10 @@ class TerminalBrain(
             args = self._first_json_payload(args) or {self._TEXT_TOOL_SCALAR_ARGS.get(tool_name, "input"): args}
         if not isinstance(args, dict):
             args = {}
-        return self._build_recovered_tool_call(tool_name, self._normalise_recovered_tool_args(tool_name, args), index)
+        normalised_args = self._normalise_recovered_tool_args(tool_name, args)
+        if not self._recovered_tool_args_are_usable(tool_name, normalised_args):
+            return None
+        return self._build_recovered_tool_call(tool_name, normalised_args, index)
 
     def _text_tool_call_from_match(self, match: re.Match, index: int) -> Optional[Dict[str, Any]]:
         tool_name = self._normalise_text_tool_name(match.group("tag"))
@@ -301,6 +308,8 @@ class TerminalBrain(
         attrs = self._parse_xmlish_attrs(match.group("attrs") or "")
         args = self._text_tool_args_from_body(tool_name, match.group("body") or "", attrs)
         if args is None:
+            return None
+        if not self._recovered_tool_args_are_usable(tool_name, args):
             return None
         return self._build_recovered_tool_call(tool_name, args, index)
 
@@ -348,6 +357,24 @@ class TerminalBrain(
 
     def _normalise_recovered_tool_args(self, tool_name: str, args: Dict[str, Any]) -> Dict[str, Any]:
         payload = dict(args or {})
+        if tool_name == "bash" and not payload.get("command"):
+            command = payload.get("cmd") or payload.get("shell") or payload.get("script")
+            if command:
+                payload["command"] = str(command)
+        if tool_name == "read_file" and not payload.get("path"):
+            path = payload.get("file") or payload.get("filename") or payload.get("code_path") or payload.get("filepath")
+            if path:
+                payload["path"] = str(path)
+        if tool_name == "list_files" and not payload.get("path"):
+            path = payload.get("dir") or payload.get("directory") or payload.get("folder") or payload.get("root")
+            if path:
+                payload["path"] = str(path)
+        if tool_name in {"search", "glob"}:
+            required_key = "pattern"
+            if not payload.get(required_key):
+                value = payload.get("query") or payload.get("q") or payload.get("regex")
+                if value:
+                    payload[required_key] = str(value)
         if tool_name == "tool_search" and not payload.get("query"):
             query = payload.get("name") or payload.get("tool") or payload.get("tool_name")
             if query:
@@ -361,6 +388,42 @@ class TerminalBrain(
                     {"content": todos.strip(), "status": "pending"}
                 ]
         return payload
+
+    def _recovered_tool_args_are_usable(self, tool_name: str, args: Dict[str, Any]) -> bool:
+        payload = args if isinstance(args, dict) else {}
+        if tool_name in {"bash", "read_file", "delete_file", "glob", "search", "web_search", "web_fetch", "tool_search"}:
+            key = "command" if tool_name == "bash" else "url" if tool_name == "web_fetch" else self._TEXT_TOOL_SCALAR_ARGS.get(tool_name, "path")
+            return bool(str(payload.get(key) or "").strip())
+        if tool_name == "write_todos":
+            todos = payload.get("todos")
+            return isinstance(todos, list) and any(
+                isinstance(item, dict) and str(item.get("content") or "").strip()
+                for item in todos
+            )
+        if tool_name in {"write_file", "edit_file"}:
+            return bool(str(payload.get("path") or "").strip())
+        if tool_name == "write_files":
+            files = payload.get("files")
+            return isinstance(files, list) and bool(files)
+        if tool_name == "ask_clarification":
+            return bool(str(payload.get("question") or "").strip())
+        return True
+
+    def _dedupe_recovered_tool_calls(self, calls: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        deduped: List[Dict[str, Any]] = []
+        seen: set[str] = set()
+        for call in calls:
+            name = self._tool_call_name(call)
+            args = self._tool_call_args(call)
+            try:
+                signature = f"{name}:{json.dumps(args, sort_keys=True, ensure_ascii=False)}"
+            except Exception:
+                signature = f"{name}:{str(args)}"
+            if signature in seen:
+                continue
+            seen.add(signature)
+            deduped.append(call)
+        return deduped
 
     def _parse_text_todos(self, source: str) -> List[Dict[str, Any]]:
         todos: List[Dict[str, Any]] = []
@@ -984,7 +1047,7 @@ class TerminalBrain(
 
         repo_brief = None
         repo_brief_events = []
-        if self._is_repo_overview_request(initial_message):
+        if not autonomous and self._is_repo_overview_request(initial_message):
             repo_brief, repo_brief_events = self._build_repo_brief(workspace_path)
             if use_cloud_model:
                 response_token_limit = min(response_token_limit, 1100)
