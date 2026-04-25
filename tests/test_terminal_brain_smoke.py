@@ -229,11 +229,50 @@ Encore beaucoup de détail inutile.
         self.assertEqual(1, len(catalog_events))
         catalog = catalog_events[0]["catalog"]
         command_names = [command["name"] for command in catalog["commands"]]
+        self.assertIn("/status", command_names)
+        self.assertIn("/diff", command_names)
         self.assertTrue(any(name.startswith("/ultrareview") for name in command_names))
         self.assertIn("/mcp", command_names)
         self.assertTrue(any("web_search + web_fetch" in item for item in catalog["capabilities"]))
         self.assertTrue(any("Playwright" in item for item in catalog["capabilities"]))
         self.assertEqual([], tool_names)
+
+    def test_terminal_status_and_diff_commands_are_native_read_only(self):
+        brain = TerminalBrain()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            status_events = list(brain.run_agentic_loop("/status", tmp, model="openai:gpt-5.4", locale="fr"))
+            diff_events = list(brain.run_agentic_loop("/diff", tmp, model="openai:gpt-5.4", locale="fr"))
+
+        status_text = "".join(event.get("text", "") for event in status_events if event.get("type") == "content")
+        diff_text = "".join(event.get("text", "") for event in diff_events if event.get("type") == "content")
+        status_tools = [event.get("name") for event in status_events if event.get("type") == "tool_call"]
+        diff_tools = [event.get("name") for event in diff_events if event.get("type") == "tool_call"]
+
+        self.assertIn("Statut du workspace", status_text)
+        self.assertIn("Aucun repo Git", status_text)
+        self.assertIn("Diff du workspace", diff_text)
+        self.assertIn("Aucun repo Git", diff_text)
+        self.assertEqual([], status_tools)
+        self.assertEqual([], diff_tools)
+
+    def test_terminal_status_and_diff_emit_git_tool_calls(self):
+        brain = TerminalBrain()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            Path(tmp, ".git").mkdir()
+            status_events = list(brain.run_agentic_loop("/status", tmp, model="openai:gpt-5.4", locale="fr"))
+            diff_events = list(brain.run_agentic_loop("/diff", tmp, model="openai:gpt-5.4", locale="fr"))
+
+        status_tools = [event.get("name") for event in status_events if event.get("type") == "tool_call"]
+        diff_tools = [event.get("name") for event in diff_events if event.get("type") == "tool_call"]
+        status_text = "".join(event.get("text", "") for event in status_events if event.get("type") == "content")
+        diff_text = "".join(event.get("text", "") for event in diff_events if event.get("type") == "content")
+
+        self.assertGreaterEqual(status_tools.count("bash"), 3)
+        self.assertGreaterEqual(diff_tools.count("bash"), 2)
+        self.assertIn("Statut du workspace", status_text)
+        self.assertIn("Diff du workspace", diff_text)
 
     @patch("core.backends.terminal_commands.chat_with_cloud_model")
     def test_ultrareview_runs_native_reviewer_workflow(self, mock_chat):

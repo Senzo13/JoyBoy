@@ -36,7 +36,16 @@ COMMAND_TEXT = {
         "mcp_title": "Outils MCP",
         "tools_title": "Outils JoyBoy Terminal",
         "skills_title": "Skills locaux",
+        "status_title": "Statut du workspace",
+        "diff_title": "Diff du workspace",
         "skills_none": "Aucun skill de pack local actif.",
+        "no_git": "Aucun repo Git détecté dans ce workspace.",
+        "no_changes": "Aucun changement détecté.",
+        "branch": "Branche",
+        "latest_commit": "Dernier commit",
+        "changes": "Changements",
+        "compared_to": "Comparé à",
+        "working_tree": "Working tree",
         "browser_note": "Contrôle navigateur/ordinateur : Playwright existe dans SignalAtlas/PerfAtlas, mais il n'est pas encore exposé comme outil terminal général.",
         "cap_workspace": "Workspace: lecture, recherche, édition vérifiée, shell sécurisé.",
         "cap_web_active": "Web: web_search + web_fetch.",
@@ -49,6 +58,8 @@ COMMAND_TEXT = {
         "final_blocker": "La synthèse modèle a échoué; je te rends les éléments vérifiés.",
         "commands": [
             ("/help", "Affiche les commandes et les capacités disponibles."),
+            ("/status", "Affiche l'état Git, la branche, le dernier commit et les changements."),
+            ("/diff", "Résume les fichiers modifiés et le diff de la branche courante."),
             ("/ultrareview [focus]", "Revue profonde multi-angle du repo ou de la branche courante."),
             ("/mcp", "Liste les outils MCP connectés et ceux découverts par les packs."),
             ("/tools", "Affiche les outils terminal actifs, y compris web_search/web_fetch."),
@@ -65,7 +76,16 @@ COMMAND_TEXT = {
         "mcp_title": "MCP Tools",
         "tools_title": "JoyBoy Terminal Tools",
         "skills_title": "Local Skills",
+        "status_title": "Workspace Status",
+        "diff_title": "Workspace Diff",
         "skills_none": "No active local pack skill.",
+        "no_git": "No Git repository detected in this workspace.",
+        "no_changes": "No changes detected.",
+        "branch": "Branch",
+        "latest_commit": "Latest commit",
+        "changes": "Changes",
+        "compared_to": "Compared to",
+        "working_tree": "Working tree",
         "browser_note": "Browser/computer control: Playwright exists in SignalAtlas/PerfAtlas, but it is not exposed yet as a general terminal tool.",
         "cap_workspace": "Workspace: reading, search, verified edits, safe shell.",
         "cap_web_active": "Web: web_search + web_fetch.",
@@ -78,6 +98,8 @@ COMMAND_TEXT = {
         "final_blocker": "The model synthesis failed; here are the verified review materials.",
         "commands": [
             ("/help", "Show available commands and capabilities."),
+            ("/status", "Show Git state, branch, latest commit, and changes."),
+            ("/diff", "Summarize changed files and the current branch diff."),
             ("/ultrareview [focus]", "Run a deep multi-angle review of the repo or current branch."),
             ("/mcp", "List connected MCP tools and pack-discovered tools."),
             ("/tools", "Show active terminal tools, including web_search/web_fetch."),
@@ -94,7 +116,16 @@ COMMAND_TEXT = {
         "mcp_title": "Herramientas MCP",
         "tools_title": "Herramientas de JoyBoy Terminal",
         "skills_title": "Skills locales",
+        "status_title": "Estado del workspace",
+        "diff_title": "Diff del workspace",
         "skills_none": "No hay skills de packs locales activos.",
+        "no_git": "No se detectó ningún repositorio Git en este workspace.",
+        "no_changes": "No se detectaron cambios.",
+        "branch": "Rama",
+        "latest_commit": "Último commit",
+        "changes": "Cambios",
+        "compared_to": "Comparado con",
+        "working_tree": "Working tree",
         "browser_note": "Control de navegador/ordenador: Playwright existe en SignalAtlas/PerfAtlas, pero aún no está expuesto como herramienta terminal general.",
         "cap_workspace": "Workspace: lectura, búsqueda, ediciones verificadas, shell seguro.",
         "cap_web_active": "Web: web_search + web_fetch.",
@@ -107,6 +138,8 @@ COMMAND_TEXT = {
         "final_blocker": "La síntesis del modelo falló; devuelvo los elementos verificados.",
         "commands": [
             ("/help", "Muestra los comandos y capacidades disponibles."),
+            ("/status", "Muestra estado Git, rama, último commit y cambios."),
+            ("/diff", "Resume archivos modificados y diff de la rama actual."),
             ("/ultrareview [focus]", "Ejecuta una revisión profunda multiángulo del repo o rama actual."),
             ("/mcp", "Lista herramientas MCP conectadas y descubiertas por packs."),
             ("/tools", "Muestra herramientas terminal activas, incluido web_search/web_fetch."),
@@ -123,7 +156,16 @@ COMMAND_TEXT = {
         "mcp_title": "Strumenti MCP",
         "tools_title": "Strumenti JoyBoy Terminal",
         "skills_title": "Skill locali",
+        "status_title": "Stato workspace",
+        "diff_title": "Diff workspace",
         "skills_none": "Nessuna skill di pack locale attiva.",
+        "no_git": "Nessun repository Git rilevato in questo workspace.",
+        "no_changes": "Nessuna modifica rilevata.",
+        "branch": "Branch",
+        "latest_commit": "Ultimo commit",
+        "changes": "Modifiche",
+        "compared_to": "Confrontato con",
+        "working_tree": "Working tree",
         "browser_note": "Controllo browser/computer: Playwright esiste in SignalAtlas/PerfAtlas, ma non è ancora esposto come strumento terminale generale.",
         "cap_workspace": "Workspace: lettura, ricerca, modifiche verificate, shell sicura.",
         "cap_web_active": "Web: web_search + web_fetch.",
@@ -136,6 +178,8 @@ COMMAND_TEXT = {
         "final_blocker": "La sintesi del modello è fallita; restituisco gli elementi verificati.",
         "commands": [
             ("/help", "Mostra comandi e capacità disponibili."),
+            ("/status", "Mostra stato Git, branch, ultimo commit e modifiche."),
+            ("/diff", "Riassume file modificati e diff del branch corrente."),
             ("/ultrareview [focus]", "Esegue una revisione profonda multi-angolo del repo o ramo corrente."),
             ("/mcp", "Elenca strumenti MCP connessi e scoperti dai pack."),
             ("/tools", "Mostra gli strumenti terminal attivi, incluso web_search/web_fetch."),
@@ -149,7 +193,7 @@ COMMAND_TEXT = {
 class TerminalSlashCommandsMixin:
     """Handle built-in terminal slash commands without spending a model turn."""
 
-    TERMINAL_SLASH_COMMANDS = {"help", "mcp", "tools", "skills", "ultrareview"}
+    TERMINAL_SLASH_COMMANDS = {"help", "status", "diff", "mcp", "tools", "skills", "ultrareview"}
 
     def _parse_terminal_slash_command(self, message: str) -> Tuple[str, str]:
         text = str(message or "").strip()
@@ -177,6 +221,12 @@ class TerminalSlashCommandsMixin:
     ) -> Generator[Dict[str, Any], None, None]:
         if command == "help":
             yield from self._run_terminal_help_command(workspace_path, locale)
+            return
+        if command == "status":
+            yield from self._run_terminal_status_command(workspace_path, locale)
+            return
+        if command == "diff":
+            yield from self._run_terminal_diff_command(workspace_path, locale)
             return
         if command == "mcp":
             yield from self._run_terminal_mcp_command(locale)
@@ -230,6 +280,67 @@ class TerminalSlashCommandsMixin:
     def _run_terminal_skills_command(self, locale: str | None) -> Generator[Dict[str, Any], None, None]:
         text = self._build_terminal_skills_text(locale)
         yield from self._finish_static_command(text)
+
+    def _run_terminal_status_command(self, workspace_path: str, locale: str | None) -> Generator[Dict[str, Any], None, None]:
+        texts = self._terminal_command_texts(locale)
+        if not (Path(workspace_path or "") / ".git").exists():
+            text = f"## {texts['status_title']}\n\n{texts['no_git']}"
+            yield from self._finish_static_command(text)
+            return
+
+        yield runtime_event(
+            "intent",
+            intent="review",
+            read_only=True,
+            autonomous=False,
+            permission_mode=self.permission_mode,
+        )
+        status = yield from self._execute_and_emit_tool("bash", {"command": "git status --short --branch"}, workspace_path)
+        latest = yield from self._execute_and_emit_tool("bash", {"command": "git log -1 --oneline --decorate"}, workspace_path)
+        stat = yield from self._execute_and_emit_tool("bash", {"command": "git diff --stat HEAD"}, workspace_path)
+
+        text = self._build_terminal_status_text(
+            status.data if status else {},
+            latest.data if latest else {},
+            stat.data if stat else {},
+            locale,
+        )
+        yield runtime_event("content", text=text, token_stats={})
+        yield runtime_event("done", full_response=text, token_stats={"prompt_tokens": 0, "completion_tokens": 0, "total": 0})
+
+    def _run_terminal_diff_command(self, workspace_path: str, locale: str | None) -> Generator[Dict[str, Any], None, None]:
+        texts = self._terminal_command_texts(locale)
+        if not (Path(workspace_path or "") / ".git").exists():
+            text = f"## {texts['diff_title']}\n\n{texts['no_git']}"
+            yield from self._finish_static_command(text)
+            return
+
+        yield runtime_event(
+            "intent",
+            intent="review",
+            read_only=True,
+            autonomous=False,
+            permission_mode=self.permission_mode,
+        )
+        default_ref = self._detect_git_default_ref(workspace_path)
+        name_status = yield from self._execute_and_emit_tool("bash", {"command": "git diff --name-status HEAD"}, workspace_path)
+        stat = yield from self._execute_and_emit_tool("bash", {"command": "git diff --stat HEAD"}, workspace_path)
+        branch_name_status = None
+        branch_stat = None
+        if default_ref:
+            branch_name_status = yield from self._execute_and_emit_tool("bash", {"command": f"git diff --name-status {default_ref}...HEAD"}, workspace_path)
+            branch_stat = yield from self._execute_and_emit_tool("bash", {"command": f"git diff --stat {default_ref}...HEAD"}, workspace_path)
+
+        text = self._build_terminal_diff_text(
+            name_status.data if name_status else {},
+            stat.data if stat else {},
+            branch_name_status.data if branch_name_status else {},
+            branch_stat.data if branch_stat else {},
+            default_ref,
+            locale,
+        )
+        yield runtime_event("content", text=text, token_stats={})
+        yield runtime_event("done", full_response=text, token_stats={"prompt_tokens": 0, "completion_tokens": 0, "total": 0})
 
     def _build_terminal_help_text(self, workspace_path: str, locale: str | None) -> str:
         catalog = self._build_terminal_help_catalog(workspace_path, locale)
@@ -315,6 +426,89 @@ class TerminalSlashCommandsMixin:
         if len(skills) > 40:
             lines.append(f"- ... +{len(skills) - 40}")
         return "\n".join(lines)
+
+    def _build_terminal_status_text(self, status: Dict[str, Any], latest: Dict[str, Any], stat: Dict[str, Any], locale: str | None) -> str:
+        texts = self._terminal_command_texts(locale)
+        status_output = str(status.get("output") or "").strip()
+        latest_output = str(latest.get("output") or "").strip()
+        stat_output = str(stat.get("output") or "").strip()
+        branch = ""
+        changes: List[str] = []
+        for line in status_output.splitlines():
+            clean = line.strip()
+            if clean.startswith("##"):
+                branch = clean.lstrip("# ").strip()
+            elif clean:
+                changes.append(clean)
+        lines = [f"## {texts['status_title']}", ""]
+        if branch:
+            lines.append(f"- {texts['branch']}: `{truncate_middle(branch, 120)}`")
+        if latest_output:
+            lines.append(f"- {texts['latest_commit']}: `{truncate_middle(latest_output.splitlines()[0], 160)}`")
+        lines.append(f"- {texts['changes']}: {len(changes) if changes else texts['no_changes']}")
+        if changes:
+            lines.append("")
+            lines.append(f"### {texts['working_tree']}")
+            lines.extend(f"- `{truncate_middle(item, 180)}`" for item in changes[:20])
+            if len(changes) > 20:
+                lines.append(f"- ... +{len(changes) - 20}")
+        if stat_output:
+            lines.append("")
+            lines.append("```text")
+            lines.append(truncate_middle(stat_output, 1200))
+            lines.append("```")
+        return "\n".join(lines).strip()
+
+    def _build_terminal_diff_text(
+        self,
+        name_status: Dict[str, Any],
+        stat: Dict[str, Any],
+        branch_name_status: Dict[str, Any],
+        branch_stat: Dict[str, Any],
+        default_ref: str,
+        locale: str | None,
+    ) -> str:
+        texts = self._terminal_command_texts(locale)
+        working_files = self._git_changed_file_lines(name_status)
+        branch_files = self._git_changed_file_lines(branch_name_status)
+        stat_output = str(stat.get("output") or "").strip()
+        branch_stat_output = str(branch_stat.get("output") or "").strip()
+        lines = [f"## {texts['diff_title']}", ""]
+        lines.append(f"- {texts['working_tree']}: {len(working_files) if working_files else texts['no_changes']}")
+        if default_ref:
+            lines.append(f"- {texts['compared_to']} `{default_ref}`: {len(branch_files) if branch_files else texts['no_changes']}")
+        if working_files:
+            lines.append("")
+            lines.append(f"### {texts['working_tree']}")
+            lines.extend(f"- `{truncate_middle(item, 180)}`" for item in working_files[:25])
+            if len(working_files) > 25:
+                lines.append(f"- ... +{len(working_files) - 25}")
+        if stat_output:
+            lines.append("")
+            lines.append("```text")
+            lines.append(truncate_middle(stat_output, 1600))
+            lines.append("```")
+        if default_ref and branch_files:
+            lines.append("")
+            lines.append(f"### {texts['compared_to']} `{default_ref}`")
+            lines.extend(f"- `{truncate_middle(item, 180)}`" for item in branch_files[:25])
+            if len(branch_files) > 25:
+                lines.append(f"- ... +{len(branch_files) - 25}")
+        if branch_stat_output:
+            lines.append("")
+            lines.append("```text")
+            lines.append(truncate_middle(branch_stat_output, 1600))
+            lines.append("```")
+        return "\n".join(lines).strip()
+
+    def _git_changed_file_lines(self, result: Dict[str, Any] | None) -> List[str]:
+        output = str((result or {}).get("output") or "").strip()
+        lines: List[str] = []
+        for line in output.splitlines():
+            clean = line.strip()
+            if clean and not clean.startswith("[STDERR]"):
+                lines.append(clean)
+        return lines
 
     def _pack_skills(self) -> List[Dict[str, Any]]:
         try:
