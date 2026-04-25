@@ -22,7 +22,12 @@ class CyberAtlasStorage(AuditModuleStorage):
             "critical_count": summary.get("critical_count", 0),
             "high_count": summary.get("high_count", 0),
             "endpoint_count": summary.get("endpoint_count", 0),
+            "discovered_endpoint_count": summary.get("discovered_endpoint_count", 0),
+            "public_sensitive_endpoint_count": summary.get("public_sensitive_endpoint_count", 0),
             "exposure_count": summary.get("exposure_count", 0),
+            "source_map_count": summary.get("source_map_count", 0),
+            "waf_detected": bool(summary.get("waf_detected")),
+            "rate_limit_detected": bool(summary.get("rate_limit_detected")),
             "report_model_label": str((latest or {}).get("model") or configured_ai.get("model") or ""),
             "report_model_state": "generated" if latest else ("planned" if configured_ai.get("model") else "none"),
         })

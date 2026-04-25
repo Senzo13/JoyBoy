@@ -1770,8 +1770,9 @@ Object.assign(MESSAGES.it.terminal, {
         approvalWaiting: 'In attesa di autorizzazione',
         approvalRequiredLine: 'Autorizzazione richiesta',
         approvalDeniedLine: 'Azione annullata.',
-        taskWriteFiles: 'Scrittura file',
-        taskWriteFile: 'Scrittura',
+taskWriteFiles: 'Scrittura file',
+fileCount: '{count} file',
+taskWriteFile: 'Scrittura',
         taskEditFile: 'Modifica',
         taskDeleteFile: 'Eliminazione',
         taskClearWorkspace: 'Pulizia workspace',
@@ -1792,7 +1793,7 @@ Object.assign(MESSAGES.it.terminal, {
         progressRunningFor: 'In corso da {time}',
         progressDoneIn: 'Completato in {time}',
         progressThinking: 'Analisi in corso',
-        progressThinkingIteration: 'Analisi {iteration}',
+        progressThinkingIteration: 'Passo {iteration}',
         progressAutonomous: 'Modalità autonoma',
         progressIntent: 'Intento rilevato',
         progressLoopAvoided: 'Ciclo evitato',
@@ -2097,11 +2098,11 @@ Object.assign(MESSAGES.it.terminal, {
         contextActivity: 'Contesto',
         taskAnswerStarted: 'Risposta iniziata',
         taskClarification: 'Chiarimento',
-        taskContinueAfterTools: 'Analisi dei risultati e prossima azione',
-        taskFinalSynthesis: 'Sintesi finale della risposta',
+        taskContinueAfterTools: 'Decisione dopo i risultati',
+        taskFinalSynthesis: 'Scrittura della risposta',
         taskGatherContext: 'Lettura del contesto',
-        taskPrepareAnswer: 'Preparazione della risposta',
-        taskRepoAnalysis: 'Analisi dei file del repository',
+        taskPrepareAnswer: 'Scrittura della risposta',
+        taskRepoAnalysis: 'Scelta dei file da leggere',
         taskToolSelected: 'Tool scelto',
         toolRunCommand: 'Esegue',
     });
@@ -2275,6 +2276,23 @@ Object.assign(MESSAGES.it.runtime, {
         kindCyberAtlas: 'CyberAtlas',
     });
 
+Object.assign(MESSAGES.it.cyberatlas, {
+        apiInventory: 'Inventario API',
+        apiReferences: 'Riferimenti API',
+        authProtected: 'Protetti da auth',
+        backendHosts: 'Backend referenziati',
+        cdnSignals: 'Segnali CDN',
+        databaseHint: 'Indizio database',
+        frontendHints: 'Indizi frontend',
+        framework: 'Framework',
+        privateBackends: 'Backend privati',
+        publicSensitive: 'Sensibili pubblici',
+        rateLimitSignal: 'Segnale rate-limit',
+        reconSummary: 'Sintesi recon',
+        sourceMaps: 'Source map',
+        wafSignal: 'Segnale WAF',
+    });
+
 Object.assign(MESSAGES.it.signalatlas, {
         levelBasic: 'Riassunto base',
         levelFull: 'Analisi esperta completa',
@@ -2435,6 +2453,23 @@ Object.assign(MESSAGES.it, {
 
 Object.assign(MESSAGES.it.runtime, {
         kindCyberAtlas: 'CyberAtlas',
+    });
+
+Object.assign(MESSAGES.it.cyberatlas, {
+        apiInventory: 'Inventario API',
+        apiReferences: 'Riferimenti API',
+        authProtected: 'Protetti da auth',
+        backendHosts: 'Backend referenziati',
+        cdnSignals: 'Segnali CDN',
+        databaseHint: 'Indizio database',
+        frontendHints: 'Indizi frontend',
+        framework: 'Framework',
+        privateBackends: 'Backend privati',
+        publicSensitive: 'Sensibili pubblici',
+        rateLimitSignal: 'Segnale rate-limit',
+        reconSummary: 'Sintesi recon',
+        sourceMaps: 'Source map',
+        wafSignal: 'Segnale WAF',
     });
 
 Object.assign(MESSAGES.it.signalatlas, {

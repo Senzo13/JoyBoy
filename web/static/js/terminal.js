@@ -450,6 +450,7 @@ let terminalProgressIntent = '';
 let terminalProgressLogKeyElements = new Map();
 let terminalContextActivity = null;
 const TERMINAL_PROGRESS_AUTO_REVEAL_MS = 3500;
+const TERMINAL_PROGRESS_MODEL_STATUS_KEY = 'model-call-status';
 
 let terminalActivityCounters = null;
 let terminalActivityElements = {};
@@ -991,7 +992,10 @@ function updateTerminalContextActivity(action = '', target = '', args = {}, stat
             ? 'success'
             : 'running';
 
-    addTerminalProgressLog(label, detail, progressType, { key: 'context-gathering' });
+    addTerminalProgressLog(label, detail, progressType, {
+        key: 'context-gathering',
+        reveal: isTerminalReadOnlyTurn() && !terminalProgressContentStarted
+    });
 
     if (!isTerminalReadOnlyTurn()) {
         const taskStatus = state === 'error' ? 'error' : 'running';
@@ -1012,7 +1016,10 @@ function completeTerminalContextActivity() {
     if (!summary) return;
     const detail = terminalContextActivity.latestHint ? `${summary} · ${terminalContextActivity.latestHint}` : summary;
     const type = terminalContextActivity.hadError ? 'warning' : 'success';
-    addTerminalProgressLog(terminalT('terminal.contextActivity', 'Contexte'), detail, type, { key: 'context-gathering' });
+    addTerminalProgressLog(terminalT('terminal.contextActivity', 'Contexte'), detail, type, {
+        key: 'context-gathering',
+        reveal: isTerminalReadOnlyTurn() && !terminalProgressContentStarted
+    });
     updateTerminalTask('context-gathering', terminalContextActivity.hadError ? 'error' : 'done', detail);
 }
 
@@ -1116,8 +1123,8 @@ function describeTerminalToolCall(action, target = '', args = {}) {
 
     if (action === 'write_files') {
         const fileSummary = summarizeTerminalPaths(files, 3);
-        const count = files.length ? `${files.length} ` : '';
-        return `${terminalT('terminal.taskWriteFiles', 'Écriture de fichiers')} ${count}${fileSummary ? `- ${fileSummary}` : ''}`.trim();
+        const count = files.length ? ` (${terminalT('terminal.fileCount', '{count} fichier(s)', { count: files.length })})` : '';
+        return `${terminalT('terminal.taskWriteFiles', 'Écriture de fichiers')}${count}${fileSummary ? ` - ${fileSummary}` : ''}`.trim();
     }
     if (action === 'write_file') return `${terminalT('terminal.taskWriteFile', 'Écriture')} ${displayTarget}`.trim();
     if (action === 'edit_file') return `${terminalT('terminal.taskEditFile', 'Modification')} ${displayTarget}`.trim();
@@ -1155,7 +1162,7 @@ function describeTerminalToolProgress(data = {}) {
     const action = data.action || '';
     const elapsed = formatTerminalElapsed(data.elapsed_seconds || 0);
     const target = data.path || '';
-    const label = terminalT('terminal.progressToolRunning', 'Exécute {tool}', { tool: action || 'outil' });
+    const label = describeTerminalToolCall(action, target, data.args || {});
     const detail = [elapsed, target].filter(Boolean).join(' · ');
     return { label, detail };
 }
@@ -1176,15 +1183,15 @@ function describeTerminalModelCall(data = {}) {
     const iteration = Number(data.iteration || 1);
     const toolsCount = Number(data.tools_count || 0);
     if (iteration > 1 && toolsCount > 0) {
-        return terminalT('terminal.taskContinueAfterTools', 'Analyse des résultats et prochaine action');
+        return terminalT('terminal.taskContinueAfterTools', 'Décision après les résultats');
     }
     if (iteration > 1) {
-        return terminalT('terminal.taskFinalSynthesis', 'Synthèse finale de la réponse');
+        return terminalT('terminal.taskFinalSynthesis', 'Rédaction de la réponse');
     }
     if (toolsCount > 0) {
-        return terminalT('terminal.taskRepoAnalysis', 'Analyse des fichiers du repository');
+        return terminalT('terminal.taskRepoAnalysis', 'Choix des fichiers à lire');
     }
-    return terminalT('terminal.taskPrepareAnswer', 'Préparation de la réponse');
+    return terminalT('terminal.taskPrepareAnswer', 'Rédaction de la réponse');
 }
 
 function shouldShowTerminalToolAsTask(action, args = {}) {
@@ -1227,9 +1234,8 @@ function shouldRevealTerminalProgressForModelCall(data = {}) {
 function shouldRevealTerminalProgressForTool(action = '', args = {}) {
     if (action === 'ask_clarification') return false;
     if (isTerminalContextGatheringToolCall(action, args)) return false;
-    if (isTerminalPassiveReadOnlyTool(action)) return false;
     if (!isTerminalReadOnlyTurn()) return true;
-    return !isTerminalPassiveReadOnlyTool(action);
+    return Boolean(action);
 }
 
 function shouldShowTerminalToolResult(result = {}, args = {}) {
@@ -1369,6 +1375,7 @@ function toggleTerminalTasks() {
 // ===== TERMINAL OUTPUT (streaming sans bubble) =====
 let terminalOutputElement = null;
 let terminalOutputRawText = '';
+let terminalOutputRenderQueued = false;
 
 /**
  * Crée un élément pour afficher la réponse terminal en streaming
@@ -1379,6 +1386,7 @@ function createTerminalOutput() {
     if (!messagesDiv) return null;
 
     terminalOutputRawText = '';
+    terminalOutputRenderQueued = false;
     const messageEl = document.createElement('div');
     messageEl.className = 'message terminal-chat-message terminal-ai-message';
     messageEl.innerHTML = `
@@ -1400,10 +1408,28 @@ function appendTerminalOutput(text) {
     if (!terminalOutputElement) return;
     terminalOutputRawText += text;
 
-    // Formater avec markdown basique et curseur
-    let formatted = formatTerminalMarkdown(terminalOutputRawText);
-    terminalOutputElement.innerHTML = formatted + '<span class="cursor">|</span>';
+    scheduleTerminalOutputRender();
+}
+
+function renderTerminalOutput(withCursor = true) {
+    if (!terminalOutputElement) return;
+    const formatted = formatTerminalMarkdown(terminalOutputRawText, { partial: withCursor });
+    terminalOutputElement.innerHTML = formatted + (withCursor ? '<span class="cursor">|</span>' : '');
     scrollToBottom(true);
+}
+
+function scheduleTerminalOutputRender() {
+    if (terminalOutputRenderQueued) return;
+    terminalOutputRenderQueued = true;
+    const render = () => {
+        terminalOutputRenderQueued = false;
+        renderTerminalOutput(true);
+    };
+    if (typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(render);
+    } else {
+        setTimeout(render, 16);
+    }
 }
 
 /**
@@ -1429,8 +1455,8 @@ function finalizeTerminalOutput(responseTime, tokenStats) {
     if (!terminalOutputElement) return;
 
     // Retirer le curseur
-    let formatted = formatTerminalMarkdown(terminalOutputRawText);
-    terminalOutputElement.innerHTML = formatted;
+    terminalOutputRenderQueued = false;
+    renderTerminalOutput(false);
 
     // Ajouter les stats
     if (responseTime || tokenStats) {
@@ -1475,42 +1501,42 @@ function addTerminalCodeBlock(code, lang = '') {
  * Formatage pour le terminal - style propre avec gras et tirets
  * Filtre aussi la syntaxe des tool calls (affichée séparément par addToolCall)
  */
-function formatTerminalMarkdown(text) {
-    const cleanedText = typeof sanitizeAssistantToolTraceText === 'function'
+function cleanTerminalAssistantText(text) {
+    let cleanedText = typeof sanitizeAssistantToolTraceText === 'function'
         ? sanitizeAssistantToolTraceText(text)
         : String(text || '');
+
+    cleanedText = cleanedText.replace(/\[READ_FILE:\s*[^\]]*\]/gi, '');
+    cleanedText = cleanedText.replace(/\[LIST_FILES:\s*[^\]]*\]/gi, '');
+    cleanedText = cleanedText.replace(/\[SEARCH:\s*[^\]]*\]/gi, '');
+    cleanedText = cleanedText.replace(/\[GLOB:\s*[^\]]*\]/gi, '');
+    cleanedText = cleanedText.replace(/\[EXPLORE:\s*[^\]]*\]/gi, '');
+    cleanedText = cleanedText.replace(/\[BASH:\s*[^\]]*\]/gi, '');
+    cleanedText = cleanedText.replace(/\[DELETE_FILE:\s*[^\]]*\]/gi, '');
+    cleanedText = cleanedText.replace(/\[CREATE_PLAN:\s*[^\]]*\]/gi, '');
+    cleanedText = cleanedText.replace(/\[UPDATE_PLAN:\s*[^\]]*\]/gi, '');
+    cleanedText = cleanedText.replace(/\[WRITE_FILE:\s*[^\]]*\][\s\S]*?\[\/WRITE_FILE\]/gi, '');
+    cleanedText = cleanedText.replace(/\[EDIT_FILE:\s*[^\]]*\][\s\S]*?\[\/EDIT_FILE\]/gi, '');
+    cleanedText = cleanedText.replace(/\[\/WRITE_FILE\]/gi, '');
+    cleanedText = cleanedText.replace(/\[\/EDIT_FILE\]/gi, '');
+    cleanedText = cleanedText.replace(/\[WRITE_FILE:\s*[^\]]*\][\s\S]*$/gi, '');
+    cleanedText = cleanedText.replace(/\[EDIT_FILE:\s*[^\]]*\][\s\S]*$/gi, '');
+    return cleanedText.replace(/\n{3,}/g, '\n\n').trim();
+}
+
+function formatTerminalMarkdown(text, options = {}) {
+    const cleanedText = cleanTerminalAssistantText(text);
+    if (typeof formatMarkdownPartial === 'function' && options.partial) {
+        return formatMarkdownPartial(cleanedText);
+    }
+    if (typeof formatMarkdown === 'function') {
+        return formatMarkdown(cleanedText);
+    }
     // Échapper le HTML
     let formatted = cleanedText
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;');
-
-    // === FILTRER LA SYNTAXE DES TOOL CALLS ===
-    // Ces patterns sont affichés séparément via addToolCall/addToolResult
-    // Format: [ACTION: target] ou [ACTION:] ou [/ACTION]
-
-    // Tool calls simples: [READ_FILE: chemin], [SEARCH: pattern], etc.
-    formatted = formatted.replace(/\[READ_FILE:\s*[^\]]*\]/gi, '');
-    formatted = formatted.replace(/\[LIST_FILES:\s*[^\]]*\]/gi, '');
-    formatted = formatted.replace(/\[SEARCH:\s*[^\]]*\]/gi, '');
-    formatted = formatted.replace(/\[GLOB:\s*[^\]]*\]/gi, '');
-    formatted = formatted.replace(/\[EXPLORE:\s*[^\]]*\]/gi, '');
-    formatted = formatted.replace(/\[BASH:\s*[^\]]*\]/gi, '');
-    formatted = formatted.replace(/\[DELETE_FILE:\s*[^\]]*\]/gi, '');
-    formatted = formatted.replace(/\[CREATE_PLAN:\s*[^\]]*\]/gi, '');
-    formatted = formatted.replace(/\[UPDATE_PLAN:\s*[^\]]*\]/gi, '');
-
-    // Tool calls avec contenu: [WRITE_FILE: chemin]...[/WRITE_FILE]
-    formatted = formatted.replace(/\[WRITE_FILE:\s*[^\]]*\][\s\S]*?\[\/WRITE_FILE\]/gi, '');
-    formatted = formatted.replace(/\[EDIT_FILE:\s*[^\]]*\][\s\S]*?\[\/EDIT_FILE\]/gi, '');
-
-    // Tags de fermeture orphelins
-    formatted = formatted.replace(/\[\/WRITE_FILE\]/gi, '');
-    formatted = formatted.replace(/\[\/EDIT_FILE\]/gi, '');
-
-    // Tool calls partiels (streaming incomplet)
-    formatted = formatted.replace(/\[WRITE_FILE:\s*[^\]]*\][\s\S]*$/gi, '');
-    formatted = formatted.replace(/\[EDIT_FILE:\s*[^\]]*\][\s\S]*$/gi, '');
 
     const codeBlocks = [];
     formatted = formatted.replace(/```([a-zA-Z0-9_+-]*)[ \t]*\n?([\s\S]*?)```/g, (_, lang = '', code = '') => {
@@ -2804,7 +2830,6 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
         hideTerminalTasks();
         beginTerminalProgressSession();
         resetTerminalActivitySummaries();
-        addTerminalProgressLog(analyzingLabel, message, 'thinking');
         scheduleTerminalProgressAutoReveal();
         let taskCounter = 0;
 
@@ -2930,12 +2955,6 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                         updateThinkingText(
                             terminalT('terminal.progressThinkingIteration', 'Préparation du tour {iteration}', { iteration: data.iteration })
                         );
-                        addTerminalProgressLog(
-                            terminalT('terminal.progressThinkingIteration', 'Préparation du tour {iteration}', { iteration: data.iteration }),
-                            '',
-                            'thinking',
-                            { reveal: Number(data.iteration) > 1 }
-                        );
 
                         // Update autonomous progress
                         window.autonomousIterations = data.iteration;
@@ -2969,11 +2988,11 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                             modelCallLabel,
                             modelName,
                             'thinking',
-                            { reveal: shouldRevealTerminalProgressForModelCall(data.model_call) }
+                            {
+                                reveal: shouldRevealTerminalProgressForModelCall(data.model_call),
+                                key: TERMINAL_PROGRESS_MODEL_STATUS_KEY
+                            }
                         );
-                        if (terminalProgressElement && shouldRevealTerminalProgressForModelCall(data.model_call)) {
-                            addTerminalTask('model-call', modelCallLabel, 'running', modelName);
-                        }
                         continue;
                     }
 
@@ -3020,8 +3039,8 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                         const revealToolProgress = shouldRevealTerminalProgressForTool(action, args);
                         if (revealToolProgress) {
                             addTerminalProgressLog(
-                                terminalT('terminal.progressToolRunning', 'Exécute {tool}', { tool: action }),
-                                path,
+                                taskLabel || terminalT('terminal.progressToolRunning', 'Exécute {tool}', { tool: action }),
+                                describeTerminalToolNote(action, path, args) || path,
                                 'running',
                                 { reveal: true, key: terminalToolProgressKey(action) }
                             );
@@ -3189,7 +3208,9 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                             completeTerminalContextActivity();
                             updateTerminalTask('model-call', 'done', terminalT('terminal.taskAnswerStarted', 'Réponse commencée'));
                             if (isTerminalReadOnlyTurn()) {
-                                hideTerminalProgressPanel();
+                                if (terminalProgressElement) {
+                                    completeTerminalProgressPanel(true);
+                                }
                                 hideTerminalTasks();
                             } else if (!terminalProgressElement) {
                                 clearTimeout(terminalProgressRevealTimer);

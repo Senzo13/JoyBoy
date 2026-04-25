@@ -2025,8 +2025,9 @@ Object.assign(MESSAGES.en.terminal, {
         approvalWaiting: 'Waiting for approval',
         approvalRequiredLine: 'Approval required',
         approvalDeniedLine: 'Action cancelled.',
-        taskWriteFiles: 'Writing files',
-        taskWriteFile: 'Writing',
+taskWriteFiles: 'Writing files',
+fileCount: '{count} file(s)',
+taskWriteFile: 'Writing',
         taskEditFile: 'Editing',
         taskDeleteFile: 'Deleting',
         taskClearWorkspace: 'Clearing workspace',
@@ -2047,7 +2048,7 @@ Object.assign(MESSAGES.en.terminal, {
         progressRunningFor: 'Running for {time}',
         progressDoneIn: 'Done in {time}',
         progressThinking: 'Analyzing',
-        progressThinkingIteration: 'Analyzing {iteration}',
+        progressThinkingIteration: 'Step {iteration}',
         progressAutonomous: 'Autonomous mode',
         progressIntent: 'Intent detected',
         progressLoopAvoided: 'Loop avoided',
@@ -2385,11 +2386,11 @@ Object.assign(MESSAGES.en.terminal, {
         contextActivity: 'Context',
         taskAnswerStarted: 'Answer started',
         taskClarification: 'Clarification',
-        taskContinueAfterTools: 'Reviewing results and choosing next action',
-        taskFinalSynthesis: 'Final answer synthesis',
+        taskContinueAfterTools: 'Deciding after results',
+        taskFinalSynthesis: 'Writing the answer',
         taskGatherContext: 'Reading context',
-        taskPrepareAnswer: 'Preparing answer',
-        taskRepoAnalysis: 'Analyzing repository files',
+        taskPrepareAnswer: 'Writing the answer',
+        taskRepoAnalysis: 'Choosing files to read',
         taskToolSelected: 'Tool selected',
         toolRunCommand: 'Running',
     });
@@ -2704,6 +2705,23 @@ Object.assign(MESSAGES.en, {
 
 Object.assign(MESSAGES.en.runtime, {
         kindCyberAtlas: 'CyberAtlas',
+    });
+
+Object.assign(MESSAGES.en.cyberatlas, {
+        apiInventory: 'API inventory',
+        apiReferences: 'API references',
+        authProtected: 'Auth protected',
+        backendHosts: 'Referenced backends',
+        cdnSignals: 'CDN signals',
+        databaseHint: 'Database hint',
+        frontendHints: 'Frontend hints',
+        framework: 'Framework',
+        privateBackends: 'Private backends',
+        publicSensitive: 'Public sensitive',
+        rateLimitSignal: 'Rate-limit signal',
+        reconSummary: 'Recon summary',
+        sourceMaps: 'Source maps',
+        wafSignal: 'WAF signal',
     });
 
 Object.assign(MESSAGES.en.signalatlas, {

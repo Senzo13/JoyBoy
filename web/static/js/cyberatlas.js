@@ -710,6 +710,9 @@
         const headers = snapshot.security_headers || {};
         const missing = Array.isArray(snapshot.missing_security_headers) ? snapshot.missing_security_headers : [];
         const probes = Array.isArray(snapshot.exposure_probes) ? snapshot.exposure_probes : [];
+        const protections = snapshot.protections || {};
+        const recon = snapshot.recon_summary || {};
+        const frontend = snapshot.frontend_hints || {};
         return `
             <div class="signalatlas-detail-grid">
                 <section class="signalatlas-panel">
@@ -732,6 +735,26 @@
                     </div>
                     ${missing.length ? `<div class="signalatlas-panel-copy">${cyberAtlasEscape(cyberAtlasText('cyberatlas.missingHeaders', 'Missing headers'))}: ${cyberAtlasEscape(missing.join(', '))}</div>` : ''}
                 </section>
+                <section class="signalatlas-panel">
+                    <div class="signalatlas-panel-kicker">${cyberAtlasEscape(cyberAtlasText('cyberatlas.reconSummary', 'Recon summary'))}</div>
+                    <div class="signalatlas-metric-grid">
+                        <div class="signalatlas-metric-card"><span>${cyberAtlasEscape(cyberAtlasText('cyberatlas.framework', 'Framework'))}</span><strong>${cyberAtlasEscape(recon.framework || 'n/a')}</strong></div>
+                        <div class="signalatlas-metric-card"><span>${cyberAtlasEscape(cyberAtlasText('cyberatlas.databaseHint', 'Database hint'))}</span><strong>${cyberAtlasEscape(recon.database_type || 'Unknown')}</strong></div>
+                        <div class="signalatlas-metric-card"><span>${cyberAtlasEscape(cyberAtlasText('cyberatlas.wafSignal', 'WAF'))}</span><strong>${cyberAtlasEscape(protections.waf_detected ? 'yes' : 'no')}</strong></div>
+                        <div class="signalatlas-metric-card"><span>${cyberAtlasEscape(cyberAtlasText('cyberatlas.rateLimitSignal', 'Rate limit'))}</span><strong>${cyberAtlasEscape(protections.rate_limit_detected ? 'yes' : 'no')}</strong></div>
+                    </div>
+                    <div class="signalatlas-panel-copy">${cyberAtlasEscape(cyberAtlasText('cyberatlas.cdnSignals', 'CDN signals'))}: ${cyberAtlasEscape((protections.cdn || []).join(', ') || 'none')}</div>
+                </section>
+                <section class="signalatlas-panel">
+                    <div class="signalatlas-panel-kicker">${cyberAtlasEscape(cyberAtlasText('cyberatlas.frontendHints', 'Frontend hints'))}</div>
+                    <div class="signalatlas-metric-grid">
+                        <div class="signalatlas-metric-card"><span>${cyberAtlasEscape(cyberAtlasText('cyberatlas.apiReferences', 'API references'))}</span><strong>${cyberAtlasEscape(String(frontend.api_reference_count || 0))}</strong></div>
+                        <div class="signalatlas-metric-card"><span>${cyberAtlasEscape(cyberAtlasText('cyberatlas.backendHosts', 'Backend hosts'))}</span><strong>${cyberAtlasEscape(String((frontend.backend_hosts || []).length))}</strong></div>
+                        <div class="signalatlas-metric-card"><span>${cyberAtlasEscape(cyberAtlasText('cyberatlas.privateBackends', 'Private backends'))}</span><strong>${cyberAtlasEscape(String((frontend.private_backend_hosts || []).length))}</strong></div>
+                        <div class="signalatlas-metric-card"><span>${cyberAtlasEscape(cyberAtlasText('cyberatlas.sourceMaps', 'Source maps'))}</span><strong>${cyberAtlasEscape(String(frontend.source_map_count || 0))}</strong></div>
+                    </div>
+                    ${(frontend.backend_hosts || []).length ? `<div class="signalatlas-panel-copy">${cyberAtlasEscape((frontend.backend_hosts || []).slice(0, 8).join(', '))}</div>` : ''}
+                </section>
                 <section class="signalatlas-panel signalatlas-report-panel-wide">
                     <div class="signalatlas-panel-kicker">${cyberAtlasEscape(cyberAtlasText('cyberatlas.exposureProbes', 'Exposure probes'))}</div>
                     <div class="cyberatlas-evidence-list">
@@ -750,28 +773,49 @@
     function renderCyberAtlasApiSurface(audit) {
         const openapi = audit?.snapshot?.openapi || {};
         const endpoints = Array.isArray(openapi.endpoints) ? openapi.endpoints : [];
-        if (!openapi.available) {
-            return `<div class="signalatlas-empty-panel">${cyberAtlasEscape(cyberAtlasText('cyberatlas.noOpenApi', 'No public OpenAPI document was parsed in this audit.'))}</div>`;
-        }
+        const inventory = audit?.snapshot?.api_inventory || {};
+        const discovered = Array.isArray(inventory.endpoints) ? inventory.endpoints : [];
         return `
             <section class="signalatlas-panel">
                 <div class="signalatlas-section-top">
                     <div>
                         <div class="signalatlas-panel-kicker">${cyberAtlasEscape(cyberAtlasText('cyberatlas.apiSurface', 'API surface'))}</div>
-                        <div class="signalatlas-panel-title">${cyberAtlasEscape(openapi.title || openapi.source_url || 'OpenAPI')}</div>
+                        <div class="signalatlas-panel-title">${cyberAtlasEscape(openapi.available ? (openapi.title || openapi.source_url || 'OpenAPI') : cyberAtlasText('cyberatlas.apiInventory', 'API inventory'))}</div>
                     </div>
                     <div class="signalatlas-summary-badges">
                         <span class="signalatlas-inline-chip">${cyberAtlasEscape(String(openapi.endpoint_count || endpoints.length))} ${cyberAtlasEscape(cyberAtlasText('cyberatlas.endpointsShort', 'endpoints'))}</span>
                         <span class="signalatlas-inline-chip">${cyberAtlasEscape(String(openapi.unauthenticated_count || 0))} ${cyberAtlasEscape(cyberAtlasText('cyberatlas.noAuthDeclared', 'without declared auth'))}</span>
                     </div>
                 </div>
+                ${openapi.available ? `
+                    <div class="signalatlas-finding-list">
+                        ${endpoints.slice(0, 60).map(endpoint => `
+                            <div class="signalatlas-mini-finding-card">
+                                <div class="signalatlas-mini-finding-title">${cyberAtlasEscape((endpoint.method || 'GET').toUpperCase())} ${cyberAtlasEscape(endpoint.path || '')}</div>
+                                <div class="signalatlas-mini-finding-copy">${cyberAtlasEscape(endpoint.security_declared ? cyberAtlasText('cyberatlas.authDeclared', 'auth declared') : cyberAtlasText('cyberatlas.noAuthDeclared', 'without declared auth'))}</div>
+                            </div>
+                        `).join('')}
+                    </div>
+                ` : `<div class="signalatlas-empty-panel">${cyberAtlasEscape(cyberAtlasText('cyberatlas.noOpenApi', 'No public OpenAPI document was parsed in this audit.'))}</div>`}
+            </section>
+            <section class="signalatlas-panel">
+                <div class="signalatlas-section-top">
+                    <div>
+                        <div class="signalatlas-panel-kicker">${cyberAtlasEscape(cyberAtlasText('cyberatlas.apiInventory', 'API inventory'))}</div>
+                        <div class="signalatlas-panel-title">${cyberAtlasEscape(String(inventory.endpoint_count || discovered.length))} ${cyberAtlasEscape(cyberAtlasText('cyberatlas.endpointsShort', 'endpoints'))}</div>
+                    </div>
+                    <div class="signalatlas-summary-badges">
+                        <span class="signalatlas-inline-chip">${cyberAtlasEscape(String(inventory.auth_protected_count || 0))} ${cyberAtlasEscape(cyberAtlasText('cyberatlas.authProtected', 'auth protected'))}</span>
+                        <span class="signalatlas-inline-chip">${cyberAtlasEscape(String(inventory.public_sensitive_count || 0))} ${cyberAtlasEscape(cyberAtlasText('cyberatlas.publicSensitive', 'public sensitive'))}</span>
+                    </div>
+                </div>
                 <div class="signalatlas-finding-list">
-                    ${endpoints.slice(0, 60).map(endpoint => `
+                    ${discovered.length ? discovered.slice(0, 80).map(endpoint => `
                         <div class="signalatlas-mini-finding-card">
-                            <div class="signalatlas-mini-finding-title">${cyberAtlasEscape((endpoint.method || 'GET').toUpperCase())} ${cyberAtlasEscape(endpoint.path || '')}</div>
-                            <div class="signalatlas-mini-finding-copy">${cyberAtlasEscape(endpoint.security_declared ? cyberAtlasText('cyberatlas.authDeclared', 'auth declared') : cyberAtlasText('cyberatlas.noAuthDeclared', 'without declared auth'))}</div>
+                            <div class="signalatlas-mini-finding-title">${cyberAtlasEscape(endpoint.path || endpoint.url || '')}</div>
+                            <div class="signalatlas-mini-finding-copy">HTTP ${cyberAtlasEscape(String(endpoint.status_code ?? 'n/a'))} · ${cyberAtlasEscape(endpoint.response_type || endpoint.content_type || '')} · ${cyberAtlasEscape(endpoint.requires_auth ? cyberAtlasText('cyberatlas.authProtected', 'auth protected') : cyberAtlasText('cyberatlas.publicMode', 'public'))}</div>
                         </div>
-                    `).join('')}
+                    `).join('') : `<div class="signalatlas-empty-panel">${cyberAtlasEscape(cyberAtlasText('cyberatlas.noOpenApi', 'No public OpenAPI document was parsed in this audit.'))}</div>`}
                 </div>
             </section>
         `;

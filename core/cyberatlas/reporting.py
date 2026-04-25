@@ -28,6 +28,8 @@ def build_executive_summary(audit: Dict[str, Any]) -> str:
     snapshot = audit.get("snapshot") or {}
     tls = snapshot.get("tls") or {}
     openapi = snapshot.get("openapi") or {}
+    recon = snapshot.get("recon_summary") or {}
+    protections = snapshot.get("protections") or {}
     counts = _severity_counts(audit)
     lines = [
         f"CyberAtlas audited {summary.get('target') or 'the requested target'} in {summary.get('mode', 'public')} mode.",
@@ -36,7 +38,7 @@ def build_executive_summary(audit: Dict[str, Any]) -> str:
         (
             f"Coverage: {summary.get('pages_crawled', 0)} page(s), "
             f"{summary.get('exposure_count', 0)} reachable exposure probe(s), "
-            f"{summary.get('endpoint_count', 0)} OpenAPI endpoint(s)."
+            f"{summary.get('endpoint_count', 0)} endpoint signal(s)."
         ),
         (
             f"Severity mix: {counts['critical']} critical, {counts['high']} high, "
@@ -53,6 +55,20 @@ def build_executive_summary(audit: Dict[str, Any]) -> str:
         lines.append(
             f"OpenAPI: {openapi.get('endpoint_count', 0)} endpoint(s) parsed from {openapi.get('source_url') or 'public spec'}, "
             f"{openapi.get('unauthenticated_count', 0)} without declared security."
+        )
+    if recon:
+        lines.append(
+            "Recon: "
+            f"framework={recon.get('framework') or 'unknown'}, "
+            f"database_hint={recon.get('database_type') or 'Unknown'}, "
+            f"auth_surface={recon.get('auth_surface_count', 0)}, "
+            f"source_maps={recon.get('source_map_count', 0)}."
+        )
+    if protections:
+        cdn = ", ".join(protections.get("cdn") or []) or "none observed"
+        lines.append(
+            f"Edge protection signals: CDN={cdn}, WAF={bool(protections.get('waf_detected'))}, "
+            f"rate-limit={bool(protections.get('rate_limit_detected'))}."
         )
     blocking = summary.get("blocking_risk") or {}
     if blocking.get("level") not in {"", "Low", None}:
@@ -72,6 +88,10 @@ def build_markdown_report(audit: Dict[str, Any]) -> str:
     headers = snapshot.get("security_headers") or {}
     probes = snapshot.get("exposure_probes") or []
     openapi = snapshot.get("openapi") or {}
+    api_inventory = snapshot.get("api_inventory") or {}
+    frontend_hints = snapshot.get("frontend_hints") or {}
+    protections = snapshot.get("protections") or {}
+    recon = snapshot.get("recon_summary") or {}
     pages = snapshot.get("pages") or []
     scores = audit.get("scores") or []
     findings = audit.get("findings") or []
@@ -85,6 +105,9 @@ def build_markdown_report(audit: Dict[str, Any]) -> str:
         f"- Defensive score: `{summary.get('global_score', 'n/a')}`",
         f"- Risk level: `{summary.get('risk_level', 'Unknown')}`",
         f"- Safe mode: `{bool(summary.get('safe_mode', True))}`",
+        f"- Discovered endpoint signals: `{summary.get('discovered_endpoint_count', 0)}`",
+        f"- Frontend API references: `{summary.get('frontend_api_reference_count', 0)}`",
+        f"- Source maps: `{summary.get('source_map_count', 0)}`",
         "",
         "## Executive Summary",
         "",
@@ -104,6 +127,16 @@ def build_markdown_report(audit: Dict[str, Any]) -> str:
         f"- Certificate expiry: `{_fmt(tls.get('not_after'))}`",
         f"- Days remaining: `{_fmt(tls.get('days_remaining'))}`",
         f"- Probe error: `{_fmt(tls.get('error'), '')}`",
+        "",
+        "## Recon & Edge Protection",
+        "",
+        f"- Framework hint: `{_fmt(recon.get('framework'))}`",
+        f"- Database hint: `{_fmt(recon.get('database_type'))}`",
+        f"- CDN signals: `{', '.join(protections.get('cdn') or []) or 'none observed'}`",
+        f"- WAF signal: `{bool(protections.get('waf_detected'))}`",
+        f"- Rate-limit signal: `{bool(protections.get('rate_limit_detected'))}`",
+        f"- Auth surface signals: `{recon.get('auth_surface_count', 0)}`",
+        f"- Public sensitive endpoint signals: `{recon.get('sensitive_public_endpoint_count', 0)}`",
         "",
         "## Security Headers",
         "",
@@ -136,6 +169,39 @@ def build_markdown_report(audit: Dict[str, Any]) -> str:
             lines.append(f"- `{endpoint.get('method')} {endpoint.get('path')}` - {security}")
     else:
         lines.append("- No public OpenAPI document was parsed in this audit.")
+    inventory_endpoints = api_inventory.get("endpoints") or []
+    lines.extend(["", "## Discovered API Inventory", ""])
+    if inventory_endpoints:
+        lines.extend([
+            f"- Endpoint signals: `{api_inventory.get('endpoint_count', len(inventory_endpoints))}`",
+            f"- Auth-protected signals: `{api_inventory.get('auth_protected_count', 0)}`",
+            f"- Sensitive-looking public signals: `{api_inventory.get('public_sensitive_count', 0)}`",
+            "",
+        ])
+        for endpoint in inventory_endpoints[:40]:
+            auth = "auth required" if endpoint.get("requires_auth") else "public/unknown auth"
+            methods = ", ".join(endpoint.get("allowed_methods") or []) or "not declared"
+            lines.append(
+                f"- `{endpoint.get('path')}` - HTTP `{endpoint.get('status_code')}`, {auth}, "
+                f"type `{endpoint.get('response_type')}`, methods `{methods}`"
+            )
+    else:
+        lines.append("- No additional endpoint inventory signals were found.")
+    lines.extend(["", "## Frontend Code Hints", ""])
+    if frontend_hints:
+        backend_hosts = ", ".join(frontend_hints.get("backend_hosts") or []) or "none"
+        lines.extend([
+            f"- API references: `{frontend_hints.get('api_reference_count', 0)}`",
+            f"- Backend hosts referenced: `{backend_hosts}`",
+            f"- Private backend hosts: `{', '.join(frontend_hints.get('private_backend_hosts') or []) or 'none'}`",
+            f"- Source maps: `{frontend_hints.get('source_map_count', 0)}`",
+            f"- Secret-like identifier names: `{', '.join(frontend_hints.get('secret_name_hints') or []) or 'none'}`",
+            "",
+        ])
+        for ref in (frontend_hints.get("api_references") or [])[:30]:
+            lines.append(f"- `{ref.get('kind')}` `{ref.get('url')}` from `{ref.get('source')}`")
+    else:
+        lines.append("- No frontend code hints were collected.")
     lines.extend(["", "## Sampled Pages & Forms", ""])
     for page in pages[:8]:
         lines.extend([
@@ -235,6 +301,10 @@ def build_security_gate_payload(audit: Dict[str, Any]) -> Dict[str, Any]:
         failures.append(f"Security score below gate: {summary.get('global_score')}.")
     if not summary.get("safe_mode"):
         warnings.append("Audit used expanded safe probes; confirm scan authorization.")
+    if int(summary.get("public_sensitive_endpoint_count") or 0) > 0:
+        warnings.append(f"{summary.get('public_sensitive_endpoint_count')} sensitive-looking public endpoint signal(s) need review.")
+    if int(summary.get("source_map_count") or 0) > 0:
+        warnings.append(f"{summary.get('source_map_count')} public source map signal(s) were detected.")
     return {
         "schema": "joyboy.cyberatlas.security_gate.v1",
         "audit_id": audit.get("id") or "",
@@ -245,6 +315,8 @@ def build_security_gate_payload(audit: Dict[str, Any]) -> Dict[str, Any]:
         "risk_level": summary.get("risk_level"),
         "critical_count": summary.get("critical_count", 0),
         "high_count": summary.get("high_count", 0),
+        "public_sensitive_endpoint_count": summary.get("public_sensitive_endpoint_count", 0),
+        "source_map_count": summary.get("source_map_count", 0),
         "failures": failures,
         "warnings": warnings,
         "top_findings": findings[:8],
@@ -264,6 +336,10 @@ def build_evidence_pack(audit: Dict[str, Any]) -> Dict[str, Any]:
         "forms": snapshot.get("forms") or [],
         "exposure_probes": snapshot.get("exposure_probes") or [],
         "openapi": snapshot.get("openapi") or {},
+        "api_inventory": snapshot.get("api_inventory") or {},
+        "frontend_hints": snapshot.get("frontend_hints") or {},
+        "protections": snapshot.get("protections") or {},
+        "recon_summary": snapshot.get("recon_summary") or {},
         "findings": audit.get("findings") or [],
         "remediation_items": audit.get("remediation_items") or [],
     }

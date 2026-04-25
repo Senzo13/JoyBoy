@@ -202,8 +202,8 @@ Encore beaucoup de détail inutile.
         text = brain._budget_fallback_answer("audit ce workspace", observed)
 
         self.assertIn("coupé avant de relancer", text)
-        self.assertIn("list_files", text)
-        self.assertIn("```text", text)
+        self.assertIn("workspace exploré", text)
+        self.assertNotIn("```text", text)
 
     def test_mutation_tool_summaries_stay_compact_and_path_focused(self):
         brain = TerminalBrain()
@@ -278,9 +278,11 @@ Encore beaucoup de détail inutile.
         text = brain._iteration_limit_fallback_answer("continue le dev fait une landing page spt", observed)
 
         self.assertIn("changements", text.lower())
-        self.assertIn("```text", text)
+        self.assertNotIn("```text", text)
         self.assertIn("src/app/page.jsx", text)
         self.assertIn("src/app/globals.css", text)
+        self.assertIn("fichier modifié", text)
+        self.assertIn("fichier écrit", text)
         self.assertNotIn("old_text", text)
         self.assertNotIn("new_text", text)
 
@@ -1289,8 +1291,9 @@ Encore beaucoup de détail inutile.
 
         done = [event for event in events if event.get("type") == "done"][-1]
         self.assertEqual(mock_chat.call_count, 1)
-        self.assertIn("clear_workspace", done.get("full_response", ""))
-        self.assertIn("write_files", done.get("full_response", ""))
+        self.assertIn("workspace nettoyé", done.get("full_response", ""))
+        self.assertIn("fichiers écrits", done.get("full_response", ""))
+        self.assertNotIn("write_files:", done.get("full_response", ""))
 
     def test_template_analysis_remains_read_only(self):
         brain = TerminalBrain()

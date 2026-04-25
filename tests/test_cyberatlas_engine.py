@@ -2,6 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from core.cyberatlas.engine import _extract_api_references
 from core.cyberatlas.reporting import build_export_payload, build_security_gate_payload
 from core.cyberatlas.scoring import score_findings
 from core.cyberatlas.storage import CyberAtlasStorage
@@ -25,7 +26,13 @@ class CyberAtlasEngineTests(unittest.TestCase):
                 "risk_level": "High",
                 "pages_crawled": 3,
                 "endpoint_count": 4,
+                "discovered_endpoint_count": 3,
+                "public_sensitive_endpoint_count": 1,
                 "exposure_count": 1,
+                "source_map_count": 1,
+                "frontend_api_reference_count": 2,
+                "waf_detected": True,
+                "rate_limit_detected": False,
                 "critical_count": 0,
                 "high_count": 1,
                 "medium_count": 1,
@@ -58,6 +65,47 @@ class CyberAtlasEngineTests(unittest.TestCase):
                 "missing_security_headers": ["content-security-policy"],
                 "exposure_probes": [],
                 "openapi": {"available": False, "endpoints": []},
+                "api_inventory": {
+                    "endpoint_count": 3,
+                    "auth_protected_count": 1,
+                    "public_sensitive_count": 1,
+                    "endpoints": [
+                        {
+                            "path": "/api/admin",
+                            "status_code": 200,
+                            "response_type": "json",
+                            "requires_auth": False,
+                            "allowed_methods": ["GET"],
+                        }
+                    ],
+                },
+                "frontend_hints": {
+                    "api_reference_count": 2,
+                    "backend_hosts": ["api.example.com"],
+                    "private_backend_hosts": [],
+                    "source_map_count": 1,
+                    "source_maps": ["https://example.com/app.js.map"],
+                    "secret_name_hints": ["api_key"],
+                    "api_references": [
+                        {
+                            "kind": "api",
+                            "url": "https://example.com/api/admin",
+                            "source": "script",
+                        }
+                    ],
+                },
+                "protections": {
+                    "cdn": ["Cloudflare"],
+                    "waf_detected": True,
+                    "rate_limit_detected": False,
+                },
+                "recon_summary": {
+                    "framework": "Next.js",
+                    "database_type": "Unknown",
+                    "auth_surface_count": 1,
+                    "source_map_count": 1,
+                    "sensitive_public_endpoint_count": 1,
+                },
             },
             "interpretations": [],
             "remediation_items": [],
@@ -92,9 +140,12 @@ class CyberAtlasEngineTests(unittest.TestCase):
         gate = build_security_gate_payload(audit)
 
         self.assertIn("# CyberAtlas Audit", markdown["content"])
+        self.assertIn("## Discovered API Inventory", markdown["content"])
+        self.assertIn("## Frontend Code Hints", markdown["content"])
         self.assertIn("deterministic source of truth", prompt["content"])
         self.assertEqual("joyboy.cyberatlas.security_gate.v1", gate["schema"])
         self.assertEqual("High", gate["risk_level"])
+        self.assertEqual(1, gate["public_sensitive_endpoint_count"])
 
     def test_storage_indexes_security_summary_fields(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -107,6 +158,22 @@ class CyberAtlasEngineTests(unittest.TestCase):
             self.assertEqual("High", record["risk_level"])
             self.assertEqual(1, record["high_count"])
             self.assertEqual(4, record["endpoint_count"])
+            self.assertEqual(3, record["discovered_endpoint_count"])
+            self.assertEqual(1, record["public_sensitive_endpoint_count"])
+
+    def test_frontend_api_reference_extraction_flags_private_hosts(self):
+        refs = _extract_api_references(
+            'fetch("/api/users"); const admin = "http://localhost:3000/api/admin";',
+            "https://example.com/",
+            "example.com",
+            source="script",
+        )
+
+        urls = {item["url"] for item in refs}
+        self.assertIn("https://example.com/api/users", urls)
+        self.assertIn("http://localhost:3000/api/admin", urls)
+        private = next(item for item in refs if item["url"].startswith("http://localhost"))
+        self.assertTrue(private["private_host"])
 
 
 if __name__ == "__main__":

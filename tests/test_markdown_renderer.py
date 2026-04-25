@@ -74,6 +74,20 @@ class MarkdownRendererTests(unittest.TestCase):
         self.assertNotIn("Subagent code_explorer", rendered)
         self.assertNotIn("List(.)", rendered)
 
+    def test_renderer_strips_raw_tool_ledger_lines(self):
+        rendered = self.run_node_renderer(
+            "Changements appliqués:\n"
+            "write_files: 9 file(s): package.json, index.html, vite.config.js, +6 more\n"
+            "[OK] edit_file: src/app/page.jsx (1 replacement)\n"
+            "C'est prêt."
+        )
+
+        self.assertIn("Changements appliqués:", rendered)
+        self.assertIn("C'est prêt.", rendered)
+        self.assertNotIn("write_files", rendered)
+        self.assertNotIn("edit_file", rendered)
+        self.assertNotIn("package.json, index.html", rendered)
+
     def test_chat_prompt_mentions_longer_outer_fence_for_nested_markdown(self):
         config = (ROOT / "config.py").read_text(encoding="utf-8")
 

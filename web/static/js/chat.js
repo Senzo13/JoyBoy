@@ -28,7 +28,8 @@ function getChatMessages() {
 function sanitizeAssistantToolTraceText(text = '') {
     const source = String(text ?? '').replace(/\r\n?/g, '\n');
     if (!source) return '';
-    if (!/(?:\bto=|^[\t ]*[●⎿]|Subagent\(|\bdata=\{|\bcode=")/mi.test(source)) {
+    const rawToolLedgerPattern = /^\s*(?:\[?(?:OK|FAIL|ERROR)\]?\s+)?(?:write_files|write_file|edit_file|read_file|list_files|search|glob|bash|clear_workspace|delete_file|tool_search|delegate_subagent)\s*:/mi;
+    if (!/(?:\bto=|^[\t ]*[●⎿]|Subagent\(|\bdata=\{|\bcode=")/mi.test(source) && !rawToolLedgerPattern.test(source)) {
         return source;
     }
 
@@ -52,6 +53,8 @@ function sanitizeAssistantToolTraceText(text = '') {
             if (/^[\[{]?\s*"?content"?\s*:/i.test(trimmed)) return false;
             if (/^[\]}{]*\s*(?:json|data:|\{|\})/i.test(trimmed)) return false;
             if (/^Subagent\([^)]*\)/i.test(trimmed)) return false;
+            if (/^(?:write_files|write_file|edit_file|read_file|list_files|search|glob|bash|clear_workspace|delete_file|tool_search|delegate_subagent)\s*:/i.test(trimmed)) return false;
+            if (/^\[?(?:OK|FAIL|ERROR)\]?\s+(?:write_files|write_file|edit_file|read_file|list_files|search|glob|bash|clear_workspace|delete_file|tool_search|delegate_subagent)\s*:/i.test(trimmed)) return false;
             if (/^[●•]\s*(?:Read|Write|Edit|Delete|Search|Glob|Bash|List|Plan|Subagent|ToolSearch|Explore|Open|UpdatePlan|Lecture|Exploration|Recherche|Écriture|Modification|Suppression|Planification|Vérification|Commande)\b/u.test(trimmed)) {
                 return false;
             }
@@ -1616,7 +1619,21 @@ function addTerminalLine(text, type = 'system') {
  * @returns {HTMLElement} L'élément créé
  */
 function addToolCall(action, target, args = {}) {
-    const resolvedTarget = target || args?.path || args?.pattern || args?.command || args?.task || args?.agent_type || '';
+    const summarizeToolPaths = (items = [], max = 4) => {
+        if (!Array.isArray(items) || items.length === 0) return '';
+        const paths = items
+            .map(item => (typeof item === 'string' ? item : item?.path))
+            .filter(Boolean)
+            .slice(0, max);
+        const suffix = items.length > paths.length ? `, +${items.length - paths.length}` : '';
+        return `${paths.join(', ')}${suffix}`;
+    };
+
+    let resolvedTarget = target || args?.path || args?.pattern || args?.command || args?.task || args?.agent_type || '';
+    if (action === 'write_files') {
+        const fileSummary = summarizeToolPaths(args?.files, 4);
+        resolvedTarget = fileSummary || resolvedTarget;
+    }
     console.log(`%c[CHAT] addToolCall appelé: ${action}(${resolvedTarget})`, 'color: #3b82f6; font-weight: bold;');
 
     const messagesDiv = getChatMessages();
@@ -1662,8 +1679,8 @@ function addToolCall(action, target, args = {}) {
         normalizedTarget = '';
     }
 
-    const displayTarget = normalizedTarget && normalizedTarget.length > 60
-        ? '...' + resolvedTarget.slice(-57)
+    const displayTarget = normalizedTarget && normalizedTarget.length > 80
+        ? '...' + normalizedTarget.slice(-77)
         : normalizedTarget;
 
     const targetHtml = displayTarget

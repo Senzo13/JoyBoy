@@ -254,19 +254,42 @@ class TerminalGuardrailsMixin:
         ]
         return not later_failures
 
+    def _human_executed_tool_line(self, item: Dict) -> str:
+        tool_name = str(item.get("tool") or item.get("name") or "tool").strip()
+        summary = self._compact_summary_snippet(item.get("summary", ""), limit=180)
+
+        if tool_name == "write_files":
+            detail = re.sub(r"^\d+\s+file\(s\):\s*", "", summary, flags=re.I).strip()
+            return f"fichiers écrits: {detail}" if detail else "fichiers écrits et vérifiés"
+        if tool_name == "write_file":
+            return f"fichier écrit: {summary}" if summary else "fichier écrit"
+        if tool_name == "edit_file":
+            return f"fichier modifié: {summary}" if summary else "fichier modifié"
+        if tool_name == "delete_file":
+            return f"fichier supprimé: {summary}" if summary else "fichier supprimé"
+        if tool_name == "clear_workspace":
+            return f"workspace nettoyé: {summary}" if summary else "workspace nettoyé"
+        if tool_name == "read_file":
+            return f"fichier lu: {summary}" if summary else "fichier lu"
+        if tool_name == "list_files":
+            return f"workspace exploré: {summary}" if summary else "workspace exploré"
+        if tool_name in {"search", "glob"}:
+            return f"recherche effectuée: {summary}" if summary else "recherche effectuée"
+        if tool_name == "bash":
+            return f"commande exécutée: {summary}" if summary else "commande exécutée"
+        if tool_name == "write_todos":
+            return f"plan mis à jour: {summary}" if summary else "plan mis à jour"
+
+        return f"{tool_name}: {summary}" if summary else tool_name
+
     def _format_recent_tool_block(self, executed_tools: List[Dict], limit: int = 8) -> str:
         lines: List[str] = []
         for item in (executed_tools or [])[-limit:]:
-            tool_name = str(item.get("tool") or item.get("name") or "tool").strip()
-            summary = self._compact_summary_snippet(item.get("summary", ""), limit=180)
-            if summary:
-                line = f"[{'OK' if item.get('success', True) else 'FAIL'}] {tool_name}: {summary}"
-            else:
-                line = f"[{'OK' if item.get('success', True) else 'FAIL'}] {tool_name}"
-            lines.append(line)
+            status = "OK" if item.get("success", True) else "Échec"
+            lines.append(f"- {status}: {self._human_executed_tool_line(item)}")
         if not lines:
-            lines.append("[INFO] Aucun outil utile exécuté avant l'arrêt.")
-        return "```text\n" + "\n".join(lines) + "\n```"
+            lines.append("- Info: aucun outil utile exécuté avant l'arrêt.")
+        return "\n".join(lines)
 
     def _verified_write_progress_answer(self, initial_message: str, executed_tools: List[Dict]) -> str:
         relevant = self._successful_mutation_items(executed_tools)[-8:] or executed_tools[-8:]
@@ -363,7 +386,7 @@ class TerminalGuardrailsMixin:
     def _post_write_finalize_answer(self, initial_message: str, executed_tools: List[Dict]) -> str:
         """Compact deterministic final answer for scaffold turns."""
         mutation_items = self._successful_mutation_items(executed_tools)[-8:]
-        details = self._format_recent_tool_block(mutation_items) if mutation_items else "```text\n[OK] Écritures appliquées et vérifiées.\n```"
+        details = self._format_recent_tool_block(mutation_items) if mutation_items else "- OK: écritures appliquées et vérifiées."
         return (
             "C'est fait. J'ai appliqué la structure demandée et les écritures ont été vérifiées côté runtime.\n\n"
             "Changements appliqués:\n"

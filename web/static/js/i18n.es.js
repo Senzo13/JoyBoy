@@ -1770,8 +1770,9 @@ Object.assign(MESSAGES.es.terminal, {
         approvalWaiting: 'Esperando autorización',
         approvalRequiredLine: 'Autorización requerida',
         approvalDeniedLine: 'Acción cancelada.',
-        taskWriteFiles: 'Escribiendo archivos',
-        taskWriteFile: 'Escribiendo',
+taskWriteFiles: 'Escribiendo archivos',
+fileCount: '{count} archivo(s)',
+taskWriteFile: 'Escribiendo',
         taskEditFile: 'Editando',
         taskDeleteFile: 'Eliminando',
         taskClearWorkspace: 'Limpiando workspace',
@@ -1792,7 +1793,7 @@ Object.assign(MESSAGES.es.terminal, {
         progressRunningFor: 'En curso desde {time}',
         progressDoneIn: 'Terminado en {time}',
         progressThinking: 'Analizando',
-        progressThinkingIteration: 'Análisis {iteration}',
+        progressThinkingIteration: 'Paso {iteration}',
         progressAutonomous: 'Modo autónomo',
         progressIntent: 'Intención detectada',
         progressLoopAvoided: 'Bucle evitado',
@@ -2097,11 +2098,11 @@ Object.assign(MESSAGES.es.terminal, {
         contextActivity: 'Contexto',
         taskAnswerStarted: 'Respuesta iniciada',
         taskClarification: 'Clarificación',
-        taskContinueAfterTools: 'Análisis de resultados y siguiente acción',
-        taskFinalSynthesis: 'Síntesis final de la respuesta',
+        taskContinueAfterTools: 'Decisión tras los resultados',
+        taskFinalSynthesis: 'Redacción de la respuesta',
         taskGatherContext: 'Lectura del contexto',
-        taskPrepareAnswer: 'Preparación de la respuesta',
-        taskRepoAnalysis: 'Análisis de archivos del repository',
+        taskPrepareAnswer: 'Redacción de la respuesta',
+        taskRepoAnalysis: 'Elección de archivos a leer',
         taskToolSelected: 'Herramienta elegida',
         toolRunCommand: 'Ejecuta',
     });
@@ -2425,6 +2426,23 @@ Object.assign(MESSAGES.es, {
 
 Object.assign(MESSAGES.es.runtime, {
         kindCyberAtlas: 'CyberAtlas',
+    });
+
+Object.assign(MESSAGES.es.cyberatlas, {
+        apiInventory: 'Inventario API',
+        apiReferences: 'Referencias API',
+        authProtected: 'Protegidos por auth',
+        backendHosts: 'Backends referenciados',
+        cdnSignals: 'Señales CDN',
+        databaseHint: 'Pista de base de datos',
+        frontendHints: 'Pistas frontend',
+        framework: 'Framework',
+        privateBackends: 'Backends privados',
+        publicSensitive: 'Sensibles públicos',
+        rateLimitSignal: 'Señal rate-limit',
+        reconSummary: 'Resumen recon',
+        sourceMaps: 'Source maps',
+        wafSignal: 'Señal WAF',
     });
 
 Object.assign(MESSAGES.es.signalatlas, {

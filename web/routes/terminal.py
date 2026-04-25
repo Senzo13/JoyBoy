@@ -217,7 +217,7 @@ def terminal_chat():
                     if isinstance(item, dict) and item.get('path')
                 ]
                 suffix = f", +{len(files) - len(paths)}" if len(files) > len(paths) else ""
-                return f"{len(files)} files" + (f": {', '.join(paths)}{suffix}" if paths else "")
+                return f"{', '.join(paths)}{suffix}" if paths else f"{len(files)} files"
             return "files"
         if tool_name == 'write_todos':
             todos = args.get('todos', [])
@@ -432,22 +432,37 @@ def terminal_chat():
                                 f"{data.get('path', '')} · {data.get('replacements', 0)} remplacement(s)"
                                 f" · +{added}/-{removed}"
                             ).strip()
+                        else:
+                            state = "créé" if data.get('created') else "modifié"
+                            verified = " · vérifié" if data.get('verified') else ""
+                            result_data['tool_result']['summary'] = f"{data.get('path', '')} · {state}{verified}".strip(" ·")
                     elif tool_name == 'write_files':
                         files = data.get('files', []) if isinstance(data.get('files', []), list) else []
                         created = data.get('created', []) if isinstance(data.get('created', []), list) else []
                         updated = data.get('updated', []) if isinstance(data.get('updated', []), list) else []
-                        result_data['tool_result']['count'] = data.get('count', len(files))
-                        result_data['tool_result']['files'] = files[:30]
-                        result_data['tool_result']['created'] = created[:30]
-                        result_data['tool_result']['updated'] = updated[:30]
-                        result_data['tool_result']['summary'] = (
+                        preview_paths = [
+                            str(item.get('path', '')).strip()
+                            for item in files[:5]
+                            if isinstance(item, dict) and item.get('path')
+                        ]
+                        preview = ", ".join(preview_paths)
+                        if len(files) > len(preview_paths):
+                            preview += f", +{len(files) - len(preview_paths)}"
+                        counts = (
                             f"{len(created)} créé(s), {len(updated)} modifié(s)"
                             if created or updated
                             else f"{data.get('count', len(files))} fichier(s) écrit(s)"
                         )
+                        result_data['tool_result']['count'] = data.get('count', len(files))
+                        result_data['tool_result']['files'] = files[:30]
+                        result_data['tool_result']['created'] = created[:30]
+                        result_data['tool_result']['updated'] = updated[:30]
+                        result_data['tool_result']['summary'] = f"{counts} · {preview}" if preview else counts
                     elif tool_name == 'delete_file':
                         result_data['tool_result']['path'] = data.get('path', '')
                         result_data['tool_result']['verified'] = data.get('verified', False)
+                        verified = " · vérifié" if data.get('verified') else ""
+                        result_data['tool_result']['summary'] = f"{data.get('path', '')} · supprimé{verified}".strip(" ·")
                     elif tool_name == 'clear_workspace':
                         deleted = data.get('deleted', []) if isinstance(data.get('deleted', []), list) else []
                         kept = data.get('kept', []) if isinstance(data.get('kept', []), list) else []

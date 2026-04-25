@@ -6,6 +6,7 @@ import json
 import re
 import socket
 import ssl
+import ipaddress
 from collections import Counter
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
@@ -67,6 +68,96 @@ SENSITIVE_PATHS = {
     "/debug": "debug_endpoint_exposed",
 }
 
+SWAGGER_PATHS = (
+    "/openapi.json",
+    "/swagger.json",
+    "/api-docs",
+    "/swagger/v1/swagger.json",
+    "/swagger/v2/swagger.json",
+    "/swagger/v3/swagger.json",
+    "/api/swagger.json",
+    "/api/openapi.json",
+    "/docs/swagger.json",
+    "/docs/openapi.json",
+    "/v1/openapi.json",
+    "/v2/openapi.json",
+    "/v3/openapi.json",
+)
+
+API_DISCOVERY_PATHS = (
+    "/api",
+    "/api/v1",
+    "/api/v2",
+    "/api/v3",
+    "/api/auth",
+    "/api/login",
+    "/api/session",
+    "/api/users",
+    "/api/user",
+    "/api/me",
+    "/api/admin",
+    "/api/debug",
+    "/api/health",
+    "/api/status",
+    "/api/config",
+    "/api/search",
+    "/api/upload",
+    "/api/files",
+    "/api/graphql",
+    "/graphql",
+    "/graphiql",
+    "/graphql/playground",
+    "/playground",
+    "/socket.io",
+    "/ws",
+    "/wss",
+    "/realtime",
+    "/admin",
+    "/login",
+    "/auth",
+    "/dashboard",
+    "/wp-json",
+    "/.well-known/openid-configuration",
+)
+
+AUTH_ENDPOINT_HINTS = (
+    "auth",
+    "login",
+    "session",
+    "signin",
+    "signup",
+    "oauth",
+    "password",
+    "token",
+)
+
+SENSITIVE_ENDPOINT_HINTS = (
+    "admin",
+    "debug",
+    "config",
+    "secret",
+    "token",
+    "user",
+    "users",
+    "account",
+    "payment",
+    "billing",
+    "upload",
+    "files",
+    "export",
+    "dump",
+)
+
+API_REFERENCE_RE = re.compile(
+    r"""(?P<url>(?:https?:)?//[^\s"'<>`{}|\\]+|/(?:api|graphql|graphiql|playground|socket\.io|ws|wss|realtime|v\d+)[^\s"'<>`{}|\\]*)""",
+    re.IGNORECASE,
+)
+SOURCE_MAP_RE = re.compile(r"sourceMappingURL=([^\s*]+)", re.IGNORECASE)
+SECRET_NAME_RE = re.compile(
+    r"\b(?:api[_-]?key|secret[_-]?key|client[_-]?secret|access[_-]?token|refresh[_-]?token|private[_-]?key|password|passwd|mongodb_uri|database_url)\b",
+    re.IGNORECASE,
+)
+
 ERROR_PATTERNS = (
     "traceback (most recent call last)",
     "stack trace",
@@ -113,6 +204,80 @@ def _normalize_url(url: str, base_url: str) -> str:
     if parsed.scheme.lower() not in {"http", "https"}:
         return ""
     return parsed._replace(fragment="", params="").geturl()
+
+
+def _dedupe_rows(rows: Iterable[Dict[str, Any]], key: str = "url", limit: int = 80) -> List[Dict[str, Any]]:
+    seen = set()
+    output: List[Dict[str, Any]] = []
+    for row in rows:
+        marker = str(row.get(key) or row.get("path") or "").strip()
+        if not marker or marker in seen:
+            continue
+        seen.add(marker)
+        output.append(row)
+        if len(output) >= limit:
+            break
+    return output
+
+
+def _is_private_hostname(hostname: str) -> bool:
+    host = str(hostname or "").strip().lower().strip("[]")
+    if not host:
+        return False
+    if host in {"localhost", "127.0.0.1", "::1"} or host.endswith((".local", ".internal", ".lan")):
+        return True
+    try:
+        ip = ipaddress.ip_address(host)
+        return bool(ip.is_private or ip.is_loopback or ip.is_link_local)
+    except ValueError:
+        return False
+
+
+def _extract_api_references(text: str, base_url: str, host: str, source: str = "html") -> List[Dict[str, Any]]:
+    references: List[Dict[str, Any]] = []
+    if not text:
+        return references
+    for match in API_REFERENCE_RE.finditer(text[:350_000]):
+        raw = str(match.group("url") or "").strip().rstrip(").,;")
+        if not raw or len(raw) > 260:
+            continue
+        if raw.startswith("//"):
+            raw = f"{urlparse(base_url).scheme or 'https'}:{raw}"
+        normalized = _normalize_url(raw, base_url)
+        if not normalized:
+            continue
+        parsed = urlparse(normalized)
+        path = parsed.path or "/"
+        lower_path = path.lower()
+        kind = "api"
+        if "graphql" in lower_path or "graphiql" in lower_path or "playground" in lower_path:
+            kind = "graphql"
+        elif "socket.io" in lower_path or lower_path in {"/ws", "/wss", "/realtime"}:
+            kind = "realtime"
+        references.append({
+            "url": normalized,
+            "path": path,
+            "host": parsed.hostname or "",
+            "same_origin": _same_host(parsed.hostname or "", host),
+            "private_host": _is_private_hostname(parsed.hostname or ""),
+            "kind": kind,
+            "source": source,
+        })
+    return _dedupe_rows(references, key="url", limit=80)
+
+
+def _extract_source_maps(text: str, base_url: str) -> List[str]:
+    maps: List[str] = []
+    for match in SOURCE_MAP_RE.finditer(text or ""):
+        raw = str(match.group(1) or "").strip().strip("'\"")
+        normalized = _normalize_url(raw, base_url)
+        if normalized:
+            maps.append(normalized)
+    return sorted(set(maps))[:30]
+
+
+def _secret_name_hints(text: str) -> List[str]:
+    return sorted(set(match.group(0).lower() for match in SECRET_NAME_RE.finditer(text or "")))[:30]
 
 
 def _header_dict(headers: Any) -> Dict[str, str]:
@@ -293,7 +458,18 @@ def _fetch_page(session: requests.Session, url: str, depth: int, host: str) -> T
         for node in soup.select(tag):
             asset_url = _normalize_url(node.get(attr) or "", final_url)
             if asset_url:
-                assets.append({"url": asset_url, "kind": kind})
+                asset = {"url": asset_url, "kind": kind}
+                if kind == "script":
+                    asset.update({
+                        "integrity": str(node.get("integrity") or "").strip(),
+                        "crossorigin": str(node.get("crossorigin") or "").strip(),
+                        "async": node.has_attr("async"),
+                        "defer": node.has_attr("defer"),
+                    })
+                if kind == "link":
+                    asset["rel"] = " ".join(str(item) for item in (node.get("rel") or []))
+                    asset["integrity"] = str(node.get("integrity") or "").strip()
+                assets.append(asset)
     page = {
         "url": url,
         "final_url": final_url,
@@ -309,10 +485,20 @@ def _fetch_page(session: requests.Session, url: str, depth: int, host: str) -> T
         "password_form_count": len([item for item in forms if item.get("has_password")]),
         "forms": forms,
         "assets": assets[:80],
+        "script_count": len([item for item in assets if item.get("kind") == "script"]),
+        "script_without_sri_count": len([
+            item for item in assets
+            if item.get("kind") == "script"
+            and not _same_host(urlparse(str(item.get("url") or "")).hostname or "", host)
+            and not item.get("integrity")
+        ]),
         "mixed_content_count": len([
             item for item in assets
             if final_url.startswith("https://") and str(item.get("url") or "").startswith("http://")
         ]),
+        "body_api_hints": _extract_api_references(text, final_url, host, source="html")[:40],
+        "source_map_hints": _extract_source_maps(text, final_url),
+        "secret_name_hints": _secret_name_hints(text),
         "external_hosts": sorted(external_hosts)[:20],
         "internal_links": sorted(set(internal_links))[:120],
     }
@@ -369,7 +555,7 @@ def _fetch_probe(session: requests.Session, base_url: str, path: str) -> Dict[st
 def _discover_openapi(probes: List[Dict[str, Any]], endpoint_budget: int) -> Dict[str, Any]:
     spec_probe = next((
         item for item in probes
-        if item.get("exists") and str(item.get("path") or "").lower() in {"/openapi.json", "/swagger.json", "/swagger/v1/swagger.json"}
+        if item.get("exists") and str(item.get("path") or "").lower() in set(SWAGGER_PATHS)
     ), None)
     if not spec_probe:
         return {"available": False, "endpoint_count": 0, "endpoints": [], "unauthenticated_count": 0, "source_url": ""}
@@ -387,6 +573,9 @@ def _discover_openapi(probes: List[Dict[str, Any]], endpoint_budget: int) -> Dic
     global_security = spec.get("security") or []
     endpoints: List[Dict[str, Any]] = []
     unauthenticated = 0
+    state_changing = 0
+    state_changing_without_security = 0
+    sensitive_parameters = 0
     for path, methods in paths.items():
         if not isinstance(methods, dict):
             continue
@@ -398,11 +587,31 @@ def _discover_openapi(probes: List[Dict[str, Any]], endpoint_budget: int) -> Dic
             security = op.get("security", global_security)
             if not security:
                 unauthenticated += 1
+            if clean_method in {"POST", "PUT", "PATCH", "DELETE"}:
+                state_changing += 1
+                if not security:
+                    state_changing_without_security += 1
+            parameter_names = []
+            for param in op.get("parameters") or []:
+                if isinstance(param, dict):
+                    name = str(param.get("name") or "")
+                    if name:
+                        parameter_names.append(name)
+            request_body = op.get("requestBody") if isinstance(op.get("requestBody"), dict) else {}
+            if request_body:
+                parameter_names.append("requestBody")
+            sensitive_param_names = [
+                name for name in parameter_names
+                if any(token in name.lower() for token in ("token", "password", "secret", "email", "user", "account", "admin"))
+            ]
+            sensitive_parameters += len(sensitive_param_names)
             endpoints.append({
                 "method": clean_method,
                 "path": str(path),
                 "summary": str(op.get("summary") or op.get("operationId") or "")[:160],
                 "security_declared": bool(security),
+                "parameter_names": parameter_names[:20],
+                "sensitive_parameter_names": sensitive_param_names[:12],
             })
             if len(endpoints) >= endpoint_budget:
                 break
@@ -414,9 +623,311 @@ def _discover_openapi(probes: List[Dict[str, Any]], endpoint_budget: int) -> Dic
         "source_url": spec_probe.get("final_url") or spec_probe.get("url") or "",
         "endpoint_count": len(endpoints),
         "unauthenticated_count": unauthenticated,
+        "state_changing_count": state_changing,
+        "state_changing_without_security_count": state_changing_without_security,
+        "sensitive_parameter_count": sensitive_parameters,
         "endpoints": endpoints,
         "title": str((spec.get("info") or {}).get("title") or ""),
         "version": str((spec.get("info") or {}).get("version") or ""),
+    }
+
+
+def _collect_frontend_code_hints(session: requests.Session, pages: List[Dict[str, Any]], host: str, script_budget: int = 6) -> Dict[str, Any]:
+    references: List[Dict[str, Any]] = []
+    source_maps: List[str] = []
+    secret_names = set()
+    scripts_seen = set()
+    script_samples: List[Dict[str, Any]] = []
+    third_party_script_count = 0
+    third_party_script_without_sri_count = 0
+
+    for page in pages:
+        references.extend(page.get("body_api_hints") or [])
+        source_maps.extend(page.get("source_map_hints") or [])
+        secret_names.update(page.get("secret_name_hints") or [])
+        for asset in page.get("assets") or []:
+            if asset.get("kind") != "script":
+                continue
+            script_url = str(asset.get("url") or "")
+            parsed = urlparse(script_url)
+            if not _same_host(parsed.hostname or "", host):
+                third_party_script_count += 1
+                if not asset.get("integrity"):
+                    third_party_script_without_sri_count += 1
+                continue
+            if script_url in scripts_seen:
+                continue
+            scripts_seen.add(script_url)
+            if len(scripts_seen) > script_budget:
+                continue
+            try:
+                response = session.get(script_url, timeout=8, allow_redirects=True)
+                body = _safe_text(response, 260_000)
+            except Exception as exc:
+                script_samples.append({
+                    "url": script_url,
+                    "status_code": None,
+                    "error": str(exc),
+                    "api_reference_count": 0,
+                    "secret_name_hints": [],
+                    "source_maps": [],
+                })
+                continue
+            refs = _extract_api_references(body, script_url, host, source="script")
+            maps = _extract_source_maps(body, script_url)
+            names = _secret_name_hints(body)
+            references.extend(refs)
+            source_maps.extend(maps)
+            secret_names.update(names)
+            script_samples.append({
+                "url": response.url or script_url,
+                "status_code": int(response.status_code),
+                "content_type": str(response.headers.get("Content-Type") or ""),
+                "content_length": _safe_int(response.headers.get("Content-Length"), len(response.content or b"")),
+                "api_reference_count": len(refs),
+                "secret_name_hints": names[:12],
+                "source_maps": maps[:8],
+            })
+
+    references = _dedupe_rows(references, key="url", limit=120)
+    source_map_urls = sorted(set(source_maps))[:40]
+    source_map_records: List[Dict[str, Any]] = []
+    for map_url in source_map_urls[:8]:
+        try:
+            response = session.get(map_url, timeout=6, allow_redirects=True, stream=True)
+            source_map_records.append({
+                "url": response.url or map_url,
+                "status_code": int(response.status_code),
+                "reachable": int(response.status_code) < 400,
+                "content_type": str(response.headers.get("Content-Type") or ""),
+                "content_length": _safe_int(response.headers.get("Content-Length"), 0),
+            })
+        except Exception as exc:
+            source_map_records.append({
+                "url": map_url,
+                "status_code": None,
+                "reachable": False,
+                "content_type": "",
+                "content_length": 0,
+                "error": str(exc),
+            })
+    backend_hosts = sorted({
+        str(item.get("host") or "").lower()
+        for item in references
+        if item.get("host") and not item.get("same_origin")
+    })[:30]
+    private_backend_hosts = sorted({
+        str(item.get("host") or "").lower()
+        for item in references
+        if item.get("private_host")
+    })[:30]
+    return {
+        "api_references": references,
+        "api_reference_count": len(references),
+        "backend_hosts": backend_hosts,
+        "private_backend_hosts": private_backend_hosts,
+        "source_maps": source_map_urls,
+        "source_map_records": source_map_records,
+        "source_map_count": len(source_map_urls),
+        "reachable_source_map_count": len([item for item in source_map_records if item.get("reachable")]),
+        "secret_name_hints": sorted(secret_names)[:30],
+        "script_samples": script_samples,
+        "scripts_sampled": len(script_samples),
+        "third_party_script_count": third_party_script_count,
+        "third_party_script_without_sri_count": third_party_script_without_sri_count,
+    }
+
+
+def _fetch_options(session: requests.Session, url: str) -> Dict[str, Any]:
+    try:
+        response = session.options(url, timeout=6, allow_redirects=True)
+        headers = _interesting_headers(response.headers)
+        allow = str(response.headers.get("Allow") or response.headers.get("Access-Control-Allow-Methods") or "")
+        methods = sorted({item.strip().upper() for item in re.split(r"[, ]+", allow) if item.strip()})
+        return {
+            "status_code": int(response.status_code),
+            "allowed_methods": methods,
+            "headers": headers,
+        }
+    except Exception as exc:
+        return {"status_code": None, "allowed_methods": [], "headers": {}, "error": str(exc)}
+
+
+def _is_endpoint_alive(status: Any) -> bool:
+    try:
+        code = int(status)
+    except (TypeError, ValueError):
+        return False
+    return 200 <= code < 400 or code in {401, 403, 405, 429}
+
+
+def _is_sensitive_endpoint_path(path: str) -> bool:
+    lower = str(path or "").lower()
+    return any(token in lower for token in SENSITIVE_ENDPOINT_HINTS)
+
+
+def _is_auth_endpoint_path(path: str) -> bool:
+    lower = str(path or "").lower()
+    return any(token in lower for token in AUTH_ENDPOINT_HINTS)
+
+
+def _discover_endpoint_inventory(
+    session: requests.Session,
+    entry_url: str,
+    frontend_hints: Dict[str, Any],
+    endpoint_budget: int,
+    active_checks: bool,
+) -> Dict[str, Any]:
+    candidates: List[str] = list(API_DISCOVERY_PATHS)
+    for ref in frontend_hints.get("api_references") or []:
+        if not ref.get("same_origin"):
+            continue
+        path = str(ref.get("path") or "")
+        if path and path not in candidates:
+            candidates.append(path)
+
+    budget = max(8, min(80 if active_checks else 32, int(endpoint_budget or 32)))
+    records: List[Dict[str, Any]] = []
+    for path in candidates[:budget]:
+        probe = _fetch_probe(session, entry_url, path)
+        status = probe.get("status_code")
+        if not _is_endpoint_alive(status):
+            continue
+        final_url = str(probe.get("final_url") or probe.get("url") or urljoin(entry_url, path))
+        options = _fetch_options(session, final_url) if len(records) < (18 if active_checks else 8) else {"allowed_methods": []}
+        content_type = str(probe.get("content_type") or "")
+        response_type = "json" if "json" in content_type.lower() else "html" if "html" in content_type.lower() else "other"
+        records.append({
+            "path": path,
+            "url": final_url,
+            "status_code": status,
+            "response_type": response_type,
+            "requires_auth": int(status or 0) in {401, 403},
+            "rate_limited": int(status or 0) == 429,
+            "sensitive": _is_sensitive_endpoint_path(path),
+            "auth_related": _is_auth_endpoint_path(path),
+            "content_type": content_type,
+            "content_length": probe.get("content_length", 0),
+            "allowed_methods": options.get("allowed_methods") or [],
+            "options_status": options.get("status_code"),
+        })
+
+    return {
+        "endpoint_count": len(records),
+        "auth_protected_count": len([item for item in records if item.get("requires_auth")]),
+        "sensitive_count": len([item for item in records if item.get("sensitive")]),
+        "public_sensitive_count": len([item for item in records if item.get("sensitive") and not item.get("requires_auth")]),
+        "rate_limited_count": len([item for item in records if item.get("rate_limited")]),
+        "auth_related_count": len([item for item in records if item.get("auth_related")]),
+        "endpoints": records,
+    }
+
+
+def _detect_protections(headers: Dict[str, str], probes: List[Dict[str, Any]], pages: List[Dict[str, Any]]) -> Dict[str, Any]:
+    all_headers: Dict[str, str] = {}
+    for source in [headers] + [page.get("headers") or {} for page in pages] + [probe.get("headers") or {} for probe in probes]:
+        all_headers.update({str(k).lower(): str(v) for k, v in (source or {}).items()})
+    combined = " ".join(f"{key}:{value}" for key, value in all_headers.items()).lower()
+    body_samples = " ".join(str(probe.get("body_sample") or "")[:1000].lower() for probe in probes)
+    cdn = []
+    if "cloudflare" in combined or "cf-ray" in all_headers:
+        cdn.append("Cloudflare")
+    if "x-vercel-id" in all_headers or "vercel" in combined:
+        cdn.append("Vercel")
+    if "x-nf-request-id" in all_headers or "netlify" in combined:
+        cdn.append("Netlify")
+    if "cloudfront" in combined:
+        cdn.append("AWS CloudFront")
+    if "akamai" in combined:
+        cdn.append("Akamai")
+    if "fastly" in combined:
+        cdn.append("Fastly")
+    waf_signals = [
+        label for label in ("sucuri", "imperva", "incapsula", "akamai", "cloudflare", "x-waf", "bot management")
+        if label in combined or label in body_samples
+    ]
+    rate_limit_headers = sorted([
+        key for key in all_headers
+        if "ratelimit" in key or key in {"retry-after", "x-rate-limit-limit", "x-ratelimit-limit"}
+    ])
+    return {
+        "cdn": sorted(set(cdn)),
+        "waf_signals": sorted(set(waf_signals)),
+        "waf_detected": bool(waf_signals),
+        "rate_limit_headers": rate_limit_headers,
+        "rate_limit_detected": bool(rate_limit_headers) or any(int(probe.get("status_code") or 0) == 429 for probe in probes),
+        "captcha_or_challenge": "captcha" in body_samples or "challenge" in body_samples or "cf-chl" in combined,
+        "server_fingerprints": {
+            key: all_headers.get(key)
+            for key in ("server", "x-powered-by", "x-aspnet-version", "x-generator")
+            if all_headers.get(key)
+        },
+    }
+
+
+def _infer_framework(pages: List[Dict[str, Any]], protections: Dict[str, Any]) -> str:
+    fingerprints = " ".join(str(value).lower() for value in (protections.get("server_fingerprints") or {}).values())
+    asset_urls = " ".join(
+        str(asset.get("url") or "").lower()
+        for page in pages
+        for asset in (page.get("assets") or [])
+    )
+    text = f"{fingerprints} {asset_urls}"
+    checks = [
+        ("Next.js", ("/_next/", "next.js", "x-nextjs")),
+        ("Nuxt", ("/_nuxt/", "nuxt")),
+        ("WordPress", ("wp-content", "wp-json", "wordpress")),
+        ("Laravel", ("laravel", "x-powered-by: php")),
+        ("Django", ("django", "csrftoken")),
+        ("Ruby on Rails", ("rails", "ruby")),
+        ("ASP.NET", ("asp.net", "x-aspnet")),
+        ("Express", ("express",)),
+        ("Vite", ("/assets/", "vite")),
+    ]
+    for label, tokens in checks:
+        if any(token in text for token in tokens):
+            return label
+    return ""
+
+
+def _build_recon_summary(
+    pages: List[Dict[str, Any]],
+    probes: List[Dict[str, Any]],
+    openapi: Dict[str, Any],
+    api_inventory: Dict[str, Any],
+    frontend_hints: Dict[str, Any],
+    protections: Dict[str, Any],
+) -> Dict[str, Any]:
+    combined_parts: List[str] = []
+    for page in pages:
+        combined_parts.append(" ".join(page.get("body_error_indicators") or []))
+    combined_parts.append(" ".join(str(item.get("path") or "") for item in api_inventory.get("endpoints") or []))
+    combined_parts.append(" ".join(frontend_hints.get("secret_name_hints") or []))
+    combined_text = " ".join(combined_parts).lower()
+    db_type = "Unknown"
+    if any(token in combined_text for token in ("mongodb", "mongo", "nosql", "mongoose")):
+        db_type = "NoSQL"
+    elif any(token in combined_text for token in ("mysql", "postgres", "sqlite", "mssql", "sql syntax", "prisma")):
+        db_type = "SQL"
+    auth_surface_count = int(api_inventory.get("auth_related_count") or 0) + len([
+        form for page in pages for form in (page.get("forms") or []) if form.get("has_password")
+    ])
+    return {
+        "framework": _infer_framework(pages, protections),
+        "database_type": db_type,
+        "cdn": protections.get("cdn") or [],
+        "waf_detected": bool(protections.get("waf_detected")),
+        "rate_limit_detected": bool(protections.get("rate_limit_detected")),
+        "auth_surface_count": auth_surface_count,
+        "auth_protected_endpoint_count": int(api_inventory.get("auth_protected_count") or 0),
+        "sensitive_public_endpoint_count": int(api_inventory.get("public_sensitive_count") or 0),
+        "frontend_api_reference_count": int(frontend_hints.get("api_reference_count") or 0),
+        "frontend_backend_host_count": len(frontend_hints.get("backend_hosts") or []),
+        "private_backend_host_count": len(frontend_hints.get("private_backend_hosts") or []),
+        "source_map_count": int(frontend_hints.get("source_map_count") or 0),
+        "openapi_state_changing_without_security_count": int(openapi.get("state_changing_without_security_count") or 0),
+        "graphql_public": any("graphql" in str(item.get("path") or "").lower() and not item.get("requires_auth") for item in api_inventory.get("endpoints") or []),
+        "realtime_public": any(any(token in str(item.get("path") or "").lower() for token in ("socket.io", "/ws", "/wss", "realtime")) for item in api_inventory.get("endpoints") or []),
     }
 
 
@@ -783,7 +1294,7 @@ def _probe_findings(base_url: str, probes: List[Dict[str, Any]]) -> List[Dict[st
                 acceptance_criteria=f"{path} returns 404/403 without sensitive content from the public internet.",
                 root_cause=True,
             ))
-        if path in {"/openapi.json", "/swagger.json", "/api-docs", "/swagger/v1/swagger.json"}:
+        if path in set(SWAGGER_PATHS):
             findings.append(_make_finding(
                 finding_id=f"public-api-docs-{path.strip('/').replace('/', '-') or 'root'}",
                 title="Public API documentation surface is exposed",
@@ -847,6 +1358,211 @@ def _openapi_findings(openapi: Dict[str, Any]) -> List[Dict[str, Any]]:
             diagnostic="The OpenAPI contract does not clearly declare authentication expectations for every operation.",
             recommended_fix="Add explicit security requirements or document intentionally public operations in the OpenAPI spec.",
             acceptance_criteria="Every state-changing or sensitive operation has an explicit security declaration.",
+        ))
+    if int(openapi.get("state_changing_without_security_count") or 0) > 0:
+        findings.append(_make_finding(
+            finding_id="openapi-state-changing-without-security",
+            title="State-changing OpenAPI operations lack declared security",
+            severity="high",
+            confidence="Strong signal",
+            bucket="api_surface",
+            category="api_contract",
+            scope=openapi.get("source_url") or "openapi",
+            evidence=[f"{openapi.get('state_changing_without_security_count')} POST/PUT/PATCH/DELETE operation(s) have no declared security."],
+            diagnostic="Operations that can mutate state need explicit authentication and authorization expectations in the contract.",
+            recommended_fix="Declare security requirements on every state-changing operation, or document why a route is intentionally public.",
+            acceptance_criteria="OpenAPI validation shows zero state-changing operations without an explicit security declaration.",
+        ))
+    if int(openapi.get("sensitive_parameter_count") or 0) > 0 and unauthenticated > 0:
+        findings.append(_make_finding(
+            finding_id="openapi-sensitive-parameters-with-unauthenticated-ops",
+            title="OpenAPI exposes sensitive parameter names on unauthenticated operations",
+            severity="medium",
+            confidence="Estimated",
+            bucket="api_surface",
+            category="api_contract",
+            scope=openapi.get("source_url") or "openapi",
+            evidence=[f"{openapi.get('sensitive_parameter_count')} sensitive-looking parameter name(s) were observed."],
+            diagnostic="The API contract appears to expose identity, token, account, or password-related fields on operations without declared security.",
+            recommended_fix="Review the affected operations, add security declarations, and avoid exposing unnecessary sensitive field names in public docs.",
+            acceptance_criteria="Sensitive operations have security declarations and public schemas reveal only necessary fields.",
+        ))
+    return findings
+
+
+def _frontend_findings(frontend_hints: Dict[str, Any]) -> List[Dict[str, Any]]:
+    findings: List[Dict[str, Any]] = []
+    source_maps = frontend_hints.get("source_maps") or []
+    if source_maps:
+        reachable_count = int(frontend_hints.get("reachable_source_map_count") or 0)
+        findings.append(_make_finding(
+            finding_id="frontend-source-maps-public",
+            title="Frontend source maps appear publicly discoverable",
+            severity="high" if reachable_count else "medium",
+            confidence="Confirmed" if reachable_count else "Strong signal",
+            bucket="app_exposure",
+            category="information_disclosure",
+            scope=source_maps[0],
+            evidence=[
+                f"{len(source_maps)} source map reference(s) detected.",
+                f"{reachable_count} source map URL(s) responded below HTTP 400 during safe verification.",
+            ] + [str(item) for item in source_maps[:4]],
+            diagnostic="Public source maps can expose original source structure, internal comments, endpoint names, and implementation details.",
+            recommended_fix="Disable public production source maps or restrict access to authenticated internal debugging environments.",
+            acceptance_criteria="Production JS bundles no longer expose reachable sourceMappingURL references.",
+        ))
+    if int(frontend_hints.get("third_party_script_without_sri_count") or 0) > 0:
+        findings.append(_make_finding(
+            finding_id="third-party-scripts-without-sri",
+            title="Third-party scripts are loaded without Subresource Integrity",
+            severity="medium",
+            confidence="Strong signal",
+            bucket="browser_hardening",
+            category="supply_chain",
+            scope="frontend script tags",
+            evidence=[
+                f"{frontend_hints.get('third_party_script_without_sri_count')} third-party script tag(s) lack integrity attributes.",
+                f"{frontend_hints.get('third_party_script_count')} third-party script tag(s) observed in sampled pages.",
+            ],
+            diagnostic="Compromised third-party scripts can execute in the page without browser-level integrity checks.",
+            recommended_fix="Add integrity/crossorigin attributes for static third-party scripts, self-host trusted assets where appropriate, and keep CSP script-src tight.",
+            acceptance_criteria="Sampled third-party scripts either use SRI or are explicitly documented as dynamic/non-SRI-compatible with compensating CSP controls.",
+        ))
+    private_hosts = frontend_hints.get("private_backend_hosts") or []
+    if private_hosts:
+        findings.append(_make_finding(
+            finding_id="frontend-private-backend-reference",
+            title="Frontend code references private or local backend hosts",
+            severity="high",
+            confidence="Strong signal",
+            bucket="app_exposure",
+            category="information_disclosure",
+            scope=", ".join(private_hosts[:3]),
+            evidence=[f"Private host hint: {host}" for host in private_hosts[:6]],
+            diagnostic="Client-side code should not reference localhost, private IPs, or internal hostnames in production.",
+            recommended_fix="Move environment-specific backend URLs to server-side configuration and verify production bundles are rebuilt cleanly.",
+            acceptance_criteria="Production frontend bundles contain only public intended API origins.",
+            root_cause=True,
+        ))
+    secret_names = frontend_hints.get("secret_name_hints") or []
+    if secret_names:
+        findings.append(_make_finding(
+            finding_id="frontend-secret-like-identifiers",
+            title="Frontend bundle contains secret-like identifier names",
+            severity="low",
+            confidence="Estimated",
+            bucket="app_exposure",
+            category="information_disclosure",
+            scope="frontend bundles",
+            evidence=[f"Identifier hint: {name}" for name in secret_names[:8]],
+            diagnostic="This does not prove a secret value leaked, but secret-like identifiers in client bundles deserve review.",
+            recommended_fix="Verify no real secrets are bundled client-side and move sensitive configuration to server-only environment variables.",
+            acceptance_criteria="Client bundles contain no real secret values and secret-like names are intentional public config only.",
+        ))
+    return findings
+
+
+def _api_inventory_findings(api_inventory: Dict[str, Any], protections: Dict[str, Any], pages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    findings: List[Dict[str, Any]] = []
+    endpoints = api_inventory.get("endpoints") or []
+    public_sensitive = [item for item in endpoints if item.get("sensitive") and not item.get("requires_auth")]
+    if public_sensitive:
+        findings.append(_make_finding(
+            finding_id="public-sensitive-api-endpoints",
+            title="Sensitive-looking API endpoints are publicly reachable",
+            severity="high",
+            confidence="Strong signal",
+            bucket="api_surface",
+            category="api_exposure",
+            scope=", ".join(str(item.get("path") or "") for item in public_sensitive[:4]),
+            evidence=[f"{item.get('path')} returned HTTP {item.get('status_code')}" for item in public_sensitive[:8]],
+            diagnostic="Endpoints with admin, user, config, token, upload, or export semantics need explicit access review.",
+            recommended_fix="Confirm these endpoints are intentionally public; otherwise require authentication and authorization before response generation.",
+            acceptance_criteria="Sensitive API endpoints return 401/403 when unauthenticated, or are documented as intentionally public.",
+            root_cause=True,
+        ))
+    graphql_public = [item for item in endpoints if "graphql" in str(item.get("path") or "").lower() and not item.get("requires_auth")]
+    if graphql_public:
+        findings.append(_make_finding(
+            finding_id="public-graphql-surface",
+            title="GraphQL surface is publicly reachable",
+            severity="medium",
+            confidence="Strong signal",
+            bucket="api_surface",
+            category="api_exposure",
+            scope=", ".join(str(item.get("path") or "") for item in graphql_public[:4]),
+            evidence=[f"{item.get('path')} returned HTTP {item.get('status_code')}" for item in graphql_public[:6]],
+            diagnostic="Public GraphQL endpoints can make schema and authorization mistakes easier to enumerate if introspection, playgrounds, or weak auth are enabled.",
+            recommended_fix="Disable public playgrounds/introspection unless explicitly required, enforce resolver-level authorization, depth limits, and rate limits.",
+            acceptance_criteria="GraphQL endpoints expose only intended public operations and reject unauthorized sensitive queries.",
+        ))
+    trace_enabled = [
+        item for item in endpoints
+        if "TRACE" in {str(method).upper() for method in (item.get("allowed_methods") or [])}
+    ]
+    if trace_enabled:
+        findings.append(_make_finding(
+            finding_id="http-trace-method-enabled",
+            title="HTTP TRACE appears enabled on a public endpoint",
+            severity="high",
+            confidence="Strong signal",
+            bucket="app_exposure",
+            category="http_methods",
+            scope=", ".join(str(item.get("path") or "") for item in trace_enabled[:4]),
+            evidence=[f"{item.get('path')} allowed methods: {', '.join(item.get('allowed_methods') or [])}" for item in trace_enabled[:6]],
+            diagnostic="TRACE is rarely needed on public applications and can increase cross-site tracing and debugging exposure risk.",
+            recommended_fix="Disable TRACE at the edge, reverse proxy, or application server.",
+            acceptance_criteria="OPTIONS responses and direct verification show TRACE is not allowed publicly.",
+        ))
+    auth_surface = int(api_inventory.get("auth_related_count") or 0) + len([
+        form for page in pages for form in (page.get("forms") or []) if form.get("has_password")
+    ])
+    if auth_surface and not protections.get("rate_limit_detected"):
+        findings.append(_make_finding(
+            finding_id="auth-surface-without-rate-limit-signal",
+            title="Authentication surface has no visible rate-limit signal",
+            severity="medium",
+            confidence="Estimated",
+            bucket="operational_resilience",
+            category="abuse_resistance",
+            scope="authentication routes/forms",
+            evidence=[f"{auth_surface} auth-related route/form signal(s) found.", "No rate-limit or Retry-After header was observed in sampled responses."],
+            diagnostic="This does not prove rate limiting is absent, but public auth surfaces should expose or enforce clear throttling.",
+            recommended_fix="Apply account/IP/device-aware throttling, lockout/backoff, bot defenses, and response monitoring on login and token routes.",
+            acceptance_criteria="Abuse tests in a controlled environment confirm throttling and monitoring on authentication endpoints.",
+        ))
+    return findings
+
+
+def _recon_findings(recon: Dict[str, Any], protections: Dict[str, Any]) -> List[Dict[str, Any]]:
+    findings: List[Dict[str, Any]] = []
+    if recon.get("realtime_public") and not protections.get("rate_limit_detected"):
+        findings.append(_make_finding(
+            finding_id="public-realtime-surface-without-rate-limit-signal",
+            title="Realtime endpoint surface is public without a visible rate-limit signal",
+            severity="medium",
+            confidence="Estimated",
+            bucket="operational_resilience",
+            category="abuse_resistance",
+            scope="realtime endpoints",
+            evidence=["Socket/WebSocket-like paths were reachable and no rate-limit header was observed."],
+            diagnostic="Realtime transports need connection throttling, authentication rules, and abuse monitoring.",
+            recommended_fix="Add connection quotas, namespace authorization, heartbeat limits, and monitoring for realtime endpoints.",
+            acceptance_criteria="Controlled abuse tests confirm connection throttling and namespace authorization.",
+        ))
+    if not protections.get("waf_detected") and not protections.get("rate_limit_detected") and int(recon.get("auth_surface_count") or 0) > 0:
+        findings.append(_make_finding(
+            finding_id="no-visible-edge-abuse-protection",
+            title="No visible WAF or rate-limit protection on auth-facing surface",
+            severity="low",
+            confidence="Estimated",
+            bucket="operational_resilience",
+            category="edge_protection",
+            scope="edge responses",
+            evidence=["No WAF/CDN challenge or rate-limit headers were observed in sampled evidence."],
+            diagnostic="CyberAtlas cannot prove protections are absent, but the sampled public evidence does not show an edge abuse-control layer.",
+            recommended_fix="Verify WAF, bot filtering, and rate limits are configured for auth and write-heavy endpoints.",
+            acceptance_criteria="Owner-side checks or safe follow-up tests confirm active abuse protections on sensitive routes.",
         ))
     return findings
 
@@ -929,12 +1645,33 @@ def run_site_audit(
 
     _emit(progress_callback, "exposure", 62, "Running safe public exposure probes")
     probe_paths = list(SAFE_EXPOSURE_PATHS[: int(profile["probe_budget"])])
+    swagger_budget = len(SWAGGER_PATHS) if active_checks else 8
+    for path in SWAGGER_PATHS[:swagger_budget]:
+        if path not in probe_paths:
+            probe_paths.append(path)
     if not active_checks:
         probe_paths = [path for path in probe_paths if path not in {"/debug", "/server-status", "/admin", "/login"}]
     probes = [_fetch_probe(session, entry_url, path) for path in probe_paths]
 
+    _emit(progress_callback, "api", 70, "Extracting frontend API and stack hints")
+    frontend_hints = _collect_frontend_code_hints(
+        session,
+        pages,
+        host,
+        script_budget=8 if active_checks else 4,
+    )
+
     _emit(progress_callback, "api", 74, "Parsing OpenAPI and API surface signals")
     openapi = _discover_openapi(probes, int(profile["endpoint_budget"]))
+    api_inventory = _discover_endpoint_inventory(
+        session,
+        entry_url,
+        frontend_hints,
+        int(profile["endpoint_budget"]),
+        active_checks=active_checks,
+    )
+    protections = _detect_protections(entry_headers, probes + api_inventory.get("endpoints", []), pages)
+    recon_summary = _build_recon_summary(pages, probes, openapi, api_inventory, frontend_hints, protections)
 
     findings: List[Dict[str, Any]] = []
     findings.extend(_tls_findings(entry_url, tls))
@@ -943,6 +1680,9 @@ def run_site_audit(
     findings.extend(_page_findings(pages))
     findings.extend(_probe_findings(entry_url, probes))
     findings.extend(_openapi_findings(openapi))
+    findings.extend(_frontend_findings(frontend_hints))
+    findings.extend(_api_inventory_findings(api_inventory, protections, pages))
+    findings.extend(_recon_findings(recon_summary, protections))
     findings.sort(
         key=lambda item: (
             {"critical": 5, "high": 4, "medium": 3, "low": 2, "info": 1}.get(str(item.get("severity") or "").lower(), 0),
@@ -956,7 +1696,7 @@ def run_site_audit(
         findings,
         pages_analyzed=len(pages),
         page_budget=int(profile["page_budget"]),
-        endpoint_count=int(openapi.get("endpoint_count") or 0),
+        endpoint_count=max(int(openapi.get("endpoint_count") or 0), int(api_inventory.get("endpoint_count") or 0)),
     )
     counts = _risk_counts(findings)
     blocking_risk = scores.get("blocking_risk") or {}
@@ -974,9 +1714,16 @@ def run_site_audit(
         "pages_crawled": len(pages),
         "pages_discovered": len(visited),
         "page_budget": profile["page_budget"],
-        "endpoint_count": int(openapi.get("endpoint_count") or 0),
+        "endpoint_count": max(int(openapi.get("endpoint_count") or 0), int(api_inventory.get("endpoint_count") or 0)),
+        "openapi_endpoint_count": int(openapi.get("endpoint_count") or 0),
+        "discovered_endpoint_count": int(api_inventory.get("endpoint_count") or 0),
         "unauthenticated_endpoint_count": int(openapi.get("unauthenticated_count") or 0),
+        "public_sensitive_endpoint_count": int(api_inventory.get("public_sensitive_count") or 0),
         "exposure_count": len(exposed),
+        "source_map_count": int(frontend_hints.get("source_map_count") or 0),
+        "frontend_api_reference_count": int(frontend_hints.get("api_reference_count") or 0),
+        "waf_detected": bool(protections.get("waf_detected")),
+        "rate_limit_detected": bool(protections.get("rate_limit_detected")),
         "security_headers_present": len([key for key in SECURITY_HEADER_KEYS if entry_headers.get(key)]),
         "security_headers_missing": len(missing_headers),
         "critical_count": counts["critical"],
@@ -997,6 +1744,10 @@ def run_site_audit(
         "forms": all_forms[:40],
         "exposure_probes": probes,
         "openapi": openapi,
+        "api_inventory": api_inventory,
+        "frontend_hints": frontend_hints,
+        "protections": protections,
+        "recon_summary": recon_summary,
         "safe_scope": {
             "active_checks": bool(active_checks),
             "note": "CyberAtlas v1 performs defensive HTTP evidence collection and safe exposure probes only; it does not exploit or brute-force targets.",

@@ -23,6 +23,28 @@ class ProjectsStaticTests(unittest.TestCase):
         self.assertNotIn("terminal-close", html)
         self.assertIn("Exit ignored: project terminal chats stay bound", terminal)
 
+    def test_terminal_progress_deduplicates_model_status_noise(self):
+        terminal = self.read("web/static/js/terminal.js")
+        fr = self.read("web/static/js/i18n.fr.js")
+
+        self.assertIn("TERMINAL_PROGRESS_MODEL_STATUS_KEY", terminal)
+        self.assertIn("key: TERMINAL_PROGRESS_MODEL_STATUS_KEY", terminal)
+        self.assertNotIn("addTerminalTask('model-call'", terminal)
+        self.assertNotIn("taskContinueAfterTools: 'Analyse des résultats", fr)
+        self.assertIn("taskContinueAfterTools: 'Décision après les résultats'", fr)
+        self.assertIn("scheduleTerminalOutputRender", terminal)
+        self.assertIn("formatMarkdownPartial(cleanedText)", terminal)
+        self.assertIn("completeTerminalProgressPanel(true)", terminal)
+
+    def test_terminal_hides_raw_tool_ledgers_from_answers(self):
+        chat = self.read("web/static/js/chat.js")
+        terminal_route = self.read("web/routes/terminal.py")
+
+        self.assertIn("rawToolLedgerPattern", chat)
+        self.assertIn("write_files|write_file|edit_file", chat)
+        self.assertIn("preview_paths", terminal_route)
+        self.assertIn("result_data['tool_result']['summary'] = f\"{counts} · {preview}\"", terminal_route)
+
     def test_indexeddb_schema_has_projects_and_project_id(self):
         state = self.read("web/static/js/state.js")
         db = self.read("web/static/js/db.js")
