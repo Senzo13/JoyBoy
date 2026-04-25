@@ -58,16 +58,74 @@ MCP_SERVER_TEMPLATES: dict[str, dict[str, Any]] = {
     },
     "github": {
         "enabled": False,
+        "type": "http",
+        "url": "https://api.githubcopilot.com/mcp/",
+        "headers": {
+            "Authorization": "Bearer $GITHUB_TOKEN",
+        },
+        "description": "Expose GitHub officiel via MCP pour repos, issues, PR et CI. Renseigne GITHUB_TOKEN ou remplace par un flux OAuth supporté.",
+    },
+    "netlify": {
+        "enabled": False,
         "type": "stdio",
         "command": "npx",
         "args": [
             "-y",
-            "@modelcontextprotocol/server-github",
+            "@netlify/mcp",
         ],
-        "env": {
-            "GITHUB_TOKEN": "$GITHUB_TOKEN",
+        "env": {},
+        "description": "Expose Netlify via le serveur MCP officiel pour sites, déploiements, logs, forms et extensions.",
+    },
+    "vercel": {
+        "enabled": False,
+        "type": "stdio",
+        "command": "npx",
+        "args": [
+            "-y",
+            "mcp-remote",
+            "https://mcp.vercel.com",
+        ],
+        "env": {},
+        "description": "Expose Vercel via le serveur MCP officiel. mcp-remote gère le pont local et l'auth OAuth côté navigateur.",
+    },
+    "cloudflare": {
+        "enabled": False,
+        "type": "http",
+        "url": "https://mcp.cloudflare.com/mcp",
+        "headers": {
+            "Authorization": "Bearer $CLOUDFLARE_API_TOKEN",
         },
-        "description": "Expose GitHub via MCP pour repos, issues et PR.",
+        "description": "Expose l'API Cloudflare via le MCP officiel codemode. Renseigne CLOUDFLARE_API_TOKEN ou passe par OAuth si le client le supporte.",
+    },
+    "cloudflare-docs": {
+        "enabled": False,
+        "type": "http",
+        "url": "https://docs.mcp.cloudflare.com/mcp",
+        "description": "Expose la documentation Cloudflare à jour via le MCP officiel dédié aux docs.",
+    },
+    "cloudflare-browser": {
+        "enabled": False,
+        "type": "http",
+        "url": "https://browser.mcp.cloudflare.com/mcp",
+        "description": "Expose Cloudflare Browser Run MCP pour récupérer des pages web, produire du Markdown et prendre des captures.",
+    },
+    "figma": {
+        "enabled": False,
+        "type": "http",
+        "url": "https://mcp.figma.com/mcp",
+        "description": "Expose Figma Dev Mode MCP pour design-to-code, tokens et frames. Nécessite l'auth/allowlist Figma du client.",
+    },
+    "linear": {
+        "enabled": False,
+        "type": "stdio",
+        "command": "npx",
+        "args": [
+            "-y",
+            "mcp-remote",
+            "https://mcp.linear.app/mcp",
+        ],
+        "env": {},
+        "description": "Expose Linear via le serveur MCP officiel pour issues, projets, commentaires et roadmap.",
     },
     "postgres": {
         "enabled": False,

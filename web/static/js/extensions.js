@@ -28,13 +28,14 @@ const JOYBOY_EXTENSION_CATALOG = [
     },
     {
         id: 'browser-use',
-        name: 'Browser Use',
+        name: 'Browser Run',
         icon: 'mouse-pointer-click',
         category: 'featured',
-        source: 'planned',
-        action: 'coming-soon',
-        developer: 'Connector',
-        capabilities: ['browser_control', 'screenshots', 'click_type'],
+        source: 'mcp',
+        action: 'mcp-template',
+        template: 'cloudflare-browser',
+        developer: 'Cloudflare MCP',
+        capabilities: ['web_fetch', 'screenshots'],
     },
     {
         id: 'spreadsheets',
@@ -113,9 +114,10 @@ const JOYBOY_EXTENSION_CATALOG = [
         name: 'Netlify',
         icon: 'network',
         category: 'coding',
-        source: 'planned',
-        action: 'coming-soon',
-        developer: 'Connector',
+        source: 'mcp',
+        action: 'mcp-template',
+        template: 'netlify',
+        developer: 'Netlify MCP',
         capabilities: ['deploys', 'logs', 'forms'],
     },
     {
@@ -123,9 +125,10 @@ const JOYBOY_EXTENSION_CATALOG = [
         name: 'Vercel',
         icon: 'triangle',
         category: 'coding',
-        source: 'planned',
-        action: 'coming-soon',
-        developer: 'Connector',
+        source: 'mcp',
+        action: 'mcp-template',
+        template: 'vercel',
+        developer: 'Vercel MCP',
         capabilities: ['deploys', 'projects', 'logs'],
     },
     {
@@ -133,9 +136,10 @@ const JOYBOY_EXTENSION_CATALOG = [
         name: 'Cloudflare',
         icon: 'cloud',
         category: 'coding',
-        source: 'planned',
-        action: 'coming-soon',
-        developer: 'Connector',
+        source: 'mcp',
+        action: 'mcp-template',
+        template: 'cloudflare',
+        developer: 'Cloudflare MCP',
         capabilities: ['workers', 'pages', 'dns'],
     },
     {
@@ -213,9 +217,10 @@ const JOYBOY_EXTENSION_CATALOG = [
         name: 'Figma',
         icon: 'figma',
         category: 'design',
-        source: 'planned',
-        action: 'coming-soon',
-        developer: 'Connector',
+        source: 'mcp',
+        action: 'mcp-template',
+        template: 'figma',
+        developer: 'Figma MCP',
         capabilities: ['design_to_code', 'tokens', 'frames'],
     },
     {
@@ -253,9 +258,10 @@ const JOYBOY_EXTENSION_CATALOG = [
         name: 'Linear',
         icon: 'list-checks',
         category: 'productivity',
-        source: 'planned',
-        action: 'coming-soon',
-        developer: 'Connector',
+        source: 'mcp',
+        action: 'mcp-template',
+        template: 'linear',
+        developer: 'Linear MCP',
         capabilities: ['issues', 'projects', 'roadmap'],
     },
     {
@@ -400,12 +406,23 @@ function getExtensionRuntime() {
 }
 
 function getExtensionState(item) {
+    const snapshot = getExtensionsSnapshot();
     const servers = getExtensionMcpServers();
     const templates = getExtensionMcpTemplates();
     const server = item.template ? servers[item.template] : null;
     const templateAvailable = item.template ? Boolean(templates[item.template]) : false;
 
     if (item.action === 'mcp-template') {
+        if (!snapshot) {
+            return {
+                id: 'loading',
+                label: extensionT('extensions.status.loading', 'Vérification MCP'),
+                icon: 'loader',
+                className: 'is-available',
+                primaryLabel: extensionT('extensions.status.loading', 'Vérification MCP'),
+                primaryDisabled: true,
+            };
+        }
         if (server && server.enabled !== false) {
             return {
                 id: 'installed',
