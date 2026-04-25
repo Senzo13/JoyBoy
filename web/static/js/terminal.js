@@ -742,13 +742,77 @@ const TERMINAL_CONTEXT_ACTIVITY_TOOLS = new Set([
     'tool_search'
 ]);
 
+const TERMINAL_SHELL_SEARCH_COMMANDS = new Set([
+    'rg',
+    'grep',
+    'find',
+    'findstr',
+    'select-string',
+    'sls',
+    'where',
+    'where.exe'
+]);
+
+const TERMINAL_SHELL_READ_COMMANDS = new Set([
+    'cat',
+    'head',
+    'tail',
+    'wc',
+    'stat',
+    'file',
+    'strings',
+    'ls',
+    'dir',
+    'tree',
+    'du',
+    'type',
+    'get-content',
+    'gc',
+    'get-childitem',
+    'gci',
+    'get-item',
+    'get-location',
+    'pwd',
+    'get-filehash',
+    'git'
+]);
+
+const TERMINAL_SHELL_NEUTRAL_COMMANDS = new Set([
+    'echo',
+    'write-output',
+    'write-host',
+    'select-object',
+    'select',
+    'where-object',
+    'foreach-object',
+    'sort-object',
+    'measure-object',
+    'format-table',
+    'format-list',
+    'out-string',
+    'true',
+    'false'
+]);
+
+const TERMINAL_GIT_READ_SUBCOMMANDS = new Set([
+    'status',
+    'log',
+    'show',
+    'diff',
+    'grep',
+    'ls-files',
+    'rev-parse',
+    'describe'
+]);
+
 function resetTerminalContextActivity() {
     terminalContextActivity = {
         counts: {
             list: 0,
             read: 0,
             search: 0,
-            toolSearch: 0
+            toolSearch: 0,
+            shell: 0
         },
         latestHint: '',
         hadError: false
@@ -759,11 +823,112 @@ function isTerminalContextGatheringTool(action = '') {
     return TERMINAL_CONTEXT_ACTIVITY_TOOLS.has(String(action || ''));
 }
 
-function terminalContextCountKey(action = '') {
+function normalizeTerminalShellCommandName(command = '') {
+    return String(command || '')
+        .trim()
+        .split(/\s+/, 1)[0]
+        .toLowerCase();
+}
+
+function splitTerminalShellCommand(command = '') {
+    const parts = [];
+    let current = '';
+    let quote = '';
+    let escaping = false;
+    const text = String(command || '');
+
+    for (let i = 0; i < text.length; i += 1) {
+        const char = text[i];
+        const next = text[i + 1] || '';
+        if (escaping) {
+            current += char;
+            escaping = false;
+            continue;
+        }
+        if (char === '\\' && quote !== "'") {
+            current += char;
+            escaping = true;
+            continue;
+        }
+        if ((char === '"' || char === "'") && !quote) {
+            quote = char;
+            current += char;
+            continue;
+        }
+        if (quote && char === quote) {
+            quote = '';
+            current += char;
+            continue;
+        }
+        if (!quote) {
+            if ((char === '&' && next === '&') || (char === '|' && next === '|')) {
+                if (current.trim()) parts.push(current.trim());
+                current = '';
+                i += 1;
+                continue;
+            }
+            if (char === ';' || char === '|') {
+                if (current.trim()) parts.push(current.trim());
+                current = '';
+                continue;
+            }
+        }
+        current += char;
+    }
+
+    if (current.trim()) parts.push(current.trim());
+    return parts;
+}
+
+function classifyTerminalShellContextCommand(command = '') {
+    const text = String(command || '').trim();
+    if (!text || /(^|[^>])>{1,2}[^>]/.test(text)) return '';
+
+    const parts = splitTerminalShellCommand(text);
+    if (!parts.length) return '';
+
+    let hasSearch = false;
+    let hasRead = false;
+    for (const part of parts) {
+        const base = normalizeTerminalShellCommandName(part).replace(/\.exe$/, '');
+        if (!base || TERMINAL_SHELL_NEUTRAL_COMMANDS.has(base)) continue;
+
+        if (base === 'git') {
+            const tokens = part.trim().split(/\s+/);
+            const subcommand = String(tokens[1] || '').toLowerCase();
+            if (!TERMINAL_GIT_READ_SUBCOMMANDS.has(subcommand)) return '';
+            hasRead = true;
+            continue;
+        }
+
+        if (TERMINAL_SHELL_SEARCH_COMMANDS.has(base)) {
+            hasSearch = true;
+            continue;
+        }
+        if (TERMINAL_SHELL_READ_COMMANDS.has(base)) {
+            hasRead = true;
+            continue;
+        }
+        return '';
+    }
+
+    if (hasSearch) return 'search';
+    if (hasRead) return 'read';
+    return '';
+}
+
+function isTerminalContextGatheringToolCall(action = '', args = {}) {
+    if (isTerminalContextGatheringTool(action)) return true;
+    if (action !== 'bash') return false;
+    return Boolean(classifyTerminalShellContextCommand(args?.command || ''));
+}
+
+function terminalContextCountKey(action = '', args = {}) {
     if (action === 'list_files') return 'list';
     if (action === 'read_file') return 'read';
     if (action === 'tool_search') return 'toolSearch';
     if (action === 'search' || action === 'glob') return 'search';
+    if (action === 'bash') return 'shell';
     return '';
 }
 
@@ -788,6 +953,7 @@ function formatTerminalContextActivitySummary(activity = terminalContextActivity
     if (counts.read) parts.push(terminalPlural(counts.read, 'fichier lu', 'fichiers lus'));
     if (counts.search) parts.push(terminalPlural(counts.search, 'recherche', 'recherches'));
     if (counts.toolSearch) parts.push(terminalPlural(counts.toolSearch, 'outil chargé', 'outils chargés'));
+    if (counts.shell) parts.push(terminalPlural(counts.shell, 'commande de contexte', 'commandes de contexte'));
     return parts.join(', ');
 }
 
@@ -797,10 +963,10 @@ function hasTerminalContextActivity(activity = terminalContextActivity) {
 }
 
 function updateTerminalContextActivity(action = '', target = '', args = {}, state = 'running', result = {}) {
-    if (!isTerminalContextGatheringTool(action)) return false;
+    if (!isTerminalContextGatheringToolCall(action, args)) return false;
     if (!terminalContextActivity) resetTerminalContextActivity();
 
-    const countKey = terminalContextCountKey(action);
+    const countKey = terminalContextCountKey(action, args);
     if (state === 'running' && countKey) {
         terminalContextActivity.counts[countKey] += 1;
     }
@@ -868,8 +1034,8 @@ function formatTerminalActivitySummary(kind, count) {
     return '';
 }
 
-function addOrUpdateTerminalActivitySummary(action = '') {
-    if (isTerminalPassiveReadOnlyTool(action)) return;
+function addOrUpdateTerminalActivitySummary(action = '', args = {}) {
+    if (isTerminalPassiveReadOnlyTool(action) || isTerminalContextGatheringToolCall(action, args)) return;
 
     if (!terminalActivityCounters) resetTerminalActivitySummaries();
     const kind = getTerminalActivityKind(action);
@@ -1021,9 +1187,9 @@ function describeTerminalModelCall(data = {}) {
     return terminalT('terminal.taskPrepareAnswer', 'Préparation de la réponse');
 }
 
-function shouldShowTerminalToolAsTask(action) {
+function shouldShowTerminalToolAsTask(action, args = {}) {
     if (action === 'ask_clarification') return false;
-    if (isTerminalContextGatheringTool(action)) return false;
+    if (isTerminalContextGatheringToolCall(action, args)) return false;
     if (isTerminalPassiveReadOnlyTool(action)) return false;
     return [
         'write_todos',
@@ -1056,25 +1222,25 @@ function shouldRevealTerminalProgressForModelCall(data = {}) {
     return iteration > 1 && !isTerminalReadOnlyTurn();
 }
 
-function shouldRevealTerminalProgressForTool(action = '') {
+function shouldRevealTerminalProgressForTool(action = '', args = {}) {
     if (action === 'ask_clarification') return false;
-    if (isTerminalContextGatheringTool(action)) return false;
+    if (isTerminalContextGatheringToolCall(action, args)) return false;
     if (isTerminalPassiveReadOnlyTool(action)) return false;
     if (!isTerminalReadOnlyTurn()) return true;
     return !isTerminalPassiveReadOnlyTool(action);
 }
 
-function shouldShowTerminalToolResult(result = {}) {
+function shouldShowTerminalToolResult(result = {}, args = {}) {
     if (!result || !result.success) return true;
     const action = result.action || result.tool_name;
     if (action === 'ask_clarification') return false;
-    if (isTerminalContextGatheringTool(action)) return false;
+    if (isTerminalContextGatheringToolCall(action, args)) return false;
     return !isTerminalPassiveReadOnlyTool(action);
 }
 
-function shouldShowTerminalToolCallLine(action = '') {
+function shouldShowTerminalToolCallLine(action = '', args = {}) {
     if (action === 'ask_clarification') return false;
-    if (isTerminalContextGatheringTool(action)) return false;
+    if (isTerminalContextGatheringToolCall(action, args)) return false;
     return !isTerminalPassiveReadOnlyTool(action);
 }
 
@@ -2841,16 +3007,16 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                         console.log(`%c[TERMINAL] ● Tool call reçu: ${action} → ${path}`, 'color: #3b82f6; font-weight: bold;');
                         hideThinkingAnimation();
                         updateTerminalContextActivity(action, path, args, 'running');
-                        addOrUpdateTerminalActivitySummary(action);
+                        addOrUpdateTerminalActivitySummary(action, args);
 
                         // Style Claude Code: ● Action(target)
-                        if (shouldShowTerminalToolCallLine(action) && typeof addToolCall === 'function') {
+                        if (shouldShowTerminalToolCallLine(action, args) && typeof addToolCall === 'function') {
                             addToolCall(action, path, args);
-                        } else if (shouldShowTerminalToolCallLine(action)) {
+                        } else if (shouldShowTerminalToolCallLine(action, args)) {
                             console.error('[TERMINAL] addToolCall function not found!');
                         }
 
-                        const revealToolProgress = shouldRevealTerminalProgressForTool(action);
+                        const revealToolProgress = shouldRevealTerminalProgressForTool(action, args);
                         if (revealToolProgress) {
                             addTerminalProgressLog(
                                 terminalT('terminal.progressToolRunning', 'Exécute {tool}', { tool: action }),
@@ -2859,7 +3025,7 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                                 { reveal: true, key: terminalToolProgressKey(action) }
                             );
                         }
-                        if (shouldShowTerminalToolAsTask(action)) {
+                        if (shouldShowTerminalToolAsTask(action, args)) {
                             updateTerminalTask('model-call', 'done', terminalT('terminal.taskToolSelected', 'Outil choisi'));
                             addTerminalTask(toolTaskId, taskLabel, 'running', describeTerminalToolNote(action, path, args));
                         }
@@ -2947,7 +3113,8 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                         }
 
                         let resultSummary = '';
-                        const showToolResult = shouldShowTerminalToolResult(result);
+                        const lastToolArgs = window.lastToolCall?.args || {};
+                        const showToolResult = shouldShowTerminalToolResult(result, lastToolArgs);
                         if (result.summary) {
                             resultSummary = result.summary;
                             if (showToolResult) {
@@ -2972,7 +3139,7 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                         if (window.lastToolCall?.taskId) {
                             updateTerminalTask(window.lastToolCall.taskId, 'done', resultSummary);
                         }
-                        const revealResultProgress = shouldRevealTerminalProgressForTool(result.action);
+                        const revealResultProgress = shouldRevealTerminalProgressForTool(result.action, lastToolArgs);
                         if (revealResultProgress) {
                             addTerminalProgressLog(
                                 terminalT('terminal.progressToolDone', 'Terminé {tool}', { tool: result.action || '' }),

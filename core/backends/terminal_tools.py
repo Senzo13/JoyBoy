@@ -257,6 +257,31 @@ class PermissionEngine:
         re.compile(r"\brmdir\b.*\s/[sq]\b", re.I),
     ]
 
+    _CROSS_SHELL_MUTATION_PATTERNS = [
+        re.compile(
+            r"\b(?:get-childitem|gci|dir|ls|foreach-object|where-object|forfiles)\b"
+            r".*\b(?:cmd(?:\.exe)?\s*/c|powershell(?:\.exe)?|pwsh(?:\.exe)?)\b"
+            r".*\b(?:del|erase|rd|rmdir|remove-item|rm|move|ren|rename|copy|xcopy|robocopy)\b",
+            re.I | re.S,
+        ),
+        re.compile(
+            r"\b(?:cmd(?:\.exe)?\s*/c|powershell(?:\.exe)?|pwsh(?:\.exe)?)\b"
+            r".*\b(?:del|erase|rd|rmdir|remove-item|rm|move|ren|rename|copy|xcopy|robocopy)\b"
+            r".*\b(?:get-childitem|gci|dir|ls|foreach-object|where-object|forfiles)\b",
+            re.I | re.S,
+        ),
+    ]
+
+    _GIT_INTERNAL_REDIRECT_PATTERN = re.compile(
+        r"(?:^|[^>])>{1,2}\s*['\"]?(?:\.git[\\/]|git~\d+[\\/]|head\b|objects[\\/]|refs[\\/])",
+        re.I,
+    )
+    _GIT_INTERNAL_MUTATION_PATTERN = re.compile(
+        r"\b(?:mkdir|touch|cp|mv|copy|move|new-item|set-content|add-content|out-file)\b"
+        r".*(?:\.git[\\/]|git~\d+[\\/]|(?:^|\s)(?:head\b|objects[\\/]|refs[\\/]))",
+        re.I | re.S,
+    )
+
     def __init__(self, registry: ToolRegistry):
         self.registry = registry
 
@@ -339,6 +364,16 @@ class PermissionEngine:
         if mode == FULL_ACCESS_PERMISSION_MODE and is_workspace_clear_shell_command(command):
             return PermissionDecision(True, risk=ToolRisk.SHELL, mode=mode)
 
+        shell_safety_reason = self._shell_safety_reason(command)
+        if shell_safety_reason:
+            return PermissionDecision(
+                False,
+                shell_safety_reason,
+                risk=ToolRisk.SHELL,
+                requires_confirmation=True,
+                mode=mode,
+            )
+
         for pattern in self._SHELL_DELETE_PATTERNS:
             if pattern.search(lowered):
                 return PermissionDecision(
@@ -384,6 +419,22 @@ class PermissionEngine:
                 )
 
         return PermissionDecision(True, risk=ToolRisk.SHELL, mode=mode)
+
+    def _shell_safety_reason(self, command: str) -> str:
+        for pattern in self._CROSS_SHELL_MUTATION_PATTERNS:
+            if pattern.search(command):
+                return (
+                    "Command blocked: do not pipe file enumeration into another shell for deletion, "
+                    "moving, or copying. Use one shell end-to-end with explicit paths."
+                )
+
+        if self._GIT_INTERNAL_REDIRECT_PATTERN.search(command) or self._GIT_INTERNAL_MUTATION_PATTERN.search(command):
+            return (
+                "Command blocked: shell writes to Git internals are not allowed. "
+                "Use git commands or normal workspace file tools instead."
+            )
+
+        return ""
 
     @staticmethod
     def _shell_main_command(command: str) -> str:

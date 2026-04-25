@@ -209,6 +209,46 @@ class TerminalToolRegistryTests(unittest.TestCase):
         self.assertTrue(all(decision.allowed for decision in decisions))
         self.assertTrue(all(decision.mode == "full_access" for decision in decisions))
 
+    def test_permission_blocks_cross_shell_file_mutation_pipeline(self):
+        registry = build_default_terminal_tool_registry(LEGACY_TOOLS)
+        engine = PermissionEngine(registry)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            decision = engine.check(
+                "bash",
+                {"command": "Get-ChildItem -Recurse | ForEach-Object { cmd /c del $_.FullName }"},
+                tmp,
+                permission_mode="full_access",
+            )
+
+        self.assertFalse(decision.allowed)
+        self.assertTrue(decision.requires_confirmation)
+        self.assertIn("one shell end-to-end", decision.reason)
+
+    def test_permission_blocks_shell_write_to_git_internals(self):
+        registry = build_default_terminal_tool_registry(LEGACY_TOOLS)
+        engine = PermissionEngine(registry)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            decision = engine.check(
+                "bash",
+                {"command": "echo pwn > .git/hooks/pre-commit"},
+                tmp,
+                permission_mode="full_access",
+            )
+
+        self.assertFalse(decision.allowed)
+        self.assertIn("Git internals", decision.reason)
+
+    def test_permission_allows_read_only_git_discovery(self):
+        registry = build_default_terminal_tool_registry(LEGACY_TOOLS)
+        engine = PermissionEngine(registry)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            decision = engine.check("bash", {"command": "git ls-files"}, tmp)
+
+        self.assertTrue(decision.allowed)
+
     def test_permission_blocks_recursive_delete(self):
         registry = build_default_terminal_tool_registry(LEGACY_TOOLS)
         engine = PermissionEngine(registry)

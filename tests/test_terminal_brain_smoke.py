@@ -26,6 +26,8 @@ class TerminalBrainSmokeTests(unittest.TestCase):
         self.assertIn("verify directly with read_file/list_files", prompt)
         self.assertIn("Fast repo reading", prompt)
         self.assertIn("Prefer high-signal answers over reports", prompt)
+        self.assertIn("one shell end-to-end", prompt)
+        self.assertIn("Never write shell output", prompt)
         self.assertNotIn("C:/projects/demo", prompt)
         self.assertNotIn("TOUJOURS", prompt)
         self.assertNotIn("RÈGLES", prompt)

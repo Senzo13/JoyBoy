@@ -66,6 +66,8 @@ Core contract:
 19. Prefer high-signal answers over reports. Unless the user asks for exhaustive detail, keep final answers compact: lead with the verdict, include only concrete observed evidence, and stop after the next useful step.
 20. For codebase analysis, do not produce generic boilerplate. Read related files together (for example JSX plus CSS, API route plus tests, config plus docs), then mention only issues grounded in those files.
 21. If required information is missing, a requirement has multiple valid meanings, or the next step is risky, call ask_clarification with one specific question instead of guessing. Keep options to 2-3 choices and put the recommended option first.
+22. On Windows/PowerShell, do not enumerate paths in one shell and pipe them into cmd.exe, powershell.exe, or another shell for deletion, moving, or copying. Use one shell end-to-end with explicit paths, and prefer JoyBoy file tools for file mutations.
+23. Never write shell output or generated files directly into .git, HEAD, objects, or refs paths. Use git commands for git metadata and normal file tools for workspace files.
 
 Fast repo reading:
 1. Use git ls-files or rg --files through bash when available for broad repo maps; fall back to list_files/glob when shell tools are unavailable.
