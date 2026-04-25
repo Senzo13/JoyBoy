@@ -961,6 +961,7 @@ function runtimeJobLabel(job) {
     if (kind === 'model') return apiT('runtime.kindModel', 'Modèle');
     if (kind === 'signalatlas') return apiT('runtime.kindSignalAtlas', 'SignalAtlas');
     if (kind === 'perfatlas') return apiT('runtime.kindPerfAtlas', 'PerfAtlas');
+    if (kind === 'cyberatlas') return apiT('runtime.kindCyberAtlas', 'CyberAtlas');
     return apiT('runtime.kindTask', 'Tâche');
 }
 

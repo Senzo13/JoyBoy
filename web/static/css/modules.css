@@ -2,7 +2,8 @@
 
 #modules-view,
 #signalatlas-view,
-#perfatlas-view {
+#perfatlas-view,
+#cyberatlas-view {
     display: none;
 }
 
@@ -11,7 +12,7 @@
     margin: 0 auto;
     display: flex;
     flex-direction: column;
-    gap: 28px;
+    gap: 22px;
 }
 
 .modules-hero {
@@ -31,7 +32,7 @@
 
 .modules-title {
     margin: 0;
-    font-size: clamp(32px, 5vw, 56px);
+    font-size: clamp(30px, 4vw, 46px);
     line-height: 1;
     color: #f8fafc;
 }
@@ -46,20 +47,41 @@
 
 .modules-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 18px;
+    grid-template-columns: repeat(auto-fit, minmax(360px, 520px));
+    justify-content: start;
+    gap: 16px;
 }
 
 .modules-card {
     border: 1px solid rgba(148, 163, 184, 0.14);
-    border-radius: 18px;
+    border-radius: 14px;
     background:
         linear-gradient(180deg, rgba(15, 23, 42, 0.84), rgba(2, 6, 23, 0.92));
-    padding: 20px;
+    min-height: 228px;
+    padding: 18px;
     color: inherit;
     text-align: left;
     cursor: pointer;
     transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+}
+
+.modules-card-signalatlas {
+    border-color: rgba(56, 189, 248, 0.34);
+    background:
+        linear-gradient(180deg, rgba(8, 34, 54, 0.92), rgba(2, 8, 23, 0.96));
+}
+
+.modules-card-perfatlas {
+    border-color: rgba(245, 158, 11, 0.38);
+    background:
+        linear-gradient(180deg, rgba(51, 33, 7, 0.9), rgba(15, 12, 5, 0.96));
+}
+
+.modules-card-cyberatlas {
+    border-color: rgba(52, 211, 153, 0.36);
+    background:
+        radial-gradient(circle at 8% 0%, rgba(239, 68, 68, 0.16), transparent 28%),
+        linear-gradient(180deg, rgba(6, 36, 29, 0.92), rgba(2, 10, 12, 0.96));
 }
 
 .modules-card:hover {
@@ -67,6 +89,25 @@
     border-color: rgba(96, 165, 250, 0.35);
     background:
         linear-gradient(180deg, rgba(17, 24, 39, 0.92), rgba(2, 6, 23, 0.98));
+}
+
+.modules-card-signalatlas:hover {
+    border-color: rgba(103, 232, 249, 0.58);
+    background:
+        linear-gradient(180deg, rgba(12, 74, 110, 0.94), rgba(3, 16, 34, 0.98));
+}
+
+.modules-card-perfatlas:hover {
+    border-color: rgba(251, 191, 36, 0.62);
+    background:
+        linear-gradient(180deg, rgba(92, 55, 10, 0.94), rgba(22, 14, 4, 0.98));
+}
+
+.modules-card-cyberatlas:hover {
+    border-color: rgba(110, 231, 183, 0.62);
+    background:
+        radial-gradient(circle at 8% 0%, rgba(248, 113, 113, 0.22), transparent 30%),
+        linear-gradient(180deg, rgba(8, 70, 48, 0.94), rgba(2, 18, 20, 0.98));
 }
 
 .modules-card:disabled,
@@ -89,23 +130,52 @@
     box-shadow: 0 18px 40px rgba(2, 6, 23, 0.32);
 }
 
-.modules-card-top,
-.modules-card-title-row {
-    display: flex;
+.modules-card-signalatlas.featured {
+    border-color: rgba(56, 189, 248, 0.46);
+    box-shadow: 0 18px 40px rgba(8, 47, 73, 0.22);
+}
+
+.modules-card-perfatlas.featured {
+    border-color: rgba(245, 158, 11, 0.52);
+    box-shadow: 0 18px 40px rgba(120, 53, 15, 0.22);
+}
+
+.modules-card-cyberatlas.featured {
+    border-color: rgba(52, 211, 153, 0.52);
+    box-shadow: 0 18px 40px rgba(6, 95, 70, 0.22);
+}
+
+.modules-card-main {
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr) auto;
     align-items: center;
-    justify-content: space-between;
-    gap: 12px;
+    gap: 16px;
 }
 
 .modules-card-icon {
     width: 42px;
     height: 42px;
-    border-radius: 12px;
+    border-radius: 10px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     background: rgba(59, 130, 246, 0.12);
     color: #dbeafe;
+}
+
+.modules-card-signalatlas .modules-card-icon {
+    background: rgba(14, 165, 233, 0.16);
+    color: #bae6fd;
+}
+
+.modules-card-perfatlas .modules-card-icon {
+    background: rgba(245, 158, 11, 0.18);
+    color: #fde68a;
+}
+
+.modules-card-cyberatlas .modules-card-icon {
+    background: rgba(16, 185, 129, 0.18);
+    color: #a7f3d0;
 }
 
 .modules-card-status {
@@ -116,8 +186,24 @@
     color: #cbd5e1;
 }
 
+.modules-card-signalatlas .modules-card-status {
+    color: #7dd3fc;
+}
+
+.modules-card-perfatlas .modules-card-status {
+    color: #fcd34d;
+}
+
+.modules-card-cyberatlas .modules-card-status {
+    color: #6ee7b7;
+}
+
+.modules-card-copy {
+    min-width: 0;
+}
+
 .modules-card-title {
-    font-size: 22px;
+    font-size: 21px;
     font-weight: 700;
     color: #f8fafc;
 }
@@ -125,6 +211,7 @@
 .modules-card-tagline {
     margin-top: 4px;
     font-size: 13px;
+    line-height: 1.35;
     color: #a8b6cc;
 }
 
@@ -135,11 +222,149 @@
     color: #c3cfdf;
 }
 
+.modules-card-outcome {
+    margin-top: 16px;
+    min-height: 42px;
+    display: flex;
+    align-items: center;
+    padding: 9px 11px;
+    border-left: 3px solid rgba(148, 163, 184, 0.32);
+    background: rgba(15, 23, 42, 0.48);
+    color: #eef4ff;
+    font-size: 13px;
+    line-height: 1.45;
+    font-weight: 700;
+}
+
+.modules-card-points {
+    display: grid;
+    gap: 7px;
+    margin-top: 14px;
+}
+
+.modules-card-point {
+    display: grid;
+    grid-template-columns: 16px minmax(0, 1fr);
+    align-items: center;
+    gap: 9px;
+    color: #c8d5e7;
+    font-size: 13px;
+    line-height: 1.35;
+}
+
+.modules-card-point i {
+    width: 15px;
+    height: 15px;
+}
+
+.modules-card-signalatlas .modules-card-point i {
+    color: #38bdf8;
+}
+
+.modules-card-perfatlas .modules-card-point i {
+    color: #f59e0b;
+}
+
+.modules-card-signalatlas .modules-card-outcome {
+    border-left-color: #38bdf8;
+    background: rgba(12, 74, 110, 0.28);
+}
+
+.modules-card-perfatlas .modules-card-outcome {
+    border-left-color: #f59e0b;
+    background: rgba(120, 53, 15, 0.26);
+}
+
+.modules-card-cyberatlas .modules-card-outcome {
+    border-left-color: #10b981;
+    background: rgba(6, 95, 70, 0.24);
+}
+
+.modules-card-usecases {
+    display: grid;
+    gap: 8px;
+    margin-top: 14px;
+}
+
+.modules-card-usecase {
+    display: grid;
+    grid-template-columns: 18px minmax(0, 1fr);
+    align-items: center;
+    gap: 9px;
+    min-height: 34px;
+    color: #d7e2f0;
+    font-size: 13px;
+    line-height: 1.35;
+}
+
+.modules-card-usecase i {
+    width: 17px;
+    height: 17px;
+}
+
+.modules-card-action {
+    margin-top: 18px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: #f8fafc;
+    font-size: 13px;
+    font-weight: 800;
+}
+
+.modules-card-action i {
+    width: 15px;
+    height: 15px;
+    transition: transform 0.18s ease;
+}
+
+.modules-card:hover .modules-card-action i {
+    transform: translateX(3px);
+}
+
+.modules-card-signalatlas .modules-card-action {
+    color: #bae6fd;
+}
+
+.modules-card-perfatlas .modules-card-action {
+    color: #fde68a;
+}
+
+.modules-card-signalatlas .modules-card-usecase i {
+    color: #67e8f9;
+}
+
+.modules-card-perfatlas .modules-card-usecase i {
+    color: #fbbf24;
+}
+
+.modules-card-cyberatlas .modules-card-usecase i {
+    color: #6ee7b7;
+}
+
 .modules-card-capabilities {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
     margin-top: 18px;
+}
+
+.modules-card-signalatlas .modules-chip:not(.premium) {
+    border-color: rgba(56, 189, 248, 0.24);
+    background: rgba(14, 165, 233, 0.10);
+    color: #cffafe;
+}
+
+.modules-card-perfatlas .modules-chip:not(.premium) {
+    border-color: rgba(245, 158, 11, 0.28);
+    background: rgba(245, 158, 11, 0.11);
+    color: #fef3c7;
+}
+
+.modules-card-cyberatlas .modules-chip:not(.premium) {
+    border-color: rgba(52, 211, 153, 0.28);
+    background: rgba(16, 185, 129, 0.11);
+    color: #d1fae5;
 }
 
 .modules-chip,
@@ -159,6 +384,12 @@
     color: #dbeafe;
     border-color: rgba(96, 165, 250, 0.28);
     background: rgba(59, 130, 246, 0.12);
+}
+
+.modules-card-perfatlas .modules-chip.premium {
+    color: #fef3c7;
+    border-color: rgba(245, 158, 11, 0.34);
+    background: rgba(245, 158, 11, 0.14);
 }
 
 .modules-card-note,

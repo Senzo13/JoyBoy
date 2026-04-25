@@ -1,0 +1,116 @@
+/* ===== CYBERATLAS THEME ===== */
+
+body.cyberatlas-mode {
+    --cyberatlas-accent: #34d399;
+    --cyberatlas-accent-strong: #10b981;
+    --cyberatlas-danger: #fb7185;
+    --cyberatlas-warn: #fbbf24;
+    --cyberatlas-soft: rgba(16, 185, 129, 0.14);
+}
+
+#cyberatlas-view .signalatlas-hero-copy,
+#cyberatlas-view .signalatlas-current-model-card,
+#cyberatlas-view .signalatlas-control-surface,
+#cyberatlas-view .signalatlas-history-panel,
+#cyberatlas-view .signalatlas-report-panel,
+#cyberatlas-view .signalatlas-drawer-panel,
+#cyberatlas-view .signalatlas-panel,
+#cyberatlas-view .signalatlas-finding-card,
+#cyberatlas-view .signalatlas-template-card,
+#cyberatlas-view .signalatlas-interpretation-card,
+#cyberatlas-view .signalatlas-model-used-card {
+    border-color: rgba(52, 211, 153, 0.16);
+    background:
+        radial-gradient(circle at 5% 0%, rgba(244, 63, 94, 0.08), transparent 24%),
+        linear-gradient(180deg, rgba(6, 24, 22, 0.88), rgba(2, 8, 12, 0.97));
+}
+
+#cyberatlas-view .signalatlas-kicker,
+#cyberatlas-view .signalatlas-panel-kicker,
+#cyberatlas-view .signalatlas-help-btn:hover,
+#cyberatlas-view .signalatlas-model-used-meta {
+    color: var(--cyberatlas-accent);
+}
+
+#cyberatlas-view .signalatlas-target-input:focus,
+#cyberatlas-view .signalatlas-advanced-toggle:hover,
+#cyberatlas-view .signalatlas-picker-btn:hover {
+    border-color: rgba(52, 211, 153, 0.34);
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.12);
+}
+
+#cyberatlas-view .signalatlas-btn,
+#cyberatlas-view .perfatlas-export-btn:last-child {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.94), rgba(52, 211, 153, 0.92));
+    color: #031412;
+    border-color: rgba(52, 211, 153, 0.38);
+}
+
+#cyberatlas-view .signalatlas-btn.secondary,
+#cyberatlas-view .perfatlas-export-btn {
+    background: rgba(16, 185, 129, 0.08);
+    color: #d1fae5;
+    border-color: rgba(52, 211, 153, 0.2);
+}
+
+#cyberatlas-view .signalatlas-inline-chip,
+#cyberatlas-view .signalatlas-summary-badges .signalatlas-inline-chip,
+#cyberatlas-view .signalatlas-tag.is-soft {
+    background: rgba(16, 185, 129, 0.1);
+    border-color: rgba(52, 211, 153, 0.22);
+    color: #d1fae5;
+}
+
+#cyberatlas-view .signalatlas-progress-fill,
+#cyberatlas-view .signalatlas-history-progress-fill,
+#cyberatlas-view .modules-card-runtime-fill {
+    background: linear-gradient(90deg, #10b981, #34d399);
+}
+
+#cyberatlas-view .signalatlas-progress-spinner {
+    background: #34d399;
+    box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.55);
+}
+
+#cyberatlas-view .signalatlas-score-ring.is-good .signalatlas-score-ring-progress {
+    stroke: #34d399;
+}
+
+#cyberatlas-view .signalatlas-score-ring.is-warn .signalatlas-score-ring-progress {
+    stroke: #fbbf24;
+}
+
+#cyberatlas-view .signalatlas-score-ring.is-danger .signalatlas-score-ring-progress {
+    stroke: #fb7185;
+}
+
+.cyberatlas-risk-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+}
+
+.cyberatlas-evidence-list {
+    display: grid;
+    gap: 10px;
+}
+
+.cyberatlas-evidence-card {
+    border: 1px solid rgba(148, 163, 184, 0.14);
+    border-radius: 14px;
+    padding: 14px;
+    background: rgba(2, 6, 23, 0.42);
+}
+
+.cyberatlas-evidence-title {
+    color: #f8fafc;
+    font-weight: 700;
+    font-size: 13px;
+}
+
+.cyberatlas-evidence-meta {
+    margin-top: 6px;
+    color: #9fb0c7;
+    font-size: 12px;
+    line-height: 1.5;
+}

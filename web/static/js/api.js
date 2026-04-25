@@ -527,6 +527,7 @@ function createAuditModuleApi(moduleId) {
 
 const apiSignalAtlas = createAuditModuleApi('signalatlas');
 const apiPerfAtlas = createAuditModuleApi('perfatlas');
+const apiCyberAtlas = createAuditModuleApi('cyberatlas');
 
 // ===== TERMINAL API =====
 

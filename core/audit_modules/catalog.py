@@ -59,5 +59,30 @@ def get_module_catalog() -> List[dict]:
             theme="perfatlas",
             category="audit",
         ),
+        ModuleDescriptor(
+            id="cyberatlas",
+            name="CyberAtlas",
+            tagline="Defensive web and API security posture intelligence",
+            description=(
+                "TLS, security headers, exposure probes, OpenAPI surface mapping, "
+                "session hygiene, evidence packs, and AI remediation reports."
+            ),
+            icon="shield-check",
+            status="active",
+            entry_view="cyberatlas-view",
+            capabilities=[
+                "tls_security",
+                "security_headers",
+                "exposure_mapping",
+                "api_surface",
+                "ai_remediation",
+                "exports",
+            ],
+            premium=True,
+            available=True,
+            featured=True,
+            theme="cyberatlas",
+            category="audit",
+        ),
     ]
     return [module.to_dict() for module in modules]

@@ -43,7 +43,8 @@
 #projects-view,
 #modules-view,
 #signalatlas-view,
-#perfatlas-view {
+#perfatlas-view,
+#cyberatlas-view {
     min-height: 100vh;
     min-height: 100dvh;
     flex-direction: column;
@@ -59,7 +60,8 @@
 #projects-view-content,
 #modules-view-content,
 #signalatlas-view-content,
-#perfatlas-view-content {
+#perfatlas-view-content,
+#cyberatlas-view-content {
     width: min(100%, 980px);
     margin: 0 auto;
 }
@@ -67,7 +69,8 @@
 #models-view-content,
 #modules-view-content,
 #signalatlas-view-content,
-#perfatlas-view-content {
+#perfatlas-view-content,
+#cyberatlas-view-content {
     width: min(100%, 1120px);
 }
 
@@ -83,6 +86,10 @@
     padding: 42px clamp(20px, 3vw, 56px);
 }
 
+#cyberatlas-view {
+    padding: 42px clamp(20px, 3vw, 56px);
+}
+
 #modules-view-content {
     width: min(100%, 1480px);
 }
@@ -95,12 +102,17 @@
     width: min(100%, 1560px);
 }
 
+#cyberatlas-view-content {
+    width: min(100%, 1560px);
+}
+
 body.addons-mode,
 body.models-mode,
 body.projects-mode,
 body.modules-mode,
 body.signalatlas-mode,
-body.perfatlas-mode {
+body.perfatlas-mode,
+body.cyberatlas-mode {
     background: #000;
 }
 
@@ -109,12 +121,13 @@ body.models-mode #stars,
 body.projects-mode #stars,
 body.modules-mode #stars,
 body.signalatlas-mode #stars,
-body.perfatlas-mode #stars {
+body.perfatlas-mode #stars,
+body.cyberatlas-mode #stars {
     display: none;
 }
 
 /* Decaler le contenu principal */
-#home-view, #chat-view, #addons-view, #models-view, #projects-view, #modules-view, #signalatlas-view, #perfatlas-view {
+#home-view, #chat-view, #addons-view, #models-view, #projects-view, #modules-view, #signalatlas-view, #perfatlas-view, #cyberatlas-view {
     margin-left: 260px;
     transition: margin-left 0.3s ease;
 }
@@ -126,7 +139,8 @@ body.sidebar-collapsed #models-view,
 body.sidebar-collapsed #projects-view,
 body.sidebar-collapsed #modules-view,
 body.sidebar-collapsed #signalatlas-view,
-body.sidebar-collapsed #perfatlas-view {
+body.sidebar-collapsed #perfatlas-view,
+body.sidebar-collapsed #cyberatlas-view {
     margin-left: 50px;
 }
 
@@ -1038,7 +1052,7 @@ body.cursor-active .chat-messages::-webkit-scrollbar-thumb:hover {
     }
 
     /* === VIEWS: full width === */
-    #home-view, #chat-view, #addons-view, #models-view, #projects-view, #modules-view, #signalatlas-view, #perfatlas-view {
+    #home-view, #chat-view, #addons-view, #models-view, #projects-view, #modules-view, #signalatlas-view, #perfatlas-view, #cyberatlas-view {
         margin-left: 0 !important;
         width: 100%;
     }
@@ -1050,7 +1064,8 @@ body.cursor-active .chat-messages::-webkit-scrollbar-thumb:hover {
     body.sidebar-collapsed #projects-view,
     body.sidebar-collapsed #modules-view,
     body.sidebar-collapsed #signalatlas-view,
-    body.sidebar-collapsed #perfatlas-view {
+    body.sidebar-collapsed #perfatlas-view,
+    body.sidebar-collapsed #cyberatlas-view {
         margin-left: 0 !important;
     }
 
@@ -1090,7 +1105,8 @@ body.cursor-active .chat-messages::-webkit-scrollbar-thumb:hover {
     #projects-view,
     #modules-view,
     #signalatlas-view,
-    #perfatlas-view {
+    #perfatlas-view,
+    #cyberatlas-view {
         padding: 54px 16px 24px;
     }
 

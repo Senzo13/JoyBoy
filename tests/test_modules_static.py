@@ -16,14 +16,18 @@ class ModulesStaticTests(unittest.TestCase):
         self.assertIn('/static/css/modules.css', html)
         self.assertIn('/static/css/signalatlas.css', html)
         self.assertIn('/static/css/perfatlas.css', html)
+        self.assertIn('/static/css/cyberatlas.css', html)
         self.assertIn('/static/js/modules.js', html)
+        self.assertIn('/static/js/cyberatlas.js', html)
         self.assertIn('id="modules-view"', html)
         self.assertIn('id="signalatlas-view"', html)
         self.assertIn('id="perfatlas-view"', html)
+        self.assertIn('id="cyberatlas-view"', html)
         self.assertIn('id="sidebar-modules-btn"', html)
         self.assertIn('#modules-view', layout)
         self.assertIn('#signalatlas-view', layout)
         self.assertIn('#perfatlas-view', layout)
+        self.assertIn('#cyberatlas-view', layout)
 
     def test_modules_blueprint_and_runtime_hooks_are_registered(self):
         app_py = self.read("web/app.py")
@@ -33,6 +37,7 @@ class ModulesStaticTests(unittest.TestCase):
 
         self.assertIn("signalatlas_bp", app_py)
         self.assertIn("perfatlas_bp", app_py)
+        self.assertIn("cyberatlas_bp", app_py)
         self.assertIn("kindSignalAtlas", db_js)
         self.assertIn("kindPerfAtlas", db_js)
         self.assertIn("openAuditModuleWorkspace", db_js)
@@ -78,6 +83,7 @@ class ModulesStaticTests(unittest.TestCase):
                 self.assertIn("findingFix_canonical_outside_head:", data)
                 self.assertIn("kindSignalAtlas:", data)
                 self.assertIn("kindPerfAtlas:", data)
+                self.assertIn("module_cyberatlas_name:", data)
                 self.assertIn("runAudit:", data)
                 self.assertIn("tabField:", data)
                 self.assertIn("tabIntelligence:", data)
@@ -105,6 +111,7 @@ class ModulesStaticTests(unittest.TestCase):
         self.assertIn("const NATIVE_AUDIT_MODULE_FALLBACK_CATALOG = [", modules_js)
         self.assertIn("id: 'signalatlas'", modules_js)
         self.assertIn("id: 'perfatlas'", modules_js)
+        self.assertIn("id: 'cyberatlas'", modules_js)
         self.assertIn("joyboyModulesCatalog = mergeCatalog(result.ok ? result.data?.modules : [], {", modules_js)
         self.assertIn("backendSynchronized: result.ok", modules_js)
         self.assertIn("await loadModulesCatalog();", modules_js)
@@ -112,6 +119,7 @@ class ModulesStaticTests(unittest.TestCase):
         self.assertIn("modules.restartRequired", modules_js)
         self.assertIn(".modules-card.is-locked", modules_css)
         self.assertIn(".modules-card:disabled", modules_css)
+        self.assertIn(".modules-card-cyberatlas", modules_css)
 
     def test_perfatlas_reuses_shared_model_picker_logic_and_localized_provider_copy(self):
         modules_js = self.read("web/static/js/modules.js")
@@ -160,6 +168,24 @@ class ModulesStaticTests(unittest.TestCase):
         self.assertIn("organic-potential/import", api_js)
         self.assertIn("organic-potential/import", routes_py)
         self.assertIn("## Organic Potential", reporting_py)
+
+    def test_cyberatlas_module_ui_and_routes_are_registered(self):
+        modules_js = self.read("web/static/js/modules.js")
+        cyber_js = self.read("web/static/js/cyberatlas.js")
+        api_js = self.read("web/static/js/api.js")
+        routes_py = self.read("web/routes/cyberatlas.py")
+        reporting_py = self.read("core/cyberatlas/reporting.py")
+
+        self.assertIn("apiCyberAtlas", api_js)
+        self.assertIn("openCyberAtlasWorkspace", modules_js)
+        self.assertIn("cyberatlas-mode", modules_js)
+        self.assertIn("function renderCyberAtlasWorkspace()", cyber_js)
+        self.assertIn("function launchCyberAtlasAudit()", cyber_js)
+        self.assertIn("function cancelCyberAtlasAudit", cyber_js)
+        self.assertIn("downloadCyberAtlasExport", cyber_js)
+        self.assertIn("/api/cyberatlas/audits", routes_py)
+        self.assertIn("build_security_gate_payload", reporting_py)
+        self.assertIn("# CyberAtlas Audit", reporting_py)
 
 
 if __name__ == "__main__":

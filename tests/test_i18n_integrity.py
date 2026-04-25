@@ -106,7 +106,7 @@ class I18nIntegrityTests(unittest.TestCase):
             const used = new Set();
             const origins = {};
             const rules = [
-              [/\b(?:apiT|appT|chatT|uiT|terminalT|moduleT|generationT|editT|modalT|preloadT|projectT|versionText|galleryT)\(\s*['"]([^'"]+)['"]/g, key => key],
+              [/\b(?:apiT|appT|chatT|uiT|terminalT|moduleT|cyberAtlasText|generationT|editT|modalT|preloadT|projectT|versionText|galleryT)\(\s*['"]([^'"]+)['"]/g, key => key],
               [/imageLabelT\(\s*['"]([^'"]+)['"]/g, key => `generation.labels.${key}`],
               [/JoyBoyI18n\.t\(\s*['"]([^'"]+)['"]/g, key => key],
               [/setRuntimeText\([^,]+,\s*['"]([^'"]+)['"]/g, key => key],

@@ -142,6 +142,22 @@ const NATIVE_AUDIT_MODULE_FALLBACK_CATALOG = [
         theme: 'perfatlas',
         category: 'audit',
     },
+    {
+        id: 'cyberatlas',
+        name: 'CyberAtlas',
+        tagline: 'Defensive web and API security posture intelligence',
+        description: 'TLS, security headers, exposure probes, OpenAPI surface mapping, session hygiene, evidence packs, and AI remediation reports.',
+        icon: 'shield-check',
+        status: 'active',
+        entry_view: 'cyberatlas-view',
+        capabilities: ['tls_security', 'security_headers', 'exposure_mapping', 'api_surface', 'ai_remediation', 'exports'],
+        premium: true,
+        available: true,
+        locked_reason: '',
+        featured: true,
+        theme: 'cyberatlas',
+        category: 'audit',
+    },
 ];
 
 function signalAtlasNormalizePageBudget(value, fallback = SIGNALATLAS_DEFAULT_PAGE_BUDGET) {
@@ -1616,6 +1632,44 @@ function signalAtlasJobMessage(job) {
             target: raw.replace(/^Rendering JS for /i, '').trim(),
         });
     }
+    if (/^Validating TLS and canonical entrypoint$/i.test(raw)) {
+        return moduleT('cyberatlas.progressTls', 'Validation TLS et point d’entrée canonique');
+    }
+    if (/^Sampling public pages and forms$/i.test(raw)) {
+        return moduleT('cyberatlas.progressCrawl', 'Échantillonnage des pages et formulaires publics');
+    }
+    if (/^Sampling /i.test(raw)) {
+        return moduleT('cyberatlas.progressSampling', 'Échantillonnage de {target}', {
+            target: raw.replace(/^Sampling /i, '').trim(),
+        });
+    }
+    if (/^Analyzing security headers and browser hardening$/i.test(raw)) {
+        return moduleT('cyberatlas.progressHeaders', 'Analyse des headers sécurité et du durcissement navigateur');
+    }
+    if (/^Running safe public exposure probes$/i.test(raw)) {
+        return moduleT('cyberatlas.progressExposure', 'Sondes publiques sûres sur l’exposition');
+    }
+    if (/^Parsing OpenAPI and API surface signals$/i.test(raw)) {
+        return moduleT('cyberatlas.progressApi', 'Analyse OpenAPI et surface API');
+    }
+    if (/^Scoring defensive security posture$/i.test(raw)) {
+        return moduleT('cyberatlas.progressScore', 'Calcul de la posture sécurité défensive');
+    }
+    if (/^Generating defensive AI interpretation$/i.test(raw)) {
+        return moduleT('cyberatlas.progressAi', 'Génération de l’interprétation IA défensive');
+    }
+    if (/^Preparing defensive audit excerpt$/i.test(raw)) {
+        return moduleT('cyberatlas.progressPreparingAi', 'Préparation de l’extrait d’audit défensif');
+    }
+    if (/^Generating first defensive interpretation$/i.test(raw)) {
+        return moduleT('cyberatlas.progressFirstAi', 'Génération de la première interprétation défensive');
+    }
+    if (/^Generating second defensive interpretation$/i.test(raw)) {
+        return moduleT('cyberatlas.progressSecondAi', 'Génération de la seconde interprétation défensive');
+    }
+    if (/^CyberAtlas audit complete$/i.test(raw)) {
+        return moduleT('cyberatlas.progressComplete', 'Audit CyberAtlas terminé');
+    }
     return raw;
 }
 
@@ -2291,7 +2345,7 @@ function currentJoyBoyChatModel() {
 }
 
 function moduleViewIds() {
-    return ['modules-view', 'signalatlas-view', 'perfatlas-view'];
+    return ['modules-view', 'signalatlas-view', 'perfatlas-view', 'cyberatlas-view'];
 }
 
 function hideModulesWorkspaces() {
@@ -2303,6 +2357,7 @@ function hideModulesWorkspaces() {
     });
     stopSignalAtlasRefresh();
     stopPerfAtlasRefresh();
+    window.stopCyberAtlasRefresh?.();
 }
 
 function hideOtherJoyBoyViews() {
@@ -2327,7 +2382,7 @@ function applyModulesShellMode(activeButtonId, bodyClass) {
     hideOtherJoyBoyViews();
     clearActiveHubButtons();
     document.getElementById(activeButtonId)?.classList.add('active');
-    document.body.classList.remove('addons-mode', 'models-mode', 'projects-mode', 'modules-mode', 'signalatlas-mode', 'perfatlas-mode');
+    document.body.classList.remove('addons-mode', 'models-mode', 'projects-mode', 'modules-mode', 'signalatlas-mode', 'perfatlas-mode', 'cyberatlas-mode');
     document.body.classList.add(bodyClass);
 }
 
@@ -3162,6 +3217,35 @@ function signalAtlasModelOptionsHtml(selectedValue) {
     return html;
 }
 
+function moduleHubOutcome(moduleId) {
+    if (moduleId === 'perfatlas') {
+        return moduleT('modules.module_perfatlas_outcome', 'Mesure vitesse, Core Web Vitals et pistes de correction.');
+    }
+    if (moduleId === 'cyberatlas') {
+        return moduleT('modules.module_cyberatlas_outcome', 'Cartographie TLS, headers, exposition publique et surface API.');
+    }
+    return moduleT('modules.module_signalatlas_outcome', 'Analyse crawl, indexation et visibilité SEO.');
+}
+
+function moduleHubPoints(moduleId) {
+    if (moduleId === 'perfatlas') {
+        return [
+            moduleT('modules.module_perfatlas_point_1', 'Sondes lab sur pages représentatives'),
+            moduleT('modules.module_perfatlas_point_2', 'Plan de correction performance exportable'),
+        ];
+    }
+    if (moduleId === 'cyberatlas') {
+        return [
+            moduleT('modules.module_cyberatlas_point_1', 'Preuves sécurité défensives et score de posture'),
+            moduleT('modules.module_cyberatlas_point_2', 'Pack de remédiation prêt pour dev ou IA'),
+        ];
+    }
+    return [
+        moduleT('modules.module_signalatlas_point_1', 'Crawl technique et indexabilité'),
+        moduleT('modules.module_signalatlas_point_2', 'Brief SEO prêt pour dev ou IA'),
+    ];
+}
+
 function renderModulesHub() {
     const host = document.getElementById('modules-view-content');
     if (!host) return;
@@ -3177,9 +3261,12 @@ function renderModulesHub() {
             : signalAtlasStatusLabel(module.status);
         const name = moduleT(`modules.module_${moduleId}_name`, module.name || 'Module');
         const tagline = moduleT(`modules.module_${moduleId}_tagline`, module.tagline || '');
-        const description = moduleT(`modules.module_${moduleId}_description`, module.description || '');
-        const premium = module.premium ? `<span class="modules-chip premium">${escapeHtml(moduleT('modules.premium', 'Premium'))}</span>` : '';
         const lockedReason = module.locked_reason ? `<div class="modules-card-note">${escapeHtml(module.locked_reason)}</div>` : '';
+        const outcome = moduleHubOutcome(moduleId);
+        const points = moduleHubPoints(moduleId);
+        const statusChip = isLocked || activeJobs.length ? `
+            <div class="modules-card-status status-${escapeHtml(String(module.status || 'active').toLowerCase())}">${escapeHtml(status)}</div>
+        ` : '';
         const runtimeNote = activeJobs.length ? `
             <div class="modules-card-runtime">
                 <div class="modules-card-runtime-copy">${escapeHtml(moduleT('signalatlas.moduleRuntimeCount', '{count} active audit(s)', { count: activeJobs.length }))}</div>
@@ -3189,25 +3276,31 @@ function renderModulesHub() {
         ` : '';
         return `
             <button
-                class="modules-card${module.featured ? ' featured' : ''}${isLocked ? ' is-locked' : ''}"
+                class="modules-card modules-card-${escapeHtml(moduleId)}${module.featured ? ' featured' : ''}${isLocked ? ' is-locked' : ''}"
                 type="button"
                 onclick="openNativeModule('${escapeHtml(module.id)}')"
                 ${isLocked ? 'disabled' : ''}
             >
-                <div class="modules-card-top">
+                <div class="modules-card-main">
                     <div class="modules-card-icon"><i data-lucide="${escapeHtml(module.icon || 'blocks')}"></i></div>
-                    <div class="modules-card-status status-${escapeHtml(String(module.status || 'active').toLowerCase())}">${escapeHtml(status)}</div>
-                </div>
-                <div class="modules-card-title-row">
-                    <div>
+                    <div class="modules-card-copy">
                         <div class="modules-card-title">${escapeHtml(name)}</div>
                         <div class="modules-card-tagline">${escapeHtml(tagline)}</div>
                     </div>
-                    ${premium}
+                    ${statusChip}
                 </div>
-                <div class="modules-card-description">${escapeHtml(description)}</div>
-                <div class="modules-card-capabilities">
-                    ${(module.capabilities || []).slice(0, 4).map(cap => `<span class="modules-chip">${escapeHtml(moduleT(`modules.capability_${auditTranslationKey(cap)}`, String(cap || '').replace(/_/g, ' ')))}</span>`).join('')}
+                <div class="modules-card-outcome">${escapeHtml(outcome)}</div>
+                <div class="modules-card-points">
+                    ${points.map(point => `
+                        <div class="modules-card-point">
+                            <i data-lucide="check"></i>
+                            <span>${escapeHtml(point)}</span>
+                        </div>
+                    `).join('')}
+                </div>
+                <div class="modules-card-action">
+                    <span>${escapeHtml(moduleT('modules.openModule', 'Ouvrir'))}</span>
+                    <i data-lucide="arrow-right"></i>
                 </div>
                 ${runtimeNote}
                 ${lockedReason}
@@ -4175,6 +4268,10 @@ async function openAuditModuleWorkspace(moduleId, auditId = null) {
     }
     if (clean === 'perfatlas') {
         await openPerfAtlasWorkspace(auditId);
+        return;
+    }
+    if (clean === 'cyberatlas') {
+        await window.openCyberAtlasWorkspace?.(auditId);
     }
 }
 
@@ -5587,6 +5684,7 @@ window.addEventListener('joyboy:locale-changed', () => {
     if (getModulesView()?.style.display !== 'none') renderModulesHub();
     if (isSignalAtlasVisible()) renderSignalAtlasWorkspace();
     if (isPerfAtlasVisible()) renderPerfAtlasWorkspace();
+    window.renderCyberAtlasWorkspace?.();
 });
 
 window.addEventListener('click', (event) => {
@@ -5610,6 +5708,7 @@ window.addEventListener('joyboy:runtime-jobs-updated', () => {
         renderPerfAtlasWorkspace();
         startPerfAtlasRefresh();
     }
+    window.handleCyberAtlasRuntimeJobsUpdated?.();
 });
 
 window.openModulesHub = openModulesHub;
