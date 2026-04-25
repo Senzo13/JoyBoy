@@ -28,7 +28,8 @@ class ProjectsStaticTests(unittest.TestCase):
         fr = self.read("web/static/js/i18n.fr.js")
 
         self.assertIn("TERMINAL_PROGRESS_MODEL_STATUS_KEY", terminal)
-        self.assertIn("key: TERMINAL_PROGRESS_MODEL_STATUS_KEY", terminal)
+        self.assertIn("terminalModelProgressKey(data.model_call)", terminal)
+        self.assertIn(": TERMINAL_PROGRESS_MODEL_STATUS_KEY", terminal)
         self.assertNotIn("addTerminalTask('model-call'", terminal)
         self.assertNotIn("taskContinueAfterTools: 'Analyse des résultats", fr)
         self.assertIn("taskContinueAfterTools: 'Décision après les résultats'", fr)

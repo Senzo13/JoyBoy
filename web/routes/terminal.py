@@ -350,7 +350,7 @@ def terminal_chat():
                         progress=None,
                         message=label,
                     )
-                yield f"data: {json.dumps({'model_call': {'model': event.get('model', ''), 'provider': event.get('provider', ''), 'iteration': event.get('iteration', 1), 'tools_count': tools_count, 'estimated_prompt_tokens': event.get('estimated_prompt_tokens', 0)}})}\n\n"
+                yield f"data: {json.dumps({'model_call': {'model': event.get('model', ''), 'provider': event.get('provider', ''), 'iteration': event.get('iteration', 1), 'tools_count': tools_count, 'estimated_prompt_tokens': event.get('estimated_prompt_tokens', 0), 'context_kind': event.get('context_kind', ''), 'label': event.get('label', '')}})}\n\n"
 
             elif event_type == 'model_progress':
                 elapsed_seconds = int(event.get('elapsed_seconds') or 0)
@@ -363,7 +363,7 @@ def terminal_chat():
                         progress=None,
                         message=f"{stage} · {elapsed_seconds}s"[:160],
                     )
-                yield f"data: {json.dumps({'model_progress': {'model': event.get('model', ''), 'provider': event.get('provider', ''), 'iteration': event.get('iteration', 1), 'elapsed_seconds': elapsed_seconds, 'stage': stage, 'context_kind': event.get('context_kind', ''), 'streamed': bool(event.get('streamed'))}})}\n\n"
+                yield f"data: {json.dumps({'model_progress': {'model': event.get('model', ''), 'provider': event.get('provider', ''), 'iteration': event.get('iteration', 1), 'elapsed_seconds': elapsed_seconds, 'stage': stage, 'context_kind': event.get('context_kind', ''), 'streamed': bool(event.get('streamed')), 'label': event.get('label', '')}})}\n\n"
 
             elif event_type == 'content':
                 if job_manager and terminal_job_id:

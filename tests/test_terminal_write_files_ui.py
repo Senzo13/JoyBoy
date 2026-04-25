@@ -42,6 +42,7 @@ class TerminalWriteFilesUiTests(unittest.TestCase):
 
         self.assertIn("function createTerminalRunMetrics", terminal_js)
         self.assertIn("recordTerminalModelCallMetrics(data.model_call)", terminal_js)
+        self.assertIn("function terminalModelProgressKey", terminal_js)
         self.assertIn("recordTerminalToolCallMetrics(action)", terminal_js)
         self.assertIn("recordTerminalToolResultMetrics(result)", terminal_js)
         self.assertIn("buildTerminalRunSummaryParts(responseTime, tokenStats)", terminal_js)

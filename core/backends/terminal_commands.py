@@ -536,6 +536,7 @@ class TerminalSlashCommandsMixin:
         self._active_execution_journal = []
         self._reset_deferred_tools()
         self._active_promoted_tool_names.update({"delegate_subagent", "web_search", "web_fetch"})
+        review_reasoning_effort = self._ultrareview_reasoning_effort(reasoning_effort)
 
         yield runtime_event(
             "intent",
@@ -581,30 +582,49 @@ class TerminalSlashCommandsMixin:
 
         path_hint = ", ".join(changed_paths[:18]) if changed_paths else "important entrypoints, configs, tests, routes, UI surfaces"
         focus_hint = focus.strip() or "current branch, staged changes, and working tree"
+        git_review_materials = [item for item in review_materials if item.get("kind") == "git"]
+        reviewer_labels = self._ultrareview_progress_labels(locale)
         reviewer_tasks = [
             (
-                "Correctness reviewer",
+                reviewer_labels["correctness"],
                 "Find runtime bugs, broken contracts, logic regressions, missing edge cases, and unsafe assumptions. "
                 f"Focus: {focus_hint}. Changed/likely files: {path_hint}. Return evidence and exact paths.",
             ),
             (
-                "Security reviewer",
+                reviewer_labels["security"],
                 "Find security, secrets, auth, injection, dependency, permission, and unsafe shell/process risks. "
                 f"Focus: {focus_hint}. Changed/likely files: {path_hint}. Return only actionable evidence.",
             ),
             (
-                "Quality reviewer",
+                reviewer_labels["quality"],
                 "Find test/build gaps, API/UI mismatches, dead code, config mistakes, i18n misses, and maintainability risks. "
                 f"Focus: {focus_hint}. Changed/likely files: {path_hint}. Return concrete file-backed observations.",
             ),
         ]
-        for label, task in reviewer_tasks:
+        for index, (label, task) in enumerate(reviewer_tasks, start=1):
             result = yield from self._execute_and_emit_tool(
                 "delegate_subagent",
-                {"agent_type": "code_explorer", "task": f"{label}: {task}", "max_files": 12},
+                {"agent_type": "code_explorer", "task": f"{label}: {task}", "max_files": 16},
                 workspace_path,
             )
-            review_materials.append({"kind": "reviewer", "label": label, "result": result.data if result else {}})
+            explorer_material = {"kind": "reviewer", "label": label, "result": result.data if result else {}}
+            review_materials.append(explorer_material)
+            if is_cloud_model_name(model):
+                reviewer_text = yield from self._run_ultrareview_llm_reviewer(
+                    label=label,
+                    task=task,
+                    review_materials=[*git_review_materials, explorer_material],
+                    workspace_path=workspace_path,
+                    model=model,
+                    reasoning_effort=review_reasoning_effort,
+                    locale=locale,
+                    iteration=index,
+                )
+                review_materials.append({
+                    "kind": "llm_reviewer",
+                    "label": label,
+                    "summary": reviewer_text,
+                })
 
         todo_args["todos"][1]["status"] = "completed"
         todo_args["todos"][2]["status"] = "in_progress"
@@ -636,7 +656,7 @@ class TerminalSlashCommandsMixin:
                 review_materials=review_materials,
                 workspace_path=workspace_path,
                 model=model,
-                reasoning_effort=reasoning_effort,
+                reasoning_effort=review_reasoning_effort,
                 locale=locale,
             )
 
@@ -649,6 +669,153 @@ class TerminalSlashCommandsMixin:
             full_response=final_text,
             token_stats={"prompt_tokens": 0, "completion_tokens": 0, "total": 0},
         )
+
+    def _ultrareview_progress_labels(self, locale: str | None) -> Dict[str, str]:
+        labels = {
+            "fr": {
+                "correctness": "Reviewer correction",
+                "security": "Reviewer sécurité",
+                "quality": "Reviewer qualité",
+                "final": "Synthèse finale Ultrareview",
+                "suffix": "revue LLM",
+            },
+            "en": {
+                "correctness": "Correctness reviewer",
+                "security": "Security reviewer",
+                "quality": "Quality reviewer",
+                "final": "Final Ultrareview synthesis",
+                "suffix": "LLM review",
+            },
+            "es": {
+                "correctness": "Revisor de corrección",
+                "security": "Revisor de seguridad",
+                "quality": "Revisor de calidad",
+                "final": "Síntesis final Ultrareview",
+                "suffix": "revisión LLM",
+            },
+            "it": {
+                "correctness": "Revisore correttezza",
+                "security": "Revisore sicurezza",
+                "quality": "Revisore qualità",
+                "final": "Sintesi finale Ultrareview",
+                "suffix": "revisione LLM",
+            },
+        }
+        return labels[_normalise_command_locale(locale)]
+
+    def _ultrareview_reasoning_effort(self, reasoning_effort: str | None) -> str:
+        value = str(reasoning_effort or "").strip().lower().replace("-", "").replace("_", "")
+        if value in {"xhigh", "extra", "extrahigh", "veryhigh", "tresapprofondi", "tresprofond"}:
+            return "xhigh"
+        if value in {"high", "eleve", "elevé"}:
+            return "high"
+        if value in {"medium", "moyen"}:
+            return "high"
+        if value in {"low", "bas"}:
+            return "medium"
+        return "high"
+
+    def _run_ultrareview_llm_reviewer(
+        self,
+        label: str,
+        task: str,
+        review_materials: List[Dict[str, Any]],
+        workspace_path: str,
+        model: str,
+        reasoning_effort: str,
+        locale: str | None,
+        iteration: int,
+    ) -> Generator[Dict[str, Any], None, str]:
+        language = {
+            "fr": "French",
+            "en": "English",
+            "es": "Spanish",
+            "it": "Italian",
+        }[_normalise_command_locale(locale)]
+        context = self._format_ultrareview_materials(review_materials, workspace_path)
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "You are an independent JoyBoy Ultrareview subagent. "
+                    "You are read-only and must not suggest broad rewrites. "
+                    "Find concrete bugs, broken contracts, security risks, missing verification, or user-visible regressions. "
+                    "Use exact file/path evidence from the provided materials. "
+                    "If evidence is insufficient, label it as a residual risk. "
+                    f"Write concise notes in {language}."
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    f"Reviewer role: {label}\n"
+                    f"Mission: {task}\n\n"
+                    "Materials:\n"
+                    f"{context}\n\n"
+                    "Return only this reviewer's useful output:\n"
+                    "- Confirmed findings, if any, with severity and evidence.\n"
+                    "- Residual risks / checks, only if useful.\n"
+                    "If no confirmed finding exists, say that explicitly in one sentence."
+                ),
+            },
+        ]
+        progress_suffix = self._ultrareview_progress_labels(locale)["suffix"]
+        progress_label = f"{label} · {progress_suffix}"
+        yield runtime_event(
+            "model_call",
+            model=model,
+            provider="cloud",
+            iteration=iteration,
+            tools_count=0,
+            estimated_prompt_tokens=max(1, len(context) // 4),
+            context_kind="ultrareview_reviewer",
+            label=progress_label,
+        )
+
+        holder: Dict[str, Any] = {}
+
+        def _call_model() -> None:
+            try:
+                holder["response"] = chat_with_cloud_model(
+                    model,
+                    messages=messages,
+                    tools=[],
+                    max_tokens=1400,
+                    temperature=0.1,
+                    reasoning_effort=reasoning_effort,
+                )
+            except BaseException as exc:
+                holder["error"] = exc
+
+        worker = threading.Thread(target=_call_model, daemon=True)
+        worker.start()
+        started_at = time.monotonic()
+        last_progress = started_at
+        while worker.is_alive():
+            worker.join(timeout=0.25)
+            if not worker.is_alive():
+                break
+            now = time.monotonic()
+            elapsed = int(now - started_at)
+            if elapsed >= 4 and now - last_progress >= 6:
+                last_progress = now
+                yield runtime_event(
+                    "model_progress",
+                    model=model,
+                    provider="cloud",
+                    iteration=iteration,
+                    elapsed_seconds=elapsed,
+                    stage=self._model_progress_stage(elapsed),
+                    context_kind="ultrareview_reviewer",
+                    label=progress_label,
+                )
+        worker.join(timeout=0)
+        if holder.get("error"):
+            return f"{label}: reviewer failed ({holder['error']})."
+        response = holder.get("response") or {}
+        message = response.get("message", {}) if isinstance(response, dict) else {}
+        text = str(message.get("content") or "").strip()
+        return text or f"{label}: no reviewer output."
 
     def _execute_and_emit_tool(
         self,
@@ -781,6 +948,7 @@ class TerminalSlashCommandsMixin:
             "it": "Italian",
         }[_normalise_command_locale(locale)]
         context = self._format_ultrareview_materials(review_materials, workspace_path)
+        progress_label = self._ultrareview_progress_labels(locale)["final"]
         messages = [
             {
                 "role": "system",
@@ -813,6 +981,8 @@ class TerminalSlashCommandsMixin:
             iteration=1,
             tools_count=0,
             estimated_prompt_tokens=max(1, len(context) // 4),
+            context_kind="ultrareview_synthesis",
+            label=progress_label,
         )
 
         stream_queue: "queue.Queue[tuple[str, Any]]" = queue.Queue()
@@ -860,6 +1030,7 @@ class TerminalSlashCommandsMixin:
                         stage=self._model_progress_stage(elapsed),
                         context_kind="ultrareview",
                         streamed=True,
+                        label=progress_label,
                     )
                 continue
             if kind == "content":

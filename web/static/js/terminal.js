@@ -1606,6 +1606,13 @@ function terminalToolProgressKey(action = '') {
     return `tool-progress-${action || 'tool'}`;
 }
 
+function terminalModelProgressKey(data = {}) {
+    if (data.label) {
+        return `model-progress-${data.context_kind || 'model'}-${data.iteration || 1}-${String(data.label).slice(0, 80)}`;
+    }
+    return TERMINAL_PROGRESS_MODEL_STATUS_KEY;
+}
+
 function describeTerminalIntentTask(intent = '', autonomous = false) {
     if (autonomous) return terminalT('terminal.progressAutonomous', 'Mode autonome');
     if (intent === 'review') return terminalT('terminal.taskReviewProject', 'Ultrareview du projet');
@@ -1616,6 +1623,7 @@ function describeTerminalIntentTask(intent = '', autonomous = false) {
 }
 
 function describeTerminalModelCall(data = {}) {
+    if (data.label) return String(data.label);
     const iteration = Number(data.iteration || 1);
     const toolsCount = Number(data.tools_count || 0);
     if (iteration > 1 && toolsCount > 0) {
@@ -1631,6 +1639,11 @@ function describeTerminalModelCall(data = {}) {
 }
 
 function describeTerminalModelProgress(data = {}) {
+    if (data.label) {
+        const elapsed = Number(data.elapsed_seconds || 0) > 0 ? formatTerminalElapsed(data.elapsed_seconds) : '';
+        const detail = [data.model || '', elapsed].filter(Boolean).join(' · ');
+        return { label: String(data.label), detail };
+    }
     const stage = String(data.stage || '').toLowerCase();
     const labels = {
         drafting: terminalT('terminal.modelStageDrafting', 'Rédaction de la synthèse'),
@@ -3519,7 +3532,7 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                             'thinking',
                             {
                                 reveal: shouldRevealTerminalProgressForModelCall(data.model_call),
-                                key: TERMINAL_PROGRESS_MODEL_STATUS_KEY
+                                key: data.model_call.label ? terminalModelProgressKey(data.model_call) : TERMINAL_PROGRESS_MODEL_STATUS_KEY
                             }
                         );
                         continue;
@@ -3535,7 +3548,7 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                             'thinking',
                             {
                                 reveal: true,
-                                key: TERMINAL_PROGRESS_MODEL_STATUS_KEY
+                                key: data.model_progress.label ? terminalModelProgressKey(data.model_progress) : TERMINAL_PROGRESS_MODEL_STATUS_KEY
                             }
                         );
                         continue;

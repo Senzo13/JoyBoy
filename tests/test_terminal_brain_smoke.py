@@ -292,14 +292,25 @@ Encore beaucoup de détail inutile.
             events = list(brain.run_agentic_loop("/ultrareview", tmp, model="openai:gpt-5.4", locale="fr"))
 
         tool_names = [event.get("name") for event in events if event.get("type") == "tool_call"]
+        model_calls = [event for event in events if event.get("type") == "model_call"]
         text = "".join(event.get("text", "") for event in events if event.get("type") == "content")
 
         self.assertGreaterEqual(tool_names.count("delegate_subagent"), 3)
         self.assertIn("write_todos", tool_names)
         self.assertNotIn("write_file", tool_names)
         self.assertNotIn("edit_file", tool_names)
+        self.assertTrue(any(event.get("context_kind") == "ultrareview_reviewer" for event in model_calls))
         self.assertIn("Aucun bug confirmé", text)
-        self.assertEqual(mock_chat.call_count, 1)
+        self.assertEqual(mock_chat.call_count, 4)
+        self.assertTrue(all(call.kwargs.get("reasoning_effort") == "high" for call in mock_chat.call_args_list))
+
+    def test_ultrareview_promotes_low_reasoning_for_depth(self):
+        brain = TerminalBrain()
+
+        self.assertEqual("medium", brain._ultrareview_reasoning_effort("low"))
+        self.assertEqual("high", brain._ultrareview_reasoning_effort("medium"))
+        self.assertEqual("high", brain._ultrareview_reasoning_effort("high"))
+        self.assertEqual("xhigh", brain._ultrareview_reasoning_effort("xhigh"))
 
     def test_budget_fallback_ends_without_another_model_call(self):
         brain = TerminalBrain()
