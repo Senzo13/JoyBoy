@@ -427,6 +427,7 @@ async function generateVideoFromText(prompt) {
             num_steps: numSteps,
             fps: videoDefaults.fps,
             add_audio: userSettings.videoAudio === true,
+            audio_engine: userSettings.videoAudioEngine || 'auto',
             quality: userSettings.videoQuality || '720p',
             allow_experimental_video: userSettings.showAdvancedVideoModels === true,
             chatId: requestChatId
@@ -437,8 +438,11 @@ async function generateVideoFromText(prompt) {
         const generationTime = (Date.now() - startTime) / 1000;
 
         if (data?.success && data.video) {
+            if (typeof updateLastVideoContextFromResult === 'function') {
+                updateLastVideoContextFromResult(data, prompt, null, requestChatId);
+            }
             if (typeof replaceVideoSkeletonWithReal === 'function') {
-                replaceVideoSkeletonWithReal(null, data.format || 'mp4', generationTime, requestChatId);
+                replaceVideoSkeletonWithReal(null, data.format || 'mp4', generationTime * 1000, requestChatId, data);
             }
         } else {
             if (typeof replaceVideoSkeletonWithError === 'function') {
@@ -520,6 +524,7 @@ async function generateVideoFromImageWithPrompt(imgSrc, prompt) {
             num_steps: numSteps,
             fps: videoDefaults.fps,
             add_audio: userSettings.videoAudio === true,
+            audio_engine: userSettings.videoAudioEngine || 'auto',
             face_restore: userSettings.faceRestore || 'off',
             quality: userSettings.videoQuality || '720p',
             refine_passes: parseInt(userSettings.videoRefine) || 0,
@@ -533,17 +538,21 @@ async function generateVideoFromImageWithPrompt(imgSrc, prompt) {
 
         if (data?.success && data.video) {
             if (typeof _lastVideoContext !== 'undefined') {
-                _lastVideoContext.prompt = prompt;
-                _lastVideoContext.sourceImage = imgSrc;
-                _lastVideoContext.canContinue = data.canContinue;
+                if (typeof updateLastVideoContextFromResult === 'function') {
+                    updateLastVideoContextFromResult(data, prompt, imgSrc, requestChatId);
+                } else {
+                    _lastVideoContext.prompt = prompt;
+                    _lastVideoContext.sourceImage = imgSrc;
+                    _lastVideoContext.canContinue = data.canContinue;
+                }
             }
             if (usedVideoSkeleton && typeof replaceVideoSkeletonWithReal === 'function') {
-                replaceVideoSkeletonWithReal(data.video, data.format || 'mp4', generationTime * 1000, requestChatId);
+                replaceVideoSkeletonWithReal(data.video, data.format || 'mp4', generationTime * 1000, requestChatId, data);
             } else if (typeof addMessageVideo === 'function') {
                 if (typeof removeSkeletonMessage === 'function') {
                     removeSkeletonMessage(requestChatId);
                 }
-                addMessageVideo(data.video, generationTime, imgSrc, data.canContinue, modelName, requestChatId);
+                addMessageVideo(data.video, generationTime, imgSrc, data.canContinue, modelName, requestChatId, data);
             }
         } else {
             if (usedVideoSkeleton && typeof replaceVideoSkeletonWithError === 'function') {

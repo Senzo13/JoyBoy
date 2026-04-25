@@ -32,6 +32,9 @@ function formatRuntimeVideoModelOption(model) {
     if (model.supports_image && model.supports_prompt) details.push('I2V + prompt');
     else if (model.supports_image) details.push('I2V');
     else if (model.supports_prompt) details.push('T2V');
+    if (model.supports_t2v && model.supports_i2v) details.push('T2V');
+    if (model.supports_continue) details.push('continue');
+    if (model.supports_audio_native) details.push('audio natif');
     if (model.vram) details.push(model.vram);
     if (model.launch_status === 'missing_backend') {
         details.push(t('settings.generation.videoBackendMissing', 'moteur non intégré'));
@@ -79,6 +82,9 @@ function renderRuntimeVideoModels(catalog) {
             fps: model.default_fps,
             steps: model.default_steps,
             configurable: !catalog.low_vram && (model.id === 'wan22-5b' || model.id === 'svd'),
+            supportsT2v: model.supports_t2v,
+            supportsContinue: model.supports_continue,
+            supportsAudioNative: model.supports_audio_native,
         }])
     );
     window.videoModelRuntimeDefaults = videoModelRuntimeDefaults;

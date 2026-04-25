@@ -105,6 +105,11 @@ Settings.subscribe('videoAudio', (val) => {
     if (toggle) toggle.classList.toggle('active', val === true);
 });
 
+Settings.subscribe('videoContinuationAnalyze', (val) => {
+    const toggle = document.getElementById('toggle-video-continuation-analyze');
+    if (toggle) toggle.classList.toggle('active', val !== false);
+});
+
 Settings.subscribe('showAdvancedVideoModels', (val) => {
     const toggle = document.getElementById('toggle-show-advanced-video-models');
     if (toggle) toggle.classList.toggle('active', val);
