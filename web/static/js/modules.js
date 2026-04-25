@@ -2219,6 +2219,73 @@ function renderPerfAtlasPicker(pickerId, inputId, options, selectedValue) {
     return renderAuditPicker('perfatlas', pickerId, inputId, options, selectedValue);
 }
 
+function renderAuditFindingMeta(metaItems = []) {
+    const items = (Array.isArray(metaItems) ? metaItems : [])
+        .map(item => String(item ?? '').trim())
+        .filter(Boolean);
+    if (!items.length) return '';
+    return `<div class="signalatlas-finding-meta">${items.map(item => `<span>${escapeHtml(item)}</span>`).join('')}</div>`;
+}
+
+function renderAuditEvidenceRows(evidenceItems = []) {
+    const items = (Array.isArray(evidenceItems) ? evidenceItems : [])
+        .map(item => String(item ?? '').trim())
+        .filter(Boolean);
+    if (!items.length) return '';
+    return `
+        <div class="cyberatlas-evidence-list">
+            ${items.map(item => `
+                <div class="cyberatlas-evidence-card">
+                    <div class="cyberatlas-evidence-meta">${escapeHtml(item)}</div>
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
+
+function renderAuditFindingCard({
+    title = '',
+    summary = '',
+    fix = '',
+    severity = '',
+    severityLabel = '',
+    severityTone = '',
+    meta = [],
+    evidence = [],
+    className = '',
+    extraHtml = '',
+} = {}) {
+    const cleanSeverity = String(severity || '').trim();
+    const tagLabel = severityLabel || (typeof signalAtlasSeverityLabel === 'function'
+        ? signalAtlasSeverityLabel(cleanSeverity)
+        : cleanSeverity);
+    const tagTone = severityTone || (typeof signalAtlasSeverityTone === 'function'
+        ? signalAtlasSeverityTone(cleanSeverity)
+        : '');
+    const cleanClassName = String(className || '').trim();
+    return `
+        <article class="signalatlas-finding-card${cleanClassName ? ` ${escapeHtml(cleanClassName)}` : ''}">
+            <div class="signalatlas-finding-top">
+                <div>
+                    <div class="signalatlas-finding-title">${escapeHtml(title || '')}</div>
+                    ${summary ? `<div class="signalatlas-finding-copy">${escapeHtml(summary)}</div>` : ''}
+                </div>
+                ${tagLabel ? `<span class="signalatlas-tag ${escapeHtml(tagTone)}">${escapeHtml(tagLabel)}</span>` : ''}
+            </div>
+            ${fix ? `<div class="signalatlas-mini-finding-copy">${escapeHtml(fix)}</div>` : ''}
+            ${renderAuditFindingMeta(meta)}
+            ${extraHtml || ''}
+            ${renderAuditEvidenceRows(evidence)}
+        </article>
+    `;
+}
+
+function renderAuditFindingCards(items, mapItem, emptyHtml = '', limit = 8) {
+    const source = Array.isArray(items) ? items.slice(0, limit) : [];
+    if (!source.length) return emptyHtml;
+    return source.map(item => renderAuditFindingCard(mapItem(item))).join('');
+}
+
 function renderAuditProgressBanner({
     namespace,
     progressState,
@@ -4600,23 +4667,19 @@ function renderPerfAtlasFindings(audit, limit = 6) {
     if (!items.length) {
         return `<div class="signalatlas-empty-panel">${escapeHtml(moduleT('perfatlas.noFindings', 'No major performance findings were detected in the sampled coverage.'))}</div>`;
     }
-    return items.map(item => `
-        <article class="signalatlas-finding-card">
-            <div class="signalatlas-finding-top">
-                <div>
-                    <div class="signalatlas-finding-title">${escapeHtml(perfAtlasFindingTitle(item))}</div>
-                    <div class="signalatlas-finding-copy">${escapeHtml(perfAtlasFindingDiagnostic(item))}</div>
-                </div>
-                <span class="signalatlas-tag ${signalAtlasSeverityTone(item.severity)}">${escapeHtml(signalAtlasSeverityLabel(item.severity || ''))}</span>
-            </div>
-            <div class="signalatlas-mini-finding-copy">${escapeHtml(perfAtlasFindingFix(item))}</div>
-            <div class="signalatlas-finding-meta">
-                <span>${escapeHtml(perfAtlasCategoryLabel(item.category || ''))}</span>
-                <span>${escapeHtml(signalAtlasConfidenceLabel(item.confidence || ''))}</span>
-                <span>${escapeHtml(item.url || item.scope || '')}</span>
-            </div>
-        </article>
-    `).join('');
+    return renderAuditFindingCards(items, item => ({
+        title: perfAtlasFindingTitle(item),
+        summary: perfAtlasFindingDiagnostic(item),
+        fix: perfAtlasFindingFix(item),
+        severity: item.severity,
+        severityLabel: signalAtlasSeverityLabel(item.severity || ''),
+        severityTone: signalAtlasSeverityTone(item.severity),
+        meta: [
+            perfAtlasCategoryLabel(item.category || ''),
+            signalAtlasConfidenceLabel(item.confidence || ''),
+            item.url || item.scope || '',
+        ],
+    }), '', limit);
 }
 
 function renderPerfAtlasFieldData(audit) {

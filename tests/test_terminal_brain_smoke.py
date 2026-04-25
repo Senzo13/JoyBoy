@@ -340,6 +340,36 @@ Encore beaucoup de détail inutile.
         self.assertEqual("high", brain._ultrareview_reasoning_effort("high"))
         self.assertEqual("xhigh", brain._ultrareview_reasoning_effort("xhigh"))
 
+    def test_failed_verifier_is_reported_as_completed_verification(self):
+        brain = TerminalBrain()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tests_dir = Path(tmp, "tests")
+            tests_dir.mkdir()
+            Path(tests_dir, "test_failing.py").write_text(
+                "import unittest\n\n"
+                "class DemoTest(unittest.TestCase):\n"
+                "    def test_bad(self):\n"
+                "        self.assertEqual(1, 2)\n",
+                encoding="utf-8",
+            )
+
+            result = brain.execute_tool(
+                "delegate_subagent",
+                {
+                    "agent_type": "verifier",
+                    "task": "run tests",
+                    "command": "python -m unittest discover -s tests",
+                    "timeout_seconds": 20,
+                },
+                tmp,
+            )
+
+        self.assertTrue(result.success)
+        self.assertEqual("failed", result.data["status"])
+        self.assertIsNone(result.error)
+        self.assertEqual(1, result.data["commands"][0]["return_code"])
+
     def test_budget_fallback_ends_without_another_model_call(self):
         brain = TerminalBrain()
         observed = [

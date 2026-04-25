@@ -524,7 +524,17 @@ def terminal_chat():
                         result_data['tool_result']['summary'] = f"Page lue: {data.get('title', data.get('url', ''))}"
                         result_data['tool_result']['content'] = data.get('content', '')[:2000]
                     elif tool_name == 'delegate_subagent':
-                        result_data['tool_result']['summary'] = f"Subagent {data.get('agent_type', '')}: {data.get('status', '')}"
+                        commands = data.get('commands', []) if isinstance(data.get('commands', []), list) else []
+                        first_command = commands[0] if commands and isinstance(commands[0], dict) else {}
+                        return_code = first_command.get('return_code')
+                        command_label = first_command.get('command') or ''
+                        summary = data.get('summary') or f"Subagent {data.get('agent_type', '')}: {data.get('status', '')}"
+                        if command_label and return_code is not None:
+                            summary = f"{command_label} · exit {return_code}"
+                        result_data['tool_result']['summary'] = summary
+                        result_data['tool_result']['status'] = data.get('status', '')
+                        result_data['tool_result']['agent_type'] = data.get('agent_type', '')
+                        result_data['tool_result']['commands'] = commands[:4]
                         result_data['tool_result']['files'] = [
                             item.get('path', '')
                             for item in data.get('files', [])[:8]

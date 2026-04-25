@@ -70,6 +70,19 @@ class TerminalWriteFilesUiTests(unittest.TestCase):
         self.assertIn("document.addEventListener('input', handleTerminalInput)", terminal_js)
         self.assertIn("shouldShowTerminalCommandCatalogForInput(input.value)", terminal_js)
 
+    def test_terminal_streaming_has_no_blue_pipe_cursor_and_verifier_warning_state(self):
+        terminal_js = (ROOT / "web/static/js/terminal.js").read_text(encoding="utf-8")
+        terminal_route = (ROOT / "web/routes/terminal.py").read_text(encoding="utf-8")
+        components_css = (ROOT / "web/static/css/terminal-components.css").read_text(encoding="utf-8")
+
+        self.assertIn("function isTerminalVerifierWarning", terminal_js)
+        self.assertIn("taskStatus = isTerminalVerifierWarning(result) ? 'warning' : 'done'", terminal_js)
+        self.assertIn("progressToolWarning", terminal_js)
+        self.assertIn("task-warning", components_css)
+        self.assertIn("result_data['tool_result']['status'] = data.get('status', '')", terminal_route)
+        self.assertIn("result_data['tool_result']['commands'] = commands[:4]", terminal_route)
+        self.assertNotIn("'<span class=\"cursor\">|</span>'", terminal_js)
+
 
 if __name__ == "__main__":
     unittest.main()

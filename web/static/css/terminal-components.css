@@ -1203,6 +1203,10 @@ body.terminal-mode .input-bar.terminal-progress-active > .terminal-progress-pane
   color: #22c55e;
 }
 
+.terminal-task.task-warning {
+  color: #f59e0b;
+}
+
 .terminal-task.task-error {
   color: #ef4444;
 }

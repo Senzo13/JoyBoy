@@ -138,6 +138,68 @@ body.cyberatlas-mode {
     color: #cffafe;
 }
 
+#cyberatlas-view .signalatlas-finding-list {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+#cyberatlas-view .signalatlas-finding-card {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 20px;
+}
+
+#cyberatlas-view .signalatlas-finding-top > div {
+    min-width: 0;
+    display: grid;
+    gap: 7px;
+}
+
+#cyberatlas-view .signalatlas-finding-title {
+    font-size: 15px;
+    line-height: 1.35;
+}
+
+#cyberatlas-view .signalatlas-finding-copy,
+#cyberatlas-view .signalatlas-mini-finding-copy {
+    max-width: 1040px;
+    font-size: 13px;
+    line-height: 1.65;
+}
+
+#cyberatlas-view .signalatlas-finding-meta {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 7px;
+    margin-top: 0;
+}
+
+#cyberatlas-view .signalatlas-finding-meta span {
+    min-width: 0;
+    max-width: 100%;
+    padding: 4px 8px;
+    border: 1px solid rgba(34, 211, 238, 0.16);
+    border-radius: 999px;
+    background: rgba(34, 211, 238, 0.07);
+    color: #bdefff;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#cyberatlas-view .cyberatlas-evidence-list {
+    gap: 8px;
+}
+
+#cyberatlas-view .cyberatlas-evidence-card {
+    border-radius: 12px;
+    padding: 12px 14px;
+    background: rgba(2, 8, 18, 0.58);
+}
+
 #cyberatlas-view .signalatlas-progress-fill,
 #cyberatlas-view .signalatlas-history-progress-fill,
 #cyberatlas-view .modules-card-runtime-fill {

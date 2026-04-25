@@ -417,15 +417,20 @@ class TerminalBrain(
 
             # === DELEGATE SUBAGENT ===
             elif tool_name == "delegate_subagent":
+                agent_type = args.get('agent_type', 'code_explorer')
                 result = self._delegate_subagent(
-                    args.get('agent_type', 'code_explorer'),
+                    agent_type,
                     args.get('task', ''),
                     workspace_path,
                     max_files=args.get('max_files', 8),
                     command=args.get('command', ''),
                     timeout_seconds=args.get('timeout_seconds', 90),
                 )
-                return ToolResult(success=result.get('status') == 'completed', tool_name=tool_name, data=result, error=result.get('error'))
+                status = str(result.get('status') or '').lower()
+                verifier_completed_with_failure = agent_type == 'verifier' and status == 'failed'
+                success = status == 'completed' or verifier_completed_with_failure
+                error = result.get('error') or (None if success else result.get('summary'))
+                return ToolResult(success=success, tool_name=tool_name, data=result, error=error)
 
             # === LOAD SKILL ===
             elif tool_name == "load_skill":

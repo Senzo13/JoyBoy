@@ -16,6 +16,44 @@ AI_LEVEL_PROMPTS = {
 }
 
 
+def _language_instruction(locale: str) -> str:
+    clean = str(locale or "").strip().lower().split("-")[0].split("_")[0]
+    if clean == "fr":
+        return "Write the full answer in French. Keep security terms clear and natural for a French product/dev team."
+    if clean == "es":
+        return "Write the full answer in Spanish. Keep security terms clear and natural for a Spanish product/dev team."
+    if clean == "it":
+        return "Write the full answer in Italian. Keep security terms clear and natural for an Italian product/dev team."
+    return "Write the full answer in English."
+
+
+def _section_instruction(locale: str) -> str:
+    clean = str(locale or "").strip().lower().split("-")[0].split("_")[0]
+    if clean == "fr":
+        return (
+            "Return markdown with sections: Résumé exécutif, Risques confirmés, "
+            "Cartographie standards, Chemins de risque, Plan de vérification owner, "
+            "Tickets sécurité, Checklist de validation, Prompt d’implémentation."
+        )
+    if clean == "es":
+        return (
+            "Return markdown with sections: Resumen ejecutivo, Riesgos confirmados, "
+            "Mapa de estándares, Rutas de riesgo, Plan de verificación owner, "
+            "Tickets de seguridad, Checklist de validación, Prompt de implementación."
+        )
+    if clean == "it":
+        return (
+            "Return markdown with sections: Sintesi esecutiva, Rischi confermati, "
+            "Mappa degli standard, Percorsi di rischio, Piano di verifica owner, "
+            "Ticket di sicurezza, Checklist di validazione, Prompt di implementazione."
+        )
+    return (
+        "Return markdown with sections: Executive summary, Confirmed risks, Standards map, "
+        "Risk paths, Owner verification plan, Security tickets, Validation checklist, "
+        "Prompt for implementation."
+    )
+
+
 def _audit_excerpt(audit: Dict[str, Any]) -> Dict[str, Any]:
     snapshot = audit.get("snapshot") or {}
     return {
@@ -72,22 +110,27 @@ def generate_interpretation(
     level: str,
     preset: str,
     mode: str = "rerun",
+    locale: str = "en",
 ) -> Dict[str, Any]:
     clean_level = str(level or "basic_summary").strip().lower()
     prompt_goal = AI_LEVEL_PROMPTS.get(clean_level, AI_LEVEL_PROMPTS["basic_summary"])
     excerpt = _audit_excerpt(audit)
     budget = _generation_budget(clean_level, excerpt)
+    language_instruction = _language_instruction(locale)
+    section_instruction = _section_instruction(locale)
     system_message = (
         "You are CyberAtlas AI inside JoyBoy. This is a defensive, authorized audit assistant. "
         "The deterministic audit is the source of truth. Do not invent vulnerabilities, CVEs, "
         "credentials, exploit chains, or unmeasured network access. Do not provide offensive exploit payloads. "
-        "Focus on risk explanation, safe remediation, validation, and rollout order."
+        "Focus on risk explanation, safe remediation, validation, and rollout order. "
+        f"{language_instruction}"
     )
     user_message = (
         f"Task: {prompt_goal}\n"
         f"Preset: {preset}\n"
         f"Model note: {_preset_note(preset)}\n"
-        "Return markdown with sections: Executive summary, Confirmed risks, Standards map, Risk paths, Owner verification plan, Security tickets, Validation checklist, Prompt for implementation.\n"
+        f"Language: {language_instruction}\n"
+        f"{section_instruction}\n"
         "Keep the output directly usable by another AI or developer fixing the site.\n\n"
         f"AUDIT EXCERPT:\n{excerpt}"
     )
@@ -103,13 +146,22 @@ def generate_interpretation(
         timeout=budget["timeout"],
     )
     if not content:
-        content = (
-            "## Executive summary\n"
-            "CyberAtlas could not obtain an AI interpretation from the selected model. "
-            "The deterministic security report remains valid and can still be exported.\n\n"
-            "## Next step\n"
-            "Retry with another JoyBoy model or export the remediation pack."
-        )
+        if str(locale or "").strip().lower().startswith("fr"):
+            content = (
+                "## Résumé exécutif\n"
+                "CyberAtlas n’a pas pu obtenir d’interprétation IA avec le modèle sélectionné. "
+                "Le rapport de sécurité déterministe reste valide et peut toujours être exporté.\n\n"
+                "## Prochaine étape\n"
+                "Réessaie avec un autre modèle JoyBoy ou exporte le pack de remédiation."
+            )
+        else:
+            content = (
+                "## Executive summary\n"
+                "CyberAtlas could not obtain an AI interpretation from the selected model. "
+                "The deterministic security report remains valid and can still be exported.\n\n"
+                "## Next step\n"
+                "Retry with another JoyBoy model or export the remediation pack."
+            )
     return {
         "id": str(uuid.uuid4()),
         "created_at": utc_now_iso(),
@@ -122,5 +174,6 @@ def generate_interpretation(
         "metadata": {
             "finding_count": len(excerpt.get("top_findings") or []),
             "score_count": len(excerpt.get("scores") or []),
+            "locale": locale,
         },
     }

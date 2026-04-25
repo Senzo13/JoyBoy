@@ -9,6 +9,7 @@ This repository is being prepared as a public-ready local AI harness.
 - Keep generated files, model weights, caches, and local packs out of the repo.
 - Prefer reusable infrastructure over one-off patches.
 - Do not duplicate routing or prompt logic across multiple files.
+- Code duplication is prohibited; extract shared components/helpers before adding parallel implementations.
 
 ## Public Core vs Local Extensions
 

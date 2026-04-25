@@ -1570,6 +1570,7 @@ function showTerminalTasks() {
 function normalizeTerminalTaskStatus(status) {
     const value = String(status || 'pending').toLowerCase();
     if (['completed', 'complete', 'done', 'success'].includes(value)) return 'done';
+    if (['warning', 'warn', 'failed_with_output'].includes(value)) return 'warning';
     if (['in_progress', 'running', 'active'].includes(value)) return 'running';
     if (['blocked', 'error', 'failed'].includes(value)) return 'error';
     return 'pending';
@@ -1753,6 +1754,12 @@ function shouldShowTerminalToolResult(result = {}, args = {}) {
     return Boolean(action);
 }
 
+function isTerminalVerifierWarning(result = {}) {
+    return (result.action || result.tool_name) === 'delegate_subagent'
+        && String(result.agent_type || '').toLowerCase() === 'verifier'
+        && String(result.status || '').toLowerCase() === 'failed';
+}
+
 function describeTerminalToolResultLabel(result = {}, args = {}) {
     const action = result.action || result.tool_name || '';
     const target = result.path || window.lastToolCall?.path || '';
@@ -1833,7 +1840,7 @@ function renderTerminalTasks() {
     const list = terminalTasksElement.querySelector('.terminal-tasks-list');
     const count = terminalTasksElement.querySelector('.tasks-count');
 
-    const done = terminalTasks.filter(t => t.status === 'done').length;
+    const done = terminalTasks.filter(t => ['done', 'warning'].includes(t.status)).length;
     const total = terminalTasks.length;
     count.textContent = terminalT('terminal.taskCount', '{done}/{total} tâches', { done, total });
 
@@ -1846,6 +1853,9 @@ function renderTerminalTasks() {
         } else if (task.status === 'done') {
             iconName = 'check';
             className = 'task-done';
+        } else if (task.status === 'warning') {
+            iconName = 'alert-triangle';
+            className = 'task-warning';
         } else if (task.status === 'error') {
             iconName = 'x';
             className = 'task-error';
@@ -1905,7 +1915,7 @@ function createTerminalOutput() {
     messageEl.className = 'message terminal-chat-message terminal-ai-message';
     messageEl.innerHTML = `
         <div class="ai-response">
-            <div class="chat-bubble terminal-ai-output"><span class="cursor">|</span></div>
+            <div class="chat-bubble terminal-ai-output"></div>
         </div>
     `;
     messagesDiv.appendChild(messageEl);
@@ -1928,7 +1938,7 @@ function appendTerminalOutput(text) {
 function renderTerminalOutput(withCursor = true) {
     if (!terminalOutputElement) return;
     const formatted = formatTerminalMarkdown(terminalOutputRawText, { partial: withCursor });
-    terminalOutputElement.innerHTML = formatted + (withCursor ? '<span class="cursor">|</span>' : '');
+    terminalOutputElement.innerHTML = formatted;
     scrollToBottom(true);
 }
 
@@ -3769,16 +3779,19 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                         if (!resultSummary && Array.isArray(result.files) && result.files.length > 0) {
                             resultSummary = summarizeTerminalPaths(result.files, 5);
                         }
+                        const taskStatus = isTerminalVerifierWarning(result) ? 'warning' : 'done';
                         if (window.lastToolCall?.taskId) {
-                            updateTerminalTask(window.lastToolCall.taskId, 'done', resultSummary);
+                            updateTerminalTask(window.lastToolCall.taskId, taskStatus, resultSummary);
                         }
                         const revealResultProgress = shouldRevealTerminalProgressForTool(result.action, lastToolArgs);
                         if (revealResultProgress) {
                             const resultLabel = describeTerminalToolResultLabel(result, lastToolArgs);
                             addTerminalProgressLog(
-                                terminalT('terminal.progressToolDone', 'Terminé {tool}', { tool: resultLabel || result.action || '' }),
+                                isTerminalVerifierWarning(result)
+                                    ? terminalT('terminal.progressToolWarning', 'Terminé avec alerte {tool}', { tool: resultLabel || result.action || '' })
+                                    : terminalT('terminal.progressToolDone', 'Terminé {tool}', { tool: resultLabel || result.action || '' }),
                                 resultSummary,
-                                'success',
+                                isTerminalVerifierWarning(result) ? 'warning' : 'success',
                                 { reveal: true, key: terminalToolProgressKey(result.action) }
                             );
                         }

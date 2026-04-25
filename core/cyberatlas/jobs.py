@@ -166,6 +166,7 @@ def _run_audit_job(job_id: str, audit_id: str, payload: Dict[str, Any]) -> None:
         }
 
         ai_config = payload.get("ai") or {}
+        locale = str(ai_config.get("locale") or payload.get("locale") or (updated.get("metadata") or {}).get("locale") or "en")
         if ai_config.get("level") and str(ai_config.get("level")).lower() != "no_ai":
             _update_progress(job_id, "ai", 92, "Generating defensive AI interpretation")
             interpretation = generate_interpretation(
@@ -174,6 +175,7 @@ def _run_audit_job(job_id: str, audit_id: str, payload: Dict[str, Any]) -> None:
                 level=str(ai_config.get("level") or "basic_summary"),
                 preset=str(ai_config.get("preset") or "balanced"),
                 mode="initial",
+                locale=locale,
             )
             updated["interpretations"] = [interpretation]
 
@@ -198,6 +200,7 @@ def start_cyberatlas_audit(payload: Dict[str, Any]) -> Dict[str, Any]:
     title = payload.get("title") or (target.get("host") or target.get("normalized_url") or "CyberAtlas audit")
     options = payload.get("options") or {}
     ai_config = payload.get("ai") or {}
+    locale = str(payload.get("locale") or ai_config.get("locale") or "en")
     estimated_seconds = _estimate_audit_seconds(options, ai_config)
     audit = storage.create_audit_stub(
         target=target,
@@ -206,6 +209,7 @@ def start_cyberatlas_audit(payload: Dict[str, Any]) -> Dict[str, Any]:
         metadata={
             "module_id": "cyberatlas",
             "ai": ai_config,
+            "locale": locale,
             "estimated_seconds": estimated_seconds,
             "safe_scope": "defensive_http_evidence",
         },
@@ -244,6 +248,7 @@ def _run_rerun_ai_job(job_id: str, audit_id: str, payload: Dict[str, Any]) -> No
             level=str(payload.get("level") or "basic_summary"),
             preset=str(payload.get("preset") or "balanced"),
             mode="rerun",
+            locale=str(payload.get("locale") or (audit.get("metadata") or {}).get("locale") or "en"),
         )
         audit.setdefault("interpretations", []).append(interpretation)
         audit["updated_at"] = utc_now_iso()
@@ -281,10 +286,11 @@ def _run_compare_ai_job(job_id: str, audit_id: str, payload: Dict[str, Any]) -> 
         right_model = str(payload.get("right_model") or "")
         level = str(payload.get("level") or "full_expert_analysis")
         preset = str(payload.get("preset") or "expert")
+        locale = str(payload.get("locale") or (audit.get("metadata") or {}).get("locale") or "en")
         _update_progress(job_id, "ai", 24, "Generating first defensive interpretation")
-        left = generate_interpretation(audit, model=left_model, level=level, preset=preset, mode="compare-left")
+        left = generate_interpretation(audit, model=left_model, level=level, preset=preset, mode="compare-left", locale=locale)
         _update_progress(job_id, "ai", 72, "Generating second defensive interpretation")
-        right = generate_interpretation(audit, model=right_model, level=level, preset=preset, mode="compare-right")
+        right = generate_interpretation(audit, model=right_model, level=level, preset=preset, mode="compare-right", locale=locale)
         audit.setdefault("interpretations", []).extend([left, right])
         audit["metadata"] = dict(audit.get("metadata") or {}, compare_pair={"left": left_model, "right": right_model})
         audit["updated_at"] = utc_now_iso()

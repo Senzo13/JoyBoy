@@ -88,6 +88,10 @@
         return 'qwen3.5:2b';
     }
 
+    function cyberAtlasCurrentLocale() {
+        return window.JoyBoyI18n?.getLocale?.() || document.documentElement.lang || navigator.language || 'fr';
+    }
+
     function getCyberAtlasView() {
         return document.getElementById('cyberatlas-view');
     }
@@ -418,6 +422,193 @@
 
     function cyberAtlasNoneLabel() {
         return cyberAtlasText('cyberatlas.none', 'None');
+    }
+
+    function cyberAtlasI18nKey(value) {
+        return String(value || '')
+            .trim()
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '_')
+            .replace(/^_+|_+$/g, '');
+    }
+
+    function cyberAtlasCanonicalFindingKey(value) {
+        const key = cyberAtlasI18nKey(value);
+        if (key.startsWith('cookie_flags_')) return 'cookie_flags';
+        if (key.startsWith('error_disclosure_')) return 'error_disclosure';
+        if (key.startsWith('mixed_content_')) return 'mixed_content';
+        if (key.startsWith('insecure_password_form_')) return 'insecure_password_form';
+        if (key.startsWith('csrf_token_not_observed_')) return 'csrf_token_not_observed';
+        if (key.startsWith('public_api_docs_')) return 'public_api_docs';
+        return key;
+    }
+
+    function cyberAtlasItemText(scope, itemId, field, fallback = '') {
+        const key = cyberAtlasI18nKey(itemId);
+        if (!key || !field) return fallback || '';
+        return cyberAtlasText(`cyberatlas.${scope}_${key}_${field}`, fallback || '');
+    }
+
+    function cyberAtlasFindingText(item, field, fallback = '') {
+        const key = cyberAtlasCanonicalFindingKey(item?.id || '');
+        if (!key || !field) return fallback || '';
+        return cyberAtlasText(`cyberatlas.finding_${key}_${field}`, fallback || '');
+    }
+
+    function cyberAtlasRecommendationText(item, field, fallback = '') {
+        return cyberAtlasItemText('recommendation', item?.id || '', field, fallback);
+    }
+
+    function cyberAtlasPhraseText(value, fallback = '') {
+        const raw = String(value ?? fallback ?? '').trim();
+        if (!raw) return '';
+        const key = cyberAtlasI18nKey(raw);
+        return key ? cyberAtlasText(`cyberatlas.phrase_${key}`, raw) : raw;
+    }
+
+    function cyberAtlasOwnerText(item, field, fallback = '') {
+        return cyberAtlasItemText('owner', item?.id || '', field, cyberAtlasPhraseText(fallback));
+    }
+
+    function cyberAtlasRiskPathText(item, field, fallback = '') {
+        return cyberAtlasItemText('riskPath', item?.id || '', field, cyberAtlasPhraseText(fallback));
+    }
+
+    function cyberAtlasCoverageText(item, field, fallback = '') {
+        return cyberAtlasItemText('coverage', item?.id || '', field, cyberAtlasPhraseText(fallback));
+    }
+
+    function cyberAtlasTicketText(item, field, fallback = '') {
+        const id = String(item?.id || '');
+        const recommendationId = id.replace(/^cyberatlas-remediate-/, '');
+        if (recommendationId !== id) {
+            const mappedField = {
+                title: 'title',
+                summary: 'description',
+                implementation: 'action',
+                implementation_prompt: 'action',
+                acceptance_criteria: 'validation',
+                validation: 'validation',
+            }[field] || field;
+            return cyberAtlasRecommendationText({ id: recommendationId }, mappedField, cyberAtlasPhraseText(fallback));
+        }
+        const ownerId = id.replace(/^cyberatlas-owner-/, '');
+        if (ownerId !== id) {
+            const mappedField = {
+                title: 'title',
+                summary: 'why',
+                why: 'why',
+                acceptance_criteria: 'validation',
+                validation: 'validation',
+            }[field] || field;
+            if (field === 'implementation' || field === 'implementation_prompt') {
+                return cyberAtlasPhraseText(fallback);
+            }
+            return cyberAtlasOwnerText({ id: ownerId }, mappedField, fallback);
+        }
+        return cyberAtlasPhraseText(fallback);
+    }
+
+    function cyberAtlasStatusValueLabel(value) {
+        const key = cyberAtlasI18nKey(value);
+        if (!key) return '';
+        return cyberAtlasText(`cyberatlas.value_${key}`, value);
+    }
+
+    function cyberAtlasCategoryLabel(value) {
+        const key = cyberAtlasI18nKey(value);
+        if (!key) return '';
+        return cyberAtlasText(`cyberatlas.category_${key}`, value);
+    }
+
+    function cyberAtlasScoreLabel(score) {
+        const key = cyberAtlasI18nKey(score?.id || score?.label || '');
+        return cyberAtlasText(`cyberatlas.scoreLabel_${key}`, score?.label || score?.id || 'Score');
+    }
+
+    function cyberAtlasRiskLabel(value) {
+        const key = cyberAtlasI18nKey(value || 'unknown');
+        return cyberAtlasText(`cyberatlas.risk_${key}`, value || cyberAtlasText('cyberatlas.statusUnknown', 'Unknown'));
+    }
+
+    function cyberAtlasBlockingRiskSummary(summary = {}) {
+        const blockingRisk = summary.blocking_risk || {};
+        if (blockingRisk.primary_finding_id) {
+            return cyberAtlasFindingText({ id: blockingRisk.primary_finding_id }, 'diagnostic', blockingRisk.summary || '');
+        }
+        return blockingRisk.summary || summary.top_risk || cyberAtlasText('cyberatlas.noBlockingRisk', 'No blocking cyber exposure was detected in the sampled evidence.');
+    }
+
+    function cyberAtlasProviderName(provider) {
+        const key = cyberAtlasI18nKey(provider?.id || provider?.name || '');
+        return cyberAtlasText(`cyberatlas.provider_${key}_name`, provider?.name || provider?.id || 'Provider');
+    }
+
+    function cyberAtlasProviderDetail(provider) {
+        const key = cyberAtlasI18nKey(provider?.id || provider?.name || '');
+        return cyberAtlasText(
+            `cyberatlas.provider_${key}_detail`,
+            provider?.detail || cyberAtlasText('cyberatlas.providerSafeEvidence', 'Defensive HTTP evidence is available.')
+        );
+    }
+
+    function cyberAtlasEvidenceText(item, evidence = '') {
+        const raw = String(evidence || '').trim();
+        if (!raw) return '';
+        const findingKey = cyberAtlasCanonicalFindingKey(item?.id || '');
+        const exactKey = cyberAtlasI18nKey(raw);
+        const translated = cyberAtlasText(`cyberatlas.evidence_${findingKey}_${exactKey}`, '');
+        if (translated) return translated;
+        const globalTranslated = cyberAtlasText(`cyberatlas.evidence_${exactKey}`, '');
+        if (globalTranslated) return globalTranslated;
+        const phraseTranslated = cyberAtlasPhraseText(raw);
+        if (phraseTranslated && phraseTranslated !== raw) return phraseTranslated;
+        const highCounts = raw.match(/^(\d+)\s+critical,\s+(\d+)\s+high finding\(s\)\.$/i);
+        if (highCounts) {
+            return cyberAtlasText('cyberatlas.evidenceCriticalHighCounts', '{critical} critique(s), {high} élevé(s).', {
+                critical: highCounts[1],
+                high: highCounts[2],
+            });
+        }
+        const valueSignal = raw.match(/^(TLS available|HSTS present|CSP present|Rate-limit visible|security\.txt reachable|WAF signal|Rate-limit signal|Realtime public|GraphQL public|Rate-limit detected):\s*(true|false)$/i);
+        if (valueSignal) {
+            return cyberAtlasText(`cyberatlas.evidenceSignal_${cyberAtlasI18nKey(valueSignal[1])}`, raw, {
+                value: cyberAtlasBoolLabel(/^true$/i.test(valueSignal[2])),
+            });
+        }
+        const countSignal = raw.match(/^(Security headers missing|Auth surface signals|Auth-protected endpoint signals|Pages setting cookies|OpenAPI endpoints|Discovered endpoint signals|Sensitive-looking public endpoints|State-changing operations without declared security|API references in frontend|Private backend references|Source map references|Reachable source maps|Reachable exposure probes|Sensitive exposure probes|Public sensitive endpoint signals|OpenAPI operations without declared security|Source maps|Private backends|Third-party scripts without SRI):\s*(.+)$/i);
+        if (countSignal) {
+            return cyberAtlasText(`cyberatlas.evidenceSignal_${cyberAtlasI18nKey(countSignal[1])}`, raw, {
+                value: countSignal[2],
+            });
+        }
+        const protocolSignal = raw.match(/^Protocol:\s*(.+)$/i);
+        if (protocolSignal) {
+            return cyberAtlasText('cyberatlas.evidenceSignal_protocol', 'Protocole : {value}', {
+                value: protocolSignal[1],
+            });
+        }
+        const missingHeaders = raw.match(/^(\d+)\s+security header\(s\) missing\.$/i);
+        if (missingHeaders) {
+            return cyberAtlasText('cyberatlas.evidenceSignal_security_headers_missing', '{value} header(s) sécurité manquant(s).', {
+                value: missingHeaders[1],
+            });
+        }
+        const cdnSignal = raw.match(/^CDN signals:\s*(.+)$/i);
+        if (cdnSignal) {
+            return cyberAtlasText('cyberatlas.evidenceSignal_cdn_signals', 'Signaux CDN : {value}', {
+                value: cdnSignal[1] === 'none' ? cyberAtlasNoneLabel() : cdnSignal[1],
+            });
+        }
+        if (/^CyberAtlas public mode intentionally avoids exploit, brute-force, and stress behavior\.$/i.test(raw)) {
+            return cyberAtlasText('cyberatlas.evidencePublicModeSafe', 'Le mode public CyberAtlas évite volontairement exploitation, brute force et tests de charge.');
+        }
+        return raw
+            .replace(/\bConfirmed\b/g, cyberAtlasConfidenceLabel('confirmed'))
+            .replace(/\bStrong signal\b/g, cyberAtlasConfidenceLabel('strong_signal'))
+            .replace(/\bEstimated\b/g, cyberAtlasConfidenceLabel('estimated'))
+            .replace(/\bpublic\b/g, cyberAtlasStatusValueLabel('public') || 'public')
+            .replace(/\babsent\b/g, cyberAtlasText('cyberatlas.absent', 'absent'));
     }
 
     function cyberAtlasSurfaceStatusLabel(value) {
@@ -767,10 +958,10 @@
                 ${cyberAtlasProviders.map(provider => `
                     <div class="signalatlas-owner-card">
                         <div class="signalatlas-owner-card-top">
-                            <span class="signalatlas-owner-name">${cyberAtlasEscape(provider.name || provider.id || 'Provider')}</span>
+                            <span class="signalatlas-owner-name">${cyberAtlasEscape(cyberAtlasProviderName(provider))}</span>
                             <span class="signalatlas-tag is-good">${cyberAtlasEscape(cyberAtlasStatusLabel(provider.status || 'configured'))}</span>
                         </div>
-                        <div class="signalatlas-owner-note">${cyberAtlasEscape(provider.detail || cyberAtlasText('cyberatlas.providerSafeEvidence', 'Defensive HTTP evidence is available.'))}</div>
+                        <div class="signalatlas-owner-note">${cyberAtlasEscape(cyberAtlasProviderDetail(provider))}</div>
                     </div>
                 `).join('')}
             </section>
@@ -846,7 +1037,7 @@
         if (!scores.length) return '';
         return scores.map(score => `
             <div class="signalatlas-score-card ${cyberAtlasScoreTone(score.score)}">
-                <div class="signalatlas-score-label">${cyberAtlasEscape(score.label || score.id || 'Score')}</div>
+                <div class="signalatlas-score-label">${cyberAtlasEscape(cyberAtlasScoreLabel(score))}</div>
                 <div class="signalatlas-score-value">${cyberAtlasEscape(String(score.score ?? '--'))}</div>
                 <div class="signalatlas-score-meta">${cyberAtlasEscape(cyberAtlasConfidenceLabel(score.confidence || ''))}</div>
             </div>
@@ -858,30 +1049,26 @@
         if (!items.length) {
             return `<div class="signalatlas-empty-panel">${cyberAtlasEscape(cyberAtlasText('cyberatlas.noFindings', 'No blocking cyber finding was detected in the sampled evidence.'))}</div>`;
         }
+        if (typeof renderAuditFindingCards === 'function') {
+            return renderAuditFindingCards(items, item => ({
+                title: cyberAtlasFindingText(item, 'title', item.title || item.id || cyberAtlasText('cyberatlas.findingFallback', 'Finding')),
+                summary: cyberAtlasFindingText(item, 'diagnostic', item.diagnostic || item.relationship_summary || ''),
+                fix: cyberAtlasFindingText(item, 'recommended_fix', item.recommended_fix || ''),
+                severity: item.severity,
+                severityLabel: cyberAtlasSeverityLabel(item.severity || 'info'),
+                severityTone: cyberAtlasSeverityTone(item.severity),
+                meta: [
+                    cyberAtlasCategoryLabel(item.category || item.bucket || ''),
+                    cyberAtlasConfidenceLabel(item.confidence || ''),
+                    item.scope || '',
+                ],
+                evidence: (item.evidence || []).slice(0, 3).map(evidence => cyberAtlasEvidenceText(item, evidence)),
+            }), '', limit);
+        }
         return items.map(item => `
             <article class="signalatlas-finding-card">
-                <div class="signalatlas-finding-top">
-                    <div>
-                        <div class="signalatlas-finding-title">${cyberAtlasEscape(item.title || item.id || 'Finding')}</div>
-                        <div class="signalatlas-finding-copy">${cyberAtlasEscape(item.diagnostic || item.relationship_summary || '')}</div>
-                    </div>
-                    <span class="signalatlas-tag ${cyberAtlasSeverityTone(item.severity)}">${cyberAtlasEscape(cyberAtlasSeverityLabel(item.severity || 'info'))}</span>
-                </div>
-                <div class="signalatlas-mini-finding-copy">${cyberAtlasEscape(item.recommended_fix || '')}</div>
-                <div class="signalatlas-finding-meta">
-                    <span>${cyberAtlasEscape(item.category || item.bucket || '')}</span>
-                    <span>${cyberAtlasEscape(cyberAtlasConfidenceLabel(item.confidence || ''))}</span>
-                    <span>${cyberAtlasEscape(item.scope || '')}</span>
-                </div>
-                ${(item.evidence || []).length ? `
-                    <div class="cyberatlas-evidence-list">
-                        ${(item.evidence || []).slice(0, 3).map(evidence => `
-                            <div class="cyberatlas-evidence-card">
-                                <div class="cyberatlas-evidence-meta">${cyberAtlasEscape(evidence)}</div>
-                            </div>
-                        `).join('')}
-                    </div>
-                ` : ''}
+                <div class="signalatlas-finding-title">${cyberAtlasEscape(cyberAtlasFindingText(item, 'title', item.title || item.id || 'Finding'))}</div>
+                <div class="signalatlas-finding-copy">${cyberAtlasEscape(cyberAtlasFindingText(item, 'diagnostic', item.diagnostic || item.relationship_summary || ''))}</div>
             </article>
         `).join('');
     }
@@ -891,28 +1078,25 @@
         if (!items.length) {
             return `<div class="signalatlas-empty-panel">${cyberAtlasEscape(cyberAtlasText('cyberatlas.noActionPlan', 'No action plan is available yet.'))}</div>`;
         }
-        return items.map(item => `
-            <article class="signalatlas-finding-card cyberatlas-action-card">
-                <div class="signalatlas-finding-top">
-                    <div>
-                        <div class="signalatlas-finding-title">${cyberAtlasEscape(item.order ? `${item.order}. ${item.title || item.id || ''}` : (item.title || item.id || ''))}</div>
-                        <div class="signalatlas-finding-copy">${cyberAtlasEscape(item.description || '')}</div>
-                    </div>
-                    <span class="signalatlas-tag ${cyberAtlasSeverityTone(item.priority)}">${cyberAtlasEscape(cyberAtlasSeverityLabel(item.priority || 'low'))}</span>
-                </div>
-                <div class="signalatlas-mini-finding-copy"><strong>${cyberAtlasEscape(cyberAtlasText('cyberatlas.action', 'Action'))}:</strong> ${cyberAtlasEscape(item.action || '')}</div>
-                <div class="signalatlas-mini-finding-copy"><strong>${cyberAtlasEscape(cyberAtlasText('cyberatlas.validation', 'Validation'))}:</strong> ${cyberAtlasEscape(item.validation || '')}</div>
-                ${(item.evidence || []).length ? `
-                    <div class="cyberatlas-evidence-list">
-                        ${(item.evidence || []).slice(0, 3).map(evidence => `
-                            <div class="cyberatlas-evidence-card">
-                                <div class="cyberatlas-evidence-meta">${cyberAtlasEscape(evidence)}</div>
-                            </div>
-                        `).join('')}
-                    </div>
-                ` : ''}
-            </article>
-        `).join('');
+        if (typeof renderAuditFindingCards === 'function') {
+            return renderAuditFindingCards(items, item => {
+                const title = cyberAtlasRecommendationText(item, 'title', item.title || item.id || '');
+                return {
+                    title: item.order ? `${item.order}. ${title}` : title,
+                    summary: cyberAtlasRecommendationText(item, 'description', item.description || ''),
+                    severity: item.priority,
+                    severityLabel: cyberAtlasSeverityLabel(item.priority || 'low'),
+                    severityTone: cyberAtlasSeverityTone(item.priority),
+                    className: 'cyberatlas-action-card',
+                    evidence: (item.evidence || []).slice(0, 3).map(evidence => cyberAtlasEvidenceText(item, evidence)),
+                    extraHtml: `
+                        <div class="signalatlas-mini-finding-copy"><strong>${cyberAtlasEscape(cyberAtlasText('cyberatlas.action', 'Action'))}:</strong> ${cyberAtlasEscape(cyberAtlasRecommendationText(item, 'action', item.action || ''))}</div>
+                        <div class="signalatlas-mini-finding-copy"><strong>${cyberAtlasEscape(cyberAtlasText('cyberatlas.validation', 'Validation'))}:</strong> ${cyberAtlasEscape(cyberAtlasRecommendationText(item, 'validation', item.validation || ''))}</div>
+                    `,
+                };
+            }, '', limit);
+        }
+        return items.map(item => `<article class="signalatlas-finding-card cyberatlas-action-card">${cyberAtlasEscape(cyberAtlasRecommendationText(item, 'title', item.title || item.id || ''))}</article>`).join('');
     }
 
     function renderCyberAtlasSurfaceMatrix(audit) {
@@ -925,13 +1109,13 @@
                 ${items.map(item => `
                     <article class="cyberatlas-surface-card ${cyberAtlasSurfaceStatusTone(item.status)}">
                         <div class="cyberatlas-surface-top">
-                            <strong>${cyberAtlasEscape(item.label || item.id || '')}</strong>
+                            <strong>${cyberAtlasEscape(cyberAtlasPhraseText(item.label || item.id || ''))}</strong>
                             <span class="signalatlas-tag ${cyberAtlasSurfaceStatusTone(item.status)}">${cyberAtlasEscape(cyberAtlasSurfaceStatusLabel(item.status))}</span>
                         </div>
                         <div class="cyberatlas-surface-signals">
-                            ${(item.signals || []).slice(0, 4).map(signal => `<span>${cyberAtlasEscape(signal)}</span>`).join('')}
+                            ${(item.signals || []).slice(0, 4).map(signal => `<span>${cyberAtlasEscape(cyberAtlasEvidenceText(item, signal))}</span>`).join('')}
                         </div>
-                        <p>${cyberAtlasEscape(item.next_action || '')}</p>
+                        <p>${cyberAtlasEscape(cyberAtlasPhraseText(item.next_action || ''))}</p>
                     </article>
                 `).join('')}
             </div>
@@ -949,25 +1133,25 @@
             <article class="signalatlas-finding-card cyberatlas-owner-check-card">
                 <div class="signalatlas-finding-top">
                     <div>
-                        <div class="signalatlas-finding-title">${cyberAtlasEscape(item.title || item.id || '')}</div>
-                        <div class="signalatlas-finding-copy">${cyberAtlasEscape(item.why || '')}</div>
+                        <div class="signalatlas-finding-title">${cyberAtlasEscape(cyberAtlasOwnerText(item, 'title', item.title || item.id || ''))}</div>
+                        <div class="signalatlas-finding-copy">${cyberAtlasEscape(cyberAtlasOwnerText(item, 'why', item.why || ''))}</div>
                     </div>
                     <span class="signalatlas-tag ${cyberAtlasSeverityTone(item.priority)}">${cyberAtlasEscape(cyberAtlasSeverityLabel(item.priority || 'low'))}</span>
                 </div>
                 <div class="signalatlas-finding-meta">
-                    <span>${cyberAtlasEscape(item.category || '')}</span>
+                    <span>${cyberAtlasEscape(cyberAtlasCategoryLabel(item.category || '') || cyberAtlasPhraseText(item.category || ''))}</span>
                     <span>${cyberAtlasEscape(cyberAtlasText('cyberatlas.ownerModeRequired', 'Owner mode required'))}</span>
                 </div>
                 ${(item.safe_steps || []).length ? `
                     <div class="cyberatlas-evidence-list">
                         ${(item.safe_steps || []).slice(0, 4).map(step => `
                             <div class="cyberatlas-evidence-card">
-                                <div class="cyberatlas-evidence-meta">${cyberAtlasEscape(step)}</div>
+                                <div class="cyberatlas-evidence-meta">${cyberAtlasEscape(cyberAtlasPhraseText(step))}</div>
                             </div>
                         `).join('')}
                     </div>
                 ` : ''}
-                <div class="signalatlas-mini-finding-copy"><strong>${cyberAtlasEscape(cyberAtlasText('cyberatlas.validation', 'Validation'))}:</strong> ${cyberAtlasEscape(item.validation || '')}</div>
+                <div class="signalatlas-mini-finding-copy"><strong>${cyberAtlasEscape(cyberAtlasText('cyberatlas.validation', 'Validation'))}:</strong> ${cyberAtlasEscape(cyberAtlasOwnerText(item, 'validation', item.validation || ''))}</div>
             </article>
         `).join('');
     }
@@ -983,18 +1167,18 @@
             <article class="signalatlas-finding-card cyberatlas-risk-path-card">
                 <div class="signalatlas-finding-top">
                     <div>
-                        <div class="signalatlas-finding-title">${cyberAtlasEscape(item.title || item.id || '')}</div>
+                        <div class="signalatlas-finding-title">${cyberAtlasEscape(cyberAtlasRiskPathText(item, 'title', item.title || item.id || ''))}</div>
                     </div>
                     <span class="signalatlas-tag ${cyberAtlasSeverityTone(item.severity)}">${cyberAtlasEscape(cyberAtlasSeverityLabel(item.severity || 'medium'))}</span>
                 </div>
                 <div class="cyberatlas-risk-path-columns">
                     <div>
                         <div class="signalatlas-mini-finding-title">${cyberAtlasEscape(cyberAtlasText('cyberatlas.riskChain', 'Risk chain'))}</div>
-                        ${(item.chain || []).map(link => `<div class="cyberatlas-path-step">${cyberAtlasEscape(link)}</div>`).join('')}
+                        ${(item.chain || []).map(link => `<div class="cyberatlas-path-step">${cyberAtlasEscape(cyberAtlasPhraseText(link))}</div>`).join('')}
                     </div>
                     <div>
                         <div class="signalatlas-mini-finding-title">${cyberAtlasEscape(cyberAtlasText('cyberatlas.breakpoints', 'Breakpoints'))}</div>
-                        ${(item.breakpoints || []).map(link => `<div class="cyberatlas-path-step is-break">${cyberAtlasEscape(link)}</div>`).join('')}
+                        ${(item.breakpoints || []).map(link => `<div class="cyberatlas-path-step is-break">${cyberAtlasEscape(cyberAtlasPhraseText(link))}</div>`).join('')}
                     </div>
                 </div>
             </article>
@@ -1018,17 +1202,17 @@
                 ${checks.map(item => `
                     <article class="cyberatlas-surface-card ${item.status === 'covered' ? 'is-good' : 'is-warn'}">
                         <div class="cyberatlas-surface-top">
-                            <strong>${cyberAtlasEscape(item.label || item.id || '')}</strong>
-                            <span class="signalatlas-tag ${item.status === 'covered' ? 'is-good' : 'is-warn'}">${cyberAtlasEscape(item.status || '')}</span>
+                            <strong>${cyberAtlasEscape(cyberAtlasCoverageText(item, 'label', item.label || item.id || ''))}</strong>
+                            <span class="signalatlas-tag ${item.status === 'covered' ? 'is-good' : 'is-warn'}">${cyberAtlasEscape(cyberAtlasStatusValueLabel(item.status || ''))}</span>
                         </div>
                         <div class="cyberatlas-surface-signals">
                             <span>${cyberAtlasEscape(cyberAtlasText('cyberatlas.evidenceCount', 'Evidence count'))}: ${cyberAtlasEscape(String(item.evidence_count || 0))}</span>
-                            <span>${cyberAtlasEscape(item.limit || '')}</span>
+                            <span>${cyberAtlasEscape(cyberAtlasCoverageText(item, 'limit', item.limit || ''))}</span>
                         </div>
                     </article>
                 `).join('')}
             </div>
-            <div class="signalatlas-panel-copy">${cyberAtlasEscape(coverage.public_mode_limit || '')}</div>
+            <div class="signalatlas-panel-copy">${cyberAtlasEscape(cyberAtlasPhraseText(coverage.public_mode_limit || ''))}</div>
         `;
     }
 
@@ -1047,7 +1231,7 @@
                         <div class="cyberatlas-standard-top">
                             <div>
                                 <div class="cyberatlas-standard-ref">${cyberAtlasEscape(item.framework || '')} ${cyberAtlasEscape(item.id || '')}</div>
-                                <strong>${cyberAtlasEscape(item.label || '')}</strong>
+                                <strong>${cyberAtlasEscape(cyberAtlasPhraseText(item.label || ''))}</strong>
                             </div>
                             <span class="signalatlas-tag ${cyberAtlasStandardStatusTone(item.status)}">${cyberAtlasEscape(cyberAtlasStandardStatusLabel(item.status))}</span>
                         </div>
@@ -1056,7 +1240,7 @@
                             <span>${cyberAtlasEscape(cyberAtlasText('cyberatlas.findingCount', 'Finding count'))}: ${cyberAtlasEscape(String(item.finding_count || 0))}</span>
                             ${(item.finding_ids || []).length ? `<span>${cyberAtlasEscape((item.finding_ids || []).slice(0, 5).join(', '))}</span>` : ''}
                         </div>
-                        <p>${cyberAtlasEscape(item.action || '')}</p>
+                        <p>${cyberAtlasEscape(cyberAtlasPhraseText(item.action || ''))}</p>
                     </article>
                 `).join('')}
             </div>
@@ -1074,23 +1258,23 @@
             <article class="signalatlas-finding-card cyberatlas-ticket-card">
                 <div class="signalatlas-finding-top">
                     <div>
-                        <div class="signalatlas-finding-title">${cyberAtlasEscape(item.title || item.id || '')}</div>
-                        <div class="signalatlas-finding-copy">${cyberAtlasEscape(item.summary || '')}</div>
+                        <div class="signalatlas-finding-title">${cyberAtlasEscape(cyberAtlasTicketText(item, 'title', item.title || item.id || ''))}</div>
+                        <div class="signalatlas-finding-copy">${cyberAtlasEscape(cyberAtlasTicketText(item, 'summary', item.summary || ''))}</div>
                     </div>
                     <span class="signalatlas-tag ${cyberAtlasSeverityTone(item.priority)}">${cyberAtlasEscape(cyberAtlasSeverityLabel(item.priority || 'medium'))}</span>
                 </div>
                 <div class="signalatlas-finding-meta">
-                    <span>${cyberAtlasEscape(item.type || '')}</span>
+                    <span>${cyberAtlasEscape(cyberAtlasStatusValueLabel(item.type || '') || cyberAtlasPhraseText(item.type || ''))}</span>
                     <span>${cyberAtlasEscape(cyberAtlasText('cyberatlas.effort', 'Effort'))}: ${cyberAtlasEscape(item.effort || 'M')}</span>
                     ${item.owner_mode_required ? `<span>${cyberAtlasEscape(cyberAtlasText('cyberatlas.ownerModeRequired', 'Owner mode required'))}</span>` : ''}
                 </div>
-                <div class="signalatlas-mini-finding-copy"><strong>${cyberAtlasEscape(cyberAtlasText('cyberatlas.implementationPrompt', 'Implementation prompt'))}:</strong> ${cyberAtlasEscape(item.implementation_prompt || item.implementation || '')}</div>
-                <div class="signalatlas-mini-finding-copy"><strong>${cyberAtlasEscape(cyberAtlasText('cyberatlas.acceptanceCriteria', 'Acceptance criteria'))}:</strong> ${cyberAtlasEscape(item.acceptance_criteria || '')}</div>
+                <div class="signalatlas-mini-finding-copy"><strong>${cyberAtlasEscape(cyberAtlasText('cyberatlas.implementationPrompt', 'Implementation prompt'))}:</strong> ${cyberAtlasEscape(cyberAtlasTicketText(item, 'implementation_prompt', item.implementation_prompt || item.implementation || ''))}</div>
+                <div class="signalatlas-mini-finding-copy"><strong>${cyberAtlasEscape(cyberAtlasText('cyberatlas.acceptanceCriteria', 'Acceptance criteria'))}:</strong> ${cyberAtlasEscape(cyberAtlasTicketText(item, 'acceptance_criteria', item.acceptance_criteria || ''))}</div>
                 ${(item.validation_steps || []).length ? `
                     <div class="cyberatlas-evidence-list">
                         ${(item.validation_steps || []).slice(0, 4).map(step => `
                             <div class="cyberatlas-evidence-card">
-                                <div class="cyberatlas-evidence-meta">${cyberAtlasEscape(step)}</div>
+                                <div class="cyberatlas-evidence-meta">${cyberAtlasEscape(cyberAtlasPhraseText(step))}</div>
                             </div>
                         `).join('')}
                     </div>
@@ -1117,12 +1301,12 @@
                 <div class="signalatlas-metric-card"><span>${cyberAtlasEscape(cyberAtlasText('cyberatlas.graphNodes', 'Graph nodes'))}</span><strong>${cyberAtlasEscape(String(nodes.length))}</strong></div>
                 <div class="signalatlas-metric-card"><span>${cyberAtlasEscape(cyberAtlasText('cyberatlas.graphEdges', 'Graph edges'))}</span><strong>${cyberAtlasEscape(String(edges.length))}</strong></div>
             </div>
-            ${graph.note ? `<div class="signalatlas-panel-copy">${cyberAtlasEscape(graph.note)}</div>` : ''}
+            ${graph.note ? `<div class="signalatlas-panel-copy">${cyberAtlasEscape(cyberAtlasPhraseText(graph.note))}</div>` : ''}
             <div class="cyberatlas-graph-grid">
                 ${nodes.slice(0, 20).map(node => `
                     <div class="cyberatlas-graph-node ${node.kind === 'finding' ? cyberAtlasSeverityTone(node.severity) : ''}">
-                        <strong>${cyberAtlasEscape(node.label || node.id || '')}</strong>
-                        <span>${cyberAtlasEscape(node.kind || '')} · ${cyberAtlasEscape(cyberAtlasText('cyberatlas.weight', 'weight'))} ${cyberAtlasEscape(String(node.weight ?? 0))}</span>
+                        <strong>${cyberAtlasEscape(node.kind === 'finding' ? cyberAtlasFindingText({ id: String(node.id || '').replace(/^finding:/, '') }, 'title', node.label || node.id || '') : cyberAtlasPhraseText(node.label || node.id || ''))}</strong>
+                        <span>${cyberAtlasEscape(cyberAtlasStatusValueLabel(node.kind || '') || cyberAtlasPhraseText(node.kind || ''))} · ${cyberAtlasEscape(cyberAtlasText('cyberatlas.weight', 'weight'))} ${cyberAtlasEscape(String(node.weight ?? 0))}</span>
                     </div>
                 `).join('')}
             </div>
@@ -1131,7 +1315,7 @@
                     ${edges.slice(0, 24).map(edge => `
                         <div class="cyberatlas-evidence-card">
                             <div class="cyberatlas-evidence-title">${cyberAtlasEscape(edge.from || '')} -> ${cyberAtlasEscape(edge.to || '')}</div>
-                            <div class="cyberatlas-evidence-meta">${cyberAtlasEscape(edge.label || '')}</div>
+                            <div class="cyberatlas-evidence-meta">${cyberAtlasEscape(cyberAtlasStatusValueLabel(edge.label || '') || cyberAtlasPhraseText(edge.label || ''))}</div>
                         </div>
                     `).join('')}
                 </div>
@@ -1180,14 +1364,14 @@
                             <div class="signalatlas-panel-title">${cyberAtlasEscape(cyberAtlasText('cyberatlas.executiveSummary', 'Defensive security posture'))}</div>
                         </div>
                         <div class="signalatlas-summary-badges">
-                            <span class="signalatlas-inline-chip">${cyberAtlasEscape(cyberAtlasText('cyberatlas.riskLevel', 'Risk'))}: ${cyberAtlasEscape(summary.risk_level || 'Unknown')}</span>
+                            <span class="signalatlas-inline-chip">${cyberAtlasEscape(cyberAtlasText('cyberatlas.riskLevel', 'Risk'))}: ${cyberAtlasEscape(cyberAtlasRiskLabel(summary.risk_level || 'unknown'))}</span>
                             <span class="signalatlas-inline-chip">${cyberAtlasEscape(cyberAtlasModeLabel(summary.mode || audit?.target?.mode || 'public'))}</span>
                         </div>
                     </div>
                     <div class="signalatlas-summary-grid">
                         <div class="signalatlas-score-wrap">${ring}</div>
                         <div class="signalatlas-summary-copy">
-                            <p>${cyberAtlasEscape(blockingRisk.summary || summary.top_risk || cyberAtlasText('cyberatlas.noBlockingRisk', 'No blocking cyber exposure was detected in the sampled evidence.'))}</p>
+                            <p>${cyberAtlasEscape(cyberAtlasBlockingRiskSummary(summary))}</p>
                             <div class="signalatlas-metric-grid">
                                 <div class="signalatlas-metric-card"><span>${cyberAtlasEscape(cyberAtlasText('cyberatlas.securityGrade', 'Grade'))}</span><strong>${cyberAtlasEscape(summary.security_grade || '--')}</strong></div>
                                 <div class="signalatlas-metric-card"><span>${cyberAtlasEscape(cyberAtlasText('cyberatlas.pagesSampled', 'Pages'))}</span><strong>${cyberAtlasEscape(String(summary.pages_crawled || 0))}</strong></div>
@@ -1328,8 +1512,8 @@
                     ${discovered.length ? discovered.slice(0, 80).map(endpoint => `
                         <div class="signalatlas-mini-finding-card">
                             <div class="signalatlas-mini-finding-title">${cyberAtlasEscape(endpoint.path || endpoint.url || '')}</div>
-                            <div class="signalatlas-mini-finding-copy">HTTP ${cyberAtlasEscape(String(endpoint.status_code ?? 'n/a'))} · ${cyberAtlasEscape(endpoint.response_type || endpoint.content_type || '')} · ${cyberAtlasEscape(endpoint.category || '')} · ${cyberAtlasEscape(endpoint.requires_auth ? cyberAtlasText('cyberatlas.authProtected', 'auth protected') : cyberAtlasText('cyberatlas.publicMode', 'public'))}</div>
-                            ${(endpoint.risk_reasons || []).length ? `<div class="signalatlas-finding-meta">${(endpoint.risk_reasons || []).slice(0, 4).map(reason => `<span>${cyberAtlasEscape(reason)}</span>`).join('')}</div>` : ''}
+                            <div class="signalatlas-mini-finding-copy">HTTP ${cyberAtlasEscape(String(endpoint.status_code ?? 'n/a'))} · ${cyberAtlasEscape(endpoint.response_type || endpoint.content_type || '')} · ${cyberAtlasEscape(cyberAtlasCategoryLabel(endpoint.category || '') || cyberAtlasPhraseText(endpoint.category || ''))} · ${cyberAtlasEscape(endpoint.requires_auth ? cyberAtlasText('cyberatlas.authProtected', 'auth protected') : cyberAtlasText('cyberatlas.publicMode', 'public'))}</div>
+                            ${(endpoint.risk_reasons || []).length ? `<div class="signalatlas-finding-meta">${(endpoint.risk_reasons || []).slice(0, 4).map(reason => `<span>${cyberAtlasEscape(cyberAtlasPhraseText(reason))}</span>`).join('')}</div>` : ''}
                         </div>
                     `).join('') : `<div class="signalatlas-empty-panel">${cyberAtlasEscape(cyberAtlasText('cyberatlas.noApiInventory', 'No additional API inventory signal was found.'))}</div>`}
                 </div>
@@ -1651,6 +1835,7 @@
         const payload = {
             target: String(cyberAtlasDraft.target || '').trim(),
             mode: cyberAtlasDraft.mode || 'public',
+            locale: cyberAtlasCurrentLocale(),
             options: {
                 max_pages: cyberAtlasNormalizeBudget(cyberAtlasDraft.max_pages, CYBERATLAS_DEFAULT_PAGE_BUDGET, CYBERATLAS_MAX_PAGE_BUDGET),
                 max_endpoints: cyberAtlasNormalizeBudget(cyberAtlasDraft.max_endpoints, CYBERATLAS_DEFAULT_ENDPOINT_BUDGET, CYBERATLAS_MAX_ENDPOINT_BUDGET),
@@ -1660,6 +1845,7 @@
                 model: cyberAtlasDraft.model || cyberAtlasCurrentChatModel(),
                 preset: cyberAtlasDraft.preset || 'balanced',
                 level: cyberAtlasDraft.level || 'full_expert_analysis',
+                locale: cyberAtlasCurrentLocale(),
             },
         };
         try {
@@ -1735,6 +1921,7 @@
             model: cyberAtlasDraft.model || cyberAtlasCurrentChatModel(),
             preset: cyberAtlasDraft.preset || 'balanced',
             level: cyberAtlasDraft.level || 'full_expert_analysis',
+            locale: cyberAtlasCurrentLocale(),
         });
         if (!result.ok) {
             Toast?.error?.(result.data?.error || cyberAtlasText('cyberatlas.rerunFailed', 'Unable to re-run the AI interpretation.'));
@@ -1754,6 +1941,7 @@
             right_model: cyberAtlasDraft.compare_model || fallbackCyberAtlasCompareModel(),
             preset: cyberAtlasDraft.preset || 'expert',
             level: cyberAtlasDraft.level || 'full_expert_analysis',
+            locale: cyberAtlasCurrentLocale(),
         });
         if (!result.ok) {
             Toast?.error?.(result.data?.error || cyberAtlasText('cyberatlas.compareFailed', 'Unable to compare AI outputs.'));
