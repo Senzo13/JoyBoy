@@ -406,6 +406,12 @@ def terminal_chat():
                     elif tool_name == 'read_file':
                         result_data['tool_result']['content'] = data.get('content', '')[:3000]
                         result_data['tool_result']['lines'] = data.get('lines', 0)
+                        result_data['tool_result']['path'] = data.get('path', '')
+                        result_data['tool_result']['already_read'] = data.get('already_read', False)
+                        if data.get('already_read'):
+                            result_data['tool_result']['summary'] = (
+                                f"{data.get('path', '')} déjà lu"
+                            ).strip()
                     elif tool_name in ['write_file', 'edit_file']:
                         result_data['tool_result']['bytes_written'] = data.get('bytes_written', 0)
                         result_data['tool_result']['path'] = data.get('path', '')
@@ -413,6 +419,17 @@ def terminal_chat():
                         result_data['tool_result']['size'] = data.get('size')
                         result_data['tool_result']['created'] = data.get('created')
                         result_data['tool_result']['replacements'] = data.get('replacements')
+                        result_data['tool_result']['lines_added'] = data.get('lines_added')
+                        result_data['tool_result']['lines_removed'] = data.get('lines_removed')
+                        result_data['tool_result']['line_range'] = data.get('line_range')
+                        result_data['tool_result']['diff_preview'] = data.get('diff_preview', '')[:6000]
+                        if tool_name == 'edit_file':
+                            added = int(data.get('lines_added') or 0)
+                            removed = int(data.get('lines_removed') or 0)
+                            result_data['tool_result']['summary'] = (
+                                f"{data.get('path', '')} · {data.get('replacements', 0)} remplacement(s)"
+                                f" · +{added}/-{removed}"
+                            ).strip()
                     elif tool_name == 'write_files':
                         files = data.get('files', []) if isinstance(data.get('files', []), list) else []
                         created = data.get('created', []) if isinstance(data.get('created', []), list) else []

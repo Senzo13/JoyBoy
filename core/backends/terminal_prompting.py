@@ -216,6 +216,8 @@ You have access to filesystem, search, shell, and workspace tools. Use them to c
             start_line = data.get('start_line', 1)
             end_line = data.get('end_line', 0)
             range_text = f", lines {start_line}-{end_line}" if end_line else ""
+            if data.get("already_read"):
+                return f"[RESULT read_file] Already read unchanged content ({lines} total lines{range_text}): {data.get('path', '')}"
             # Tronquer si trop long
             max_chars = max(2500, min(6500, int(self._active_context_size * 1.2)))
             if len(content) > max_chars:
@@ -230,7 +232,17 @@ You have access to filesystem, search, shell, and workspace tools. Use them to c
         elif result.tool_name == 'edit_file':
             verified = " verified" if data.get('verified') else ""
             size = f", {data.get('size')} bytes" if data.get('size') is not None else ""
-            return f"[RESULT edit_file] OK{verified} - {data.get('replacements', 0)} replacement(s): {data.get('path', '')}{size}"
+            line_range = data.get("line_range") if isinstance(data.get("line_range"), dict) else {}
+            line_text = ""
+            if line_range.get("start_line") and line_range.get("end_line"):
+                line_text = f" lines {line_range.get('start_line')}-{line_range.get('end_line')}"
+            changed = ""
+            if data.get("lines_added") is not None or data.get("lines_removed") is not None:
+                changed = f", +{int(data.get('lines_added') or 0)}/-{int(data.get('lines_removed') or 0)}"
+            return (
+                f"[RESULT edit_file] OK{verified} - {data.get('replacements', 0)} "
+                f"replacement(s): {data.get('path', '')}{line_text}{changed}{size}"
+            )
 
         elif result.tool_name == 'delete_file':
             verified = " verified" if data.get('verified') else ""

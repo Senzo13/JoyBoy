@@ -147,7 +147,8 @@ class TerminalGuardrailsMixin:
             start_line = data.get("start_line")
             end_line = data.get("end_line")
             range_text = f":{start_line}-{end_line}" if start_line and end_line else ""
-            summary["summary"] = f"{data.get('path', args.get('path', ''))}{range_text} ({data.get('lines', 0)} lines)"
+            repeated = ", already read" if data.get("already_read") else ""
+            summary["summary"] = f"{data.get('path', args.get('path', ''))}{range_text} ({data.get('lines', 0)} lines{repeated})"
         elif tool_name == "glob":
             summary["summary"] = f"{len(data.get('files', []))} file(s)"
         elif tool_name == "search":
@@ -161,7 +162,10 @@ class TerminalGuardrailsMixin:
             path = data.get("path", args.get("path", ""))
             replacements = int(data.get("replacements", 0) or 0)
             verified = ", verified" if data.get("verified") else ""
-            summary["summary"] = f"{path} ({replacements} replacement(s){verified})".strip()
+            change = ""
+            if data.get("lines_added") is not None or data.get("lines_removed") is not None:
+                change = f", +{int(data.get('lines_added') or 0)}/-{int(data.get('lines_removed') or 0)}"
+            summary["summary"] = f"{path} ({replacements} replacement(s){change}{verified})".strip()
         elif tool_name == "delete_file":
             path = data.get("path", args.get("path", ""))
             verified = ", verified" if data.get("verified") else ""

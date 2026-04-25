@@ -129,6 +129,7 @@ class TerminalBrain(
         self._mcp_tools_by_name: Dict[str, Any] = {}
         self.current_plan: Optional[ExecutionPlan] = None
         self._read_files_by_workspace = defaultdict(dict)
+        self._active_read_result_signatures: set[str] = set()
         self._active_execution_journal: List[Dict[str, Any]] = []
 
         # Protection écriture
@@ -206,7 +207,23 @@ class TerminalBrain(
                 start_line = args.get('start_line', 1)
                 result = read_file(workspace_path, path, max_lines=max_lines, start_line=start_line)
                 if result.get('success'):
-                    self._track_read_file(workspace_path, path)
+                    state = result.get("read_state") if isinstance(result, dict) else {}
+                    normalised_read_path = str(path or "").replace("\\", "/").lower()
+                    read_signature = (
+                        f"{self._workspace_key(workspace_path)}:"
+                        f"{normalised_read_path}:"
+                        f"{state.get('start_line')}:{state.get('end_line')}:{state.get('sha256')}"
+                    )
+                    if read_signature in self._active_read_result_signatures:
+                        result["already_read"] = True
+                        result["content"] = (
+                            f"(unchanged; {result.get('path', path)} lines "
+                            f"{result.get('start_line', '')}-{result.get('end_line', '')} "
+                            "were already read earlier in this run)"
+                        )
+                    else:
+                        self._active_read_result_signatures.add(read_signature)
+                    self._track_read_file(workspace_path, path, result)
                 return ToolResult(success=result.get('success', False), tool_name=tool_name, data=result)
 
             # === WRITE FILE ===
@@ -261,12 +278,24 @@ class TerminalBrain(
                     return ToolResult(success=False, tool_name=tool_name, error="Path escapes the workspace")
 
                 if os.path.exists(full_path):
-                    blocked = self._require_read_before_existing_write(workspace_path, path, full_path, tool_name)
+                    blocked = self._require_read_before_existing_write(
+                        workspace_path,
+                        path,
+                        full_path,
+                        tool_name,
+                        old_text=old_text,
+                    )
                     if blocked:
                         return blocked
                     self._create_snapshot(full_path, path)
 
-                result = edit_file(workspace_path, path, old_text, new_text)
+                result = edit_file(
+                    workspace_path,
+                    path,
+                    old_text,
+                    new_text,
+                    replace_all=bool(args.get('replace_all', False)),
+                )
                 if result.get('success'):
                     verified = self._verify_file_write(workspace_path, path)
                     result.update(verified)
@@ -541,6 +570,7 @@ class TerminalBrain(
         else:
             self.current_intent = self.detect_intent(initial_message)
         self.write_blocked = False
+        self._active_read_result_signatures = set()
         self._active_execution_journal = []
         self._reset_deferred_tools()
         self._active_promoted_tool_names.update(self._auto_promoted_deferred_tools(initial_message, []))

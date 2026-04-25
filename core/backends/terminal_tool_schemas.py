@@ -123,6 +123,10 @@ TOOLS = [
                     "new_text": {
                         "type": "string",
                         "description": "Replacement text."
+                    },
+                    "replace_all": {
+                        "type": "boolean",
+                        "description": "Replace every occurrence. Default false; prefer a unique old_text instead."
                     }
                 },
                 "required": ["path", "old_text", "new_text"]

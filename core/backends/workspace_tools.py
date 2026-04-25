@@ -2,6 +2,9 @@
 Workspace Tools - Permet à l'IA d'explorer des dossiers locaux
 Inspiré par Claude Code - outils: list_files, read_file, search, glob
 """
+import codecs
+import difflib
+import hashlib
 import os
 import re
 import fnmatch
@@ -208,6 +211,118 @@ def _coerce_int(value, default: int, min_value: int, max_value: int) -> int:
     return max(min_value, min(number, max_value))
 
 
+def _decode_text_bytes(raw: bytes) -> Tuple[str, str]:
+    if raw.startswith(codecs.BOM_UTF8):
+        return raw.decode('utf-8-sig', errors='replace'), 'utf-8-sig'
+    if raw.startswith(codecs.BOM_UTF16_LE):
+        return raw[len(codecs.BOM_UTF16_LE):].decode('utf-16-le', errors='replace'), 'utf-16-le-bom'
+    if raw.startswith(codecs.BOM_UTF16_BE):
+        return raw[len(codecs.BOM_UTF16_BE):].decode('utf-16-be', errors='replace'), 'utf-16-be-bom'
+    try:
+        return raw.decode('utf-8'), 'utf-8'
+    except UnicodeDecodeError:
+        return raw.decode('utf-8', errors='replace'), 'utf-8'
+
+
+def _read_text_with_metadata(full_path: str) -> Tuple[str, Dict]:
+    with open(full_path, 'rb') as f:
+        raw = f.read()
+    text, encoding = _decode_text_bytes(raw)
+    stat = os.stat(full_path)
+    newline = '\r\n' if '\r\n' in text else '\n'
+    return text, {
+        "encoding": encoding,
+        "newline": "crlf" if newline == '\r\n' else "lf",
+        "mtime_ns": stat.st_mtime_ns,
+        "size": stat.st_size,
+        "sha256": hashlib.sha256(raw).hexdigest(),
+    }
+
+
+def _normalise_line_endings(text: str, newline: str) -> str:
+    normalised = str(text or '').replace('\r\n', '\n').replace('\r', '\n')
+    return normalised if newline == '\n' else normalised.replace('\n', newline)
+
+
+_QUOTE_TRANSLATION = str.maketrans({
+    "“": '"',
+    "”": '"',
+    "„": '"',
+    "‘": "'",
+    "’": "'",
+    "‚": "'",
+})
+
+
+def _normalise_quotes(text: str) -> str:
+    return str(text or '').translate(_QUOTE_TRANSLATION)
+
+
+def _find_actual_old_text(content: str, old_text: str, newline: str) -> Tuple[Optional[str], int, str]:
+    candidate = _normalise_line_endings(old_text, newline)
+    index = content.find(candidate)
+    if index >= 0:
+        return candidate, index, "exact"
+
+    normalised_content = _normalise_quotes(content)
+    normalised_candidate = _normalise_quotes(candidate)
+    index = normalised_content.find(normalised_candidate)
+    if index >= 0:
+        return content[index:index + len(candidate)], index, "normalised_quotes"
+
+    return None, -1, "missing"
+
+
+def _line_span_for_slice(content: str, start_index: int, old_text: str) -> Dict[str, int]:
+    start_line = content.count('\n', 0, max(start_index, 0)) + 1
+    changed = old_text or ""
+    newline_count = changed.count('\n')
+    end_line = start_line + newline_count
+    if changed.endswith('\n') and newline_count:
+        end_line -= 1
+    return {"start_line": start_line, "end_line": max(start_line, end_line)}
+
+
+def _unified_diff(old_content: str, new_content: str, relative_path: str, max_lines: int = 140) -> Tuple[str, int, int, bool]:
+    old_lines = old_content.splitlines()
+    new_lines = new_content.splitlines()
+    diff_lines = list(difflib.unified_diff(
+        old_lines,
+        new_lines,
+        fromfile=f"a/{relative_path}",
+        tofile=f"b/{relative_path}",
+        lineterm="",
+        n=3,
+    ))
+    lines_added = sum(1 for line in diff_lines if line.startswith("+") and not line.startswith("+++"))
+    lines_removed = sum(1 for line in diff_lines if line.startswith("-") and not line.startswith("---"))
+    truncated = len(diff_lines) > max_lines
+    if truncated:
+        omitted = len(diff_lines) - max_lines
+        diff_lines = diff_lines[:max_lines] + [f"... ({omitted} diff line(s) omitted)"]
+    return "\n".join(diff_lines), lines_added, lines_removed, truncated
+
+
+def _write_text_preserving_encoding(full_path: str, content: str, encoding: str) -> None:
+    encoding = encoding or 'utf-8'
+    if encoding == 'utf-8-sig':
+        with open(full_path, 'w', encoding='utf-8-sig', newline='') as f:
+            f.write(content)
+        return
+    if encoding == 'utf-16-le-bom':
+        with open(full_path, 'wb') as f:
+            f.write(codecs.BOM_UTF16_LE)
+            f.write(content.encode('utf-16-le'))
+        return
+    if encoding == 'utf-16-be-bom':
+        with open(full_path, 'wb') as f:
+            f.write(codecs.BOM_UTF16_BE)
+            f.write(content.encode('utf-16-be'))
+        return
+    with open(full_path, 'w', encoding=encoding, newline='') as f:
+        f.write(content)
+
+
 def read_file(workspace_path: str, relative_path: str, max_lines: int = 500, start_line: int = 1) -> Dict:
     """
     Lit le contenu d'un fichier
@@ -235,15 +350,15 @@ def read_file(workspace_path: str, relative_path: str, max_lines: int = 500, sta
         max_lines = _coerce_int(max_lines, 500, 1, 2000)
         start_line = _coerce_int(start_line, 1, 1, 1_000_000)
 
-        # Lire le fichier
-        with open(full_path, 'r', encoding='utf-8', errors='replace') as f:
-            all_lines = f.readlines()
+        content, metadata = _read_text_with_metadata(full_path)
+        all_lines = content.splitlines(keepends=True)
 
         total_lines = len(all_lines)
         start_index = min(start_line - 1, total_lines)
         selected_lines = all_lines[start_index:start_index + max_lines]
         end_line = start_index + len(selected_lines)
         truncated = end_line < total_lines
+        full_read = start_index == 0 and end_line >= total_lines
 
         # Ajouter les numéros de ligne originaux
         numbered_content = ""
@@ -260,7 +375,19 @@ def read_file(workspace_path: str, relative_path: str, max_lines: int = 500, sta
             "lines": total_lines,
             "start_line": start_line,
             "end_line": end_line,
-            "truncated": truncated
+            "truncated": truncated,
+            "full_read": full_read,
+            "read_state": {
+                "mtime_ns": metadata["mtime_ns"],
+                "size": metadata["size"],
+                "sha256": metadata["sha256"],
+                "start_line": start_line,
+                "end_line": end_line,
+                "total_lines": total_lines,
+                "full_read": full_read,
+                "encoding": metadata["encoding"],
+                "newline": metadata["newline"],
+            }
         }
 
     except Exception as e:
@@ -548,11 +675,22 @@ def write_file(workspace_path: str, relative_path: str, content: str, create_dir
             if dir_path and not os.path.exists(dir_path):
                 os.makedirs(dir_path, exist_ok=True)
 
-        # Écrire le fichier
-        with open(full_path, 'w', encoding='utf-8') as f:
-            f.write(content)
+        encoding = 'utf-8'
+        newline = 'lf'
+        if not is_new and is_text_file(full_path):
+            try:
+                _, metadata = _read_text_with_metadata(full_path)
+                encoding = metadata.get("encoding", "utf-8")
+                newline = metadata.get("newline", "lf")
+                if newline == "crlf":
+                    content = _normalise_line_endings(content, '\r\n')
+            except Exception:
+                pass
 
-        bytes_written = len(content.encode('utf-8'))
+        # Écrire le fichier
+        _write_text_preserving_encoding(full_path, content, encoding)
+
+        bytes_written = os.path.getsize(full_path)
 
         print(f"[WORKSPACE] {'Created' if is_new else 'Updated'}: {relative_path} ({bytes_written} bytes)")
 
@@ -560,7 +698,9 @@ def write_file(workspace_path: str, relative_path: str, content: str, create_dir
             "success": True,
             "path": relative_path,
             "created": is_new,
-            "bytes_written": bytes_written
+            "bytes_written": bytes_written,
+            "encoding": encoding,
+            "newline": newline,
         }
 
     except Exception as e:
@@ -594,19 +734,23 @@ def edit_file(workspace_path: str, relative_path: str, old_text: str, new_text: 
         if not os.path.isfile(full_path):
             return {"success": False, "error": f"Fichier non trouvé: {relative_path}"}
 
-        # Lire le contenu actuel
-        with open(full_path, 'r', encoding='utf-8') as f:
-            content = f.read()
+        if old_text == new_text:
+            return {"success": False, "error": "old_text and new_text are identical"}
+
+        content, metadata = _read_text_with_metadata(full_path)
+        newline = '\r\n' if metadata.get("newline") == "crlf" else '\n'
+        replacement_text = _normalise_line_endings(new_text, newline)
+        actual_old_text, first_index, match_kind = _find_actual_old_text(content, old_text, newline)
 
         # Vérifier que le texte à remplacer existe
-        if old_text not in content:
+        if actual_old_text is None:
             return {
                 "success": False,
                 "error": f"Texte non trouvé dans le fichier. Assurez-vous que le texte correspond exactement (espaces, indentation, etc.)"
             }
 
         # Compter les occurrences
-        count = content.count(old_text)
+        count = content.count(actual_old_text)
 
         if count > 1 and not replace_all:
             return {
@@ -616,18 +760,17 @@ def edit_file(workspace_path: str, relative_path: str, old_text: str, new_text: 
 
         # Remplacer
         if replace_all:
-            new_content = content.replace(old_text, new_text)
+            new_content = content.replace(actual_old_text, replacement_text)
             replacements = count
         else:
-            new_content = content.replace(old_text, new_text, 1)
+            new_content = content.replace(actual_old_text, replacement_text, 1)
             replacements = 1
 
         # Écrire le fichier modifié
-        with open(full_path, 'w', encoding='utf-8') as f:
-            f.write(new_content)
+        _write_text_preserving_encoding(full_path, new_content, metadata.get("encoding", "utf-8"))
 
-        # Générer un aperçu du diff
-        diff_preview = f"- {old_text[:100]}{'...' if len(old_text) > 100 else ''}\n+ {new_text[:100]}{'...' if len(new_text) > 100 else ''}"
+        diff_preview, lines_added, lines_removed, diff_truncated = _unified_diff(content, new_content, relative_path)
+        line_range = _line_span_for_slice(content, first_index, actual_old_text)
 
         print(f"[WORKSPACE] Edited: {relative_path} ({replacements} replacement(s))")
 
@@ -635,7 +778,15 @@ def edit_file(workspace_path: str, relative_path: str, old_text: str, new_text: 
             "success": True,
             "path": relative_path,
             "replacements": replacements,
-            "diff_preview": diff_preview
+            "diff_preview": diff_preview,
+            "diff": diff_preview,
+            "diff_truncated": diff_truncated,
+            "lines_added": lines_added,
+            "lines_removed": lines_removed,
+            "line_range": line_range,
+            "match": match_kind,
+            "encoding": metadata.get("encoding", "utf-8"),
+            "newline": metadata.get("newline", "lf"),
         }
 
     except Exception as e:
