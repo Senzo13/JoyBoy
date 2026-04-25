@@ -403,15 +403,17 @@ def terminal_chat():
                 if result.get('success'):
                     if tool_name == 'list_files':
                         result_data['tool_result']['items'] = data.get('items', [])[:30]
+                        result_data['tool_result']['path'] = data.get('path', '')
+                        result_data['tool_result']['summary'] = f"{data.get('total', len(data.get('items', [])))} élément(s)"
                     elif tool_name == 'read_file':
                         result_data['tool_result']['content'] = data.get('content', '')[:3000]
                         result_data['tool_result']['lines'] = data.get('lines', 0)
                         result_data['tool_result']['path'] = data.get('path', '')
                         result_data['tool_result']['already_read'] = data.get('already_read', False)
+                        read_summary = f"{data.get('path', '')} · {data.get('lines', 0)} lines".strip(" ·")
                         if data.get('already_read'):
-                            result_data['tool_result']['summary'] = (
-                                f"{data.get('path', '')} déjà lu"
-                            ).strip()
+                            read_summary = f"{data.get('path', '')} déjà lu".strip()
+                        result_data['tool_result']['summary'] = read_summary
                     elif tool_name in ['write_file', 'edit_file']:
                         result_data['tool_result']['bytes_written'] = data.get('bytes_written', 0)
                         result_data['tool_result']['path'] = data.get('path', '')
@@ -456,10 +458,16 @@ def terminal_chat():
                     elif tool_name == 'bash':
                         result_data['tool_result']['output'] = data.get('output', '')[:2000]
                         result_data['tool_result']['return_code'] = data.get('return_code', -1)
+                        result_data['tool_result']['summary'] = f"exit {data.get('return_code', -1)}"
                     elif tool_name == 'search':
                         result_data['tool_result']['results'] = data.get('results', [])[:20]
+                        count = len(data.get('results', []) or [])
+                        result_data['tool_result']['path'] = data.get('path', '')
+                        result_data['tool_result']['summary'] = f"{count} résultat(s)"
                     elif tool_name == 'glob':
                         result_data['tool_result']['files'] = data.get('files', [])[:30]
+                        result_data['tool_result']['path'] = data.get('path', '')
+                        result_data['tool_result']['summary'] = f"{data.get('total', len(data.get('files', [])))} fichier(s)"
                     elif tool_name == 'web_search':
                         result_data['tool_result']['results'] = data.get('results', [])[:8]
                     elif tool_name == 'web_fetch':

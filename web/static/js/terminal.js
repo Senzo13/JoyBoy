@@ -1218,8 +1218,10 @@ const TERMINAL_READ_ONLY_PROGRESS_TOOLS = new Set([
 
 function shouldRevealTerminalProgressForModelCall(data = {}) {
     const iteration = Number(data.iteration || 1);
+    const toolsCount = Number(data.tools_count || 0);
     if (terminalProgressElement) return true;
-    return iteration > 1 && !isTerminalReadOnlyTurn();
+    if (iteration > 1) return true;
+    return toolsCount > 0 || !isTerminalReadOnlyTurn();
 }
 
 function shouldRevealTerminalProgressForTool(action = '', args = {}) {
@@ -1234,14 +1236,12 @@ function shouldShowTerminalToolResult(result = {}, args = {}) {
     if (!result || !result.success) return true;
     const action = result.action || result.tool_name;
     if (action === 'ask_clarification') return false;
-    if (isTerminalContextGatheringToolCall(action, args)) return false;
-    return !isTerminalPassiveReadOnlyTool(action);
+    return Boolean(action);
 }
 
 function shouldShowTerminalToolCallLine(action = '', args = {}) {
     if (action === 'ask_clarification') return false;
-    if (isTerminalContextGatheringToolCall(action, args)) return false;
-    return !isTerminalPassiveReadOnlyTool(action);
+    return Boolean(action);
 }
 
 function applyTerminalTodos(todos = []) {
@@ -2805,6 +2805,7 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
         beginTerminalProgressSession();
         resetTerminalActivitySummaries();
         addTerminalProgressLog(analyzingLabel, message, 'thinking');
+        scheduleTerminalProgressAutoReveal();
         let taskCounter = 0;
 
         // Préparer l'image si présente (pour les modèles vision)

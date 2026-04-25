@@ -1653,7 +1653,9 @@ function addToolCall(action, target, args = {}) {
     };
 
     // Tronquer le chemin si trop long
-    let displayAction = formatAction(action);
+    let displayAction = action === 'bash'
+        ? chatT('terminal.toolRunCommand', 'Exécute')
+        : formatAction(action);
     let normalizedTarget = String(resolvedTarget || '').trim();
     if (['list_files', 'open_workspace', 'explore'].includes(action) && (!normalizedTarget || normalizedTarget === '.' || normalizedTarget === './')) {
         displayAction = chatT('terminal.taskRepoAnalysis', 'Analyse du repository');
