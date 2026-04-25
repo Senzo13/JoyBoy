@@ -12,6 +12,15 @@
     let deployAtlasLoading = false;
     let deployAtlasLaunchPending = false;
     let deployAtlasRefreshTimer = null;
+    let deployAtlasOpenPickerId = null;
+    let deployAtlasComposerTab = 'server';
+    let deployAtlasSelectedFiles = [];
+    let deployAtlasSelectedSource = '';
+    let deployAtlasRefreshInFlight = false;
+    let deployAtlasPendingRefresh = false;
+    let deployAtlasDeferredRefreshTimer = null;
+    let deployAtlasLastInteractionAt = 0;
+    const DEPLOYATLAS_REFRESH_IDLE_MS = 700;
     let deployAtlasSecretVisible = {
         password: false,
         private_key: false,
@@ -71,6 +80,34 @@
         return !!view && view.style.display !== 'none';
     }
 
+    function markDeployAtlasInteraction() {
+        deployAtlasLastInteractionAt = Date.now();
+    }
+
+    function deployAtlasIsEditing() {
+        if (deployAtlasOpenPickerId) return true;
+        const view = getDeployAtlasView();
+        const active = document.activeElement;
+        if (!view || !active || !view.contains(active)) return false;
+        if (active.matches?.('input, textarea, select')) return true;
+        if (active.closest?.('.signalatlas-picker.open, .model-picker.open')) return true;
+        return Date.now() - deployAtlasLastInteractionAt < DEPLOYATLAS_REFRESH_IDLE_MS;
+    }
+
+    function scheduleDeployAtlasDeferredRefresh() {
+        if (deployAtlasDeferredRefreshTimer) clearTimeout(deployAtlasDeferredRefreshTimer);
+        deployAtlasDeferredRefreshTimer = setTimeout(async () => {
+            deployAtlasDeferredRefreshTimer = null;
+            if (!deployAtlasPendingRefresh || !isDeployAtlasVisible()) return;
+            if (deployAtlasIsEditing()) {
+                scheduleDeployAtlasDeferredRefresh();
+                return;
+            }
+            deployAtlasPendingRefresh = false;
+            await refreshDeployAtlasWorkspace({ force: true });
+        }, DEPLOYATLAS_REFRESH_IDLE_MS);
+    }
+
     function deployAtlasRuntimeJobs() {
         const jobs = Array.isArray(deployAtlasRuntimeJobsCache) ? deployAtlasRuntimeJobsCache : [];
         return jobs.filter(job => String(job?.metadata?.module_id || '').toLowerCase() === 'deployatlas');
@@ -92,26 +129,33 @@
     }
 
     function syncDraftFromDom() {
-        const read = id => document.getElementById(id)?.value ?? '';
-        const checked = id => !!document.getElementById(id)?.checked;
+        const read = (id, fallback = '') => {
+            const element = document.getElementById(id);
+            return element ? element.value : fallback;
+        };
+        const checked = (id, fallback = false) => {
+            const element = document.getElementById(id);
+            return element ? !!element.checked : fallback;
+        };
+        const portValue = read('deployatlas-port', deployAtlasDraft.port || 22);
         deployAtlasDraft = {
             ...deployAtlasDraft,
-            server_id: read('deployatlas-server-id'),
-            name: read('deployatlas-server-name'),
-            host: read('deployatlas-host'),
-            port: Number.parseInt(read('deployatlas-port') || '22', 10) || 22,
-            username: read('deployatlas-username') || 'root',
-            auth_type: read('deployatlas-auth-type') || 'password',
-            password: read('deployatlas-password'),
-            private_key: read('deployatlas-private-key'),
-            passphrase: read('deployatlas-passphrase'),
-            sudo_mode: read('deployatlas-sudo-mode') || 'ask',
-            domain: read('deployatlas-domain'),
-            ssl_enabled: checked('deployatlas-ssl-enabled'),
-            execute_remote: checked('deployatlas-execute-remote'),
-            trust_host_key: checked('deployatlas-trust-host-key'),
-            model: read('deployatlas-model') || currentModel(),
-            project_name: read('deployatlas-project-name'),
+            server_id: read('deployatlas-server-id', deployAtlasDraft.server_id),
+            name: read('deployatlas-server-name', deployAtlasDraft.name),
+            host: read('deployatlas-host', deployAtlasDraft.host),
+            port: Number.parseInt(portValue || '22', 10) || 22,
+            username: read('deployatlas-username', deployAtlasDraft.username || 'root') || 'root',
+            auth_type: read('deployatlas-auth-type', deployAtlasDraft.auth_type || 'password') || 'password',
+            password: read('deployatlas-password', deployAtlasDraft.password),
+            private_key: read('deployatlas-private-key', deployAtlasDraft.private_key),
+            passphrase: read('deployatlas-passphrase', deployAtlasDraft.passphrase),
+            sudo_mode: read('deployatlas-sudo-mode', deployAtlasDraft.sudo_mode || 'ask') || 'ask',
+            domain: read('deployatlas-domain', deployAtlasDraft.domain),
+            ssl_enabled: checked('deployatlas-ssl-enabled', deployAtlasDraft.ssl_enabled),
+            execute_remote: checked('deployatlas-execute-remote', deployAtlasDraft.execute_remote),
+            trust_host_key: checked('deployatlas-trust-host-key', deployAtlasDraft.trust_host_key),
+            model: read('deployatlas-model', deployAtlasDraft.model || currentModel()) || currentModel(),
+            project_name: read('deployatlas-project-name', deployAtlasDraft.project_name),
         };
     }
 
@@ -194,16 +238,114 @@
         }).join('');
     }
 
-    function renderModelSelect() {
+    function deployAtlasModelProfiles() {
         const profiles = Array.isArray(deployAtlasModelContext?.profiles) && deployAtlasModelContext.profiles.length
             ? deployAtlasModelContext.profiles
-            : [{ id: currentModel(), label: currentModel(), provider: 'current' }];
+            : [{ id: currentModel(), label: currentModel(), provider: 'current', configured: true }];
+        const normalized = profiles
+            .map(profile => {
+                const id = profile.id || profile.name || profile.label || '';
+                if (!id) return null;
+                return {
+                    ...profile,
+                    id,
+                    label: profile.label || profile.display_name || profile.name || id,
+                    provider: profile.provider || (String(id).includes(':') ? String(id).split(':', 1)[0] : 'ollama'),
+                    configured: profile.configured !== false,
+                    terminal_runtime: profile.terminal_runtime !== false,
+                };
+            })
+            .filter(Boolean);
         const selected = currentModel();
-        return profiles.map(profile => {
-            const value = profile.id || profile.name || profile.label || '';
-            const label = profile.label || profile.display_name || profile.name || value;
-            return `<option value="${esc(value)}" ${String(value) === String(selected) ? 'selected' : ''}>${esc(label)}</option>`;
-        }).join('');
+        if (selected && !normalized.some(profile => String(profile.id) === String(selected))) {
+            normalized.unshift({
+                id: selected,
+                label: selected,
+                provider: String(selected).includes(':') ? String(selected).split(':', 1)[0] : 'current',
+                configured: true,
+                terminal_runtime: true,
+            });
+        }
+        return normalized;
+    }
+
+    function deployAtlasSimpleOptions(items, selectedValue) {
+        if (typeof buildSignalAtlasSimpleOptions === 'function') {
+            return buildSignalAtlasSimpleOptions(items, selectedValue);
+        }
+        return (items || []).map(item => ({
+            value: item.value,
+            label: item.label,
+            description: item.description || '',
+            meta: item.meta || '',
+            badge: item.badge || '',
+            tone: item.tone || '',
+            selected: String(item.value) === String(selectedValue),
+        }));
+    }
+
+    function deployAtlasPickerOptions(pickerId) {
+        if (pickerId === 'auth_type') {
+            return deployAtlasSimpleOptions([
+                {
+                    value: 'password',
+                    label: deployT('passwordAuth', 'Mot de passe'),
+                    description: deployT('passwordAuthHint', 'Saisie masquée, gardée en session uniquement.'),
+                },
+                {
+                    value: 'ssh_key',
+                    label: deployT('keyAuth', 'Clé SSH'),
+                    description: deployT('keyAuthHint', 'Clé privée jamais transmise au modèle IA.'),
+                    tone: 'private',
+                },
+            ], deployAtlasDraft.auth_type || 'password');
+        }
+        if (pickerId === 'sudo_mode') {
+            return deployAtlasSimpleOptions([
+                {
+                    value: 'ask',
+                    label: deployT('sudoAsk', 'Demander / session'),
+                    description: deployT('sudoAskHint', 'Le mot de passe sudo reste local à cette session.'),
+                },
+                {
+                    value: 'passwordless',
+                    label: deployT('sudoPasswordless', 'Sans mot de passe'),
+                    description: deployT('sudoPasswordlessHint', 'Pour les VPS déjà configurés en sudo NOPASSWD.'),
+                },
+                {
+                    value: 'root',
+                    label: 'root',
+                    description: deployT('sudoRootHint', 'Utilise la session root sans élévation supplémentaire.'),
+                },
+            ], deployAtlasDraft.sudo_mode || 'ask');
+        }
+        if (pickerId === 'model') {
+            const profiles = deployAtlasModelProfiles();
+            if (typeof buildAuditModelOptions === 'function') {
+                return buildAuditModelOptions(profiles, currentModel());
+            }
+            return deployAtlasSimpleOptions(profiles.map(profile => ({
+                value: profile.id,
+                label: profile.label || profile.id,
+                description: profile.configured ? deployT('modelReady', 'Agent disponible') : deployT('modelMissing', 'Agent non configuré'),
+                badge: profile.provider || '',
+            })), currentModel());
+        }
+        return [];
+    }
+
+    function renderDeployAtlasPicker(pickerId, inputId, options, selectedValue) {
+        if (typeof renderAuditPicker === 'function') {
+            return renderAuditPicker('deployatlas', pickerId, inputId, options, selectedValue);
+        }
+        const items = Array.isArray(options) ? options : [];
+        return `<select class="deployatlas-select" id="${esc(inputId)}">${items.map(option => (
+            `<option value="${esc(option.value)}" ${String(option.value) === String(selectedValue) ? 'selected' : ''}>${esc(option.label || option.value)}</option>`
+        )).join('')}</select>`;
+    }
+
+    function renderModelSelect() {
+        return renderDeployAtlasPicker('model', 'deployatlas-model', deployAtlasPickerOptions('model'), currentModel());
     }
 
     function secretInput(id, label, type = 'password') {
@@ -229,7 +371,6 @@
 
     function renderServerForm() {
         const authType = deployAtlasDraft.auth_type || 'password';
-        const providerReady = deployAtlasProviders.find(item => item.id === 'ssh_runtime')?.configured !== false;
         return `
             <div class="deployatlas-form-grid">
                 <input type="hidden" id="deployatlas-server-id" value="${esc(deployAtlasDraft.server_id)}">
@@ -251,37 +392,16 @@
                 </div>
                 <div class="deployatlas-field">
                     <label for="deployatlas-auth-type">${esc(deployT('authType', 'Authentification'))}</label>
-                    <select class="deployatlas-select" id="deployatlas-auth-type" onchange="syncDeployAtlasDraftAndRender()">
-                        <option value="password" ${authType === 'password' ? 'selected' : ''}>${esc(deployT('passwordAuth', 'Mot de passe'))}</option>
-                        <option value="ssh_key" ${authType === 'ssh_key' ? 'selected' : ''}>${esc(deployT('keyAuth', 'Clé SSH'))}</option>
-                    </select>
+                    ${renderDeployAtlasPicker('auth_type', 'deployatlas-auth-type', deployAtlasPickerOptions('auth_type'), authType)}
                 </div>
                 <div class="deployatlas-field">
                     <label for="deployatlas-sudo-mode">${esc(deployT('sudoMode', 'Sudo'))}</label>
-                    <select class="deployatlas-select" id="deployatlas-sudo-mode">
-                        <option value="ask" ${deployAtlasDraft.sudo_mode === 'ask' ? 'selected' : ''}>${esc(deployT('sudoAsk', 'Demander / session'))}</option>
-                        <option value="passwordless" ${deployAtlasDraft.sudo_mode === 'passwordless' ? 'selected' : ''}>${esc(deployT('sudoPasswordless', 'Sans mot de passe'))}</option>
-                        <option value="root" ${deployAtlasDraft.sudo_mode === 'root' ? 'selected' : ''}>root</option>
-                    </select>
+                    ${renderDeployAtlasPicker('sudo_mode', 'deployatlas-sudo-mode', deployAtlasPickerOptions('sudo_mode'), deployAtlasDraft.sudo_mode || 'ask')}
                 </div>
                 ${authType === 'ssh_key'
                     ? `${secretInput('private_key', deployT('privateKey', 'Clé privée SSH'), 'password')}${secretInput('passphrase', deployT('passphrase', 'Passphrase'), 'password')}`
                     : secretInput('password', deployT('password', 'Mot de passe'), 'password')
                 }
-                <div class="deployatlas-field">
-                    <label for="deployatlas-domain">${esc(deployT('domain', 'Domaine'))}</label>
-                    <input class="deployatlas-input" id="deployatlas-domain" value="${esc(deployAtlasDraft.domain)}" placeholder="app.example.com">
-                </div>
-                <div class="deployatlas-field">
-                    <label for="deployatlas-model">${esc(deployT('agentModel', 'Agent'))}</label>
-                    <select class="deployatlas-select" id="deployatlas-model">${renderModelSelect()}</select>
-                </div>
-                <div class="deployatlas-field full">
-                    <label class="deployatlas-toggle-label"><input id="deployatlas-ssl-enabled" type="checkbox" ${deployAtlasDraft.ssl_enabled ? 'checked' : ''}> ${esc(deployT('installSsl', 'Installer HTTPS automatiquement si le domaine est public'))}</label>
-                    <label class="deployatlas-toggle-label"><input id="deployatlas-trust-host-key" type="checkbox" ${deployAtlasDraft.trust_host_key ? 'checked' : ''}> ${esc(deployT('trustHostKey', 'Faire confiance à la fingerprint affichée'))}</label>
-                    <label class="deployatlas-toggle-label"><input id="deployatlas-execute-remote" type="checkbox" ${deployAtlasDraft.execute_remote ? 'checked' : ''}> ${esc(deployT('executeRemote', 'Autoriser l’exécution distante réelle'))}</label>
-                    <div class="deployatlas-muted">${esc(providerReady ? deployT('sshReady', 'SSH prêt côté JoyBoy. Les secrets restent en session et ne partent pas vers l’IA.') : deployT('sshMissing', 'Paramiko manque côté JoyBoy: installe les dépendances pour tester SSH.'))}</div>
-                </div>
             </div>
             <div class="deployatlas-actions">
                 <button class="deployatlas-btn secondary" type="button" onclick="saveDeployAtlasServer()"><i data-lucide="save"></i>${esc(deployT('saveServer', 'Enregistrer'))}</button>
@@ -292,6 +412,10 @@
 
     function renderProjectPanel() {
         const analysis = deployAtlasProjectAnalysis;
+        const fileCount = deployAtlasSelectedFiles.length;
+        const fileLabel = fileCount
+            ? deployT('selectedFiles', '{count} fichier(s) prêts', { count: fileCount })
+            : deployT('analysisEmpty', 'Ajoute un projet pour générer le manifeste de déploiement.');
         return `
             <div class="deployatlas-form-grid">
                 <div class="deployatlas-field full">
@@ -299,11 +423,11 @@
                     <input class="deployatlas-input" id="deployatlas-project-name" value="${esc(deployAtlasDraft.project_name)}" placeholder="mon-app">
                 </div>
                 <label class="deployatlas-dropzone full" for="deployatlas-project-files">
-                    <input id="deployatlas-project-files" type="file" multiple webkitdirectory style="display:none">
+                    <input id="deployatlas-project-files" type="file" multiple webkitdirectory style="display:none" onchange="setDeployAtlasProjectFiles('folder')">
                     <span><strong>${esc(deployT('folderDrop', 'Choisir un dossier projet'))}</strong>${esc(deployT('folderDropHint', 'JoyBoy exclut .git, node_modules, caches et secrets évidents.'))}</span>
                 </label>
                 <label class="deployatlas-dropzone full" for="deployatlas-project-archive">
-                    <input id="deployatlas-project-archive" type="file" accept=".zip,.tar,.tar.gz,.tgz,.rar" style="display:none">
+                    <input id="deployatlas-project-archive" type="file" accept=".zip,.tar,.tar.gz,.tgz,.rar" style="display:none" onchange="setDeployAtlasProjectFiles('archive')">
                     <span><strong>${esc(deployT('archiveDrop', 'Ou envoyer une archive'))}</strong>${esc(deployT('archiveDropHint', 'ZIP/TAR.GZ supportés, RAR si 7z est disponible.'))}</span>
                 </label>
             </div>
@@ -315,12 +439,68 @@
                     ${(analysis.frameworks || []).map(item => `<span class="deployatlas-chip">${esc(item)}</span>`).join('')}
                 </div>
                 ${(analysis.warnings || []).map(item => `<div class="deployatlas-muted">${esc(item)}</div>`).join('')}
-            ` : `<div class="deployatlas-muted">${esc(deployT('analysisEmpty', 'Ajoute un projet pour générer le manifeste de déploiement.'))}</div>`}
+            ` : `<div class="deployatlas-muted">${esc(fileLabel)}</div>`}
             <div class="deployatlas-actions">
                 <button class="deployatlas-btn secondary" type="button" onclick="analyzeDeployAtlasProject()"><i data-lucide="scan-search"></i>${esc(deployT('analyzeProject', 'Analyser'))}</button>
+            </div>
+        `;
+    }
+
+    function renderRunOptionsPanel() {
+        const providerReady = deployAtlasProviders.find(item => item.id === 'ssh_runtime')?.configured !== false;
+        return `
+            <div class="deployatlas-form-grid">
+                <div class="deployatlas-field">
+                    <label for="deployatlas-domain">${esc(deployT('domain', 'Domaine'))}</label>
+                    <input class="deployatlas-input" id="deployatlas-domain" value="${esc(deployAtlasDraft.domain)}" placeholder="app.example.com">
+                </div>
+                <div class="deployatlas-field deployatlas-picker-field">
+                    <label for="deployatlas-model">${esc(deployT('agentModel', 'Agent'))}</label>
+                    ${renderModelSelect()}
+                </div>
+                <div class="deployatlas-field full">
+                    <div class="deployatlas-options-box">
+                        <label class="deployatlas-toggle-label"><input id="deployatlas-ssl-enabled" type="checkbox" ${deployAtlasDraft.ssl_enabled ? 'checked' : ''}> ${esc(deployT('installSsl', 'Installer HTTPS automatiquement si le domaine est public'))}</label>
+                        <label class="deployatlas-toggle-label"><input id="deployatlas-trust-host-key" type="checkbox" ${deployAtlasDraft.trust_host_key ? 'checked' : ''}> ${esc(deployT('trustHostKey', 'Faire confiance à la fingerprint affichée'))}</label>
+                        <label class="deployatlas-toggle-label"><input id="deployatlas-execute-remote" type="checkbox" ${deployAtlasDraft.execute_remote ? 'checked' : ''}> ${esc(deployT('executeRemote', 'Autoriser l’exécution distante réelle'))}</label>
+                    </div>
+                    <div class="deployatlas-muted">${esc(providerReady ? deployT('sshReady', 'SSH prêt côté JoyBoy. Les secrets restent en session et ne partent pas vers l’IA.') : deployT('sshMissing', 'Paramiko manque côté JoyBoy: installe les dépendances pour tester SSH.'))}</div>
+                </div>
+            </div>
+            <div class="deployatlas-actions">
                 <button class="deployatlas-btn" type="button" onclick="launchDeployAtlasDeployment()" ${deployAtlasLaunchPending ? 'disabled' : ''}><i data-lucide="rocket"></i>${esc(deployT('launchDeployment', 'Lancer le déploiement'))}</button>
             </div>
         `;
+    }
+
+    function renderDeployAtlasComposerTabs() {
+        const tabs = [
+            { id: 'server', label: deployT('tabServer', 'Serveur'), icon: 'server-cog' },
+            { id: 'project', label: deployT('tabProject', 'Projet'), icon: 'folder-up' },
+            { id: 'run', label: deployT('tabRun', 'Exécution'), icon: 'rocket' },
+        ];
+        return `
+            <div class="deployatlas-tabs" role="tablist">
+                ${tabs.map(tab => `
+                    <button
+                        class="deployatlas-tab${deployAtlasComposerTab === tab.id ? ' active' : ''}"
+                        type="button"
+                        role="tab"
+                        aria-selected="${deployAtlasComposerTab === tab.id ? 'true' : 'false'}"
+                        onclick="setDeployAtlasComposerTab('${esc(tab.id)}')"
+                    >
+                        <i data-lucide="${esc(tab.icon)}"></i>
+                        <span>${esc(tab.label)}</span>
+                    </button>
+                `).join('')}
+            </div>
+        `;
+    }
+
+    function renderDeployAtlasComposerPanel() {
+        if (deployAtlasComposerTab === 'project') return renderProjectPanel();
+        if (deployAtlasComposerTab === 'run') return renderRunOptionsPanel();
+        return renderServerForm();
     }
 
     function renderProgress(deployment) {
@@ -344,17 +524,56 @@
     }
 
     function renderTerminal(deployment) {
-        if (!deployment) return `<div class="deployatlas-terminal">${esc(deployT('terminalWaiting', 'Aucun run sélectionné.'))}</div>`;
+        const splash = message => `
+            <div class="deployatlas-terminal-splash">
+                <img src="/static/images/monogramme.png" alt="" aria-hidden="true">
+                <div>
+                    <div class="deployatlas-terminal-brand">JoyBoy DeployAtlas</div>
+                    <div class="deployatlas-terminal-muted">${esc(message)}</div>
+                </div>
+            </div>
+        `;
+        if (!deployment) {
+            return `
+                <div class="deployatlas-terminal">
+                    <div class="deployatlas-terminal-chrome">
+                        <span class="deployatlas-terminal-dot red"></span>
+                        <span class="deployatlas-terminal-dot amber"></span>
+                        <span class="deployatlas-terminal-dot green"></span>
+                        <span class="deployatlas-terminal-title">joyboy@deployatlas:~</span>
+                    </div>
+                    <div class="deployatlas-terminal-screen">
+                        ${splash(deployT('terminalWaiting', 'Terminal prêt. Lance un run pour ouvrir une session.'))}
+                    </div>
+                </div>
+            `;
+        }
         const logs = Array.isArray(deployment.logs) ? deployment.logs : [];
-        const lines = logs.length ? logs : [{ phase: deployment.phase || 'ready', message: deployT('terminalReady', 'DeployAtlas est prêt.'), at: '' }];
+        const lines = logs.length ? logs : [{ phase: deployment.phase || 'ready', message: deployT('terminalReady', 'Session DeployAtlas prête.'), at: '' }];
         return `
             <div class="deployatlas-terminal">
-                ${lines.map(line => `
-                    <div class="deployatlas-log-line">
-                        <span class="deployatlas-log-phase">${esc(line.phase || 'log')}</span>
-                        <span>${esc(line.message || '')}</span>
-                    </div>
-                `).join('')}
+                <div class="deployatlas-terminal-chrome">
+                    <span class="deployatlas-terminal-dot red"></span>
+                    <span class="deployatlas-terminal-dot amber"></span>
+                    <span class="deployatlas-terminal-dot green"></span>
+                    <span class="deployatlas-terminal-title">joyboy@deployatlas:${esc(deployment.phase || 'run')}</span>
+                </div>
+                <div class="deployatlas-terminal-screen">
+                    ${logs.length ? `
+                        <div class="deployatlas-terminal-boot">
+                            <img src="/static/images/monogramme.png" alt="" aria-hidden="true">
+                            <span>${esc(deployT('terminalBoot', 'Session JoyBoy active'))}</span>
+                            <span class="deployatlas-terminal-cursor"></span>
+                        </div>
+                    ` : splash(deployT('terminalReady', 'Session DeployAtlas prête.'))}
+                    ${lines.map(line => `
+                        <div class="deployatlas-log-line">
+                            <span class="deployatlas-log-prompt">$</span>
+                            <span class="deployatlas-log-phase">${esc(line.phase || 'log')}</span>
+                            <span>${esc(line.message || '')}</span>
+                        </div>
+                    `).join('')}
+                </div>
             </div>
         `;
     }
@@ -383,10 +602,10 @@
                         <h1 class="deployatlas-title">${esc(deployT('title', 'Déployer un projet sur VPS'))}</h1>
                         <p class="deployatlas-subtitle">${esc(deployT('subtitle', 'Analyse ton projet, valide le serveur, prépare HTTPS et suis chaque étape dans un terminal visuel propre.'))}</p>
                     </div>
-                    <button class="deployatlas-btn secondary" type="button" onclick="refreshDeployAtlasWorkspace()"><i data-lucide="refresh-cw"></i>${esc(deployT('refresh', 'Rafraîchir'))}</button>
+                    <button class="deployatlas-btn secondary" type="button" onclick="refreshDeployAtlasWorkspace({ force: true })"><i data-lucide="refresh-cw"></i>${esc(deployT('refresh', 'Rafraîchir'))}</button>
                 </section>
-                <section class="deployatlas-grid">
-                    <aside class="deployatlas-panel">
+                <section class="deployatlas-workbench">
+                    <aside class="deployatlas-panel deployatlas-sidebar-panel">
                         <div class="deployatlas-panel-head">
                             <div><div class="deployatlas-panel-kicker">${esc(deployT('servers', 'Serveurs'))}</div><div class="deployatlas-panel-title">${esc(deployT('savedServers', 'VPS enregistrés'))}</div></div>
                             <button class="deployatlas-icon-btn" type="button" onclick="newDeployAtlasServer()"><i data-lucide="plus"></i></button>
@@ -397,49 +616,77 @@
                             <div class="deployatlas-run-list" style="margin-top:8px">${renderRecentDeployments()}</div>
                         </div>
                     </aside>
-                    <main class="deployatlas-panel">
+                    <main class="deployatlas-panel deployatlas-composer-panel">
                         <div class="deployatlas-panel-head">
                             <div><div class="deployatlas-panel-kicker">${esc(deployT('composer', 'Composer'))}</div><div class="deployatlas-panel-title">${esc(deployT('serverAndProject', 'Serveur + projet'))}</div></div>
                         </div>
                         <div class="deployatlas-panel-body">
-                            ${renderServerForm()}
-                            <div style="height:14px"></div>
-                            ${renderProjectPanel()}
+                            ${renderDeployAtlasComposerTabs()}
+                            <div class="deployatlas-tab-panel">
+                                ${renderDeployAtlasComposerPanel()}
+                            </div>
                         </div>
                     </main>
-                    <aside class="deployatlas-panel">
-                        <div class="deployatlas-panel-head">
-                            <div><div class="deployatlas-panel-kicker">${esc(deployT('live', 'Live'))}</div><div class="deployatlas-panel-title">${esc(deployT('visualTerminal', 'Terminal visuel'))}</div></div>
-                            ${deployment && !isTerminalStatus(deployment.status) ? `<button class="deployatlas-icon-btn" type="button" onclick="cancelDeployAtlasDeployment('${esc(deployment.id)}')"><i data-lucide="square"></i></button>` : ''}
-                        </div>
-                        <div class="deployatlas-panel-body">
-                            ${renderProgress(deployment)}
-                            <div style="height:12px"></div>
+                </section>
+                <section class="deployatlas-panel deployatlas-terminal-panel">
+                    <div class="deployatlas-panel-head">
+                        <div><div class="deployatlas-panel-kicker">${esc(deployT('live', 'Live'))}</div><div class="deployatlas-panel-title">${esc(deployT('visualTerminal', 'Terminal'))}</div></div>
+                        ${deployment && !isTerminalStatus(deployment.status) ? `<button class="deployatlas-icon-btn" type="button" onclick="cancelDeployAtlasDeployment('${esc(deployment.id)}')"><i data-lucide="square"></i></button>` : ''}
+                    </div>
+                    <div class="deployatlas-panel-body">
+                        ${renderProgress(deployment)}
+                        <div class="deployatlas-terminal-wrap">
                             ${renderTerminal(deployment)}
-                            ${renderPlan(deployment)}
                         </div>
-                    </aside>
+                        ${renderPlan(deployment)}
+                    </div>
                 </section>
             </div>
         `;
         if (window.lucide) lucide.createIcons({ nodes: [host] });
     }
 
-    async function refreshDeployAtlasWorkspace() {
-        await loadDeployAtlasBootstrap();
-        if (deployAtlasCurrentDeploymentId) {
-            const result = await apiDeployAtlas.getDeployment(deployAtlasCurrentDeploymentId);
-            if (result.ok && result.data?.deployment) deployAtlasCurrentDeployment = result.data.deployment;
+    async function refreshDeployAtlasWorkspace(options = {}) {
+        const force = options === true || options?.force === true;
+        if (!force && deployAtlasIsEditing()) {
+            deployAtlasPendingRefresh = true;
+            scheduleDeployAtlasDeferredRefresh();
+            return;
         }
-        renderDeployAtlasWorkspace();
+        if (deployAtlasRefreshInFlight) {
+            deployAtlasPendingRefresh = true;
+            return;
+        }
+        deployAtlasRefreshInFlight = true;
+        try {
+            await loadDeployAtlasBootstrap();
+            if (deployAtlasCurrentDeploymentId) {
+                const result = await apiDeployAtlas.getDeployment(deployAtlasCurrentDeploymentId);
+                if (result.ok && result.data?.deployment) deployAtlasCurrentDeployment = result.data.deployment;
+            }
+            renderDeployAtlasWorkspace();
+        } finally {
+            deployAtlasRefreshInFlight = false;
+        }
     }
 
     function selectedProjectFiles() {
+        if (deployAtlasSelectedFiles.length) return deployAtlasSelectedFiles;
         const archive = document.getElementById('deployatlas-project-archive');
         const folder = document.getElementById('deployatlas-project-files');
         if (archive?.files?.length) return Array.from(archive.files);
         if (folder?.files?.length) return Array.from(folder.files);
         return [];
+    }
+
+    function setDeployAtlasProjectFiles(source = '') {
+        const inputId = source === 'archive' ? 'deployatlas-project-archive' : 'deployatlas-project-files';
+        const input = document.getElementById(inputId);
+        deployAtlasSelectedFiles = Array.from(input?.files || []);
+        deployAtlasSelectedSource = source;
+        deployAtlasProjectAnalysis = null;
+        syncDraftFromDom();
+        renderDeployAtlasWorkspace();
     }
 
     async function analyzeDeployAtlasProject() {
@@ -481,7 +728,7 @@
             return;
         }
         applyServerToDraft(result.data.server);
-        await refreshDeployAtlasWorkspace();
+        await refreshDeployAtlasWorkspace({ force: true });
         Toast?.success?.(deployT('serverSaved', 'Serveur enregistré.'));
     }
 
@@ -509,7 +756,7 @@
             return;
         }
         Toast?.success?.(deployT('sshOk', 'Connexion SSH validée.'));
-        await refreshDeployAtlasWorkspace();
+        await refreshDeployAtlasWorkspace({ force: true });
     }
 
     async function launchDeployAtlasDeployment() {
@@ -556,13 +803,13 @@
         deployAtlasCurrentDeploymentId = deployAtlasCurrentDeployment.id;
         Toast?.success?.(deployT('deploymentStarted', 'Run DeployAtlas lancé.'));
         startDeployAtlasRefresh();
-        await refreshDeployAtlasWorkspace();
+        await refreshDeployAtlasWorkspace({ force: true });
     }
 
     async function cancelDeployAtlasDeployment(deploymentId) {
         if (!deploymentId) return;
         await apiDeployAtlas.cancelDeployment(deploymentId);
-        await refreshDeployAtlasWorkspace();
+        await refreshDeployAtlasWorkspace({ force: true });
         Toast?.info?.(deployT('cancelRequested', 'Arrêt demandé.'));
     }
 
@@ -599,6 +846,54 @@
     function selectDeployAtlasServer(serverId) {
         const server = deployAtlasServers.find(item => String(item.id) === String(serverId));
         applyServerToDraft(server);
+        renderDeployAtlasWorkspace();
+    }
+
+    function setDeployAtlasComposerTab(tabId) {
+        syncDraftFromDom();
+        deployAtlasComposerTab = ['server', 'project', 'run'].includes(String(tabId)) ? String(tabId) : 'server';
+        renderDeployAtlasWorkspace();
+    }
+
+    function getDeployAtlasPickerState() {
+        return deployAtlasOpenPickerId;
+    }
+
+    function setDeployAtlasPickerState(value) {
+        deployAtlasOpenPickerId = value;
+    }
+
+    function closeDeployAtlasPicker() {
+        if (!deployAtlasOpenPickerId) return;
+        deployAtlasOpenPickerId = null;
+        renderDeployAtlasWorkspace();
+    }
+
+    function toggleDeployAtlasPicker(pickerId, event) {
+        event?.stopPropagation?.();
+        markDeployAtlasInteraction();
+        syncDraftFromDom();
+        if (typeof toggleAuditPicker === 'function') {
+            toggleAuditPicker('deployatlas', pickerId, event);
+            return;
+        }
+        deployAtlasOpenPickerId = deployAtlasOpenPickerId === pickerId ? null : pickerId;
+        renderDeployAtlasWorkspace();
+    }
+
+    function selectDeployAtlasPickerOption(pickerId, value, event) {
+        event?.stopPropagation?.();
+        markDeployAtlasInteraction();
+        syncDraftFromDom();
+        deployAtlasOpenPickerId = null;
+        if (pickerId === 'auth_type') deployAtlasDraft.auth_type = String(value || 'password');
+        if (pickerId === 'sudo_mode') deployAtlasDraft.sudo_mode = String(value || 'ask');
+        if (pickerId === 'model') deployAtlasDraft.model = String(value || currentModel());
+        const hiddenInputId = pickerId === 'auth_type'
+            ? 'deployatlas-auth-type'
+            : (pickerId === 'sudo_mode' ? 'deployatlas-sudo-mode' : (pickerId === 'model' ? 'deployatlas-model' : ''));
+        const hiddenInput = hiddenInputId ? document.getElementById(hiddenInputId) : null;
+        if (hiddenInput) hiddenInput.value = String(value ?? '');
         renderDeployAtlasWorkspace();
     }
 
@@ -641,6 +936,30 @@
     window.cancelDeployAtlasDeployment = cancelDeployAtlasDeployment;
     window.toggleDeployAtlasSecret = toggleDeployAtlasSecret;
     window.syncDeployAtlasDraftAndRender = syncDeployAtlasDraftAndRender;
+    window.setDeployAtlasComposerTab = setDeployAtlasComposerTab;
+    window.setDeployAtlasProjectFiles = setDeployAtlasProjectFiles;
+    window.getDeployAtlasPickerState = getDeployAtlasPickerState;
+    window.setDeployAtlasPickerState = setDeployAtlasPickerState;
+    window.closeDeployAtlasPicker = closeDeployAtlasPicker;
+    window.toggleDeployAtlasPicker = toggleDeployAtlasPicker;
+    window.selectDeployAtlasPickerOption = selectDeployAtlasPickerOption;
+
+    const handleDeployAtlasInteraction = event => {
+        const view = getDeployAtlasView();
+        const target = event?.target;
+        if (!view || !target || !view.contains(target)) return;
+        markDeployAtlasInteraction();
+        if (target.matches?.('input, textarea, select') && target.type !== 'file') {
+            syncDraftFromDom();
+        }
+    };
+    document.addEventListener('focusin', handleDeployAtlasInteraction, true);
+    document.addEventListener('input', handleDeployAtlasInteraction, true);
+    document.addEventListener('change', handleDeployAtlasInteraction, true);
+    document.addEventListener('pointerdown', handleDeployAtlasInteraction, true);
+    document.addEventListener('focusout', () => {
+        if (deployAtlasPendingRefresh) scheduleDeployAtlasDeferredRefresh();
+    }, true);
 
     window.addEventListener('joyboy:runtime-jobs-updated', event => {
         deployAtlasRuntimeJobsCache = Array.isArray(event?.detail?.jobs) ? event.detail.jobs : [];
