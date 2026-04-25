@@ -401,6 +401,10 @@ def terminal_chat():
                         result_data['tool_result']['todos'] = todos[:8]
                         result_data['tool_result']['counts'] = data.get('counts', {})
                         result_data['tool_result']['summary'] = data.get('summary') or f"{len(todos)} étape(s)"
+                    elif tool_name == 'ask_clarification':
+                        result_data['tool_result']['question'] = data.get('question', '')
+                        result_data['tool_result']['options'] = data.get('options', [])[:4] if isinstance(data.get('options', []), list) else []
+                        result_data['tool_result']['summary'] = data.get('question', '')
 
                 yield f"data: {json.dumps(result_data)}\n\n"
 

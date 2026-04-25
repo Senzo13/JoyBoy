@@ -963,6 +963,7 @@ function describeTerminalToolCall(action, target = '', args = {}) {
     if (action === 'search' || action === 'glob') return `${terminalT('terminal.taskSearchFiles', 'Recherche')} ${displayTarget}`.trim();
     if (action === 'tool_search') return `${terminalT('terminal.taskToolSearch', 'Recherche d’outils')} ${displayTarget}`.trim();
     if (action === 'write_todos') return terminalT('terminal.taskPlan', 'Planification');
+    if (action === 'ask_clarification') return terminalT('terminal.taskClarification', 'Clarification');
     if (action === 'delegate_subagent') return terminalT('terminal.taskSubagent', 'Vérification déléguée');
     return `${action}${displayTarget ? ` ${displayTarget}` : ''}`;
 }
@@ -1008,6 +1009,7 @@ function describeTerminalModelCall(data = {}) {
 }
 
 function shouldShowTerminalToolAsTask(action) {
+    if (action === 'ask_clarification') return false;
     if (isTerminalContextGatheringTool(action)) return false;
     if (isTerminalPassiveReadOnlyTool(action)) return false;
     return [
@@ -1042,6 +1044,7 @@ function shouldRevealTerminalProgressForModelCall(data = {}) {
 }
 
 function shouldRevealTerminalProgressForTool(action = '') {
+    if (action === 'ask_clarification') return false;
     if (isTerminalContextGatheringTool(action)) return false;
     if (isTerminalPassiveReadOnlyTool(action)) return false;
     if (!isTerminalReadOnlyTurn()) return true;
@@ -1051,11 +1054,13 @@ function shouldRevealTerminalProgressForTool(action = '') {
 function shouldShowTerminalToolResult(result = {}) {
     if (!result || !result.success) return true;
     const action = result.action || result.tool_name;
+    if (action === 'ask_clarification') return false;
     if (isTerminalContextGatheringTool(action)) return false;
     return !isTerminalPassiveReadOnlyTool(action);
 }
 
 function shouldShowTerminalToolCallLine(action = '') {
+    if (action === 'ask_clarification') return false;
     if (isTerminalContextGatheringTool(action)) return false;
     return !isTerminalPassiveReadOnlyTool(action);
 }
@@ -1067,7 +1072,11 @@ function applyTerminalTodos(todos = []) {
     const todoTasks = todos
         .map((todo, index) => ({
             id: `todo-${todo?.id || index + 1}`,
-            label: String(todo?.content || todo?.title || '').trim(),
+            label: String(
+                normalizeTerminalTaskStatus(todo?.status) === 'running'
+                    ? (todo?.activeForm || todo?.active_form || todo?.content || todo?.title || '')
+                    : (todo?.content || todo?.title || '')
+            ).trim(),
             status: normalizeTerminalTaskStatus(todo?.status),
             note: String(todo?.note || todo?.result || '').trim()
         }))

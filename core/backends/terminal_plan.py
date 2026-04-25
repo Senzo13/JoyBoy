@@ -24,6 +24,7 @@ class PlanTask:
     id: str
     title: str
     description: str = ""
+    active_form: str = ""
     status: PlanStatus = PlanStatus.PENDING
     result: Optional[str] = None
 
@@ -125,6 +126,7 @@ class TerminalPlanMixin:
             content = str(item.get("content") or item.get("title") or "").strip()
             if not content:
                 continue
+            active_form = str(item.get("activeForm") or item.get("active_form") or "").strip()
             raw_status = str(item.get("status") or "pending").strip().lower()
             if raw_status not in valid_statuses:
                 raw_status = "pending"
@@ -134,6 +136,7 @@ class TerminalPlanMixin:
                 PlanTask(
                     id=task_id[:48],
                     title=content[:240],
+                    active_form=active_form[:240],
                     status=PlanStatus(raw_status),
                     result=note[:280] if note else None,
                 )
@@ -144,11 +147,12 @@ class TerminalPlanMixin:
         return normalized, None
 
     @staticmethod
-    def _plan_signature(tasks: List[PlanTask]) -> List[tuple[str, str, str, str]]:
+    def _plan_signature(tasks: List[PlanTask]) -> List[tuple[str, str, str, str, str]]:
         return [
             (
                 str(task.id or ""),
                 str(task.title or ""),
+                str(task.active_form or ""),
                 str(task.status.value if isinstance(task.status, PlanStatus) else task.status or ""),
                 str(task.result or ""),
             )
@@ -160,6 +164,7 @@ class TerminalPlanMixin:
         return {
             "id": task.id,
             "content": task.title,
+            "activeForm": task.active_form or "",
             "status": task.status.value,
             "note": task.result or "",
         }

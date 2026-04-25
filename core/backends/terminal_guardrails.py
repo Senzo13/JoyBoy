@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import re
+import json
 from typing import Any, Dict, List, Optional
 
 from core.agent_runtime import tool_guard_reason, tool_signature
@@ -12,6 +13,58 @@ from core.backends.terminal_tool_schemas import WRITE_CORE_TOOL_NAMES
 
 class TerminalGuardrailsMixin:
     """Loop/error guardrails and user-visible fallback messages."""
+
+    def _build_clarification_payload(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        """Normalize model-provided clarification arguments."""
+        args = args or {}
+        question = re.sub(r"\s+", " ", str(args.get("question") or "").strip())
+        if not question:
+            question = "J'ai besoin d'une précision avant de continuer."
+
+        clarification_type = str(args.get("clarification_type") or "missing_info").strip() or "missing_info"
+        context = re.sub(r"\s+", " ", str(args.get("context") or "").strip())
+        raw_options = args.get("options") or []
+        if isinstance(raw_options, str):
+            try:
+                parsed_options = json.loads(raw_options)
+                raw_options = parsed_options if isinstance(parsed_options, list) else [raw_options]
+            except (TypeError, ValueError, json.JSONDecodeError):
+                raw_options = [raw_options]
+        if not isinstance(raw_options, list):
+            raw_options = [raw_options]
+
+        options: List[str] = []
+        for item in raw_options:
+            option = re.sub(r"\s+", " ", str(item or "").strip())
+            if option and option not in options:
+                options.append(option[:180])
+            if len(options) >= 4:
+                break
+
+        return {
+            "question": question[:500],
+            "clarification_type": clarification_type[:80],
+            "context": context[:500],
+            "options": options,
+        }
+
+    def _format_clarification_payload_for_user(self, payload: Dict[str, Any]) -> str:
+        """Render a clarification payload as a compact user-facing answer."""
+        payload = payload or {}
+        context = str(payload.get("context") or "").strip()
+        question = str(payload.get("question") or "").strip() or "J'ai besoin d'une précision avant de continuer."
+        options = payload.get("options") if isinstance(payload.get("options"), list) else []
+
+        lines: List[str] = []
+        if context:
+            lines.append(context)
+            lines.append("")
+        lines.append(question)
+        if options:
+            lines.append("")
+            for index, option in enumerate(options[:4], start=1):
+                lines.append(f"{index}. {option}")
+        return "\n".join(lines).strip()
 
     def _empty_model_fallback_answer(
         self,

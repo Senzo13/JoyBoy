@@ -353,6 +353,11 @@ class TerminalBrain(
                 self._log_action('bash', command, result.get('success', False))
                 return ToolResult(success=result.get('success', False), tool_name=tool_name, data=result)
 
+            # === ASK CLARIFICATION ===
+            elif tool_name == "ask_clarification":
+                payload = self._build_clarification_payload(args)
+                return ToolResult(success=True, tool_name=tool_name, data=payload)
+
             # === WRITE TODOS ===
             elif tool_name == "write_todos":
                 result = self._write_todos(args.get('todos', []))
@@ -1151,6 +1156,14 @@ class TerminalBrain(
                         'error': result.error,
                         'write_blocked': self.write_blocked
                     })
+
+                    if tool_name == "ask_clarification" and result.success:
+                        final_text = self._format_clarification_payload_for_user(result.data)
+                        full_response += final_text
+                        yield runtime_event('content', text=final_text, token_stats={})
+                        _end_resource_lease()
+                        yield runtime_event('done', full_response=full_response, token_stats=total_token_stats)
+                        return
 
                     # Reset flag
                     if self.write_blocked:

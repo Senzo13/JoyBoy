@@ -267,7 +267,11 @@ TOOLS = [
                                 },
                                 "content": {
                                     "type": "string",
-                                    "description": "Concrete task description."
+                                    "description": "Imperative task description, for example 'Run tests'."
+                                },
+                                "activeForm": {
+                                    "type": "string",
+                                    "description": "Present-continuous label shown while in progress, for example 'Running tests'."
                                 },
                                 "status": {
                                     "type": "string",
@@ -284,6 +288,37 @@ TOOLS = [
                     }
                 },
                 "required": ["todos"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "ask_clarification",
+            "description": "Ask the user one clear question when required information is missing, requirements are ambiguous, or a risky/irreversible choice needs confirmation. Calling this ends the current turn and waits for the user.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "question": {
+                        "type": "string",
+                        "description": "The single clarification question to ask."
+                    },
+                    "clarification_type": {
+                        "type": "string",
+                        "enum": ["missing_info", "ambiguous_requirement", "approach_choice", "risk_confirmation", "suggestion"],
+                        "description": "Why clarification is needed."
+                    },
+                    "context": {
+                        "type": "string",
+                        "description": "Optional short context explaining why the question matters."
+                    },
+                    "options": {
+                        "type": "array",
+                        "description": "Optional short choices. Put the recommended option first and suffix its label with '(Recommended)'.",
+                        "items": {"type": "string"}
+                    }
+                },
+                "required": ["question", "clarification_type"]
             }
         }
     },
@@ -491,6 +526,7 @@ CORE_TOOL_NAMES = tuple(
 )
 WRITE_CORE_TOOL_NAMES = ("write_files", "write_file", "edit_file", "clear_workspace", "delete_file", "bash")
 SCAFFOLD_CORE_TOOL_ORDER = (
+    "ask_clarification",
     "list_files",
     "read_file",
     "write_files",
@@ -500,4 +536,4 @@ SCAFFOLD_CORE_TOOL_ORDER = (
     "search",
     "glob",
 )
-READ_CORE_TOOL_ORDER = ("list_files", "read_file", "search", "glob")
+READ_CORE_TOOL_ORDER = ("ask_clarification", "list_files", "read_file", "search", "glob")

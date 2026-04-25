@@ -1383,6 +1383,50 @@ Encore beaucoup de détail inutile.
         self.assertIn("write_todos", names)
         self.assertIn("write_todos", brain._active_promoted_tool_names)
 
+    def test_core_tool_surface_includes_clarification(self):
+        brain = TerminalBrain()
+        brain.current_intent = "write"
+        brain._reset_deferred_tools()
+
+        names = brain._select_tool_names_for_turn("améliore le terminal", [], autonomous=False)
+
+        self.assertIn("ask_clarification", names)
+
+    @patch("core.backends.terminal_brain.chat_with_cloud_model")
+    def test_ask_clarification_interrupts_turn_with_question(self, mock_chat):
+        mock_chat.return_value = {
+            "message": {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                    {
+                        "id": "call_question",
+                        "type": "function",
+                        "function": {
+                            "name": "ask_clarification",
+                            "arguments": {
+                                "question": "Tu veux privilégier la vitesse ou la profondeur ?",
+                                "clarification_type": "approach_choice",
+                                "context": "Les deux approches sont valides pour cette amélioration.",
+                                "options": ["Vitesse (Recommended)", "Profondeur"],
+                            },
+                        },
+                    }
+                ],
+            },
+            "prompt_eval_count": 60,
+            "eval_count": 12,
+        }
+        brain = TerminalBrain()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            events = list(brain.run_agentic_loop("améliore JoyBoy", tmp, model="openai:gpt-5.4"))
+
+        content = "".join(event.get("text", "") for event in events if event.get("type") == "content")
+        self.assertIn("Tu veux privilégier la vitesse", content)
+        self.assertIn("1. Vitesse (Recommended)", content)
+        self.assertEqual(mock_chat.call_count, 1)
+
     def test_write_todos_tracks_and_formats_plan(self):
         brain = TerminalBrain()
 
@@ -1391,7 +1435,7 @@ Encore beaucoup de détail inutile.
             {
                 "todos": [
                     {"id": "1", "content": "Audit DeerFlow", "status": "completed", "note": "middleware reviewed"},
-                    {"id": "2", "content": "Port useful behavior", "status": "in_progress"},
+                    {"id": "2", "content": "Port useful behavior", "activeForm": "Porting useful behavior", "status": "in_progress"},
                 ]
             },
             os.getcwd(),
@@ -1403,6 +1447,8 @@ Encore beaucoup de détail inutile.
         formatted = brain._format_result_for_llm(result)
         self.assertIn("[completed] Audit DeerFlow", formatted)
         self.assertIn("[in_progress] Port useful behavior", formatted)
+        self.assertIn("active: Porting useful behavior", formatted)
+        self.assertEqual(result.data["todos"][1]["activeForm"], "Porting useful behavior")
 
     def test_write_todos_rejects_unchanged_plan(self):
         brain = TerminalBrain()

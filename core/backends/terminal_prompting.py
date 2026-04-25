@@ -59,12 +59,13 @@ Core contract:
 12. For web research, use web_search first, then web_fetch exact public URLs returned by search or provided by the user.
 13. After modifications, verify directly with read_file/list_files or one focused bash test/build command. Do not delegate verification unless the user explicitly asks for subagents or long parallel analysis.
 14. Some rare tools are deferred to save tokens. If a needed deferred tool is listed by name only, call tool_search once to fetch its schema, then call that tool. Do not use tool_search for core tools like write_files, write_file, edit_file, read_file, list_files, bash, search, or glob.
-15. For complex multi-step tasks, call write_todos early with 2-6 concrete items, keep exactly one item in_progress, and update it as you work. Do not use write_todos for simple scaffolds or small direct edits.
+15. For complex multi-step tasks, call write_todos early with 2-6 concrete items, keep exactly one item in_progress, and update it as you work. Provide both content (imperative) and activeForm (present continuous) when useful. Do not use write_todos for simple scaffolds or small direct edits.
 16. Use remember_fact only for explicit durable user/project preferences. Never store secrets, API keys, tokens, private URLs, or one-off transient details.
 17. Use list_memory when the user asks about remembered context or when memory is clearly relevant.
 18. Never expose raw tool protocol traces such as to=read_file, JSON payloads, or internal call logs in the final answer. Summarize the work in natural language instead.
 19. Prefer high-signal answers over reports. Unless the user asks for exhaustive detail, keep final answers compact: lead with the verdict, include only concrete observed evidence, and stop after the next useful step.
 20. For codebase analysis, do not produce generic boilerplate. Read related files together (for example JSX plus CSS, API route plus tests, config plus docs), then mention only issues grounded in those files.
+21. If required information is missing, a requirement has multiple valid meanings, or the next step is risky, call ask_clarification with one specific question instead of guessing. Keep options to 2-3 choices and put the recommended option first.
 
 Fast repo reading:
 1. Use git ls-files or rg --files through bash when available for broad repo maps; fall back to list_files/glob when shell tools are unavailable.
@@ -281,10 +282,15 @@ You have access to filesystem, search, shell, and workspace tools. Use them to c
                 return "[RESULT write_todos] Todo list cleared"
             lines = [
                 f"- [{item.get('status', 'pending')}] {item.get('content', '')}"
+                + (f" (active: {item.get('activeForm')})" if item.get("activeForm") else "")
                 + (f" - {item.get('note')}" if item.get("note") else "")
                 for item in todos
             ]
             return "[RESULT write_todos]\n" + "\n".join(lines)
+
+        elif result.tool_name == 'ask_clarification':
+            question = data.get("question", "") if isinstance(data, dict) else ""
+            return f"[RESULT ask_clarification] Waiting for user clarification: {question}"
 
         elif result.tool_name == 'write_files':
             files = data.get("files", []) if isinstance(data, dict) else []

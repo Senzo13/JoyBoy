@@ -25,7 +25,7 @@ class TerminalIntentMixin:
             elif self._is_scaffold_write_request(initial_message):
                 names = list(SCAFFOLD_CORE_TOOL_ORDER)
             else:
-                names = ["list_files", "read_file", "write_file", "write_files", "edit_file", "bash", "search", "glob"]
+                names = ["ask_clarification", "list_files", "read_file", "write_file", "write_files", "edit_file", "bash", "search", "glob"]
         else:
             names = list(READ_CORE_TOOL_ORDER)
 
@@ -106,13 +106,13 @@ class TerminalIntentMixin:
         force_focus = self._should_force_step_focus(initial_message, executed_tools)
 
         if mode == "verify":
-            names = ["read_file", "bash", "edit_file", "write_files", "write_file", "search", "list_files"]
+            names = ["ask_clarification", "read_file", "bash", "edit_file", "write_files", "write_file", "search", "list_files"]
         elif mode == "analyze":
-            names = ["read_file", "search", "glob", "list_files", "edit_file", "write_files", "write_file", "bash"]
+            names = ["ask_clarification", "read_file", "search", "glob", "list_files", "edit_file", "write_files", "write_file", "bash"]
         elif mode == "scaffold":
-            names = ["read_file", "write_files", "write_file", "edit_file", "bash", "search", "list_files", "glob"]
+            names = ["ask_clarification", "read_file", "write_files", "write_file", "edit_file", "bash", "search", "list_files", "glob"]
         else:
-            names = ["read_file", "edit_file", "write_files", "write_file", "bash", "search", "list_files", "glob"]
+            names = ["ask_clarification", "read_file", "edit_file", "write_files", "write_file", "bash", "search", "list_files", "glob"]
 
         if force_focus:
             names = [name for name in names if name not in {"glob", "tool_search"}]
