@@ -48,7 +48,9 @@ class ProjectsStaticTests(unittest.TestCase):
         self.assertIn("rawToolLedgerPattern", chat)
         self.assertIn("write_files|write_file|edit_file", chat)
         self.assertIn("preview_paths", terminal_route)
-        self.assertIn("result_data['tool_result']['summary'] = f\"{counts} · {preview}\"", terminal_route)
+        self.assertIn("result_data['tool_result']['summary'] = counts", terminal_route)
+        self.assertIn("files_truncated_count", terminal_route)
+        self.assertNotIn("result_data['tool_result']['summary'] = f\"{counts} · {preview}\"", terminal_route)
 
     def test_indexeddb_schema_has_projects_and_project_id(self):
         state = self.read("web/static/js/state.js")

@@ -500,6 +500,82 @@
   color: #888;
 }
 
+.tool-call-line.tool-call-write_files .tool-file-count,
+.tool-call-line.tool-call-write-files .tool-file-count {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 8px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid rgba(34, 197, 94, 0.28);
+  background: rgba(34, 197, 94, 0.08);
+  color: #86efac;
+  font-size: 11px;
+}
+
+.terminal-write-files-result {
+  color: #d6f5df;
+}
+
+.terminal-written-files-summary {
+  display: inline-block;
+  color: #86efac;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.terminal-written-files-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.terminal-file-chip,
+.terminal-more-files-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 26px;
+  max-width: min(100%, 360px);
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 7px;
+  background: rgba(15, 23, 42, 0.72);
+  color: #dbeafe;
+  cursor: pointer;
+  font: inherit;
+  padding: 4px 8px;
+  text-align: left;
+}
+
+.terminal-file-chip:hover,
+.terminal-more-files-btn:hover {
+  border-color: rgba(96, 165, 250, 0.65);
+  background: rgba(30, 41, 59, 0.92);
+  color: #ffffff;
+}
+
+.terminal-file-chip-path {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.terminal-file-chip-status {
+  flex: 0 0 auto;
+  border-left: 1px solid rgba(148, 163, 184, 0.22);
+  color: #86efac;
+  font-size: 10px;
+  padding-left: 6px;
+  text-transform: lowercase;
+}
+
+.terminal-more-files-btn {
+  color: #93c5fd;
+  font-weight: 600;
+}
+
 /* ===== TERMINAL DOWNLOAD PROGRESS ===== */
 .terminal-download-box {
   background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%);

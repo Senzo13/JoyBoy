@@ -312,6 +312,12 @@ body.terminal-mode .tool-call-line {
     opacity: 0.78 !important;
 }
 
+body.terminal-mode .tool-call-line.tool-call-write_files,
+body.terminal-mode .tool-call-line.tool-call-write-files {
+    opacity: 0.98 !important;
+    color: #cbd5e1 !important;
+}
+
 body.terminal-mode .terminal-activity-summary {
     padding: 10px 0 5px !important;
     color: #9ca3af !important;
@@ -325,11 +331,31 @@ body.terminal-mode .tool-call-line .tool-target {
     color: #8b8b8b !important;
 }
 
+body.terminal-mode .tool-call-line.tool-call-write_files .tool-bullet,
+body.terminal-mode .tool-call-line.tool-call-write_files .tool-action,
+body.terminal-mode .tool-call-line.tool-call-write_files .tool-file-count,
+body.terminal-mode .tool-call-line.tool-call-write-files .tool-bullet,
+body.terminal-mode .tool-call-line.tool-call-write-files .tool-action,
+body.terminal-mode .tool-call-line.tool-call-write-files .tool-file-count {
+    color: #86efac !important;
+}
+
 body.terminal-mode .tool-result-line {
     padding: 0 0 6px 18px !important;
     color: #737373 !important;
     font-size: 12px !important;
     opacity: 0.74 !important;
+}
+
+body.terminal-mode .terminal-write-files-result {
+    opacity: 1 !important;
+    color: #d6f5df !important;
+    padding-top: 2px !important;
+    padding-bottom: 10px !important;
+}
+
+body.terminal-mode .terminal-write-files-result .terminal-written-files-summary {
+    color: #86efac !important;
 }
 
 body.terminal-mode .typing-indicator {

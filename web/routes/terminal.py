@@ -217,7 +217,7 @@ def terminal_chat():
                     for item in files[:3]
                     if isinstance(item, dict) and item.get('path')
                 ]
-                suffix = f", +{len(files) - len(paths)}" if len(files) > len(paths) else ""
+                suffix = f", {len(files) - len(paths)} more" if len(files) > len(paths) else ""
                 return f"{', '.join(paths)}{suffix}" if paths else f"{len(files)} files"
             return "files"
         if tool_name == 'write_todos':
@@ -455,24 +455,24 @@ def terminal_chat():
                         files = data.get('files', []) if isinstance(data.get('files', []), list) else []
                         created = data.get('created', []) if isinstance(data.get('created', []), list) else []
                         updated = data.get('updated', []) if isinstance(data.get('updated', []), list) else []
+                        max_file_details = 200
                         preview_paths = [
                             str(item.get('path', '')).strip()
                             for item in files[:5]
                             if isinstance(item, dict) and item.get('path')
                         ]
-                        preview = ", ".join(preview_paths)
-                        if len(files) > len(preview_paths):
-                            preview += f", +{len(files) - len(preview_paths)}"
                         counts = (
-                            f"{len(created)} créé(s), {len(updated)} modifié(s)"
+                            f"{data.get('count', len(files))} fichier(s) écrit(s) · {len(created)} créé(s), {len(updated)} modifié(s)"
                             if created or updated
                             else f"{data.get('count', len(files))} fichier(s) écrit(s)"
                         )
                         result_data['tool_result']['count'] = data.get('count', len(files))
-                        result_data['tool_result']['files'] = files[:30]
-                        result_data['tool_result']['created'] = created[:30]
-                        result_data['tool_result']['updated'] = updated[:30]
-                        result_data['tool_result']['summary'] = f"{counts} · {preview}" if preview else counts
+                        result_data['tool_result']['files'] = files[:max_file_details]
+                        result_data['tool_result']['created'] = created[:max_file_details]
+                        result_data['tool_result']['updated'] = updated[:max_file_details]
+                        result_data['tool_result']['preview_paths'] = preview_paths
+                        result_data['tool_result']['files_truncated_count'] = max(0, len(files) - max_file_details)
+                        result_data['tool_result']['summary'] = counts
                     elif tool_name == 'delete_file':
                         result_data['tool_result']['path'] = data.get('path', '')
                         result_data['tool_result']['verified'] = data.get('verified', False)

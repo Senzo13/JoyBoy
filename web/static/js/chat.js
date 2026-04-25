@@ -1637,7 +1637,9 @@ function addToolCall(action, target, args = {}) {
             .map(item => (typeof item === 'string' ? item : item?.path))
             .filter(Boolean)
             .slice(0, max);
-        const suffix = items.length > paths.length ? `, +${items.length - paths.length}` : '';
+        const suffix = items.length > paths.length
+            ? `, ${chatT('terminal.moreFilesText', '{count} autre(s)', { count: items.length - paths.length })}`
+            : '';
         return `${paths.join(', ')}${suffix}`;
     };
 
@@ -1655,7 +1657,8 @@ function addToolCall(action, target, args = {}) {
     }
 
     const el = document.createElement('div');
-    el.className = 'tool-call-line';
+    const actionClass = String(action || 'tool').replace(/[^a-z0-9_-]/gi, '-').toLowerCase();
+    el.className = `tool-call-line tool-call-${actionClass}`;
 
     // Formatter l'action: read_file -> Read, write_file -> Write, etc.
     const formatAction = (a) => {
@@ -1698,7 +1701,10 @@ function addToolCall(action, target, args = {}) {
     const targetHtml = displayTarget
         ? `(<span class="tool-target">${escapeHtml(displayTarget)}</span>)`
         : '';
-    el.innerHTML = `<span class="tool-bullet">●</span> <span class="tool-action">${displayAction}</span>${targetHtml}`;
+    const fileCountBadge = action === 'write_files' && Array.isArray(args?.files)
+        ? `<span class="tool-file-count">${escapeHtml(chatT('terminal.fileCount', '{count} fichier(s)', { count: args.files.length }))}</span>`
+        : '';
+    el.innerHTML = `<span class="tool-bullet">●</span> <span class="tool-action">${displayAction}</span>${targetHtml}${fileCountBadge}`;
     messagesDiv.appendChild(el);
     scrollToBottom(document.body.classList.contains('terminal-mode'));
     return el;

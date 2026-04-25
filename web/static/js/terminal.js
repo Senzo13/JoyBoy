@@ -120,58 +120,270 @@ function updateTokensMaxDisplay() {
 
 // ===== TOOL RESULTS STORAGE (Ctrl+O to view) =====
 let lastToolResults = [];  // Stocke les derniers résultats d'outils
+let terminalToolResultSeq = 0;
+
+function terminalResultPathFromItem(item) {
+    if (!item) return '';
+    if (typeof item === 'string') return item.trim();
+    if (typeof item === 'object') return String(item.path || item.file || '').trim();
+    return '';
+}
+
+function normalizeTerminalFileEntries(result = {}) {
+    const byPath = new Map();
+    const pushFile = (item, fallback = {}) => {
+        const path = terminalResultPathFromItem(item);
+        if (!path) return;
+        const current = byPath.get(path) || { path };
+        const source = typeof item === 'object' && item ? item : {};
+        byPath.set(path, {
+            ...current,
+            ...fallback,
+            ...source,
+            path
+        });
+    };
+
+    if (Array.isArray(result.files)) {
+        result.files.forEach(item => pushFile(item));
+    }
+    if (Array.isArray(result.created)) {
+        result.created.forEach(item => pushFile(item, { action: 'created' }));
+    }
+    if (Array.isArray(result.updated)) {
+        result.updated.forEach(item => pushFile(item, { action: 'updated' }));
+    }
+    return [...byPath.values()].sort((a, b) => a.path.localeCompare(b.path));
+}
+
+function formatTerminalWriteFilesSummary(result = {}, files = normalizeTerminalFileEntries(result)) {
+    const total = Number(result.count || files.length || 0);
+    const createdCount = Array.isArray(result.created)
+        ? result.created.length
+        : files.filter(item => item.action === 'created').length;
+    const updatedCount = Array.isArray(result.updated)
+        ? result.updated.length
+        : files.filter(item => item.action === 'updated').length;
+
+    if (createdCount || updatedCount) {
+        return terminalT(
+            'terminal.writtenFilesSummaryDetailed',
+            '{total} fichier(s) écrit(s) · {created} créé(s), {updated} modifié(s)',
+            { total: total || createdCount + updatedCount, created: createdCount, updated: updatedCount }
+        );
+    }
+    return terminalT('terminal.writtenFilesSummary', '{count} fichier(s) écrit(s)', { count: total });
+}
+
+function terminalFileStatusLabel(action) {
+    const normalized = String(action || '').toLowerCase();
+    if (normalized === 'created') return terminalT('terminal.tool.fileCreated', 'créé');
+    if (normalized === 'updated' || normalized === 'modified') return terminalT('terminal.tool.fileModified', 'modifié');
+    return terminalT('terminal.writtenFileStatus', 'écrit');
+}
+
+function renderTerminalFileButtons(files = [], options = {}) {
+    const limit = Number.isFinite(options.limit) ? options.limit : 8;
+    const resultId = options.resultId || '';
+    const visibleFiles = files.slice(0, limit);
+    const remaining = Math.max(0, files.length - visibleFiles.length);
+    const buttons = visibleFiles.map(file => {
+        const path = file.path || '';
+        const status = terminalFileStatusLabel(file.action);
+        return `
+            <button type="button" class="terminal-file-chip" data-terminal-file="${escapeHtml(path)}" title="${escapeHtml(path)}">
+                <span class="terminal-file-chip-path">${escapeHtml(path)}</span>
+                <span class="terminal-file-chip-status">${escapeHtml(status)}</span>
+            </button>
+        `;
+    }).join('');
+    const moreButton = remaining > 0 && resultId
+        ? `<button type="button" class="terminal-more-files-btn" data-terminal-show-files="${escapeHtml(resultId)}">${escapeHtml(terminalT('terminal.moreFilesButton', '+{count} fichier(s)', { count: remaining }))}</button>`
+        : '';
+    return `<div class="terminal-written-files-list">${buttons}${moreButton}</div>`;
+}
+
+function getStoredToolResult(resultId) {
+    return lastToolResults.find(item => item.id === resultId) || null;
+}
 
 /**
  * Ajoute un résultat d'outil au stockage
  */
 function storeToolResult(toolCall, toolResult) {
-    lastToolResults.push({
+    const stored = {
+        id: `tool-result-${++terminalToolResultSeq}`,
         timestamp: new Date().toLocaleTimeString(),
         tool: toolCall,
         result: toolResult
-    });
+    };
+    lastToolResults.push(stored);
     // Garder les 20 derniers
     if (lastToolResults.length > 20) {
         lastToolResults.shift();
     }
+    return stored;
+}
+
+function attachTerminalFileResultHandlers(root = document) {
+    root.querySelectorAll('[data-terminal-file]').forEach(button => {
+        if (button.dataset.boundTerminalFile === '1') return;
+        button.dataset.boundTerminalFile = '1';
+        button.addEventListener('click', () => openTerminalFilePreview(button.dataset.terminalFile || ''));
+    });
+    root.querySelectorAll('[data-terminal-show-files]').forEach(button => {
+        if (button.dataset.boundTerminalFilesModal === '1') return;
+        button.dataset.boundTerminalFilesModal = '1';
+        button.addEventListener('click', () => showTerminalWrittenFilesModal(button.dataset.terminalShowFiles || ''));
+    });
+}
+
+function showTerminalWrittenFilesModal(resultId) {
+    const item = getStoredToolResult(resultId);
+    const files = normalizeTerminalFileEntries(item?.result || {});
+    const title = terminalT('terminal.writtenFilesTitle', 'Fichiers écrits');
+    const summary = item ? formatTerminalWriteFilesSummary(item.result || {}, files) : '';
+    const fileList = files.length
+        ? renderTerminalFileButtons(files, { limit: files.length, resultId: '' })
+        : `<div class="tool-results-empty">${escapeHtml(terminalT('terminal.noWrittenFiles', 'Aucun fichier écrit à afficher.'))}</div>`;
+
+    const modal = document.createElement('div');
+    modal.className = 'tool-results-modal';
+    modal.innerHTML = `
+        <div class="tool-results-content terminal-written-files-modal">
+            <div class="tool-results-header">
+                <h3><i data-lucide="files"></i> ${escapeHtml(title)}</h3>
+                <button class="tool-results-close" type="button" aria-label="${escapeHtml(terminalT('terminal.close', 'Fermer'))}">
+                    <i data-lucide="x"></i>
+                </button>
+            </div>
+            <div class="tool-results-body">
+                ${summary ? `<div class="terminal-written-files-modal-summary">${escapeHtml(summary)}</div>` : ''}
+                ${fileList}
+            </div>
+        </div>
+    `;
+    modal.querySelector('.tool-results-close')?.addEventListener('click', () => modal.remove());
+    modal.onclick = (event) => { if (event.target === modal) modal.remove(); };
+    document.body.appendChild(modal);
+    attachTerminalFileResultHandlers(modal);
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+function showTerminalFilePreviewModal(path, result = {}) {
+    const content = String(result.content || '');
+    const lines = Number(result.lines || 0);
+    const modal = document.createElement('div');
+    modal.className = 'tool-results-modal';
+    modal.innerHTML = `
+        <div class="tool-results-content terminal-file-preview-modal">
+            <div class="tool-results-header">
+                <h3><i data-lucide="file-text"></i> ${escapeHtml(path)}</h3>
+                <button class="tool-results-close" type="button" aria-label="${escapeHtml(terminalT('terminal.close', 'Fermer'))}">
+                    <i data-lucide="x"></i>
+                </button>
+            </div>
+            <div class="tool-results-body">
+                <div class="terminal-file-preview-meta">${escapeHtml(terminalT('terminal.filePreviewMeta', '{lines} ligne(s)', { lines }))}</div>
+                <pre class="terminal-file-preview-content">${escapeHtml(content)}</pre>
+            </div>
+        </div>
+    `;
+    modal.querySelector('.tool-results-close')?.addEventListener('click', () => modal.remove());
+    modal.onclick = (event) => { if (event.target === modal) modal.remove(); };
+    document.body.appendChild(modal);
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+async function openTerminalFilePreview(path) {
+    const cleanPath = String(path || '').trim();
+    if (!cleanPath) return;
+    if (!terminalWorkspace?.path) {
+        if (typeof Toast !== 'undefined') Toast.error(terminalT('terminal.noWorkspaceSelected', 'Aucun workspace sélectionné.'));
+        return;
+    }
+    try {
+        const response = await fetch('/workspace/read', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ workspace_path: terminalWorkspace.path, path: cleanPath })
+        });
+        const result = await response.json();
+        if (!response.ok || !result.success) {
+            throw new Error(result.error || terminalT('terminal.filePreviewError', 'Impossible de lire ce fichier.'));
+        }
+        showTerminalFilePreviewModal(cleanPath, result);
+    } catch (error) {
+        console.error('[TERMINAL] File preview error:', error);
+        if (typeof Toast !== 'undefined') {
+            Toast.error(error.message || terminalT('terminal.filePreviewError', 'Impossible de lire ce fichier.'));
+        }
+    }
+}
+
+function addWriteFilesResult(result = {}, storedItem = null) {
+    const files = normalizeTerminalFileEntries(result);
+    if (!files.length) return false;
+
+    const messagesDiv = getChatMessages();
+    if (!messagesDiv) return false;
+
+    const summary = formatTerminalWriteFilesSummary(result, files);
+    const el = document.createElement('div');
+    el.className = 'tool-result-line tool-result-success terminal-write-files-result';
+    el.innerHTML = `
+        <span class="tool-corner">⎿</span>
+        <span class="terminal-written-files-summary">${escapeHtml(summary)}</span>
+        ${renderTerminalFileButtons(files, { limit: 6, resultId: storedItem?.id || '' })}
+    `;
+    messagesDiv.appendChild(el);
+    attachTerminalFileResultHandlers(el);
+    scrollToBottom(document.body.classList.contains('terminal-mode'));
+    return true;
 }
 
 /**
  * Affiche les derniers résultats d'outils (Ctrl+O)
  */
-function showToolResults() {
+function showToolResults(options = {}) {
     // Créer les items HTML
     let itemsHtml = '';
 
     if (lastToolResults.length === 0) {
-        itemsHtml = '<div class="tool-results-empty">Aucun résultat d\'outil à afficher</div>';
+        itemsHtml = `<div class="tool-results-empty">${escapeHtml(terminalT('terminal.noToolResults', 'Aucun résultat d’outil à afficher'))}</div>`;
     } else {
         for (const item of lastToolResults.slice().reverse()) {
             const toolName = item.tool?.action || item.tool?.name || item.tool?.function?.name || 'unknown';
             const toolArgs = item.tool?.args || item.tool?.path || item.tool?.function?.arguments || {};
             const argsStr = typeof toolArgs === 'string' ? toolArgs : JSON.stringify(toolArgs, null, 2);
+            const files = normalizeTerminalFileEntries(item.result || {});
 
-            let outputStr = '';
+            let outputHtml = '';
             if (item.result?.error) {
-                outputStr = `ERROR: ${item.result.error}`;
+                outputHtml = `<pre>${escapeHtml(`ERROR: ${item.result.error}`)}</pre>`;
+            } else if (files.length) {
+                outputHtml = `
+                    <div class="terminal-written-files-modal-summary">${escapeHtml(formatTerminalWriteFilesSummary(item.result, files))}</div>
+                    ${renderTerminalFileButtons(files, { limit: files.length, resultId: item.id })}
+                `;
             } else if (item.result?.content) {
-                outputStr = item.result.content.substring(0, 1000);
+                outputHtml = `<pre>${escapeHtml(item.result.content.substring(0, 1000))}</pre>`;
             } else if (item.result?.items) {
-                outputStr = item.result.items.slice(0, 20).map(i => i.name || i).join('\n');
+                outputHtml = `<pre>${escapeHtml(item.result.items.slice(0, 20).map(i => i.name || i).join('\n'))}</pre>`;
             } else if (item.result?.output) {
-                outputStr = item.result.output.substring(0, 1000);
+                outputHtml = `<pre>${escapeHtml(item.result.output.substring(0, 1000))}</pre>`;
             } else if (typeof item.result === 'string') {
-                outputStr = item.result.substring(0, 1000);
+                outputHtml = `<pre>${escapeHtml(item.result.substring(0, 1000))}</pre>`;
             }
 
             itemsHtml += `
-                <div class="tool-result-item">
+                <div class="tool-result-item ${options.focusId === item.id ? 'tool-result-item-focused' : ''}" data-tool-result-id="${escapeHtml(item.id)}">
                     <div class="tool-result-header">
-                        <span class="tool-result-name">${toolName}</span>
-                        <span class="tool-result-time">${item.timestamp}</span>
+                        <span class="tool-result-name">${escapeHtml(toolName)}</span>
+                        <span class="tool-result-time">${escapeHtml(item.timestamp)}</span>
                     </div>
-                    <div class="tool-result-args">${argsStr}</div>
-                    <div class="tool-result-output">${outputStr || escapeHtml(terminalT('terminal.toolOutputEmpty', '(no output)'))}</div>
+                    <div class="tool-result-args">${escapeHtml(argsStr)}</div>
+                    <div class="tool-result-output">${outputHtml || escapeHtml(terminalT('terminal.toolOutputEmpty', '(no output)'))}</div>
                 </div>
             `;
         }
@@ -196,6 +408,12 @@ function showToolResults() {
 
     modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
     document.body.appendChild(modal);
+    attachTerminalFileResultHandlers(modal);
+    if (options.focusId) {
+        const focusedItem = [...modal.querySelectorAll('[data-tool-result-id]')]
+            .find(el => el.dataset.toolResultId === options.focusId);
+        focusedItem?.scrollIntoView({ block: 'center' });
+    }
 
     // Init Lucide icons in modal
     if (typeof lucide !== 'undefined') {
@@ -1113,7 +1331,9 @@ function summarizeTerminalPaths(paths, max = 4) {
         .map(item => (typeof item === 'string' ? item : item?.path))
         .filter(Boolean)
         .slice(0, max);
-    const suffix = paths.length > labels.length ? `, +${paths.length - labels.length}` : '';
+    const suffix = paths.length > labels.length
+        ? `, ${terminalT('terminal.moreFilesText', '{count} autre(s)', { count: paths.length - labels.length })}`
+        : '';
     return `${labels.join(', ')}${suffix}`;
 }
 
@@ -3121,8 +3341,8 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                         const result = data.tool_result;
                         console.log(`%c[TERMINAL] ⎿ Tool result reçu: ${result.action} → ${result.success ? 'OK' : result.error}`, 'color: #22c55e; font-weight: bold;');
 
-                        // Stocker pour Ctrl+O
-                        storeToolResult(window.lastToolCall || {action: result.action}, result);
+                        // Stocker pour Ctrl+O et pour les détails cliquables des écritures multi-fichiers.
+                        const storedToolResult = storeToolResult(window.lastToolCall || {action: result.action}, result);
 
                         hideThinkingAnimation();
 
@@ -3184,9 +3404,18 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                         let resultSummary = '';
                         const lastToolArgs = window.lastToolCall?.args || {};
                         const showToolResult = shouldShowTerminalToolResult(result, lastToolArgs);
-                        if (result.summary) {
+                        const renderedWriteFilesResult = result.action === 'write_files'
+                            && showToolResult
+                            && addWriteFilesResult(result, storedToolResult);
+                        if (result.action === 'write_files') {
+                            resultSummary = formatTerminalWriteFilesSummary(result);
+                            if (showToolResult && !renderedWriteFilesResult && resultSummary) {
+                                addToolResult(resultSummary, 'success');
+                            }
+                        }
+                        if (result.summary && !resultSummary) {
                             resultSummary = result.summary;
-                            if (showToolResult) {
+                            if (showToolResult && !renderedWriteFilesResult) {
                                 addToolResult(result.summary, result.action === 'write_files' || result.action === 'clear_workspace' ? 'success' : 'info');
                             }
                         } else if (result.lines_added !== undefined || result.lines_removed !== undefined) {
