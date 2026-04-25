@@ -513,32 +513,32 @@ function getExtensionState(item) {
                 primaryDisabled: true,
             };
         }
-        if (server && server.enabled !== false) {
-            if (extensionNeedsConnection(item, server)) {
-                const connection = getExtensionConnection(item);
-                if (connection?.mode === 'unsupported-oauth') {
-                    return {
-                        id: 'blocked',
-                        label: extensionT('extensions.status.clientAuthMissing', 'Auth client manquante'),
-                        icon: 'lock',
-                        className: 'is-planned',
-                        primaryLabel: extensionT('extensions.actions.openMcp', 'Ouvrir la config MCP'),
-                        primaryDisabled: false,
-                    };
-                }
+        if (server && extensionNeedsConnection(item, server)) {
+            const connection = getExtensionConnection(item);
+            if (connection?.mode === 'unsupported-oauth') {
                 return {
-                    id: 'auth',
-                    label: extensionHasStoredConnection(item, server)
-                        ? extensionT('extensions.status.testRequired', 'Test requis')
-                        : extensionT('extensions.status.connectionRequired', 'Connexion requise'),
-                    icon: 'key-round',
-                    className: 'is-warning',
-                    primaryLabel: extensionHasStoredConnection(item, server)
-                        ? extensionT('extensions.actions.testConnection', 'Tester la connexion')
-                        : extensionT('extensions.actions.configureConnection', 'Configurer la connexion'),
+                    id: 'blocked',
+                    label: extensionT('extensions.status.clientAuthMissing', 'Auth client manquante'),
+                    icon: 'lock',
+                    className: 'is-planned',
+                    primaryLabel: extensionT('extensions.actions.openMcp', 'Ouvrir la config MCP'),
                     primaryDisabled: false,
                 };
             }
+            return {
+                id: 'auth',
+                label: extensionHasStoredConnection(item, server)
+                    ? extensionT('extensions.status.testRequired', 'Test requis')
+                    : extensionT('extensions.status.connectionRequired', 'Connexion requise'),
+                icon: 'key-round',
+                className: 'is-warning',
+                primaryLabel: extensionHasStoredConnection(item, server)
+                    ? extensionT('extensions.actions.testConnection', 'Tester la connexion')
+                    : extensionT('extensions.actions.configureConnection', 'Configurer la connexion'),
+                primaryDisabled: false,
+            };
+        }
+        if (server && server.enabled !== false) {
             return {
                 id: 'installed',
                 label: extensionT('extensions.status.installed', 'Installé'),
