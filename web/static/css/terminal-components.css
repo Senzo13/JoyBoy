@@ -11,6 +11,21 @@
 
 .terminal-thinking .thinking-text {
   color: #aaa;
+  max-width: min(760px, 82vw);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.terminal-thinking .thinking-text,
+.terminal-progress-log-line.is-running .terminal-progress-log-text,
+.terminal-progress-log-line.is-thinking .terminal-progress-log-text {
+  background-image: linear-gradient(110deg, rgba(148, 163, 184, 0.72) 0%, #ffffff 42%, rgba(147, 197, 253, 0.94) 54%, rgba(148, 163, 184, 0.72) 100%);
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: terminalTextShimmer 1.75s linear infinite;
 }
 
 .terminal-thinking .thinking-dots {
@@ -424,6 +439,12 @@
   .terminal-approval-card.terminal-approval-composer {
     padding: 12px;
     border-radius: 18px;
+  }
+}
+
+@keyframes terminalTextShimmer {
+  100% {
+    background-position: -220% 0;
   }
 }
 
@@ -1063,7 +1084,7 @@ body.terminal-mode .input-bar.terminal-progress-active > .terminal-progress-pane
 
 .terminal-progress-log-line.is-running .terminal-progress-log-text,
 .terminal-progress-log-line.is-thinking .terminal-progress-log-text {
-  color: #93c5fd;
+  color: transparent;
 }
 
 .terminal-progress-log-line.is-success .terminal-progress-log-text {
@@ -1094,6 +1115,18 @@ body.terminal-mode .input-bar.terminal-progress-active > .terminal-progress-pane
 
 .terminal-progress-panel.is-collapsed .terminal-progress-toggle svg {
   transform: rotate(180deg);
+}
+
+.terminal-progress-panel.is-answering {
+  padding-bottom: 8px;
+}
+
+.terminal-progress-panel.is-answering .terminal-progress-task-slot {
+  display: none;
+}
+
+.terminal-progress-panel.is-answering .terminal-progress-log {
+  max-height: 72px;
 }
 
 /* ===== TERMINAL TASKS (like Claude Code) ===== */

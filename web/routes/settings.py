@@ -239,6 +239,16 @@ def mcp_update_config():
     })
 
 
+@settings_bp.route('/api/mcp/test/<server_name>', methods=['POST'])
+def mcp_test_server(server_name):
+    """Teste un seul serveur MCP configuré, sans charger tous les autres connecteurs."""
+    from core.agent_runtime import test_mcp_server
+
+    result = test_mcp_server(server_name)
+    status_code = 200 if result.get('success') else 400
+    return jsonify(result), status_code
+
+
 # ========== FEATURE FLAGS ==========
 
 @settings_bp.route('/api/features/status')

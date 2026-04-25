@@ -77,7 +77,11 @@ class TerminalWriteFilesUiTests(unittest.TestCase):
 
         self.assertIn("function isTerminalVerifierWarning", terminal_js)
         self.assertIn("taskStatus = isTerminalVerifierWarning(result) ? 'warning' : 'done'", terminal_js)
+        self.assertIn("function setTerminalProgressAnswering(active = false)", terminal_js)
+        self.assertIn("setTerminalProgressAnswering(true);", terminal_js)
         self.assertIn("progressToolWarning", terminal_js)
+        self.assertIn(".terminal-progress-panel.is-answering .terminal-progress-task-slot", components_css)
+        self.assertIn(".terminal-progress-panel.is-answering .terminal-progress-log", components_css)
         self.assertIn("task-warning", components_css)
         self.assertIn("result_data['tool_result']['status'] = data.get('status', '')", terminal_route)
         self.assertIn("result_data['tool_result']['commands'] = commands[:4]", terminal_route)

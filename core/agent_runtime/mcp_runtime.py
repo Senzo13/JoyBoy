@@ -42,6 +42,7 @@ _MCP_LOCK = threading.Lock()
 _MCP_LOAD_CONDITION = threading.Condition(_MCP_LOCK)
 _MCP_LOADING = False
 _MCP_LOADING_SIGNATURE = ""
+DEFAULT_MCP_TOOL_LOAD_TIMEOUT_SECONDS = 45
 
 MCP_SERVER_TEMPLATES: dict[str, dict[str, Any]] = {
     "filesystem": {
@@ -370,6 +371,13 @@ def _build_server_params(server_name: str, config: dict[str, Any]) -> dict[str, 
     return params
 
 
+def _mcp_tool_load_timeout_seconds() -> int:
+    try:
+        return max(5, int(os.environ.get("JOYBOY_MCP_TOOL_LOAD_TIMEOUT_SECONDS") or DEFAULT_MCP_TOOL_LOAD_TIMEOUT_SECONDS))
+    except (TypeError, ValueError):
+        return DEFAULT_MCP_TOOL_LOAD_TIMEOUT_SECONDS
+
+
 def _build_servers_config(enabled_servers: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
     servers_config: dict[str, dict[str, Any]] = {}
     for server_name, config in enabled_servers.items():
@@ -595,10 +603,16 @@ def _tool_to_adapter(tool: Any) -> McpToolAdapter:
     )
 
 
-async def _load_mcp_tools_async() -> list[McpToolAdapter]:
+async def _load_mcp_tools_async(server_name: str | None = None) -> list[McpToolAdapter]:
     from langchain_mcp_adapters.client import MultiServerMCPClient
 
     enabled_servers = _enabled_mcp_servers(resolve_env=True)
+    if server_name:
+        enabled_servers = {
+            name: config
+            for name, config in enabled_servers.items()
+            if name == server_name
+        }
     servers_config = _build_servers_config(enabled_servers)
     if not servers_config:
         return []
@@ -618,7 +632,7 @@ async def _load_mcp_tools_async() -> list[McpToolAdapter]:
         interceptors.append(oauth_interceptor)
 
     client = MultiServerMCPClient(servers_config, tool_interceptors=interceptors, tool_name_prefix=True)
-    tools = await client.get_tools()
+    tools = await asyncio.wait_for(client.get_tools(), timeout=_mcp_tool_load_timeout_seconds())
     return [_tool_to_adapter(tool) for tool in tools if getattr(tool, "name", None)]
 
 
@@ -631,6 +645,72 @@ def get_deerflow_extensions_config() -> dict[str, Any]:
         "mcpServers": deepcopy(get_mcp_servers()),
         "skills": {},
     }
+
+
+def test_mcp_server(server_name: str) -> dict[str, Any]:
+    server_name = str(server_name or "").strip()
+    raw_servers = get_mcp_servers()
+    raw_config = raw_servers.get(server_name)
+    packages = _package_state()
+    if not server_name or not isinstance(raw_config, dict):
+        return {
+            "success": False,
+            "error": f"Serveur MCP introuvable: {server_name or 'inconnu'}",
+            "package_state": packages,
+            "package_available": all(packages.values()),
+            "server": None,
+            "loaded_tools": [],
+            "loaded_tool_count": 0,
+        }
+
+    status = _validate_server_config(server_name, raw_config)
+    if not bool(raw_config.get("enabled", True)):
+        return {
+            "success": False,
+            "error": f"Serveur MCP désactivé: {server_name}",
+            "package_state": packages,
+            "package_available": all(packages.values()),
+            "server": status,
+            "loaded_tools": [],
+            "loaded_tool_count": 0,
+        }
+
+    if not all(packages.values()):
+        missing = [name for name, available in packages.items() if not available]
+        return {
+            "success": False,
+            "error": "Missing MCP runtime packages: " + ", ".join(missing),
+            "package_state": packages,
+            "package_available": False,
+            "server": status,
+            "loaded_tools": [],
+            "loaded_tool_count": 0,
+        }
+
+    try:
+        tools = _run_awaitable(_load_mcp_tools_async(server_name))
+        status["loaded_tools"] = [tool.name for tool in tools]
+        status["loaded_tool_count"] = len(tools)
+        return {
+            "success": True,
+            "error": "",
+            "package_state": packages,
+            "package_available": True,
+            "server": status,
+            "loaded_tools": [tool.to_public_dict() for tool in tools],
+            "loaded_tool_count": len(tools),
+        }
+    except Exception as exc:
+        logger.error("Failed to test MCP server %s: %s", server_name, exc, exc_info=True)
+        return {
+            "success": False,
+            "error": str(exc),
+            "package_state": packages,
+            "package_available": True,
+            "server": status,
+            "loaded_tools": [],
+            "loaded_tool_count": 0,
+        }
 
 
 def reset_mcp_tool_cache() -> None:

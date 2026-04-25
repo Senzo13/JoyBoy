@@ -135,6 +135,15 @@ class ModulesStaticTests(unittest.TestCase):
         self.assertIn("template: 'cloudflare'", extensions_js)
         self.assertIn("template: 'figma'", extensions_js)
         self.assertIn("template: 'linear'", extensions_js)
+        self.assertIn("id: 'hugging-face'", extensions_js)
+        self.assertIn("icon: 'bot'", extensions_js)
+        self.assertIn("return icons[pascalName] ? clean : 'box';", extensions_js)
+        self.assertIn("requiresConnection: true", extensions_js)
+        self.assertIn("connectionRequired", extensions_js)
+        self.assertIn("extensionSetupNote", extensions_js)
+        self.assertIn("connectMcpExtension", extensions_js)
+        self.assertIn("testMcpServer", extensions_js)
+        self.assertIn("JOYBOY_EXTENSION_CONNECTIONS", extensions_js)
         self.assertIn("openExtensionModal", extensions_js)
 
         bindings = self.read("web/static/js/i18n.bindings.js")
@@ -146,6 +155,11 @@ class ModulesStaticTests(unittest.TestCase):
                 data = self.read(f"web/static/js/i18n.{locale}.js")
                 self.assertIn("extensions: {", data)
                 self.assertIn("mcpBody:", data)
+                self.assertIn("connectionRequired:", data)
+                self.assertIn("configureConnection:", data)
+                self.assertIn("connectTokenBody:", data)
+                self.assertIn("connectSuccessTitle:", data)
+                self.assertIn("setup: {", data)
                 self.assertIn("catalog: {", data)
                 self.assertIn("'web-research':", data)
                 self.assertIn("github:", data)
@@ -175,6 +189,15 @@ class ModulesStaticTests(unittest.TestCase):
         self.assertIn("https://browser.mcp.cloudflare.com/mcp", mcp_runtime)
         self.assertIn("https://mcp.figma.com/mcp", mcp_runtime)
         self.assertIn("https://mcp.linear.app/mcp", mcp_runtime)
+        self.assertIn("DEFAULT_MCP_TOOL_LOAD_TIMEOUT_SECONDS", mcp_runtime)
+        self.assertIn("def test_mcp_server", mcp_runtime)
+
+        settings_py = self.read("web/routes/settings.py")
+        api_js = self.read("web/static/js/api.js")
+        runtime_init = self.read("core/agent_runtime/__init__.py")
+        self.assertIn("/api/mcp/test/<server_name>", settings_py)
+        self.assertIn("testMcpServer(serverName)", api_js)
+        self.assertIn("test_mcp_server", runtime_init)
 
     def test_modules_hub_refreshes_catalog_and_keeps_native_fallbacks(self):
         modules_js = self.read("web/static/js/modules.js")
@@ -192,6 +215,9 @@ class ModulesStaticTests(unittest.TestCase):
         self.assertIn(".modules-card.is-locked", modules_css)
         self.assertIn(".modules-card:disabled", modules_css)
         self.assertIn(".modules-card-cyberatlas", modules_css)
+        self.assertIn(".modules-shell", modules_css)
+        self.assertIn("width: min(100%, 1080px);", modules_css)
+        self.assertIn("justify-content: center;", modules_css)
         self.assertIn(".modules-card-deployatlas", modules_css)
 
     def test_perfatlas_reuses_shared_model_picker_logic_and_localized_provider_copy(self):

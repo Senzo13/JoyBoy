@@ -52,6 +52,49 @@
     justify-content: flex-end;
 }
 
+.extensions-hero-action {
+    display: inline-grid;
+    grid-auto-flow: column;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    min-height: 36px;
+    padding: 0 6px;
+    border: 0;
+    border-radius: 10px;
+    color: #cfe2ff;
+    background: transparent;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 800;
+    transition: color 0.16s ease, transform 0.16s ease;
+}
+
+.extensions-hero-action:hover {
+    color: #ffffff;
+    transform: translateY(-1px);
+}
+
+.extensions-hero-action svg {
+    width: 17px;
+    height: 17px;
+}
+
+.extensions-hero-action.icon-only {
+    width: 36px;
+    padding: 0;
+}
+
+.extensions-hero-action.is-spinning svg {
+    animation: extensions-refresh-spin 0.72s linear infinite;
+}
+
+@keyframes extensions-refresh-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
 .extensions-toolbar {
     display: grid;
     grid-template-columns: minmax(240px, 1fr) auto;
@@ -144,15 +187,22 @@
 
 .extensions-runtime-badges,
 .extension-chip-row {
+    min-width: 0;
     display: flex;
     flex-wrap: wrap;
     gap: 7px;
 }
 
+.extensions-runtime-badges {
+    justify-content: flex-end;
+}
+
 .extension-chip {
+    max-width: 100%;
     display: inline-flex;
     align-items: center;
     gap: 5px;
+    min-width: 0;
     min-height: 25px;
     padding: 4px 8px;
     border: 1px solid rgba(148, 163, 184, 0.12);
@@ -161,6 +211,9 @@
     background: rgba(255, 255, 255, 0.045);
     font-size: 11px;
     font-weight: 700;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .extension-chip.is-ok {
@@ -216,6 +269,7 @@
 
 .extension-card {
     min-width: 0;
+    width: 100%;
     display: grid;
     grid-template-columns: 44px minmax(0, 1fr) auto;
     gap: 12px;
@@ -254,10 +308,16 @@
 }
 
 .extension-card-copy {
+    display: block;
     min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
 }
 
 .extension-card-name {
+    display: block;
+    min-width: 0;
+    max-width: 100%;
     color: #f8fafc;
     font-size: 14px;
     font-weight: 800;
@@ -267,6 +327,9 @@
 }
 
 .extension-card-description {
+    display: block;
+    min-width: 0;
+    max-width: 100%;
     margin-top: 4px;
     color: #8ea0ba;
     font-size: 12px;
@@ -277,6 +340,7 @@
 }
 
 .extension-card-action {
+    flex: 0 0 auto;
     display: grid;
     place-items: center;
     width: 32px;
@@ -300,6 +364,11 @@
 
 .extension-card-action.is-planned {
     color: #94a3b8;
+}
+
+.extension-card-action.is-warning {
+    color: #fde68a;
+    background: rgba(245, 158, 11, 0.10);
 }
 
 .extensions-empty-state {
@@ -454,6 +523,51 @@
     line-height: 1.58;
 }
 
+.extension-modal-setup {
+    padding: 12px;
+    border: 1px solid rgba(245, 158, 11, 0.16);
+    border-radius: 14px;
+    background: rgba(245, 158, 11, 0.07);
+}
+
+.extension-modal-connect {
+    padding: 12px;
+    border: 1px solid rgba(59, 130, 246, 0.16);
+    border-radius: 14px;
+    background: rgba(59, 130, 246, 0.07);
+}
+
+.extension-connect-field {
+    display: grid;
+    gap: 7px;
+    color: #dbeafe;
+    font-size: 12px;
+    font-weight: 800;
+}
+
+.extension-connect-input {
+    width: 100%;
+    min-height: 40px;
+    padding: 0 12px;
+    border: 1px solid rgba(148, 163, 184, 0.16);
+    border-radius: 12px;
+    color: #eef4ff;
+    background: rgba(2, 6, 23, 0.55);
+    outline: 0;
+}
+
+.extension-connect-input:focus {
+    border-color: rgba(147, 197, 253, 0.42);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.14);
+}
+
+.extension-connect-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    justify-content: flex-end;
+}
+
 .extension-modal-footer {
     display: flex;
     gap: 10px;
@@ -470,6 +584,11 @@
     background: #f8fafc;
     cursor: pointer;
     font-weight: 900;
+}
+
+.extension-modal-primary.compact {
+    flex: 0 1 auto;
+    padding: 0 16px;
 }
 
 .extension-modal-primary:disabled {
@@ -497,6 +616,10 @@
     }
 
     .extensions-hero-actions {
+        justify-content: flex-start;
+    }
+
+    .extensions-runtime-badges {
         justify-content: flex-start;
     }
 

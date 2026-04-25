@@ -15,7 +15,7 @@ from .model_client import (
     is_cloud_model_name,
 )
 from .memory import FileMemoryStore, remember_terminal_fact, search_terminal_memory
-from .mcp_runtime import McpToolAdapter, get_cached_mcp_tools, get_deerflow_extensions_config, get_mcp_runtime_status, get_mcp_server_templates, reset_mcp_tool_cache
+from .mcp_runtime import McpToolAdapter, get_cached_mcp_tools, get_deerflow_extensions_config, get_mcp_runtime_status, get_mcp_server_templates, reset_mcp_tool_cache, test_mcp_server
 from .output import mask_workspace_paths, truncate_middle
 from .subagents import run_code_explorer_subagent, run_subagent, run_verifier_subagent
 
@@ -42,6 +42,7 @@ __all__ = [
     "run_subagent",
     "run_verifier_subagent",
     "search_terminal_memory",
+    "test_mcp_server",
     "tool_guard_reason",
     "tool_signature",
     "truncate_middle",

@@ -1039,6 +1039,7 @@ function beginTerminalProgressSession() {
     terminalProgressBufferedLogs = [];
     terminalProgressLogKeyElements = new Map();
     resetTerminalContextActivity();
+    setTerminalProgressAnswering(false);
 }
 
 function scheduleTerminalProgressAutoReveal(delay = TERMINAL_PROGRESS_AUTO_REVEAL_MS) {
@@ -1153,6 +1154,16 @@ function completeTerminalProgressPanel(success = true, options = {}) {
         if (terminalTasksElement) terminalTasksElement.classList.toggle('collapsed', shouldCollapse);
     }
     updateTerminalProgressTimer(true);
+    refreshTerminalProgressLayout();
+}
+
+function setTerminalProgressAnswering(active = false) {
+    if (terminalProgressElement) {
+        terminalProgressElement.classList.toggle('is-answering', Boolean(active));
+    }
+    if (terminalTasksElement && active) {
+        terminalTasksElement.classList.add('collapsed');
+    }
     refreshTerminalProgressLayout();
 }
 
@@ -1901,6 +1912,7 @@ function hideTerminalTasks() {
 function toggleTerminalTasks() {
     if (!terminalTasksElement) return;
     terminalTasksElement.classList.toggle('collapsed');
+    refreshTerminalProgressLayout();
 }
 
 // ===== TERMINAL OUTPUT (streaming sans bubble) =====
@@ -3842,6 +3854,7 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                             terminalProgressContentStarted = true;
                             completeTerminalContextActivity();
                             updateTerminalTask('model-call', 'done', terminalT('terminal.taskAnswerStarted', 'Réponse commencée'));
+                            setTerminalProgressAnswering(true);
                             if (!isTerminalReadOnlyTurn() && !terminalProgressElement) {
                                 clearTimeout(terminalProgressRevealTimer);
                                 terminalProgressRevealTimer = null;

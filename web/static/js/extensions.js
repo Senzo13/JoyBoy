@@ -4,6 +4,39 @@
 
 const JOYBOY_EXTENSION_CATEGORIES = ['featured', 'coding', 'productivity', 'design', 'research'];
 
+const JOYBOY_EXTENSION_CONNECTIONS = {
+    github: {
+        mode: 'token',
+        tokenKind: 'github',
+        secretLabel: 'GitHub token',
+        secretPlaceholder: 'ghp_...',
+        tokenUrl: 'https://github.com/settings/tokens',
+    },
+    netlify: {
+        mode: 'token',
+        tokenKind: 'netlify',
+        secretLabel: 'Netlify PAT',
+        secretPlaceholder: 'nfp_... ou token Netlify',
+        tokenUrl: 'https://app.netlify.com/user/applications#personal-access-tokens',
+    },
+    cloudflare: {
+        mode: 'token',
+        tokenKind: 'cloudflare',
+        secretLabel: 'Cloudflare API token',
+        secretPlaceholder: 'Token API Cloudflare',
+        tokenUrl: 'https://dash.cloudflare.com/profile/api-tokens',
+    },
+    vercel: {
+        mode: 'runtime-oauth',
+    },
+    linear: {
+        mode: 'runtime-oauth',
+    },
+    figma: {
+        mode: 'unsupported-oauth',
+    },
+};
+
 const JOYBOY_EXTENSION_CATALOG = [
     {
         id: 'web-research',
@@ -24,6 +57,7 @@ const JOYBOY_EXTENSION_CATALOG = [
         action: 'mcp-template',
         template: 'github',
         developer: 'Model Context Protocol',
+        requiresConnection: true,
         capabilities: ['repos', 'issues', 'pull_requests', 'ci'],
     },
     {
@@ -118,6 +152,7 @@ const JOYBOY_EXTENSION_CATALOG = [
         action: 'mcp-template',
         template: 'netlify',
         developer: 'Netlify MCP',
+        requiresConnection: true,
         capabilities: ['deploys', 'logs', 'forms'],
     },
     {
@@ -129,6 +164,7 @@ const JOYBOY_EXTENSION_CATALOG = [
         action: 'mcp-template',
         template: 'vercel',
         developer: 'Vercel MCP',
+        requiresConnection: true,
         capabilities: ['deploys', 'projects', 'logs'],
     },
     {
@@ -140,12 +176,13 @@ const JOYBOY_EXTENSION_CATALOG = [
         action: 'mcp-template',
         template: 'cloudflare',
         developer: 'Cloudflare MCP',
+        requiresConnection: true,
         capabilities: ['workers', 'pages', 'dns'],
     },
     {
         id: 'hugging-face',
         name: 'Hugging Face',
-        icon: 'badge-smile',
+        icon: 'bot',
         category: 'coding',
         source: 'provider',
         action: 'open-models',
@@ -221,6 +258,7 @@ const JOYBOY_EXTENSION_CATALOG = [
         action: 'mcp-template',
         template: 'figma',
         developer: 'Figma MCP',
+        requiresConnection: true,
         capabilities: ['design_to_code', 'tokens', 'frames'],
     },
     {
@@ -262,6 +300,7 @@ const JOYBOY_EXTENSION_CATALOG = [
         action: 'mcp-template',
         template: 'linear',
         developer: 'Linear MCP',
+        requiresConnection: true,
         capabilities: ['issues', 'projects', 'roadmap'],
     },
     {
@@ -358,7 +397,15 @@ function extensionEscapeHtml(value) {
 }
 
 function extensionSafeIcon(icon) {
-    return String(icon || 'plug').replace(/[^a-z0-9-]/gi, '') || 'plug';
+    const clean = String(icon || 'box').replace(/[^a-z0-9-]/gi, '') || 'box';
+    const icons = window.lucide?.icons;
+    if (!icons) return clean;
+    const pascalName = clean
+        .split('-')
+        .filter(Boolean)
+        .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+        .join('');
+    return icons[pascalName] ? clean : 'box';
 }
 
 function extensionCatalogKey(item, field) {
@@ -405,6 +452,49 @@ function getExtensionRuntime() {
     return getExtensionsSnapshot()?.runtime || {};
 }
 
+function getExtensionConnection(item) {
+    return item?.template ? JOYBOY_EXTENSION_CONNECTIONS[item.template] || null : null;
+}
+
+function getExtensionMcpServerStatus(templateName) {
+    const runtimeServers = getExtensionRuntime()?.servers || {};
+    return templateName ? runtimeServers[templateName] || null : null;
+}
+
+function extensionSetupNote(item) {
+    if (!item?.template) return '';
+    return extensionT(
+        `extensions.setup.${item.template}`,
+        extensionT('extensions.setup.generic', 'Ajouté à la config locale. Configure l’auth ou les variables requises, puis teste/active le runtime MCP.')
+    );
+}
+
+function extensionNeedsConnection(item, server) {
+    if (!item?.requiresConnection || !server) return false;
+    const connection = getExtensionConnection(item);
+    if (connection?.mode === 'unsupported-oauth') return true;
+    const status = getExtensionMcpServerStatus(item.template);
+    if (Number(status?.loaded_tool_count || 0) > 0) return false;
+    return true;
+}
+
+function extensionHasStoredConnection(item, server) {
+    const connection = getExtensionConnection(item);
+    if (!connection || !server) return false;
+    if (connection.mode === 'token') {
+        if (connection.tokenKind === 'netlify') {
+            const value = String(server.env?.NETLIFY_PERSONAL_ACCESS_TOKEN || '').trim();
+            return Boolean(value && !value.startsWith('$'));
+        }
+        const authHeader = String(server.headers?.Authorization || '').trim();
+        return Boolean(authHeader && !authHeader.includes('$') && !authHeader.endsWith('Bearer'));
+    }
+    if (connection.mode === 'runtime-oauth') {
+        return server.enabled !== false;
+    }
+    return false;
+}
+
 function getExtensionState(item) {
     const snapshot = getExtensionsSnapshot();
     const servers = getExtensionMcpServers();
@@ -424,6 +514,31 @@ function getExtensionState(item) {
             };
         }
         if (server && server.enabled !== false) {
+            if (extensionNeedsConnection(item, server)) {
+                const connection = getExtensionConnection(item);
+                if (connection?.mode === 'unsupported-oauth') {
+                    return {
+                        id: 'blocked',
+                        label: extensionT('extensions.status.clientAuthMissing', 'Auth client manquante'),
+                        icon: 'lock',
+                        className: 'is-planned',
+                        primaryLabel: extensionT('extensions.actions.openMcp', 'Ouvrir la config MCP'),
+                        primaryDisabled: false,
+                    };
+                }
+                return {
+                    id: 'auth',
+                    label: extensionHasStoredConnection(item, server)
+                        ? extensionT('extensions.status.testRequired', 'Test requis')
+                        : extensionT('extensions.status.connectionRequired', 'Connexion requise'),
+                    icon: 'key-round',
+                    className: 'is-warning',
+                    primaryLabel: extensionHasStoredConnection(item, server)
+                        ? extensionT('extensions.actions.testConnection', 'Tester la connexion')
+                        : extensionT('extensions.actions.configureConnection', 'Configurer la connexion'),
+                    primaryDisabled: false,
+                };
+            }
             return {
                 id: 'installed',
                 label: extensionT('extensions.status.installed', 'Installé'),
@@ -508,7 +623,7 @@ function getExtensionState(item) {
 
 function extensionMatchesFilter(item) {
     const state = getExtensionState(item);
-    if (joyboyExtensionsFilter === 'installed') return ['installed', 'configured'].includes(state.id);
+    if (joyboyExtensionsFilter === 'installed') return ['installed', 'configured', 'auth'].includes(state.id);
     if (joyboyExtensionsFilter === 'available') return ['available'].includes(state.id);
     if (joyboyExtensionsFilter === 'mcp') return item.source === 'mcp';
     if (joyboyExtensionsFilter === 'native') return ['native', 'pack', 'provider'].includes(item.source);
@@ -650,13 +765,18 @@ function renderExtensionsHub() {
                     <p class="extensions-description">${extensionEscapeHtml(extensionT('extensions.description', 'Installe ou prépare des connecteurs façon Codex : MCP pour les outils externes, packs locaux pour les workflows privés, capacités natives pour ce que JoyBoy sait déjà faire.'))}</p>
                 </div>
                 <div class="extensions-hero-actions">
-                    <button class="settings-action-btn compact subtle" type="button" onclick="openModelsHub()">
+                    <button class="extensions-hero-action" type="button" onclick="openModelsHub()" title="${extensionEscapeHtml(extensionT('extensions.providersButton', 'Providers'))}">
                         <i data-lucide="key-round" aria-hidden="true"></i>
                         <span>${extensionEscapeHtml(extensionT('extensions.providersButton', 'Providers'))}</span>
                     </button>
-                    <button class="settings-action-btn compact" type="button" onclick="refreshExtensionsCatalog(true)">
+                    <button
+                        class="extensions-hero-action icon-only"
+                        type="button"
+                        onclick="refreshExtensionsCatalogFromButton(this)"
+                        title="${extensionEscapeHtml(extensionT('extensions.refresh', 'Rafraîchir'))}"
+                        aria-label="${extensionEscapeHtml(extensionT('extensions.refresh', 'Rafraîchir'))}"
+                    >
                         <i data-lucide="refresh-cw" aria-hidden="true"></i>
-                        <span>${extensionEscapeHtml(extensionT('extensions.refresh', 'Rafraîchir'))}</span>
                     </button>
                 </div>
             </div>
@@ -707,6 +827,63 @@ function renderExtensionModalShell() {
     `;
 }
 
+function renderExtensionConnectionControls(item, state) {
+    const connection = getExtensionConnection(item);
+    if (!connection || !item.template || !['auth', 'blocked'].includes(state.id)) return '';
+    const servers = getExtensionMcpServers();
+    const server = servers[item.template] || null;
+    const hasStoredConnection = extensionHasStoredConnection(item, server);
+
+    if (connection.mode === 'token') {
+        const inputId = `extension-connection-token-${item.id}`;
+        return `
+            <div class="extension-modal-section extension-modal-connect">
+                <div class="extension-modal-section-title">${extensionEscapeHtml(extensionT('extensions.connectTitle', 'Lier le compte'))}</div>
+                <div class="extension-modal-about">${extensionEscapeHtml(extensionT('extensions.connectTokenBody', 'Colle un token local. JoyBoy l’enregistre uniquement dans ta config locale hors git, active le serveur MCP, puis teste vraiment le chargement des tools.'))}</div>
+                <label class="extension-connect-field" for="${extensionEscapeHtml(inputId)}">
+                    <span>${extensionEscapeHtml(connection.secretLabel || extensionT('extensions.tokenLabel', 'Token'))}</span>
+                    <input
+                        id="${extensionEscapeHtml(inputId)}"
+                        class="extension-connect-input"
+                        type="password"
+                        placeholder="${extensionEscapeHtml(hasStoredConnection ? extensionT('extensions.tokenAlreadyConfigured', 'Token déjà configuré - laisse vide pour tester') : connection.secretPlaceholder || '')}"
+                        autocomplete="off"
+                    >
+                </label>
+                <div class="extension-connect-actions">
+                    ${connection.tokenUrl ? `
+                        <button class="extension-modal-secondary" type="button" onclick="window.open('${extensionEscapeHtml(connection.tokenUrl)}', '_blank', 'noopener')">
+                            ${extensionEscapeHtml(extensionT('extensions.openTokenPage', 'Créer un token'))}
+                        </button>
+                    ` : ''}
+                    <button class="extension-modal-primary compact" type="button" onclick="connectMcpExtension('${extensionEscapeHtml(item.id)}')">
+                        ${extensionEscapeHtml(hasStoredConnection ? extensionT('extensions.actions.testConnection', 'Tester la connexion') : extensionT('extensions.saveAndTest', 'Enregistrer et tester'))}
+                    </button>
+                </div>
+            </div>
+        `;
+    }
+
+    if (connection.mode === 'runtime-oauth') {
+        return `
+            <div class="extension-modal-section extension-modal-connect">
+                <div class="extension-modal-section-title">${extensionEscapeHtml(extensionT('extensions.connectTitle', 'Lier le compte'))}</div>
+                <div class="extension-modal-about">${extensionEscapeHtml(extensionT('extensions.connectOauthBody', 'JoyBoy va activer ce MCP puis lancer un test réel. Si mcp-remote demande OAuth, une fenêtre navigateur peut s’ouvrir pour terminer la connexion.'))}</div>
+                <button class="extension-modal-primary compact" type="button" onclick="connectMcpExtension('${extensionEscapeHtml(item.id)}')">
+                    ${extensionEscapeHtml(extensionT('extensions.startOauthAndTest', 'Démarrer OAuth et tester'))}
+                </button>
+            </div>
+        `;
+    }
+
+    return `
+        <div class="extension-modal-section extension-modal-setup">
+            <div class="extension-modal-section-title">${extensionEscapeHtml(extensionT('extensions.connectTitle', 'Lier le compte'))}</div>
+            <div class="extension-modal-about">${extensionEscapeHtml(extensionT('extensions.unsupportedOauthBody', 'Ce serveur demande une auth MCP/OAuth côté client que JoyBoy ne sait pas encore terminer proprement. Il reste visible, mais il n’est pas marqué comme connecté.'))}</div>
+        </div>
+    `;
+}
+
 function getExtensionById(extensionId) {
     return JOYBOY_EXTENSION_CATALOG.find(item => item.id === extensionId) || null;
 }
@@ -721,9 +898,18 @@ function renderExtensionModalBody(item) {
     const sourceChips = [
         `<span class="extension-chip">${extensionEscapeHtml(source)}</span>`,
         item.template ? `<span class="extension-chip">MCP: ${extensionEscapeHtml(item.template)}</span>` : '',
-        `<span class="extension-chip ${state.id === 'installed' ? 'is-ok' : state.id === 'planned' ? 'is-warn' : ''}">${extensionEscapeHtml(state.label)}</span>`,
+        `<span class="extension-chip ${state.id === 'installed' ? 'is-ok' : ['planned', 'auth', 'blocked'].includes(state.id) ? 'is-warn' : ''}">${extensionEscapeHtml(state.label)}</span>`,
     ].filter(Boolean).join('');
     const actionAttr = state.primaryDisabled ? 'disabled aria-disabled="true"' : `onclick="runExtensionPrimaryAction('${extensionEscapeHtml(item.id)}')"`;
+    const setupNote = item.template && (state.id === 'auth' || item.requiresConnection)
+        ? `
+            <div class="extension-modal-section extension-modal-setup">
+                <div class="extension-modal-section-title">${extensionEscapeHtml(extensionT('extensions.connectionTitle', 'Connexion'))}</div>
+                <div class="extension-modal-about">${extensionEscapeHtml(extensionSetupNote(item))}</div>
+            </div>
+        `
+        : '';
+    const connectControls = renderExtensionConnectionControls(item, state);
 
     return `
         <div class="extension-modal-identity">
@@ -753,6 +939,8 @@ function renderExtensionModalBody(item) {
                 <div class="extension-modal-section-title">${extensionEscapeHtml(extensionT('extensions.access', 'Accès'))}</div>
                 <div class="extension-chip-row">${sourceChips}</div>
             </div>
+            ${setupNote}
+            ${connectControls}
         </div>
         <div class="extension-modal-footer">
             <button class="extension-modal-secondary" type="button" onclick="closeExtensionModal()">${extensionEscapeHtml(extensionT('common.cancel', 'Annuler'))}</button>
@@ -781,6 +969,118 @@ function closeExtensionModal() {
     joyboySelectedExtensionId = null;
 }
 
+async function loadExtensionMcpSnapshot() {
+    if (typeof fetchMcpConfigSnapshot === 'function') {
+        return await fetchMcpConfigSnapshot();
+    }
+    const result = await apiSettings.getMcpConfig({ loadTools: false });
+    if (!result.ok || !result.data?.success) {
+        throw new Error(result.data?.error || result.error || extensionT('extensions.refreshError', 'Impossible de rafraîchir MCP'));
+    }
+    return result.data;
+}
+
+async function saveExtensionMcpServers(servers) {
+    if (typeof saveMcpServersConfig === 'function') {
+        return await saveMcpServersConfig(servers);
+    }
+    const result = await apiSettings.updateMcpConfig({ mcp_servers: servers });
+    if (!result.ok || !result.data?.success) {
+        throw new Error(result.data?.error || result.error || 'MCP config error');
+    }
+    return result.data;
+}
+
+function applyExtensionConnectionSecret(item, server, token) {
+    const connection = getExtensionConnection(item);
+    const cleanToken = String(token || '').trim();
+    const nextServer = {
+        ...server,
+        enabled: true,
+    };
+
+    if (!connection || connection.mode !== 'token') return nextServer;
+
+    if (connection.tokenKind === 'netlify') {
+        nextServer.env = {
+            ...(nextServer.env || {}),
+            NETLIFY_PERSONAL_ACCESS_TOKEN: cleanToken,
+        };
+        return nextServer;
+    }
+
+    nextServer.headers = {
+        ...(nextServer.headers || {}),
+        Authorization: `Bearer ${cleanToken}`,
+    };
+    return nextServer;
+}
+
+async function testConnectedMcpExtension(item) {
+    const result = await apiSettings.testMcpServer(item.template);
+    const data = result.data || {};
+    if (!result.ok || !data.success || Number(data.loaded_tool_count || 0) <= 0) {
+        const error = data.error || result.error || extensionT('extensions.connectTestFailed', 'Connexion MCP non validée.');
+        throw new Error(error);
+    }
+    return data;
+}
+
+async function connectMcpExtension(extensionId) {
+    const item = getExtensionById(extensionId);
+    const connection = getExtensionConnection(item);
+    if (!item?.template || !connection || connection.mode === 'unsupported-oauth') {
+        Toast.info(extensionT('extensions.kicker', 'Extensions'), extensionT('extensions.unsupportedOauthBody', 'Ce serveur demande une auth MCP/OAuth côté client que JoyBoy ne sait pas encore terminer proprement.'), 3600);
+        return;
+    }
+
+    const actionButtons = Array.from(document.querySelectorAll('.extension-modal-primary'));
+    actionButtons.forEach(button => { button.disabled = true; });
+    try {
+        const snapshot = await loadExtensionMcpSnapshot();
+        const servers = { ...(snapshot.mcp_servers || snapshot.mcpServers || {}) };
+        const templates = snapshot.templates || {};
+        const currentServer = servers[item.template] || templates[item.template];
+        if (!currentServer) throw new Error(item.template);
+
+        let token = '';
+        if (connection.mode === 'token') {
+            const input = document.getElementById(`extension-connection-token-${item.id}`);
+            token = String(input?.value || '').trim();
+            if (!token && !extensionHasStoredConnection(item, servers[item.template])) {
+                throw new Error(extensionT('extensions.tokenRequired', 'Colle un token avant de tester la connexion.'));
+            }
+        }
+
+        servers[item.template] = connection.mode === 'token' && token
+            ? applyExtensionConnectionSecret(item, currentServer, token)
+            : { ...currentServer, enabled: true };
+
+        await saveExtensionMcpServers(servers);
+        Toast.info(extensionT('extensions.connectTestingTitle', 'Test MCP en cours'), extensionT('extensions.connectTestingBody', 'JoyBoy démarre le serveur MCP et vérifie les tools chargés.'), 2600);
+
+        const testResult = await testConnectedMcpExtension(item);
+        const count = Number(testResult.loaded_tool_count || 0);
+        Toast.success(
+            extensionT('extensions.connectSuccessTitle', 'Connexion validée'),
+            extensionT('extensions.connectSuccessBody', '{count} tool(s) MCP chargé(s).', { count }),
+            3600
+        );
+        await refreshExtensionsCatalog(false);
+        openExtensionModal(item.id);
+    } catch (error) {
+        Toast.error(
+            extensionT('extensions.connectFailedTitle', 'Connexion MCP échouée'),
+            error.message || String(error),
+            6000
+        );
+        await refreshExtensionsCatalog(false);
+        openExtensionModal(item.id);
+    } finally {
+        actionButtons.forEach(button => { button.disabled = false; });
+    }
+}
+
 async function runExtensionPrimaryAction(extensionId) {
     const item = getExtensionById(extensionId);
     if (!item) return;
@@ -790,6 +1090,11 @@ async function runExtensionPrimaryAction(extensionId) {
     if (item.action === 'mcp-template' && item.template) {
         const servers = getExtensionMcpServers();
         if (servers[item.template]) {
+            const state = getExtensionState(item);
+            if (state.id === 'auth' || state.id === 'blocked') {
+                await connectMcpExtension(item.id);
+                return;
+            }
             if (servers[item.template].enabled === false && typeof toggleMcpServer === 'function') {
                 await toggleMcpServer(item.template, true);
             } else {
@@ -830,6 +1135,22 @@ function setExtensionsSearch(value) {
 function setExtensionsFilter(filter) {
     joyboyExtensionsFilter = String(filter || 'all');
     renderExtensionsHub();
+}
+
+async function refreshExtensionsCatalogFromButton(button) {
+    const refreshButton = button instanceof HTMLElement ? button : null;
+    if (refreshButton) {
+        refreshButton.classList.add('is-spinning');
+        refreshButton.disabled = true;
+    }
+    try {
+        await refreshExtensionsCatalog(true);
+    } finally {
+        if (refreshButton?.isConnected) {
+            refreshButton.classList.remove('is-spinning');
+            refreshButton.disabled = false;
+        }
+    }
 }
 
 async function refreshExtensionsCatalog(showToast = false) {

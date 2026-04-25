@@ -339,6 +339,10 @@ const apiSettings = {
         return apiPut('/api/mcp/config', config);
     },
 
+    async testMcpServer(serverName) {
+        return apiPost(`/api/mcp/test/${encodeURIComponent(serverName)}`, {});
+    },
+
     async clearProviderSecret(key) {
         return apiPost('/api/providers/secret/clear', { key });
     },
