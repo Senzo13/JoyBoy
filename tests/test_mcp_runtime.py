@@ -101,6 +101,25 @@ class McpRuntimeConfigTests(unittest.TestCase):
 
         self.assertEqual(server["env"]["GITHUB_TOKEN"], "gh-test-token")
 
+    def test_runtime_resolves_embedded_env_placeholders(self) -> None:
+        self.local_config.set_mcp_servers(
+            {
+                "github": {
+                    "enabled": True,
+                    "type": "http",
+                    "url": "https://example.test/mcp",
+                    "headers": {"Authorization": "Bearer $GITHUB_TOKEN"},
+                }
+            }
+        )
+
+        enabled = self.mcp_runtime._enabled_mcp_servers(resolve_env=True)
+        status = self.mcp_runtime.get_mcp_runtime_status(load_tools=False)
+
+        self.assertEqual(enabled["github"]["headers"]["Authorization"], "Bearer gh-test-token")
+        self.assertEqual(status["servers"]["github"]["uses_env_placeholders"], ["GITHUB_TOKEN"])
+        self.assertEqual(status["servers"]["github"]["missing_env"], [])
+
     def test_runtime_status_reports_templates_and_server_validation(self) -> None:
         self.local_config.set_mcp_servers(
             {

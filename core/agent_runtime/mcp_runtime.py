@@ -18,6 +18,7 @@ import inspect
 import json
 import logging
 import os
+import re
 import site
 import sys
 import threading
@@ -47,6 +48,8 @@ _MCP_LOADING_SIGNATURE = ""
 _PYWIN32_PATHS_READY = False
 _PYWIN32_DLL_HANDLES: list[Any] = []
 DEFAULT_MCP_TOOL_LOAD_TIMEOUT_SECONDS = 45
+DEFAULT_MCP_OAUTH_TOOL_LOAD_TIMEOUT_SECONDS = 180
+_ENV_PLACEHOLDER_RE = re.compile(r"\$([A-Za-z_][A-Za-z0-9_]*)")
 
 MCP_SERVER_TEMPLATES: dict[str, dict[str, Any]] = {
     "filesystem": {
@@ -282,9 +285,7 @@ class _OAuthTokenManager:
 
 def _resolve_env_placeholders(value: Any) -> Any:
     if isinstance(value, str):
-        if value.startswith("$"):
-            return os.getenv(value[1:], "")
-        return value
+        return _ENV_PLACEHOLDER_RE.sub(lambda match: os.getenv(match.group(1), ""), value)
     if isinstance(value, dict):
         return {str(key): _resolve_env_placeholders(item) for key, item in value.items()}
     if isinstance(value, list):
@@ -297,8 +298,8 @@ def _collect_env_placeholders(value: Any) -> list[str]:
 
     def walk(item: Any) -> None:
         if isinstance(item, str):
-            if item.startswith("$") and len(item) > 1:
-                placeholders.append(item[1:])
+            for match in _ENV_PLACEHOLDER_RE.finditer(item):
+                placeholders.append(match.group(1))
             return
         if isinstance(item, dict):
             for nested in item.values():
@@ -368,6 +369,25 @@ def _package_state() -> dict[str, bool]:
     return {name: bool(importlib.util.find_spec(name)) for name in required_modules}
 
 
+def _format_exception(exc: BaseException) -> str:
+    if isinstance(exc, BaseExceptionGroup):
+        messages: list[str] = []
+
+        def collect(group: BaseExceptionGroup) -> None:
+            for item in group.exceptions:
+                if isinstance(item, BaseExceptionGroup):
+                    collect(item)
+                else:
+                    message = str(item).strip() or item.__class__.__name__
+                    if message not in messages:
+                        messages.append(message)
+
+        collect(exc)
+        if messages:
+            return "; ".join(messages[:6])
+    return str(exc).strip() or exc.__class__.__name__
+
+
 def _config_signature(raw_servers: dict[str, Any]) -> str:
     state = {
         "packages": _package_state(),
@@ -421,6 +441,24 @@ def _mcp_tool_load_timeout_seconds() -> int:
         return max(5, int(os.environ.get("JOYBOY_MCP_TOOL_LOAD_TIMEOUT_SECONDS") or DEFAULT_MCP_TOOL_LOAD_TIMEOUT_SECONDS))
     except (TypeError, ValueError):
         return DEFAULT_MCP_TOOL_LOAD_TIMEOUT_SECONDS
+
+
+def _mcp_oauth_tool_load_timeout_seconds() -> int:
+    try:
+        return max(
+            _mcp_tool_load_timeout_seconds(),
+            int(os.environ.get("JOYBOY_MCP_OAUTH_TOOL_LOAD_TIMEOUT_SECONDS") or DEFAULT_MCP_OAUTH_TOOL_LOAD_TIMEOUT_SECONDS),
+        )
+    except (TypeError, ValueError):
+        return DEFAULT_MCP_OAUTH_TOOL_LOAD_TIMEOUT_SECONDS
+
+
+def _server_uses_runtime_oauth(config: dict[str, Any] | None) -> bool:
+    if not isinstance(config, dict):
+        return False
+    command = str(config.get("command") or "")
+    args = " ".join(str(item) for item in list(config.get("args") or []))
+    return "mcp-remote" in f"{command} {args}".lower()
 
 
 def _build_servers_config(enabled_servers: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
@@ -648,7 +686,7 @@ def _tool_to_adapter(tool: Any) -> McpToolAdapter:
     )
 
 
-async def _load_mcp_tools_async(server_name: str | None = None) -> list[McpToolAdapter]:
+async def _load_mcp_tools_async(server_name: str | None = None, timeout_seconds: int | None = None) -> list[McpToolAdapter]:
     from langchain_mcp_adapters.client import MultiServerMCPClient
 
     enabled_servers = _enabled_mcp_servers(resolve_env=True)
@@ -677,7 +715,7 @@ async def _load_mcp_tools_async(server_name: str | None = None) -> list[McpToolA
         interceptors.append(oauth_interceptor)
 
     client = MultiServerMCPClient(servers_config, tool_interceptors=interceptors, tool_name_prefix=True)
-    tools = await asyncio.wait_for(client.get_tools(), timeout=_mcp_tool_load_timeout_seconds())
+    tools = await asyncio.wait_for(client.get_tools(), timeout=timeout_seconds or _mcp_tool_load_timeout_seconds())
     return [_tool_to_adapter(tool) for tool in tools if getattr(tool, "name", None)]
 
 
@@ -733,7 +771,8 @@ def test_mcp_server(server_name: str) -> dict[str, Any]:
         }
 
     try:
-        tools = _run_awaitable(_load_mcp_tools_async(server_name))
+        timeout_seconds = _mcp_oauth_tool_load_timeout_seconds() if _server_uses_runtime_oauth(raw_config) else _mcp_tool_load_timeout_seconds()
+        tools = _run_awaitable(_load_mcp_tools_async(server_name, timeout_seconds=timeout_seconds))
         status["loaded_tools"] = [tool.name for tool in tools]
         status["loaded_tool_count"] = len(tools)
         return {
@@ -746,10 +785,11 @@ def test_mcp_server(server_name: str) -> dict[str, Any]:
             "loaded_tool_count": len(tools),
         }
     except Exception as exc:
-        logger.error("Failed to test MCP server %s: %s", server_name, exc, exc_info=True)
+        error = _format_exception(exc)
+        logger.error("Failed to test MCP server %s: %s", server_name, error, exc_info=True)
         return {
             "success": False,
-            "error": str(exc),
+            "error": error,
             "package_state": packages,
             "package_available": True,
             "server": status,
@@ -815,8 +855,8 @@ def get_cached_mcp_tools(force_refresh: bool = False) -> list[McpToolAdapter]:
         error = ""
     except Exception as exc:
         adapters = []
-        error = str(exc)
-        logger.error("Failed to load MCP tools: %s", exc, exc_info=True)
+        error = _format_exception(exc)
+        logger.error("Failed to load MCP tools: %s", error, exc_info=True)
 
     with _MCP_LOAD_CONDITION:
         _MCP_TOOLS_CACHE = list(adapters)

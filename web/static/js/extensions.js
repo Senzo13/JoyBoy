@@ -481,6 +481,10 @@ function extensionNeedsConnection(item, server) {
 function extensionHasStoredConnection(item, server) {
     const connection = getExtensionConnection(item);
     if (!connection || !server) return false;
+    const status = getExtensionMcpServerStatus(item.template);
+    if (Array.isArray(status?.uses_env_placeholders) && status.uses_env_placeholders.length && !status.missing_env?.length) {
+        return true;
+    }
     if (connection.mode === 'token') {
         if (connection.tokenKind === 'netlify') {
             const value = String(server.env?.NETLIFY_PERSONAL_ACCESS_TOKEN || '').trim();
@@ -1051,9 +1055,13 @@ async function testConnectedMcpExtension(item) {
     const result = await apiSettings.testMcpServer(item.template);
     const data = result.data || {};
     if (!result.ok || !data.success || Number(data.loaded_tool_count || 0) <= 0) {
+        const connection = getExtensionConnection(item);
+        const rawError = data.error || result.error || '';
         const error = data.package_available === false
             ? formatMcpRuntimeMissingMessage(data)
-            : data.error || result.error || extensionT('extensions.connectTestFailed', 'Connexion MCP non validée.');
+            : connection?.mode === 'runtime-oauth' && /timeout|timed out|connection closed/i.test(rawError)
+                ? extensionT('extensions.oauthTimeoutHint', 'OAuth a été lancé mais pas terminé. Termine la fenêtre navigateur ouverte, puis relance “Tester la connexion”.')
+                : rawError || extensionT('extensions.connectTestFailed', 'Connexion MCP non validée.');
         throw new Error(error);
     }
     return data;
