@@ -36,9 +36,26 @@ COMMAND_TEXT = {
         "mcp_title": "Outils MCP",
         "tools_title": "Outils JoyBoy Terminal",
         "skills_title": "Skills locaux",
+        "agents_title": "Agents JoyBoy",
+        "context_title": "Contexte terminal",
         "status_title": "Statut du workspace",
         "diff_title": "Diff du workspace",
         "skills_none": "Aucun skill de pack local actif.",
+        "agents_pack_none": "Aucun agent de pack local détecté.",
+        "context_note": "Estimation locale : JoyBoy compresse ensuite les résultats d'outils et les fichiers longs avant l'appel modèle.",
+        "context_signal": "Signal",
+        "context_value": "Valeur",
+        "context_model": "Modèle",
+        "context_budget": "Budget contexte",
+        "context_workspace": "Workspace",
+        "context_git": "Git",
+        "context_tools": "Outils terminal",
+        "context_mcp": "Outils MCP",
+        "context_skills": "Skills locaux",
+        "context_memory": "Mémoire locale",
+        "context_project_files": "Fichiers projet clés",
+        "context_unknown": "inconnu",
+        "context_git_unavailable": "Statut Git indisponible",
         "no_git": "Aucun repo Git détecté dans ce workspace.",
         "no_changes": "Aucun changement détecté.",
         "branch": "Branche",
@@ -61,6 +78,8 @@ COMMAND_TEXT = {
             ("/status", "Affiche l'état Git, la branche, le dernier commit et les changements."),
             ("/diff", "Résume les fichiers modifiés et le diff de la branche courante."),
             ("/ultrareview [focus]", "Revue profonde multi-angle du repo ou de la branche courante."),
+            ("/agents", "Liste les agents/reviewers intégrés et les extensions disponibles."),
+            ("/context", "Affiche budget contexte, outils, MCP, skills, mémoire et signaux projet."),
             ("/mcp", "Liste les outils MCP connectés et ceux découverts par les packs."),
             ("/tools", "Affiche les outils terminal actifs, y compris web_search/web_fetch."),
             ("/skills", "Liste les skills locaux importés via les packs JoyBoy."),
@@ -76,9 +95,26 @@ COMMAND_TEXT = {
         "mcp_title": "MCP Tools",
         "tools_title": "JoyBoy Terminal Tools",
         "skills_title": "Local Skills",
+        "agents_title": "JoyBoy Agents",
+        "context_title": "Terminal Context",
         "status_title": "Workspace Status",
         "diff_title": "Workspace Diff",
         "skills_none": "No active local pack skill.",
+        "agents_pack_none": "No local pack agent detected.",
+        "context_note": "Local estimate: JoyBoy still compresses tool results and long files before the model call.",
+        "context_signal": "Signal",
+        "context_value": "Value",
+        "context_model": "Model",
+        "context_budget": "Context budget",
+        "context_workspace": "Workspace",
+        "context_git": "Git",
+        "context_tools": "Terminal tools",
+        "context_mcp": "MCP tools",
+        "context_skills": "Local skills",
+        "context_memory": "Local memory",
+        "context_project_files": "Key project files",
+        "context_unknown": "unknown",
+        "context_git_unavailable": "Git status unavailable",
         "no_git": "No Git repository detected in this workspace.",
         "no_changes": "No changes detected.",
         "branch": "Branch",
@@ -101,6 +137,8 @@ COMMAND_TEXT = {
             ("/status", "Show Git state, branch, latest commit, and changes."),
             ("/diff", "Summarize changed files and the current branch diff."),
             ("/ultrareview [focus]", "Run a deep multi-angle review of the repo or current branch."),
+            ("/agents", "List built-in agents/reviewers and available extensions."),
+            ("/context", "Show context budget, tools, MCP, skills, memory, and project signals."),
             ("/mcp", "List connected MCP tools and pack-discovered tools."),
             ("/tools", "Show active terminal tools, including web_search/web_fetch."),
             ("/skills", "List local skills imported through JoyBoy packs."),
@@ -116,9 +154,26 @@ COMMAND_TEXT = {
         "mcp_title": "Herramientas MCP",
         "tools_title": "Herramientas de JoyBoy Terminal",
         "skills_title": "Skills locales",
+        "agents_title": "Agentes JoyBoy",
+        "context_title": "Contexto terminal",
         "status_title": "Estado del workspace",
         "diff_title": "Diff del workspace",
         "skills_none": "No hay skills de packs locales activos.",
+        "agents_pack_none": "No se detectó ningún agente de pack local.",
+        "context_note": "Estimación local: JoyBoy comprime después resultados de herramientas y archivos largos antes de llamar al modelo.",
+        "context_signal": "Señal",
+        "context_value": "Valor",
+        "context_model": "Modelo",
+        "context_budget": "Presupuesto de contexto",
+        "context_workspace": "Workspace",
+        "context_git": "Git",
+        "context_tools": "Herramientas terminal",
+        "context_mcp": "Herramientas MCP",
+        "context_skills": "Skills locales",
+        "context_memory": "Memoria local",
+        "context_project_files": "Archivos clave del proyecto",
+        "context_unknown": "desconocido",
+        "context_git_unavailable": "Estado Git no disponible",
         "no_git": "No se detectó ningún repositorio Git en este workspace.",
         "no_changes": "No se detectaron cambios.",
         "branch": "Rama",
@@ -141,6 +196,8 @@ COMMAND_TEXT = {
             ("/status", "Muestra estado Git, rama, último commit y cambios."),
             ("/diff", "Resume archivos modificados y diff de la rama actual."),
             ("/ultrareview [focus]", "Ejecuta una revisión profunda multiángulo del repo o rama actual."),
+            ("/agents", "Lista agentes/revisores integrados y extensiones disponibles."),
+            ("/context", "Muestra presupuesto de contexto, herramientas, MCP, skills, memoria y señales del proyecto."),
             ("/mcp", "Lista herramientas MCP conectadas y descubiertas por packs."),
             ("/tools", "Muestra herramientas terminal activas, incluido web_search/web_fetch."),
             ("/skills", "Lista skills locales importadas vía packs JoyBoy."),
@@ -156,9 +213,26 @@ COMMAND_TEXT = {
         "mcp_title": "Strumenti MCP",
         "tools_title": "Strumenti JoyBoy Terminal",
         "skills_title": "Skill locali",
+        "agents_title": "Agenti JoyBoy",
+        "context_title": "Contesto terminale",
         "status_title": "Stato workspace",
         "diff_title": "Diff workspace",
         "skills_none": "Nessuna skill di pack locale attiva.",
+        "agents_pack_none": "Nessun agente di pack locale rilevato.",
+        "context_note": "Stima locale: JoyBoy comprime poi risultati degli strumenti e file lunghi prima della chiamata al modello.",
+        "context_signal": "Segnale",
+        "context_value": "Valore",
+        "context_model": "Modello",
+        "context_budget": "Budget contesto",
+        "context_workspace": "Workspace",
+        "context_git": "Git",
+        "context_tools": "Strumenti terminal",
+        "context_mcp": "Strumenti MCP",
+        "context_skills": "Skill locali",
+        "context_memory": "Memoria locale",
+        "context_project_files": "File progetto chiave",
+        "context_unknown": "sconosciuto",
+        "context_git_unavailable": "Stato Git non disponibile",
         "no_git": "Nessun repository Git rilevato in questo workspace.",
         "no_changes": "Nessuna modifica rilevata.",
         "branch": "Branch",
@@ -181,6 +255,8 @@ COMMAND_TEXT = {
             ("/status", "Mostra stato Git, branch, ultimo commit e modifiche."),
             ("/diff", "Riassume file modificati e diff del branch corrente."),
             ("/ultrareview [focus]", "Esegue una revisione profonda multi-angolo del repo o ramo corrente."),
+            ("/agents", "Elenca agenti/revisori integrati ed estensioni disponibili."),
+            ("/context", "Mostra budget contesto, strumenti, MCP, skill, memoria e segnali progetto."),
             ("/mcp", "Elenca strumenti MCP connessi e scoperti dai pack."),
             ("/tools", "Mostra gli strumenti terminal attivi, incluso web_search/web_fetch."),
             ("/skills", "Elenca skill locali importate tramite pack JoyBoy."),
@@ -193,7 +269,7 @@ COMMAND_TEXT = {
 class TerminalSlashCommandsMixin:
     """Handle built-in terminal slash commands without spending a model turn."""
 
-    TERMINAL_SLASH_COMMANDS = {"help", "status", "diff", "mcp", "tools", "skills", "ultrareview"}
+    TERMINAL_SLASH_COMMANDS = {"help", "status", "diff", "mcp", "tools", "skills", "agents", "context", "ultrareview"}
 
     def _parse_terminal_slash_command(self, message: str) -> Tuple[str, str]:
         text = str(message or "").strip()
@@ -237,6 +313,12 @@ class TerminalSlashCommandsMixin:
         if command == "skills":
             yield from self._run_terminal_skills_command(locale)
             return
+        if command == "agents":
+            yield from self._run_terminal_agents_command(locale)
+            return
+        if command == "context":
+            yield from self._run_terminal_context_command(workspace_path, model, locale)
+            return
         if command == "ultrareview":
             yield from self._run_ultrareview_command(
                 focus=args,
@@ -279,6 +361,14 @@ class TerminalSlashCommandsMixin:
 
     def _run_terminal_skills_command(self, locale: str | None) -> Generator[Dict[str, Any], None, None]:
         text = self._build_terminal_skills_text(locale)
+        yield from self._finish_static_command(text)
+
+    def _run_terminal_agents_command(self, locale: str | None) -> Generator[Dict[str, Any], None, None]:
+        text = self._build_terminal_agents_text(locale)
+        yield from self._finish_static_command(text)
+
+    def _run_terminal_context_command(self, workspace_path: str, model: str, locale: str | None) -> Generator[Dict[str, Any], None, None]:
+        text = self._build_terminal_context_text(workspace_path, model, locale)
         yield from self._finish_static_command(text)
 
     def _run_terminal_status_command(self, workspace_path: str, locale: str | None) -> Generator[Dict[str, Any], None, None]:
@@ -426,6 +516,127 @@ class TerminalSlashCommandsMixin:
         if len(skills) > 40:
             lines.append(f"- ... +{len(skills) - 40}")
         return "\n".join(lines)
+
+    def _build_terminal_agents_text(self, locale: str | None) -> str:
+        texts = self._terminal_command_texts(locale)
+        labels = self._ultrareview_progress_labels(locale)
+        agent_texts = {
+            "fr": {
+                "explorer": "Sélectionne et lit les fichiers pertinents sans modifier le workspace.",
+                "verifier": "Exécute une commande de test/lint/build allowlistée dans le workspace.",
+                "ultra": f"Orchestre {labels['correctness']}, {labels['security']}, {labels['quality']} puis une synthèse finale.",
+            },
+            "en": {
+                "explorer": "Selects and reads relevant files without modifying the workspace.",
+                "verifier": "Runs one allowlisted test/lint/build command inside the workspace.",
+                "ultra": f"Orchestrates {labels['correctness']}, {labels['security']}, {labels['quality']}, then a final synthesis.",
+            },
+            "es": {
+                "explorer": "Selecciona y lee archivos relevantes sin modificar el workspace.",
+                "verifier": "Ejecuta un comando allowlist de test/lint/build dentro del workspace.",
+                "ultra": f"Orquesta {labels['correctness']}, {labels['security']}, {labels['quality']} y luego una síntesis final.",
+            },
+            "it": {
+                "explorer": "Seleziona e legge file rilevanti senza modificare il workspace.",
+                "verifier": "Esegue un comando test/lint/build consentito dentro il workspace.",
+                "ultra": f"Coordina {labels['correctness']}, {labels['security']}, {labels['quality']} e poi una sintesi finale.",
+            },
+        }[_normalise_command_locale(locale)]
+        lines = [f"## {texts['agents_title']}", ""]
+        builtins = [
+            ("code_explorer", "read-only", agent_texts["explorer"]),
+            ("verifier", "verification", agent_texts["verifier"]),
+            ("ultrareview", "review", agent_texts["ultra"]),
+        ]
+        for name, kind, description in builtins:
+            lines.append(f"- `{name}` ({kind}) - {description}")
+
+        skills = self._pack_skills()
+        lines.append("")
+        lines.append(f"### {texts['skills_title']}")
+        if not skills:
+            lines.append(texts["agents_pack_none"])
+        else:
+            for skill in skills[:12]:
+                summary = truncate_middle(str(skill.get("summary", "")), 110)
+                suffix = f" - {summary}" if summary else ""
+                lines.append(f"- `{skill.get('id')}` - {skill.get('name', 'Skill')}{suffix}")
+            if len(skills) > 12:
+                lines.append(f"- ... +{len(skills) - 12}")
+        return "\n".join(lines)
+
+    def _build_terminal_context_text(self, workspace_path: str, model: str, locale: str | None) -> str:
+        texts = self._terminal_command_texts(locale)
+        self._refresh_dynamic_tool_registry()
+        tools = self.tool_registry.public_tools()
+        mcp_tools = [tool for tool in tools if "mcp" in (tool.get("tags") or [])]
+        skills = self._pack_skills()
+        memory_count = self._terminal_memory_count()
+        root = Path(workspace_path or "")
+        workspace_name = root.name if root.name else "."
+        git_summary = self._terminal_git_context_summary(root, texts)
+        project_files = self._terminal_project_file_summary(root)
+        budget = self._active_context_size or 0
+        rows = [
+            (texts["context_model"], f"`{model or self.default_model}`"),
+            (texts["context_budget"], f"{budget:,} tokens".replace(",", " ") if budget else texts["context_unknown"]),
+            (texts["context_workspace"], f"`{workspace_name}`"),
+            (texts["context_git"], git_summary),
+            (texts["context_tools"], str(len(tools))),
+            (texts["context_mcp"], str(len(mcp_tools))),
+            (texts["context_skills"], str(len(skills))),
+            (texts["context_memory"], str(memory_count)),
+            (texts["context_project_files"], project_files or texts["no_changes"]),
+        ]
+        lines = [f"## {texts['context_title']}", "", f"| {texts['context_signal']} | {texts['context_value']} |", "|---|---|"]
+        lines.extend(f"| {name} | {value} |" for name, value in rows)
+        lines.extend(["", texts["context_note"]])
+        return "\n".join(lines)
+
+    def _terminal_memory_count(self) -> int:
+        try:
+            from core.agent_runtime.memory import FileMemoryStore
+
+            facts = FileMemoryStore().load().get("facts", [])
+            return len(facts) if isinstance(facts, list) else 0
+        except Exception:
+            return 0
+
+    def _terminal_project_file_summary(self, root: Path) -> str:
+        if not root.exists() or not root.is_dir():
+            return ""
+        markers = (
+            "AGENTS.md",
+            "CLAUDE.md",
+            "README.md",
+            "package.json",
+            "pyproject.toml",
+            "requirements.txt",
+            "Cargo.toml",
+            "go.mod",
+            "Makefile",
+        )
+        present = [name for name in markers if (root / name).is_file()]
+        return ", ".join(f"`{name}`" for name in present[:10])
+
+    def _terminal_git_context_summary(self, root: Path, texts: Dict[str, Any]) -> str:
+        if not (root / ".git").exists():
+            return texts["no_git"]
+        try:
+            completed = subprocess.run(
+                ["git", "status", "--short"],
+                cwd=str(root),
+                capture_output=True,
+                text=True,
+                timeout=5,
+                shell=False,
+            )
+        except Exception:
+            return texts["context_git_unavailable"]
+        if completed.returncode != 0:
+            return texts["context_git_unavailable"]
+        changes = [line for line in (completed.stdout or "").splitlines() if line.strip()]
+        return str(len(changes)) if changes else texts["no_changes"]
 
     def _build_terminal_status_text(self, status: Dict[str, Any], latest: Dict[str, Any], stat: Dict[str, Any], locale: str | None) -> str:
         texts = self._terminal_command_texts(locale)

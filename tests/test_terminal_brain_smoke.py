@@ -232,9 +232,37 @@ Encore beaucoup de détail inutile.
         self.assertIn("/status", command_names)
         self.assertIn("/diff", command_names)
         self.assertTrue(any(name.startswith("/ultrareview") for name in command_names))
+        self.assertIn("/agents", command_names)
+        self.assertIn("/context", command_names)
         self.assertIn("/mcp", command_names)
         self.assertTrue(any("web_search + web_fetch" in item for item in catalog["capabilities"]))
         self.assertTrue(any("Playwright" in item for item in catalog["capabilities"]))
+        self.assertEqual([], tool_names)
+
+    def test_terminal_agents_and_context_commands_are_native_read_only(self):
+        brain = TerminalBrain()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            Path(tmp, "AGENTS.md").write_text("# Notes\n", encoding="utf-8")
+            Path(tmp, "package.json").write_text('{"scripts":{"test":"node --version"}}\n', encoding="utf-8")
+            agents_events = list(brain.run_agentic_loop("/agents", tmp, model="openai:gpt-5.4", locale="fr"))
+            context_events = list(brain.run_agentic_loop("/context", tmp, model="openai:gpt-5.4", locale="fr"))
+
+        agents_text = "".join(event.get("text", "") for event in agents_events if event.get("type") == "content")
+        context_text = "".join(event.get("text", "") for event in context_events if event.get("type") == "content")
+        tool_names = [
+            event.get("name")
+            for event in [*agents_events, *context_events]
+            if event.get("type") == "tool_call"
+        ]
+
+        self.assertIn("Agents JoyBoy", agents_text)
+        self.assertIn("code_explorer", agents_text)
+        self.assertIn("verifier", agents_text)
+        self.assertIn("Contexte terminal", context_text)
+        self.assertIn("Budget contexte", context_text)
+        self.assertIn("AGENTS.md", context_text)
+        self.assertIn("package.json", context_text)
         self.assertEqual([], tool_names)
 
     def test_terminal_status_and_diff_commands_are_native_read_only(self):
