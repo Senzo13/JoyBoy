@@ -141,6 +141,9 @@ class TerminalBrain(
         self._cloud_circuit_probe_in_flight = defaultdict(bool)
         self._cloud_circuit_threshold = 3
         self._cloud_circuit_timeout_seconds = 60
+        self._progress_reporting_tools = {"bash", "web_search", "web_fetch", "delegate_subagent"}
+        self._tool_progress_threshold_seconds = 2.0
+        self._tool_progress_poll_seconds = 0.5
 
         # Modèle par défaut
         self.default_model = "qwen3.5:2b"
@@ -1139,7 +1142,43 @@ class TerminalBrain(
                     yield runtime_event('tool_call', name=tool_name, args=args)
 
                     # Exécuter le tool
-                    result = self.execute_tool(tool_name, args, workspace_path)
+                    result = None
+                    if tool_name in self._progress_reporting_tools:
+                        result_holder: Dict[str, Any] = {}
+
+                        def _run_tool_with_progress() -> None:
+                            try:
+                                result_holder["result"] = self.execute_tool(tool_name, args, workspace_path)
+                            except BaseException as exc:
+                                result_holder["error"] = exc
+
+                        started_at = time.time()
+                        progress_thread = threading.Thread(target=_run_tool_with_progress, daemon=True)
+                        progress_thread.start()
+                        progress_tick = -1
+                        while progress_thread.is_alive():
+                            progress_thread.join(timeout=self._tool_progress_poll_seconds)
+                            if not progress_thread.is_alive():
+                                break
+                            elapsed_seconds = int(time.time() - started_at)
+                            if (
+                                elapsed_seconds >= self._tool_progress_threshold_seconds
+                                and elapsed_seconds > progress_tick
+                            ):
+                                progress_tick = elapsed_seconds
+                                yield runtime_event(
+                                    'tool_progress',
+                                    name=tool_name,
+                                    args=args,
+                                    elapsed_seconds=elapsed_seconds,
+                                )
+                        if result_holder.get("error"):
+                            raise result_holder["error"]
+                        result = result_holder.get("result")
+                    else:
+                        result = self.execute_tool(tool_name, args, workspace_path)
+                    if result is None:
+                        result = ToolResult(success=False, tool_name=tool_name, error="Tool finished without a result")
                     executed_summary = self._summarize_executed_tool(tool_name, args, result)
                     executed_tools.append(executed_summary)
                     self._record_execution_journal(tool_name, args, result, executed_summary)

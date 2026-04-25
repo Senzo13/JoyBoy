@@ -309,6 +309,22 @@ def terminal_chat():
                 print(f"[TERMINAL] Tool call: {tool_name}({path})")
                 yield f"data: {json.dumps({'tool_call': {'action': tool_name, 'path': path, 'args': args}})}\n\n"
 
+            elif event_type == 'tool_progress':
+                tool_name = event.get('name', '')
+                args = event.get('args', {}) or {}
+                elapsed_seconds = int(event.get('elapsed_seconds') or 0)
+                path = tool_display_target(tool_name, args)
+                label = f"{tool_name} running for {elapsed_seconds}s"
+                if job_manager and terminal_job_id:
+                    job_manager.update(
+                        terminal_job_id,
+                        status="running",
+                        phase="tool_progress",
+                        progress=None,
+                        message=label[:160],
+                    )
+                yield f"data: {json.dumps({'tool_progress': {'action': tool_name, 'path': path, 'args': args, 'elapsed_seconds': elapsed_seconds}})}\n\n"
+
             elif event_type == 'tool_result':
                 result = event.get('result', {})
                 data = result.get('data', {})

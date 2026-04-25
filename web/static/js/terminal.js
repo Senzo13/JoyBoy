@@ -985,6 +985,19 @@ function describeTerminalToolNote(action, target = '', args = {}) {
     return '';
 }
 
+function describeTerminalToolProgress(data = {}) {
+    const action = data.action || '';
+    const elapsed = formatTerminalElapsed(data.elapsed_seconds || 0);
+    const target = data.path || '';
+    const label = terminalT('terminal.progressToolRunning', 'Exécute {tool}', { tool: action || 'outil' });
+    const detail = [elapsed, target].filter(Boolean).join(' · ');
+    return { label, detail };
+}
+
+function terminalToolProgressKey(action = '') {
+    return `tool-progress-${action || 'tool'}`;
+}
+
 function describeTerminalIntentTask(intent = '', autonomous = false) {
     if (autonomous) return terminalT('terminal.progressAutonomous', 'Mode autonome');
     if (intent === 'read') return terminalT('terminal.taskAnalyzeRequest', 'Analyse du projet');
@@ -2843,7 +2856,7 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                                 terminalT('terminal.progressToolRunning', 'Exécute {tool}', { tool: action }),
                                 path,
                                 'running',
-                                { reveal: true }
+                                { reveal: true, key: terminalToolProgressKey(action) }
                             );
                         }
                         if (shouldShowTerminalToolAsTask(action)) {
@@ -2851,6 +2864,21 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                             addTerminalTask(toolTaskId, taskLabel, 'running', describeTerminalToolNote(action, path, args));
                         }
                         showThinkingAnimation(taskLabel || action);
+                        continue;
+                    }
+
+                    // Tool progress - Un outil long est toujours en cours.
+                    if (data.tool_progress) {
+                        const progress = data.tool_progress;
+                        const { label, detail } = describeTerminalToolProgress(progress);
+                        updateThinkingText(label);
+                        addTerminalProgressLog(label, detail, 'running', {
+                            reveal: true,
+                            key: terminalToolProgressKey(progress.action)
+                        });
+                        if (window.lastToolCall?.taskId && window.lastToolCall.action === progress.action) {
+                            updateTerminalTask(window.lastToolCall.taskId, 'running', detail);
+                        }
                         continue;
                     }
 
@@ -2871,7 +2899,7 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                                 terminalT('terminal.progressToolFailed', 'Échec {tool}', { tool: result.action || '' }),
                                 terminalT('terminal.writeBlockedShort', 'Écriture bloquée'),
                                 'error',
-                                { reveal: true }
+                                { reveal: true, key: terminalToolProgressKey(result.action) }
                             );
                             if (window.lastToolCall?.taskId) {
                                 updateTerminalTask(window.lastToolCall.taskId, 'error', terminalT('terminal.writeBlockedShort', 'Écriture bloquée'));
@@ -2889,7 +2917,7 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                                     terminalT('terminal.progressApprovalRequired', 'Autorisation requise'),
                                     result.action || '',
                                     'warning',
-                                    { reveal: true }
+                                    { reveal: true, key: terminalToolProgressKey(result.action) }
                                 );
                                 if (window.lastToolCall?.taskId) {
                                     updateTerminalTask(window.lastToolCall.taskId, 'error', terminalT('terminal.approvalRequiredLine', 'Autorisation requise'));
@@ -2903,7 +2931,7 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                                 terminalT('terminal.progressToolFailed', 'Échec {tool}', { tool: result.action || '' }),
                                 errorText,
                                 'error',
-                                { reveal: true }
+                                { reveal: true, key: terminalToolProgressKey(result.action) }
                             );
                             if (window.lastToolCall?.taskId) {
                                 updateTerminalTask(window.lastToolCall.taskId, 'error', errorText);
@@ -2950,7 +2978,7 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                                 terminalT('terminal.progressToolDone', 'Terminé {tool}', { tool: result.action || '' }),
                                 resultSummary,
                                 'success',
-                                { reveal: true }
+                                { reveal: true, key: terminalToolProgressKey(result.action) }
                             );
                         }
                         // Sinon pas d'affichage (l'IA donnera la réponse à la fin)

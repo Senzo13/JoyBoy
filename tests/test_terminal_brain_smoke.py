@@ -1,6 +1,7 @@
 import os
 import shutil
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -1426,6 +1427,54 @@ Encore beaucoup de détail inutile.
         self.assertIn("Tu veux privilégier la vitesse", content)
         self.assertIn("1. Vitesse (Recommended)", content)
         self.assertEqual(mock_chat.call_count, 1)
+
+    @patch("core.backends.terminal_brain.chat_with_cloud_model")
+    def test_long_tool_emits_progress_events(self, mock_chat):
+        mock_chat.side_effect = [
+            {
+                "message": {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [
+                        {
+                            "id": "call_bash",
+                            "type": "function",
+                            "function": {
+                                "name": "bash",
+                                "arguments": {"command": "python -c \"print('ok')\""},
+                            },
+                        },
+                    ],
+                },
+                "prompt_eval_count": 20,
+                "eval_count": 5,
+            },
+            {
+                "message": {"role": "assistant", "content": "Sortie: ok"},
+                "prompt_eval_count": 15,
+                "eval_count": 4,
+            },
+        ]
+        brain = TerminalBrain()
+        brain._tool_progress_threshold_seconds = 0
+        brain._tool_progress_poll_seconds = 0.01
+
+        def slow_execute_tool(tool_name, args, workspace_path):
+            time.sleep(0.03)
+            return ToolResult(
+                success=True,
+                tool_name=tool_name,
+                data={"success": True, "output": "ok", "return_code": 0},
+            )
+
+        with tempfile.TemporaryDirectory() as tmp, patch.object(brain, "execute_tool", side_effect=slow_execute_tool):
+            events = list(brain.run_agentic_loop("execute python -V", tmp, model="openai:gpt-5.4"))
+
+        progress_events = [event for event in events if event.get("type") == "tool_progress"]
+        self.assertTrue(progress_events)
+        self.assertEqual(progress_events[0].get("name"), "bash")
+        self.assertTrue(any(event.get("type") == "tool_result" for event in events))
+        self.assertEqual(mock_chat.call_count, 2)
 
     def test_write_todos_tracks_and_formats_plan(self):
         brain = TerminalBrain()
