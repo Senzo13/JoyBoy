@@ -400,6 +400,82 @@ function addWriteFilesResult(result = {}, storedItem = null) {
     return true;
 }
 
+function closeTerminalCommandCatalog() {
+    document.querySelectorAll('.terminal-command-catalog-popover').forEach(panel => panel.remove());
+    refreshTerminalProgressLayout();
+}
+
+function showTerminalCommandCatalog(catalog = {}) {
+    closeTerminalCommandCatalog();
+    const inputBar = document.querySelector('#chat-view .chat-input-bar') || document.querySelector('.chat-input-bar');
+    const composer = inputBar?.querySelector('.input-bar');
+    if (!inputBar || !composer) return;
+
+    const commands = Array.isArray(catalog.commands) ? catalog.commands : [];
+    const capabilities = Array.isArray(catalog.capabilities) ? catalog.capabilities : [];
+    const panel = document.createElement('div');
+    panel.className = 'terminal-command-catalog-popover';
+    const commandRows = commands.map(command => {
+        const name = String(command.name || '').trim();
+        const description = String(command.description || '').trim();
+        const scope = String(command.scope || catalog.scope || 'Terminal').trim();
+        return `
+            <button type="button" class="terminal-command-catalog-row" data-terminal-command="${escapeHtml(name)}">
+                <span class="terminal-command-catalog-icon"><i data-lucide="box"></i></span>
+                <span class="terminal-command-catalog-main">
+                    <span class="terminal-command-catalog-name">${escapeHtml(name)}</span>
+                    <span class="terminal-command-catalog-description">${escapeHtml(description)}</span>
+                </span>
+                <span class="terminal-command-catalog-scope">${escapeHtml(scope)}</span>
+            </button>
+        `;
+    }).join('');
+    const capabilityRows = capabilities.map(item => `
+        <div class="terminal-command-capability-row">
+            <span class="terminal-command-capability-dot"></span>
+            <span>${escapeHtml(item)}</span>
+        </div>
+    `).join('');
+
+    panel.innerHTML = `
+        <div class="terminal-command-catalog-head">
+            <div>
+                <div class="terminal-command-catalog-title">${escapeHtml(catalog.title || terminalT('terminal.commandsTitle', 'Commandes'))}</div>
+                <div class="terminal-command-catalog-intro">${escapeHtml(catalog.intro || '')}</div>
+            </div>
+            <button type="button" class="terminal-command-catalog-close" aria-label="${escapeHtml(terminalT('terminal.close', 'Fermer'))}">
+                <i data-lucide="x"></i>
+            </button>
+        </div>
+        <div class="terminal-command-catalog-list">
+            ${commandRows || `<div class="terminal-command-catalog-empty">${escapeHtml(terminalT('terminal.noCommands', 'Aucune commande disponible'))}</div>`}
+        </div>
+        ${capabilityRows ? `
+            <div class="terminal-command-capabilities">
+                <div class="terminal-command-capabilities-title">${escapeHtml(catalog.capabilities_title || terminalT('terminal.activeCapabilities', 'Capacités actives'))}</div>
+                ${capabilityRows}
+            </div>
+        ` : ''}
+    `;
+
+    panel.querySelector('.terminal-command-catalog-close')?.addEventListener('click', closeTerminalCommandCatalog);
+    panel.querySelectorAll('[data-terminal-command]').forEach(button => {
+        button.addEventListener('click', () => {
+            const input = document.getElementById('prompt-input') || document.getElementById('chat-prompt');
+            if (input) {
+                input.value = button.dataset.terminalCommand || '';
+                input.focus();
+                input.selectionStart = input.selectionEnd = input.value.length;
+            }
+            closeTerminalCommandCatalog();
+        });
+    });
+
+    inputBar.insertBefore(panel, composer);
+    if (window.lucide) lucide.createIcons();
+    refreshTerminalProgressLayout();
+}
+
 /**
  * Affiche les derniers résultats d'outils (Ctrl+O)
  */
@@ -3165,6 +3241,7 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
     isGenerating = true;
     terminalWorking = true;
     terminalInterrupted = false;
+    closeTerminalCommandCatalog();
     setSendButtonsMode(true);
 
     const permissionModeOverride = options.permissionMode
@@ -3183,6 +3260,7 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
     let outputElement = null;
     let firstContentReceived = false;
     let approvalRequiredThisTurn = false;
+    let uiOnlyResponse = false;
 
     try {
         const controller = new AbortController();
@@ -3288,6 +3366,14 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                     }
 
                     // === BOUCLE AGENTIQUE - Nouveaux events ===
+
+                    if (data.command_catalog) {
+                        uiOnlyResponse = true;
+                        hideThinkingAnimation();
+                        hideTerminalProgressPanel();
+                        showTerminalCommandCatalog(data.command_catalog);
+                        continue;
+                    }
 
                     // Intent détecté - afficher mode autonome si actif
                     if (data.intent) {
@@ -3625,6 +3711,12 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                         const responseTime = Date.now() - startTime;
                         const serverFinalText = (data.full_response || '').trim();
                         const isWaitingForApproval = approvalRequiredThisTurn || Boolean(data.approval_required);
+                        if (uiOnlyResponse) {
+                            hideTerminalProgressPanel();
+                            const finalHtml = getChatHtmlWithoutSkeleton();
+                            saveCurrentChatHtml('', finalHtml);
+                            continue;
+                        }
                         completeTerminalProgressPanel(!isWaitingForApproval);
                         updateTerminalTask('terminal-intent', isWaitingForApproval ? 'error' : 'done');
 

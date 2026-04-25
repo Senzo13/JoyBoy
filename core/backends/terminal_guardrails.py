@@ -358,7 +358,42 @@ class TerminalGuardrailsMixin:
         return False
 
     def _has_attempted_mutation(self, executed_tools: List[Dict]) -> bool:
-        return any((item.get("tool") in WRITE_CORE_TOOL_NAMES) for item in executed_tools)
+        mutation_tools = set(WRITE_CORE_TOOL_NAMES) - {"bash"}
+        bash_mutation_markers = (
+            "new-item",
+            "set-content",
+            "add-content",
+            "out-file",
+            "remove-item",
+            "rename-item",
+            "move-item",
+            "copy-item",
+            "mkdir",
+            "touch ",
+            "cp ",
+            "mv ",
+            "rm ",
+            "del ",
+            "npm install",
+            "pnpm install",
+            "yarn install",
+            "npm create",
+            "pnpm create",
+            "yarn create",
+            "npx create",
+            "create-vite",
+            "git init",
+        )
+        for item in executed_tools:
+            tool_name = item.get("tool")
+            if tool_name in mutation_tools:
+                return True
+            if tool_name == "bash":
+                args = item.get("args") if isinstance(item.get("args"), dict) else {}
+                command = str(args.get("command") or item.get("command") or "").lower()
+                if any(marker in command for marker in bash_mutation_markers):
+                    return True
+        return False
 
     def _should_finalize_after_scaffold_write(self, initial_message: str, executed_tools: List[Dict]) -> bool:
         """Stop after a verified scaffold batch instead of spending another LLM turn."""

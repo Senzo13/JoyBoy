@@ -78,6 +78,43 @@ body.cyberatlas-mode {
         0 0 22px rgba(34, 211, 238, 0.10);
 }
 
+#cyberatlas-view select.signalatlas-target-input,
+#cyberatlas-view .signalatlas-target-input option {
+    background: #020c16;
+    color: #e2f8ff;
+}
+
+#cyberatlas-view .signalatlas-picker.open .signalatlas-picker-btn {
+    border-color: rgba(34, 211, 238, 0.48);
+    background: rgba(34, 211, 238, 0.09);
+    box-shadow:
+        0 0 0 3px rgba(34, 211, 238, 0.12),
+        0 18px 34px rgba(0, 0, 0, 0.24);
+}
+
+#cyberatlas-view .signalatlas-picker .signalatlas-picker-menu {
+    border-color: rgba(34, 211, 238, 0.24);
+    background:
+        radial-gradient(circle at 100% 0%, rgba(34, 211, 238, 0.10), transparent 36%),
+        linear-gradient(180deg, rgba(3, 17, 29, 0.99), rgba(1, 7, 14, 0.99));
+    box-shadow:
+        0 22px 50px rgba(0, 0, 0, 0.42),
+        inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+#cyberatlas-view .signalatlas-picker-section {
+    color: var(--cyberatlas-accent);
+}
+
+#cyberatlas-view .signalatlas-picker-option {
+    color: #e2f8ff;
+}
+
+#cyberatlas-view .signalatlas-picker-option:hover,
+#cyberatlas-view .signalatlas-picker-option.active {
+    background: rgba(34, 211, 238, 0.12);
+}
+
 #cyberatlas-view .signalatlas-btn,
 #cyberatlas-view .perfatlas-export-btn:last-child {
     background: linear-gradient(135deg, rgba(34, 211, 238, 0.96), rgba(163, 230, 53, 0.92));

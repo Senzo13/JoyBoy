@@ -48,6 +48,18 @@ class TerminalWriteFilesUiTests(unittest.TestCase):
         self.assertIn("terminal-run-summary", workspace_css)
         self.assertIn("terminal-run-summary-detail", components_css)
 
+    def test_terminal_help_renders_command_catalog_near_composer(self):
+        terminal_js = (ROOT / "web/static/js/terminal.js").read_text(encoding="utf-8")
+        terminal_route = (ROOT / "web/routes/terminal.py").read_text(encoding="utf-8")
+        components_css = (ROOT / "web/static/css/terminal-components.css").read_text(encoding="utf-8")
+
+        self.assertIn("function showTerminalCommandCatalog", terminal_js)
+        self.assertIn("if (data.command_catalog)", terminal_js)
+        self.assertIn("let uiOnlyResponse = false", terminal_js)
+        self.assertIn("terminal-command-catalog-popover", terminal_js)
+        self.assertIn("terminal-command-catalog-popover", components_css)
+        self.assertIn("'command_catalog'", terminal_route)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -18,6 +18,7 @@ TERMINAL_EVENT_TYPES = {
     "tool_result",
     "approval_required",
     "loop_warning",
+    "command_catalog",
     "content",
     "done",
     "error",

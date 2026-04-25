@@ -303,6 +303,9 @@ def terminal_chat():
                     )
                 yield f"data: {json.dumps({'loop_warning': True, 'action': event.get('action', ''), 'reason': reason})}\n\n"
 
+            elif event_type == 'command_catalog':
+                yield f"data: {json.dumps({'command_catalog': event.get('catalog', {})})}\n\n"
+
             elif event_type == 'thinking':
                 if job_manager and terminal_job_id:
                     max_iterations = max(1, int(event.get('max_iterations', 24) or 24))

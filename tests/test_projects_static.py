@@ -64,11 +64,18 @@ class ProjectsStaticTests(unittest.TestCase):
 
     def test_projects_ui_exports_sidebar_and_project_view(self):
         projects = self.read("web/static/js/projects.js")
+        css = self.read("web/static/css/projects.css")
 
         self.assertIn("function renderSidebarSections", projects)
         self.assertIn("function showProjectView", projects)
+        self.assertIn("function openProjectCreateModal", projects)
+        self.assertIn("function submitProjectCreateModal", projects)
+        self.assertNotIn("window.prompt", projects)
+        self.assertIn("project-create-modal", projects)
+        self.assertIn(".project-create-panel", css)
         self.assertIn("window.renderSidebarSections = renderSidebarSections", projects)
         self.assertIn("window.openChatListActionMenu = openChatListActionMenu", projects)
+        self.assertIn("window.openProjectCreateModal = openProjectCreateModal", projects)
 
     def test_project_translations_exist_for_all_locales(self):
         for locale in ("fr", "en", "es", "it"):
@@ -76,6 +83,9 @@ class ProjectsStaticTests(unittest.TestCase):
                 data = self.read(f"web/static/js/i18n.{locale}.js")
                 self.assertIn("projects: {", data)
                 self.assertIn("newProject:", data)
+                self.assertIn("createTitle:", data)
+                self.assertIn("createConfirm:", data)
+                self.assertIn("createEmpty:", data)
                 self.assertIn("moveToProject:", data)
                 self.assertIn("sources:", data)
                 self.assertIn("shell: {", data)
@@ -116,6 +126,16 @@ class ProjectsStaticTests(unittest.TestCase):
         self.assertIn("joyboy:locale-changed", projects)
         self.assertIn("renderSidebarSections();", projects)
         self.assertIn("refreshProjectView();", projects)
+
+    def test_mcp_editor_toggles_are_real_buttons(self):
+        script = self.read("web/static/js/settings.mcp.js")
+        css = self.read("web/static/css/settings-models.css")
+
+        self.assertIn('button class="settings-toggle active" type="button" id="mcp-editor-enabled"', script)
+        self.assertIn('button class="settings-toggle" type="button" id="mcp-editor-oauth-enabled"', script)
+        self.assertIn(".mcp-editor-toggle-row", css)
+        self.assertIn("flex-direction: row", css)
+        self.assertIn("appearance: none", css)
 
 
 if __name__ == "__main__":

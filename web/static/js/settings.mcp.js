@@ -171,7 +171,7 @@ function renderMcpEditorCard(mcpData) {
                                 <div class="settings-label">${escapeHtml(t('providers.mcpEditorEnabled', 'Activé'))}</div>
                                 <div class="settings-label-desc">${escapeHtml(t('providers.mcpEditorEnabledDesc', 'Désactive-le ici sans le retirer de la config locale.'))}</div>
                             </div>
-                            <div class="settings-toggle active" id="mcp-editor-enabled" onclick="toggleMcpEditorBool('mcp-editor-enabled')" aria-pressed="true"></div>
+                            <button class="settings-toggle active" type="button" id="mcp-editor-enabled" onclick="toggleMcpEditorBool('mcp-editor-enabled')" aria-pressed="true" aria-label="${escapeHtml(t('providers.mcpEditorEnabled', 'Activé'))}"></button>
                         </div>
                         <div class="mcp-editor-field" data-mcp-editor-transport="stdio">
                             <label class="settings-label" for="mcp-editor-command">${escapeHtml(t('providers.mcpEditorCommand', 'Commande'))}</label>
@@ -198,7 +198,7 @@ function renderMcpEditorCard(mcpData) {
                                 <div class="settings-label">${escapeHtml(t('providers.mcpEditorOauth', 'OAuth'))}</div>
                                 <div class="settings-label-desc">${escapeHtml(t('providers.mcpEditorOauthDesc', 'Active l’injection de token pour HTTP ou SSE si le serveur le demande.'))}</div>
                             </div>
-                            <div class="settings-toggle" id="mcp-editor-oauth-enabled" onclick="toggleMcpEditorBool('mcp-editor-oauth-enabled')" aria-pressed="false"></div>
+                            <button class="settings-toggle" type="button" id="mcp-editor-oauth-enabled" onclick="toggleMcpEditorBool('mcp-editor-oauth-enabled')" aria-pressed="false" aria-label="${escapeHtml(t('providers.mcpEditorOauth', 'OAuth'))}"></button>
                         </div>
                         <div class="mcp-editor-field" data-mcp-editor-oauth="true">
                             <label class="settings-label" for="mcp-editor-oauth-token-url">${escapeHtml(t('providers.mcpEditorOauthTokenUrl', 'Token URL'))}</label>

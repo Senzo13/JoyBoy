@@ -223,11 +223,16 @@ Encore beaucoup de détail inutile.
 
         text = "".join(event.get("text", "") for event in events if event.get("type") == "content")
         tool_names = [event.get("name") for event in events if event.get("type") == "tool_call"]
+        catalog_events = [event for event in events if event.get("type") == "command_catalog"]
 
-        self.assertIn("/ultrareview", text)
-        self.assertIn("/mcp", text)
-        self.assertIn("web_search + web_fetch", text)
-        self.assertIn("Playwright", text)
+        self.assertEqual("", text)
+        self.assertEqual(1, len(catalog_events))
+        catalog = catalog_events[0]["catalog"]
+        command_names = [command["name"] for command in catalog["commands"]]
+        self.assertTrue(any(name.startswith("/ultrareview") for name in command_names))
+        self.assertIn("/mcp", command_names)
+        self.assertTrue(any("web_search + web_fetch" in item for item in catalog["capabilities"]))
+        self.assertTrue(any("Playwright" in item for item in catalog["capabilities"]))
         self.assertEqual([], tool_names)
 
     @patch("core.backends.terminal_commands.chat_with_cloud_model")
@@ -1414,6 +1419,22 @@ Encore beaucoup de détail inutile.
         brain.current_intent = "write"
 
         self.assertTrue(brain._should_continue_write_after_guard("glob", []))
+        self.assertFalse(
+            brain._has_attempted_mutation([
+                {"tool": "bash", "args": {"command": "git ls-files"}, "success": True},
+            ])
+        )
+        self.assertTrue(
+            brain._should_continue_write_after_guard(
+                "bash",
+                [{"tool": "bash", "args": {"command": "git ls-files"}, "success": True}],
+            )
+        )
+        self.assertTrue(
+            brain._has_attempted_mutation([
+                {"tool": "bash", "args": {"command": "npm install"}, "success": True},
+            ])
+        )
         self.assertFalse(
             brain._should_continue_write_after_guard(
                 "glob",

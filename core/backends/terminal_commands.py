@@ -30,6 +30,7 @@ COMMAND_TEXT = {
     "fr": {
         "help_title": "Commandes JoyBoy Terminal",
         "help_intro": "Tape une commande slash dans un projet dev pour lancer un workflow précis.",
+        "command_scope": "Terminal",
         "active": "Capacités actives",
         "mcp_none": "Aucun outil MCP actif pour l'instant.",
         "mcp_title": "Outils MCP",
@@ -58,6 +59,7 @@ COMMAND_TEXT = {
     "en": {
         "help_title": "JoyBoy Terminal Commands",
         "help_intro": "Type a slash command inside a dev project to launch a precise workflow.",
+        "command_scope": "Terminal",
         "active": "Active capabilities",
         "mcp_none": "No active MCP tools yet.",
         "mcp_title": "MCP Tools",
@@ -86,6 +88,7 @@ COMMAND_TEXT = {
     "es": {
         "help_title": "Comandos de JoyBoy Terminal",
         "help_intro": "Escribe un comando slash dentro de un proyecto dev para lanzar un workflow preciso.",
+        "command_scope": "Terminal",
         "active": "Capacidades activas",
         "mcp_none": "No hay herramientas MCP activas por ahora.",
         "mcp_title": "Herramientas MCP",
@@ -114,6 +117,7 @@ COMMAND_TEXT = {
     "it": {
         "help_title": "Comandi JoyBoy Terminal",
         "help_intro": "Digita un comando slash in un progetto dev per avviare un workflow preciso.",
+        "command_scope": "Terminal",
         "active": "Capacità attive",
         "mcp_none": "Nessuno strumento MCP attivo per ora.",
         "mcp_title": "Strumenti MCP",
@@ -204,8 +208,16 @@ class TerminalSlashCommandsMixin:
         yield runtime_event("done", full_response=text, token_stats={"prompt_tokens": 0, "completion_tokens": 0, "total": 0})
 
     def _run_terminal_help_command(self, workspace_path: str, locale: str | None) -> Generator[Dict[str, Any], None, None]:
-        text = self._build_terminal_help_text(workspace_path, locale)
-        yield from self._finish_static_command(text)
+        catalog = self._build_terminal_help_catalog(workspace_path, locale)
+        yield runtime_event(
+            "intent",
+            intent="question",
+            read_only=True,
+            autonomous=False,
+            permission_mode=self.permission_mode,
+        )
+        yield runtime_event("command_catalog", catalog=catalog)
+        yield runtime_event("done", full_response="", token_stats={"prompt_tokens": 0, "completion_tokens": 0, "total": 0})
 
     def _run_terminal_mcp_command(self, locale: str | None) -> Generator[Dict[str, Any], None, None]:
         text = self._build_terminal_mcp_text(locale)
@@ -220,27 +232,42 @@ class TerminalSlashCommandsMixin:
         yield from self._finish_static_command(text)
 
     def _build_terminal_help_text(self, workspace_path: str, locale: str | None) -> str:
+        catalog = self._build_terminal_help_catalog(workspace_path, locale)
+        commands = "\n".join(f"- `{item['name']}` - {item['description']}" for item in catalog["commands"])
+        active = [f"- {item}" for item in catalog["capabilities"]]
+        return (
+            f"## {catalog['title']}\n\n"
+            f"{catalog['intro']}\n\n"
+            f"{commands}\n\n"
+            f"### {self._terminal_command_texts(locale)['active']}\n"
+            + "\n".join(active)
+        )
+
+    def _build_terminal_help_catalog(self, workspace_path: str, locale: str | None) -> Dict[str, Any]:
         texts = self._terminal_command_texts(locale)
         self._refresh_dynamic_tool_registry()
         tools = self.tool_registry.public_tools()
         mcp_tools = [tool for tool in tools if "mcp" in (tool.get("tags") or [])]
         web_active = any(tool.get("name") in {"web_search", "web_fetch"} for tool in tools)
         skill_count = self._pack_skill_count()
-        commands = "\n".join(f"- `{name}` - {desc}" for name, desc in texts["commands"])
-        active = [
-            f"- {texts['cap_workspace']}",
-            f"- {texts['cap_web_active'] if web_active else texts['cap_web_missing']}",
-            f"- {texts['cap_mcp'].format(count=len(mcp_tools))}",
-            f"- {texts['cap_skills'].format(count=skill_count)}",
-            f"- {texts['browser_note']}",
+        capabilities = [
+            texts["cap_workspace"],
+            texts["cap_web_active"] if web_active else texts["cap_web_missing"],
+            texts["cap_mcp"].format(count=len(mcp_tools)),
+            texts["cap_skills"].format(count=skill_count),
+            texts["browser_note"],
         ]
-        return (
-            f"## {texts['help_title']}\n\n"
-            f"{texts['help_intro']}\n\n"
-            f"{commands}\n\n"
-            f"### {texts['active']}\n"
-            + "\n".join(active)
-        )
+        return {
+            "title": texts["help_title"],
+            "intro": texts["help_intro"],
+            "scope": texts["command_scope"],
+            "commands": [
+                {"name": name, "description": desc, "scope": texts["command_scope"]}
+                for name, desc in texts["commands"]
+            ],
+            "capabilities_title": texts["active"],
+            "capabilities": capabilities,
+        }
 
     def _build_terminal_mcp_text(self, locale: str | None) -> str:
         texts = self._terminal_command_texts(locale)

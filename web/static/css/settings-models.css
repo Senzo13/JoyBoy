@@ -380,7 +380,19 @@
 }
 
 .mcp-editor-toggle-row {
+    grid-column: 1 / -1;
+    flex-direction: row;
+    align-items: center;
     justify-content: space-between;
+    gap: 14px;
+    padding: 12px;
+    border: 1px solid rgba(148, 163, 184, 0.13);
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.035);
+}
+
+.mcp-editor-toggle-row > div:first-child {
+    min-width: 0;
 }
 
 .mcp-editor-textarea {
@@ -696,6 +708,13 @@
     width: 48px;
     height: 26px;
     flex: 0 0 48px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-start;
+    box-sizing: border-box;
+    padding: 0;
+    appearance: none;
+    -webkit-appearance: none;
     background: #2a2a2d;
     border: 1px solid rgba(255, 255, 255, 0.12);
     border-radius: 999px;
@@ -708,6 +727,12 @@
     background: linear-gradient(135deg, #2563eb, #60a5fa);
     border-color: rgba(96, 165, 250, 0.6);
     box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+}
+
+.settings-toggle:focus-visible {
+    outline: none;
+    border-color: rgba(147, 197, 253, 0.8);
+    box-shadow: 0 0 0 4px rgba(96, 165, 250, 0.2);
 }
 
 .settings-toggle::after {
@@ -859,4 +884,3 @@
     background: #1b1b28;
     border-color: #48556f;
 }
-

@@ -1779,13 +1779,22 @@ function signalAtlasPickerInputId(pickerId) {
 }
 
 function getAuditPickerState(moduleId) {
-    return String(moduleId || '').trim().toLowerCase() === 'perfatlas'
+    const cleanModuleId = String(moduleId || '').trim().toLowerCase();
+    if (cleanModuleId === 'cyberatlas' && typeof window.getCyberAtlasPickerState === 'function') {
+        return window.getCyberAtlasPickerState();
+    }
+    return cleanModuleId === 'perfatlas'
         ? perfAtlasOpenPickerId
         : signalAtlasOpenPickerId;
 }
 
 function setAuditPickerState(moduleId, value) {
-    if (String(moduleId || '').trim().toLowerCase() === 'perfatlas') {
+    const cleanModuleId = String(moduleId || '').trim().toLowerCase();
+    if (cleanModuleId === 'cyberatlas' && typeof window.setCyberAtlasPickerState === 'function') {
+        window.setCyberAtlasPickerState(value);
+        return;
+    }
+    if (cleanModuleId === 'perfatlas') {
         perfAtlasOpenPickerId = value;
         return;
     }
@@ -1793,7 +1802,12 @@ function setAuditPickerState(moduleId, value) {
 }
 
 function rerenderAuditWorkspace(moduleId) {
-    if (String(moduleId || '').trim().toLowerCase() === 'perfatlas') {
+    const cleanModuleId = String(moduleId || '').trim().toLowerCase();
+    if (cleanModuleId === 'cyberatlas' && typeof window.renderCyberAtlasWorkspace === 'function') {
+        window.renderCyberAtlasWorkspace();
+        return;
+    }
+    if (cleanModuleId === 'perfatlas') {
         if (isPerfAtlasVisible()) renderPerfAtlasWorkspace();
         return;
     }
@@ -1823,6 +1837,10 @@ function toggleSignalAtlasPicker(pickerId, event) {
 
 function togglePerfAtlasPicker(pickerId, event) {
     toggleAuditPicker('perfatlas', pickerId, event);
+}
+
+function toggleCyberAtlasPicker(pickerId, event) {
+    toggleAuditPicker('cyberatlas', pickerId, event);
 }
 
 async function selectSignalAtlasPickerOption(pickerId, value, event) {
@@ -2138,8 +2156,12 @@ function renderAuditPicker(moduleId, pickerId, inputId, options, selectedValue) 
     };
     const cleanModuleId = String(moduleId || 'signalatlas').trim().toLowerCase();
     const isOpen = getAuditPickerState(cleanModuleId) === pickerId;
-    const toggleFn = cleanModuleId === 'perfatlas' ? 'togglePerfAtlasPicker' : 'toggleSignalAtlasPicker';
-    const selectFn = cleanModuleId === 'perfatlas' ? 'selectPerfAtlasPickerOption' : 'selectSignalAtlasPickerOption';
+    const toggleFn = cleanModuleId === 'cyberatlas'
+        ? 'toggleCyberAtlasPicker'
+        : (cleanModuleId === 'perfatlas' ? 'togglePerfAtlasPicker' : 'toggleSignalAtlasPicker');
+    const selectFn = cleanModuleId === 'cyberatlas'
+        ? 'selectCyberAtlasPickerOption'
+        : (cleanModuleId === 'perfatlas' ? 'selectPerfAtlasPickerOption' : 'selectSignalAtlasPickerOption');
     let lastSection = '';
     const menuItems = items.map(option => {
         const currentSection = String(option.section || '');
@@ -5691,6 +5713,7 @@ window.addEventListener('click', (event) => {
     if (event.target?.closest?.('.signalatlas-picker')) return;
     if (signalAtlasOpenPickerId) closeSignalAtlasPicker();
     if (perfAtlasOpenPickerId) closeAuditPicker('perfatlas');
+    window.closeCyberAtlasPicker?.();
 });
 
 window.addEventListener('joyboy:runtime-jobs-updated', () => {
@@ -5734,6 +5757,7 @@ window.openSignalAtlasPromptInChat = openSignalAtlasPromptInChat;
 window.openPerfAtlasPromptInChat = openPerfAtlasPromptInChat;
 window.toggleSignalAtlasPicker = toggleSignalAtlasPicker;
 window.togglePerfAtlasPicker = togglePerfAtlasPicker;
+window.toggleCyberAtlasPicker = toggleCyberAtlasPicker;
 window.selectSignalAtlasPickerOption = selectSignalAtlasPickerOption;
 window.selectPerfAtlasPickerOption = selectPerfAtlasPickerOption;
 window.signalAtlasTargetInputChanged = signalAtlasTargetInputChanged;

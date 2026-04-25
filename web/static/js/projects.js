@@ -209,11 +209,101 @@ async function toggleProjectExpanded(projectId, event = null) {
 }
 
 async function createProjectFromSidebar() {
-    const name = window.prompt(projectT('projects.createPrompt', 'Nom du nouveau projet'));
-    if (name === null) return;
-    const cleanName = cleanProjectName(name);
-    const project = await createProject({ name: cleanName });
-    showProjectView(project.id);
+    openProjectCreateModal();
+}
+
+function closeProjectCreateModal() {
+    document.querySelector('.project-create-modal')?.remove();
+    document.removeEventListener('keydown', handleProjectCreateModalKeydown);
+}
+
+function handleProjectCreateModalKeydown(event) {
+    if (event.key === 'Escape') closeProjectCreateModal();
+}
+
+function setProjectCreateModalError(message = '') {
+    const error = document.getElementById('project-create-error');
+    if (!error) return;
+    error.textContent = message;
+    error.hidden = !message;
+}
+
+async function submitProjectCreateModal(event = null) {
+    event?.preventDefault?.();
+    const input = document.getElementById('project-create-name-input');
+    const submit = document.getElementById('project-create-submit');
+    const rawName = String(input?.value || '').trim();
+    if (!rawName) {
+        setProjectCreateModalError(projectT('projects.createEmpty', 'Ajoute un nom de projet.'));
+        input?.focus();
+        return;
+    }
+
+    setProjectCreateModalError('');
+    if (submit) submit.disabled = true;
+    try {
+        const project = await createProject({ name: cleanProjectName(rawName) });
+        closeProjectCreateModal();
+        showProjectView(project.id);
+        if (typeof Toast !== 'undefined') {
+            Toast.success(projectT('projects.projectCreated', 'Projet créé'));
+        }
+    } catch (error) {
+        console.error('[projects] create project failed', error);
+        if (submit) submit.disabled = false;
+        setProjectCreateModalError(projectT('projects.createFailed', 'Impossible de créer le projet.'));
+    }
+}
+
+function openProjectCreateModal() {
+    closeProjectCreateModal();
+    const modal = document.createElement('div');
+    modal.className = 'project-create-modal';
+    modal.setAttribute('role', 'presentation');
+    modal.addEventListener('click', (event) => {
+        if (event.target === modal) closeProjectCreateModal();
+    });
+    modal.innerHTML = `
+        <form class="project-create-panel" role="dialog" aria-modal="true" aria-labelledby="project-create-title" onsubmit="submitProjectCreateModal(event)">
+            <div class="project-create-header">
+                <div class="project-create-icon" aria-hidden="true">
+                    <i data-lucide="folder-plus"></i>
+                </div>
+                <div>
+                    <h2 id="project-create-title">${escapeHtml(projectT('projects.createTitle', 'Créer un projet'))}</h2>
+                    <p>${escapeHtml(projectT('projects.createCopy', 'Donne un nom clair pour regrouper tes chats et sources.'))}</p>
+                </div>
+                <button class="project-create-close" type="button" onclick="closeProjectCreateModal()" aria-label="${escapeHtml(projectT('common.close', 'Fermer'))}">
+                    <i data-lucide="x"></i>
+                </button>
+            </div>
+            <label class="project-create-field" for="project-create-name-input">
+                <span>${escapeHtml(projectT('projects.createNameLabel', 'Nom du projet'))}</span>
+                <input
+                    id="project-create-name-input"
+                    class="project-create-input"
+                    type="text"
+                    autocomplete="off"
+                    maxlength="80"
+                    placeholder="${escapeHtml(projectT('projects.createPlaceholder', 'Ex. Client SEO, App mobile, Refonte site'))}"
+                >
+            </label>
+            <div class="project-create-error" id="project-create-error" hidden></div>
+            <div class="project-create-actions">
+                <button class="project-create-btn secondary" type="button" onclick="closeProjectCreateModal()">
+                    ${escapeHtml(projectT('projects.createCancel', 'Annuler'))}
+                </button>
+                <button class="project-create-btn primary" id="project-create-submit" type="submit">
+                    ${escapeHtml(projectT('projects.createConfirm', 'Créer le projet'))}
+                </button>
+            </div>
+        </form>
+    `;
+
+    document.body.appendChild(modal);
+    document.addEventListener('keydown', handleProjectCreateModalKeydown);
+    if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [modal] });
+    requestAnimationFrame(() => document.getElementById('project-create-name-input')?.focus());
 }
 
 function hideProjectView() {
@@ -577,6 +667,9 @@ window.showProjectView = showProjectView;
 window.openProject = openProject;
 window.refreshProjectView = refreshProjectView;
 window.createProjectFromSidebar = createProjectFromSidebar;
+window.openProjectCreateModal = openProjectCreateModal;
+window.closeProjectCreateModal = closeProjectCreateModal;
+window.submitProjectCreateModal = submitProjectCreateModal;
 window.createChatInProject = createChatInProject;
 window.toggleProjectExpanded = toggleProjectExpanded;
 window.openProjectActionMenu = openProjectActionMenu;

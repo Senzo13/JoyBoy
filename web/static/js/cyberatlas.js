@@ -41,6 +41,7 @@
     let cyberAtlasLaunchPending = false;
     let cyberAtlasAdvancedVisible = false;
     let cyberAtlasRefreshInFlight = false;
+    let cyberAtlasOpenPickerId = null;
     let cyberAtlasDraft = {
         target: '',
         profile: 'elevated',
@@ -151,48 +152,213 @@
         return alternative?.id || current;
     }
 
-    function cyberAtlasModelOptionsHtml(selectedValue) {
-        const profiles = cyberAtlasCurrentProfiles();
-        const renderOption = (profile) => {
+    function buildCyberAtlasSimpleOptions(items, selectedValue, tone = '') {
+        if (typeof buildSignalAtlasSimpleOptions === 'function') {
+            return buildSignalAtlasSimpleOptions(items, selectedValue, tone);
+        }
+        return (items || []).map(item => ({
+            value: item.value,
+            label: item.label,
+            description: item.description || '',
+            meta: item.meta || '',
+            badge: item.badge || '',
+            tone: item.tone || tone || '',
+            selected: String(item.value) === String(selectedValue),
+        }));
+    }
+
+    function buildCyberAtlasModelOptions(selectedValue = '') {
+        if (typeof buildAuditModelOptions === 'function') {
+            return buildAuditModelOptions(cyberAtlasCurrentProfiles(), selectedValue);
+        }
+        return cyberAtlasCurrentProfiles().map(profile => {
+            const provider = String(profile?.provider || 'ollama').toLowerCase();
+            const isCloud = provider !== 'ollama';
             const label = profile.label || profile.display_name || profile.name || profile.id || 'Model';
-            const configured = profile.configured === false
-                ? ` - ${cyberAtlasText('signalatlas.modelNotConfigured', 'not configured')}`
-                : '';
-            return `<option value="${cyberAtlasEscape(profile.id)}" ${profile.id === selectedValue ? 'selected' : ''}>${cyberAtlasEscape(label + configured)}</option>`;
-        };
-        return profiles.map(renderOption).join('');
+            return {
+                value: profile.id,
+                label,
+                description: profile.configured === false
+                    ? cyberAtlasText('signalatlas.modelNotConfigured', 'not configured')
+                    : cyberAtlasText('cyberatlas.modelReady', 'Ready for security analysis'),
+                meta: provider,
+                badge: isCloud ? cyberAtlasText('modelPicker.sources.cloud', 'Cloud') : cyberAtlasText('modelPicker.sources.local', 'Local'),
+                tone: isCloud ? 'cloud' : 'local',
+                section: isCloud ? cyberAtlasText('signalatlas.cloudModels', 'Cloud models') : cyberAtlasText('signalatlas.localModels', 'Local models'),
+                selected: String(profile.id) === String(selectedValue || ''),
+            };
+        });
     }
 
-    function cyberAtlasProfileOptionsHtml(selectedValue) {
-        return ['basic', 'elevated', 'ultra'].map(profile => {
-            const label = cyberAtlasProfileLabel(profile);
-            return `<option value="${profile}" ${profile === selectedValue ? 'selected' : ''}>${cyberAtlasEscape(label)}</option>`;
-        }).join('');
+    function cyberAtlasPresetOptions() {
+        const presets = Array.isArray(cyberAtlasModelContext?.presets) && cyberAtlasModelContext.presets.length
+            ? cyberAtlasModelContext.presets
+            : [
+                { id: 'fast', label: cyberAtlasText('signalatlas.presetFast', 'Fast'), summary: cyberAtlasText('cyberatlas.presetFastHint', 'Short pass for a quick security read.') },
+                { id: 'balanced', label: cyberAtlasText('signalatlas.presetBalanced', 'Balanced'), summary: cyberAtlasText('cyberatlas.presetBalancedHint', 'Balanced crawl, evidence and AI synthesis.') },
+                { id: 'expert', label: cyberAtlasText('signalatlas.presetExpert', 'Expert'), summary: cyberAtlasText('cyberatlas.presetExpertHint', 'Deeper evidence and remediation-oriented output.') },
+                { id: 'local_private', label: cyberAtlasText('signalatlas.presetLocalPrivate', 'Local private'), summary: cyberAtlasText('cyberatlas.presetPrivateHint', 'Prefer local/private routing when available.') },
+            ];
+        return buildCyberAtlasSimpleOptions(presets.map(preset => ({
+            value: preset.id,
+            label: preset.label,
+            description: preset.summary || '',
+            tone: preset.id === 'expert' ? 'expert' : (preset.id === 'local_private' ? 'private' : ''),
+        })), cyberAtlasDraft.preset || 'balanced');
     }
 
-    function cyberAtlasBudgetOptionsHtml(steps, selectedValue) {
-        const selected = Number(selectedValue);
-        return steps.map(value => `<option value="${value}" ${Number(value) === selected ? 'selected' : ''}>${value}</option>`).join('');
+    function cyberAtlasLevelOptions() {
+        const levels = Array.isArray(cyberAtlasModelContext?.levels) && cyberAtlasModelContext.levels.length
+            ? cyberAtlasModelContext.levels
+            : [
+                { id: 'no_ai', label: cyberAtlasText('cyberatlas.aiLevelNone', 'No AI') },
+                { id: 'basic_summary', label: cyberAtlasText('signalatlas.levelBasic', 'Basic summary') },
+                { id: 'full_expert_analysis', label: cyberAtlasText('signalatlas.levelFull', 'Full expert analysis') },
+                { id: 'ai_remediation_pack', label: cyberAtlasText('signalatlas.levelRemediation', 'AI remediation pack') },
+            ];
+        return buildCyberAtlasSimpleOptions(levels.map(level => ({
+            value: level.id,
+            label: level.label,
+            description: cyberAtlasText(`cyberatlas.levelHint_${level.id}`, '') || cyberAtlasText(`signalatlas.levelHint_${level.id}`, ''),
+        })), cyberAtlasDraft.level || 'full_expert_analysis');
     }
 
-    function cyberAtlasAiLevelOptionsHtml(selectedValue) {
-        const options = [
-            ['no_ai', cyberAtlasText('cyberatlas.aiLevelNone', 'No AI')],
-            ['basic_summary', cyberAtlasText('signalatlas.levelBasic', 'Basic summary')],
-            ['full_expert_analysis', cyberAtlasText('signalatlas.levelFull', 'Full expert analysis')],
-            ['ai_remediation_pack', cyberAtlasText('signalatlas.levelRemediation', 'AI remediation pack')],
-        ];
-        return options.map(([value, label]) => `<option value="${value}" ${value === selectedValue ? 'selected' : ''}>${cyberAtlasEscape(label)}</option>`).join('');
+    function cyberAtlasPickerOptions(pickerId) {
+        if (pickerId === 'profile') {
+            return buildCyberAtlasSimpleOptions([
+                {
+                    value: 'basic',
+                    label: cyberAtlasProfileLabel('basic'),
+                    description: cyberAtlasText('cyberatlas.auditProfileBasicDesc', 'Quick defensive pass with a small sample.'),
+                    tone: 'fast',
+                },
+                {
+                    value: 'elevated',
+                    label: cyberAtlasProfileLabel('elevated'),
+                    description: cyberAtlasText('cyberatlas.auditProfileElevatedDesc', 'Balanced security posture, API inventory and AI synthesis.'),
+                    tone: 'local',
+                },
+                {
+                    value: 'ultra',
+                    label: cyberAtlasProfileLabel('ultra'),
+                    description: cyberAtlasText('cyberatlas.auditProfileUltraDesc', 'Deepest safe crawl with wider endpoints and remediation pack.'),
+                    tone: 'expert',
+                },
+            ], cyberAtlasDraft.profile || 'elevated');
+        }
+        if (pickerId === 'mode') {
+            return buildCyberAtlasSimpleOptions([
+                {
+                    value: 'public',
+                    label: cyberAtlasText('cyberatlas.publicMode', 'Public audit'),
+                    description: cyberAtlasText('cyberatlas.publicModeHint', 'Defensive checks from public evidence only.'),
+                },
+                {
+                    value: 'verified_owner',
+                    label: cyberAtlasText('cyberatlas.ownerMode', 'Verified owner'),
+                    description: cyberAtlasText('cyberatlas.ownerModeHint', 'Unlocks owner-only context and expanded safe probes.'),
+                },
+            ], cyberAtlasDraft.mode || 'public');
+        }
+        if (pickerId === 'max_pages') {
+            return buildCyberAtlasSimpleOptions(CYBERATLAS_PAGE_BUDGET_STEPS.map(value => ({
+                value,
+                label: String(value),
+                description: cyberAtlasText('cyberatlas.pageBudgetHint', 'Maximum pages sampled during this security pass.'),
+            })), cyberAtlasDraft.max_pages);
+        }
+        if (pickerId === 'max_endpoints') {
+            return buildCyberAtlasSimpleOptions(CYBERATLAS_ENDPOINT_BUDGET_STEPS.map(value => ({
+                value,
+                label: String(value),
+                description: cyberAtlasText('cyberatlas.endpointBudgetHint', 'Maximum API or asset endpoints inspected.'),
+            })), cyberAtlasDraft.max_endpoints);
+        }
+        if (pickerId === 'model') {
+            return buildCyberAtlasModelOptions(cyberAtlasDraft.model || cyberAtlasCurrentChatModel());
+        }
+        if (pickerId === 'compare_model') {
+            return buildCyberAtlasModelOptions(cyberAtlasDraft.compare_model || fallbackCyberAtlasCompareModel());
+        }
+        if (pickerId === 'preset') return cyberAtlasPresetOptions();
+        if (pickerId === 'level') return cyberAtlasLevelOptions();
+        return [];
     }
 
-    function cyberAtlasPresetOptionsHtml(selectedValue) {
-        const options = [
-            ['fast', cyberAtlasText('signalatlas.presetFast', 'Fast')],
-            ['balanced', cyberAtlasText('signalatlas.presetBalanced', 'Balanced')],
-            ['expert', cyberAtlasText('signalatlas.presetExpert', 'Expert')],
-            ['local_private', cyberAtlasText('signalatlas.presetLocalPrivate', 'Local private')],
-        ];
-        return options.map(([value, label]) => `<option value="${value}" ${value === selectedValue ? 'selected' : ''}>${cyberAtlasEscape(label)}</option>`).join('');
+    function renderCyberAtlasPicker(pickerId, inputId, options, selectedValue) {
+        if (typeof renderAuditPicker === 'function') {
+            return renderAuditPicker('cyberatlas', pickerId, inputId, options, selectedValue);
+        }
+        const selected = (options || []).find(option => String(option.value) === String(selectedValue)) || (options || [])[0] || { value: selectedValue, label: selectedValue };
+        return `<input type="hidden" id="${cyberAtlasEscape(inputId)}" value="${cyberAtlasEscape(String(selected.value ?? ''))}"><button class="signalatlas-picker-btn model-picker-btn" type="button" disabled>${cyberAtlasEscape(selected.label || '')}</button>`;
+    }
+
+    function cyberAtlasPickerInputId(pickerId) {
+        if (pickerId === 'profile') return 'cyberatlas-profile-select';
+        if (pickerId === 'mode') return 'cyberatlas-mode-select';
+        if (pickerId === 'max_pages') return 'cyberatlas-max-pages';
+        if (pickerId === 'max_endpoints') return 'cyberatlas-max-endpoints';
+        if (pickerId === 'model') return 'cyberatlas-model-select';
+        if (pickerId === 'preset') return 'cyberatlas-preset-select';
+        if (pickerId === 'level') return 'cyberatlas-level-select';
+        if (pickerId === 'compare_model') return 'cyberatlas-compare-model-select';
+        return '';
+    }
+
+    function getCyberAtlasPickerState() {
+        return cyberAtlasOpenPickerId;
+    }
+
+    function setCyberAtlasPickerState(value) {
+        cyberAtlasOpenPickerId = value || null;
+    }
+
+    function closeCyberAtlasPicker() {
+        if (!cyberAtlasOpenPickerId) return;
+        cyberAtlasOpenPickerId = null;
+        if (isCyberAtlasVisible()) renderCyberAtlasWorkspace();
+    }
+
+    async function selectCyberAtlasPickerOption(pickerId, value, event) {
+        event?.stopPropagation?.();
+        const cleanValue = String(value ?? '');
+        cyberAtlasOpenPickerId = null;
+
+        if (pickerId === 'profile') applyCyberAtlasProfile(cleanValue || 'elevated');
+        if (pickerId === 'mode') {
+            cyberAtlasDraft.mode = cleanValue || 'public';
+            if (cyberAtlasDraft.mode !== 'verified_owner') cyberAtlasDraft.active_checks = false;
+        }
+        if (pickerId === 'max_pages') {
+            cyberAtlasDraft.max_pages = cyberAtlasNormalizeBudget(cleanValue, cyberAtlasDraft.max_pages, CYBERATLAS_MAX_PAGE_BUDGET);
+        }
+        if (pickerId === 'max_endpoints') {
+            cyberAtlasDraft.max_endpoints = cyberAtlasNormalizeBudget(cleanValue, cyberAtlasDraft.max_endpoints, CYBERATLAS_MAX_ENDPOINT_BUDGET);
+        }
+        if (pickerId === 'model') cyberAtlasDraft.model = cleanValue || cyberAtlasCurrentChatModel();
+        if (pickerId === 'preset') cyberAtlasDraft.preset = cleanValue || 'balanced';
+        if (pickerId === 'level') cyberAtlasDraft.level = cleanValue || 'full_expert_analysis';
+        if (pickerId === 'compare_model') cyberAtlasDraft.compare_model = cleanValue || fallbackCyberAtlasCompareModel();
+
+        const hiddenInputId = cyberAtlasPickerInputId(pickerId);
+        if (hiddenInputId) {
+            const hiddenInput = document.getElementById(hiddenInputId);
+            if (hiddenInput) hiddenInput.value = cleanValue;
+        }
+
+        if (pickerId === 'mode') {
+            await refreshCyberAtlasProviderStatus();
+        }
+        renderCyberAtlasWorkspace();
+    }
+
+    function cyberAtlasShouldHoldWorkspaceRefresh() {
+        if (cyberAtlasOpenPickerId) return true;
+        const view = getCyberAtlasView();
+        const activeElement = document.activeElement;
+        if (!view || !activeElement || !view.contains(activeElement)) return false;
+        if (activeElement.id === 'cyberatlas-target-input') return true;
+        return !!activeElement.closest?.('.signalatlas-picker');
     }
 
     function cyberAtlasProfileLabel(profile) {
@@ -1351,11 +1517,11 @@
                     <div class="signalatlas-primary-grid">
                         <div class="signalatlas-field">
                             <label class="signalatlas-field-head">${cyberAtlasEscape(cyberAtlasText('cyberatlas.profileLabel', 'Audit level'))}</label>
-                            <select id="cyberatlas-profile-select" class="signalatlas-target-input" onchange="cyberAtlasProfileChanged(event)">${cyberAtlasProfileOptionsHtml(selectedProfile)}</select>
+                            ${renderCyberAtlasPicker('profile', 'cyberatlas-profile-select', cyberAtlasPickerOptions('profile'), selectedProfile)}
                         </div>
                         <div class="signalatlas-field">
                             <label class="signalatlas-field-head">${cyberAtlasEscape(cyberAtlasText('cyberatlas.modelLabel', 'Model'))}</label>
-                            <select id="cyberatlas-model-select" class="signalatlas-target-input" onchange="cyberAtlasControlsChanged()">${cyberAtlasModelOptionsHtml(cyberAtlasDraft.model || cyberAtlasCurrentChatModel())}</select>
+                            ${renderCyberAtlasPicker('model', 'cyberatlas-model-select', cyberAtlasPickerOptions('model'), cyberAtlasDraft.model || cyberAtlasCurrentChatModel())}
                         </div>
                         <div class="signalatlas-field signalatlas-field-action">
                             <button class="signalatlas-advanced-toggle${cyberAtlasAdvancedVisible ? ' is-open' : ''}" type="button" onclick="toggleCyberAtlasAdvancedSettings()">
@@ -1369,30 +1535,27 @@
                             <div class="signalatlas-controls-grid">
                                 <div class="signalatlas-field">
                                     <label class="signalatlas-field-head">${cyberAtlasEscape(cyberAtlasText('cyberatlas.auditMode', 'Audit mode'))}</label>
-                                    <select id="cyberatlas-mode-select" class="signalatlas-target-input" onchange="cyberAtlasControlsChanged()">
-                                        <option value="public" ${cyberAtlasDraft.mode === 'public' ? 'selected' : ''}>${cyberAtlasEscape(cyberAtlasText('cyberatlas.publicMode', 'Public audit'))}</option>
-                                        <option value="verified_owner" ${cyberAtlasDraft.mode === 'verified_owner' ? 'selected' : ''}>${cyberAtlasEscape(cyberAtlasText('cyberatlas.ownerMode', 'Verified owner'))}</option>
-                                    </select>
+                                    ${renderCyberAtlasPicker('mode', 'cyberatlas-mode-select', cyberAtlasPickerOptions('mode'), cyberAtlasDraft.mode)}
                                 </div>
                                 <div class="signalatlas-field">
                                     <label class="signalatlas-field-head">${cyberAtlasEscape(cyberAtlasText('cyberatlas.maxPages', 'Page budget'))}</label>
-                                    <select id="cyberatlas-max-pages" class="signalatlas-target-input" onchange="cyberAtlasControlsChanged()">${cyberAtlasBudgetOptionsHtml(CYBERATLAS_PAGE_BUDGET_STEPS, cyberAtlasDraft.max_pages)}</select>
+                                    ${renderCyberAtlasPicker('max_pages', 'cyberatlas-max-pages', cyberAtlasPickerOptions('max_pages'), cyberAtlasDraft.max_pages)}
                                 </div>
                                 <div class="signalatlas-field">
                                     <label class="signalatlas-field-head">${cyberAtlasEscape(cyberAtlasText('cyberatlas.maxEndpoints', 'Endpoint budget'))}</label>
-                                    <select id="cyberatlas-max-endpoints" class="signalatlas-target-input" onchange="cyberAtlasControlsChanged()">${cyberAtlasBudgetOptionsHtml(CYBERATLAS_ENDPOINT_BUDGET_STEPS, cyberAtlasDraft.max_endpoints)}</select>
+                                    ${renderCyberAtlasPicker('max_endpoints', 'cyberatlas-max-endpoints', cyberAtlasPickerOptions('max_endpoints'), cyberAtlasDraft.max_endpoints)}
                                 </div>
                                 <div class="signalatlas-field">
                                     <label class="signalatlas-field-head">${cyberAtlasEscape(cyberAtlasText('cyberatlas.presetLabel', 'Preset'))}</label>
-                                    <select id="cyberatlas-preset-select" class="signalatlas-target-input" onchange="cyberAtlasControlsChanged()">${cyberAtlasPresetOptionsHtml(cyberAtlasDraft.preset)}</select>
+                                    ${renderCyberAtlasPicker('preset', 'cyberatlas-preset-select', cyberAtlasPickerOptions('preset'), cyberAtlasDraft.preset)}
                                 </div>
                                 <div class="signalatlas-field">
                                     <label class="signalatlas-field-head">${cyberAtlasEscape(cyberAtlasText('cyberatlas.levelLabel', 'AI level'))}</label>
-                                    <select id="cyberatlas-level-select" class="signalatlas-target-input" onchange="cyberAtlasControlsChanged()">${cyberAtlasAiLevelOptionsHtml(cyberAtlasDraft.level)}</select>
+                                    ${renderCyberAtlasPicker('level', 'cyberatlas-level-select', cyberAtlasPickerOptions('level'), cyberAtlasDraft.level)}
                                 </div>
                                 <div class="signalatlas-field">
                                     <label class="signalatlas-field-head">${cyberAtlasEscape(cyberAtlasText('cyberatlas.compareModelLabel', 'Comparison model'))}</label>
-                                    <select id="cyberatlas-compare-model-select" class="signalatlas-target-input" onchange="cyberAtlasControlsChanged()">${cyberAtlasModelOptionsHtml(cyberAtlasDraft.compare_model || fallbackCyberAtlasCompareModel())}</select>
+                                    ${renderCyberAtlasPicker('compare_model', 'cyberatlas-compare-model-select', cyberAtlasPickerOptions('compare_model'), cyberAtlasDraft.compare_model || fallbackCyberAtlasCompareModel())}
                                 </div>
                                 <label class="signalatlas-field signalatlas-toggle-field">
                                     <span class="signalatlas-field-head">${cyberAtlasEscape(cyberAtlasText('cyberatlas.activeChecks', 'Expanded safe probes'))}</span>
@@ -1624,9 +1787,10 @@
         }
     }
 
-    async function refreshCyberAtlasWorkspace() {
+    async function refreshCyberAtlasWorkspace(options = {}) {
         await loadCyberAtlasBootstrap();
         if (cyberAtlasCurrentAuditId) await loadCyberAtlasAudit(cyberAtlasCurrentAuditId, { silent: true });
+        if (!options.force && cyberAtlasShouldHoldWorkspaceRefresh()) return;
         renderCyberAtlasWorkspace();
     }
 
@@ -1637,6 +1801,7 @@
                 stopCyberAtlasRefresh();
                 return;
             }
+            if (cyberAtlasShouldHoldWorkspaceRefresh()) return;
             if (cyberAtlasRefreshInFlight) return;
             cyberAtlasRefreshInFlight = true;
             try {
@@ -1658,6 +1823,10 @@
 
     function handleCyberAtlasRuntimeJobsUpdated() {
         if (!isCyberAtlasVisible()) return;
+        if (cyberAtlasShouldHoldWorkspaceRefresh()) {
+            startCyberAtlasRefresh();
+            return;
+        }
         renderCyberAtlasWorkspace();
         startCyberAtlasRefresh();
     }
@@ -1683,6 +1852,10 @@
     window.cyberAtlasControlsChanged = cyberAtlasControlsChanged;
     window.cyberAtlasTargetInputChanged = cyberAtlasTargetInputChanged;
     window.cyberAtlasProfileChanged = cyberAtlasProfileChanged;
+    window.getCyberAtlasPickerState = getCyberAtlasPickerState;
+    window.setCyberAtlasPickerState = setCyberAtlasPickerState;
+    window.closeCyberAtlasPicker = closeCyberAtlasPicker;
+    window.selectCyberAtlasPickerOption = selectCyberAtlasPickerOption;
     window.launchCyberAtlasAudit = launchCyberAtlasAudit;
     window.deleteCyberAtlasAudit = deleteCyberAtlasAudit;
     window.cancelCyberAtlasAudit = cancelCyberAtlasAudit;
