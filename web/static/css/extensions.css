@@ -568,6 +568,23 @@
     justify-content: flex-end;
 }
 
+.extension-token-fallback {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.extension-token-fallback summary {
+    cursor: pointer;
+    color: #bfdbfe;
+    font-size: 12px;
+    font-weight: 800;
+}
+
+.extension-token-fallback[open] summary {
+    margin-bottom: 10px;
+}
+
 .extension-modal-footer {
     display: flex;
     gap: 10px;

@@ -66,12 +66,15 @@ MCP_SERVER_TEMPLATES: dict[str, dict[str, Any]] = {
     },
     "github": {
         "enabled": False,
-        "type": "http",
-        "url": "https://api.githubcopilot.com/mcp/",
-        "headers": {
-            "Authorization": "Bearer $GITHUB_TOKEN",
-        },
-        "description": "Expose GitHub officiel via MCP pour repos, issues, PR et CI. Renseigne GITHUB_TOKEN ou remplace par un flux OAuth supporté.",
+        "type": "stdio",
+        "command": "npx",
+        "args": [
+            "-y",
+            "mcp-remote",
+            "https://api.githubcopilot.com/mcp/",
+        ],
+        "env": {},
+        "description": "Expose GitHub officiel via MCP pour repos, issues, PR et CI. mcp-remote déclenche le flux OAuth côté navigateur.",
     },
     "netlify": {
         "enabled": False,
@@ -82,7 +85,7 @@ MCP_SERVER_TEMPLATES: dict[str, dict[str, Any]] = {
             "@netlify/mcp",
         ],
         "env": {},
-        "description": "Expose Netlify via le serveur MCP officiel pour sites, déploiements, logs, forms et extensions.",
+        "description": "Expose Netlify via le serveur MCP officiel. Le serveur utilise Netlify CLI login/OAuth, avec PAT local seulement en secours.",
     },
     "vercel": {
         "enabled": False,
@@ -98,12 +101,15 @@ MCP_SERVER_TEMPLATES: dict[str, dict[str, Any]] = {
     },
     "cloudflare": {
         "enabled": False,
-        "type": "http",
-        "url": "https://mcp.cloudflare.com/mcp",
-        "headers": {
-            "Authorization": "Bearer $CLOUDFLARE_API_TOKEN",
-        },
-        "description": "Expose l'API Cloudflare via le MCP officiel codemode. Renseigne CLOUDFLARE_API_TOKEN ou passe par OAuth si le client le supporte.",
+        "type": "stdio",
+        "command": "npx",
+        "args": [
+            "-y",
+            "mcp-remote",
+            "https://mcp.cloudflare.com/mcp",
+        ],
+        "env": {},
+        "description": "Expose l'API Cloudflare via le MCP officiel codemode. mcp-remote déclenche le flux OAuth côté navigateur.",
     },
     "cloudflare-docs": {
         "enabled": False,
@@ -119,9 +125,15 @@ MCP_SERVER_TEMPLATES: dict[str, dict[str, Any]] = {
     },
     "figma": {
         "enabled": False,
-        "type": "http",
-        "url": "https://mcp.figma.com/mcp",
-        "description": "Expose Figma Dev Mode MCP pour design-to-code, tokens et frames. Nécessite l'auth/allowlist Figma du client.",
+        "type": "stdio",
+        "command": "npx",
+        "args": [
+            "-y",
+            "mcp-remote",
+            "https://mcp.figma.com/mcp",
+        ],
+        "env": {},
+        "description": "Expose Figma Dev Mode MCP pour design-to-code, tokens et frames. mcp-remote déclenche le flux OAuth côté navigateur.",
     },
     "linear": {
         "enabled": False,

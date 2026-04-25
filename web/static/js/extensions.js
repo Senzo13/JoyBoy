@@ -6,25 +6,17 @@ const JOYBOY_EXTENSION_CATEGORIES = ['featured', 'coding', 'productivity', 'desi
 
 const JOYBOY_EXTENSION_CONNECTIONS = {
     github: {
-        mode: 'token',
-        tokenKind: 'github',
-        secretLabel: 'GitHub token',
-        secretPlaceholder: 'ghp_...',
-        tokenUrl: 'https://github.com/settings/tokens',
+        mode: 'runtime-oauth',
     },
     netlify: {
-        mode: 'token',
+        mode: 'cli-oauth',
         tokenKind: 'netlify',
         secretLabel: 'Netlify PAT',
         secretPlaceholder: 'nfp_... ou token Netlify',
         tokenUrl: 'https://app.netlify.com/user/applications#personal-access-tokens',
     },
     cloudflare: {
-        mode: 'token',
-        tokenKind: 'cloudflare',
-        secretLabel: 'Cloudflare API token',
-        secretPlaceholder: 'Token API Cloudflare',
-        tokenUrl: 'https://dash.cloudflare.com/profile/api-tokens',
+        mode: 'runtime-oauth',
     },
     vercel: {
         mode: 'runtime-oauth',
@@ -33,7 +25,7 @@ const JOYBOY_EXTENSION_CONNECTIONS = {
         mode: 'runtime-oauth',
     },
     figma: {
-        mode: 'unsupported-oauth',
+        mode: 'runtime-oauth',
     },
 };
 
@@ -899,14 +891,49 @@ function renderExtensionConnectionControls(item, state) {
         `;
     }
 
-    if (connection.mode === 'runtime-oauth') {
+    if (connection.mode === 'runtime-oauth' || connection.mode === 'cli-oauth') {
+        const inputId = `extension-connection-token-${item.id}`;
+        const oauthBodyKey = connection.mode === 'cli-oauth' ? 'extensions.connectCliOauthBody' : 'extensions.connectOauthBody';
+        const oauthBodyFallback = connection.mode === 'cli-oauth'
+            ? 'JoyBoy va activer ce MCP puis lancer le login CLI/OAuth du provider. Termine la fenêtre navigateur ouverte, puis laisse le test revenir.'
+            : 'JoyBoy va activer ce MCP puis lancer un test réel. Si mcp-remote demande OAuth, une fenêtre navigateur peut s’ouvrir ; termine la connexion puis laisse le test revenir.';
+        const primaryLabel = connection.mode === 'cli-oauth'
+            ? extensionT('extensions.startCliAuthAndTest', 'Démarrer le login et tester')
+            : extensionT('extensions.startOauthAndTest', 'Démarrer OAuth et tester');
+        const tokenFallback = connection.tokenKind ? `
+            <details class="extension-token-fallback">
+                <summary>${extensionEscapeHtml(extensionT('extensions.tokenFallbackTitle', 'Option token manuel'))}</summary>
+                <div class="extension-modal-about">${extensionEscapeHtml(extensionT('extensions.tokenFallbackBody', 'À utiliser seulement si le login navigateur ne fonctionne pas. Le token reste dans ta config locale hors git.'))}</div>
+                <label class="extension-connect-field" for="${extensionEscapeHtml(inputId)}">
+                    <span>${extensionEscapeHtml(connection.secretLabel || extensionT('extensions.tokenLabel', 'Token'))}</span>
+                    <input
+                        id="${extensionEscapeHtml(inputId)}"
+                        class="extension-connect-input"
+                        type="password"
+                        placeholder="${extensionEscapeHtml(hasStoredConnection ? extensionT('extensions.tokenAlreadyConfigured', 'Token déjà configuré - laisse vide pour tester') : connection.secretPlaceholder || '')}"
+                        autocomplete="off"
+                    >
+                </label>
+                <div class="extension-connect-actions">
+                    ${connection.tokenUrl ? `
+                        <button class="extension-modal-secondary" type="button" onclick="window.open('${extensionEscapeHtml(connection.tokenUrl)}', '_blank', 'noopener')">
+                            ${extensionEscapeHtml(extensionT('extensions.openTokenPage', 'Créer un token'))}
+                        </button>
+                    ` : ''}
+                    <button class="extension-modal-secondary compact" type="button" onclick="connectMcpExtension('${extensionEscapeHtml(item.id)}', { useTokenFallback: true })">
+                        ${extensionEscapeHtml(extensionT('extensions.saveTokenAndTest', 'Enregistrer le token et tester'))}
+                    </button>
+                </div>
+            </details>
+        ` : '';
         return `
             <div class="extension-modal-section extension-modal-connect">
                 <div class="extension-modal-section-title">${extensionEscapeHtml(extensionT('extensions.connectTitle', 'Lier le compte'))}</div>
-                <div class="extension-modal-about">${extensionEscapeHtml(extensionT('extensions.connectOauthBody', 'JoyBoy va activer ce MCP puis lancer un test réel. Si mcp-remote demande OAuth, une fenêtre navigateur peut s’ouvrir pour terminer la connexion.'))}</div>
+                <div class="extension-modal-about">${extensionEscapeHtml(extensionT(oauthBodyKey, oauthBodyFallback))}</div>
                 <button class="extension-modal-primary compact" type="button" onclick="connectMcpExtension('${extensionEscapeHtml(item.id)}')">
-                    ${extensionEscapeHtml(extensionT('extensions.startOauthAndTest', 'Démarrer OAuth et tester'))}
+                    ${extensionEscapeHtml(primaryLabel)}
                 </button>
+                ${tokenFallback}
             </div>
         `;
     }
@@ -1067,7 +1094,7 @@ async function testConnectedMcpExtension(item) {
     return data;
 }
 
-async function connectMcpExtension(extensionId) {
+async function connectMcpExtension(extensionId, options = {}) {
     const item = getExtensionById(extensionId);
     const connection = getExtensionConnection(item);
     if (!item?.template || !connection || connection.mode === 'unsupported-oauth') {
@@ -1081,11 +1108,15 @@ async function connectMcpExtension(extensionId) {
         const snapshot = await loadExtensionMcpSnapshot();
         const servers = { ...(snapshot.mcp_servers || snapshot.mcpServers || {}) };
         const templates = snapshot.templates || {};
-        const currentServer = servers[item.template] || templates[item.template];
+        const useTokenFallback = Boolean(options?.useTokenFallback);
+        const prefersOAuthTemplate = ['runtime-oauth', 'cli-oauth'].includes(connection.mode) && !useTokenFallback;
+        const currentServer = prefersOAuthTemplate
+            ? templates[item.template] || servers[item.template]
+            : servers[item.template] || templates[item.template];
         if (!currentServer) throw new Error(item.template);
 
         let token = '';
-        if (connection.mode === 'token') {
+        if (connection.mode === 'token' || useTokenFallback) {
             const input = document.getElementById(`extension-connection-token-${item.id}`);
             token = String(input?.value || '').trim();
             if (!token && !extensionHasStoredConnection(item, servers[item.template])) {
@@ -1093,7 +1124,7 @@ async function connectMcpExtension(extensionId) {
             }
         }
 
-        servers[item.template] = connection.mode === 'token' && token
+        servers[item.template] = (connection.mode === 'token' || useTokenFallback) && token
             ? applyExtensionConnectionSecret(item, currentServer, token)
             : { ...currentServer, enabled: true };
 
