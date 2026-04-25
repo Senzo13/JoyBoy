@@ -2489,7 +2489,7 @@ function updateFaceRefPreviews() {
                 const slot = document.createElement('button');
                 slot.type = 'button';
                 slot.className = 'face-ref-slot has-image';
-                slot.title = uiT('composer.faceRefSlotTitle', 'Face reference {count}/{max}', {
+                slot.title = uiT('composer.menu.faceRefSlotTitle', 'Face reference {count}/{max}', {
                     count: index + 1,
                     max: maxRefs,
                 });
@@ -2497,7 +2497,7 @@ function updateFaceRefPreviews() {
 
                 const img = document.createElement('img');
                 img.src = src;
-                img.alt = uiT('composer.faceRefAlt', 'Face reference {count}', { count: index + 1 });
+                img.alt = uiT('composer.menu.faceRefAlt', 'Face reference {count}', { count: index + 1 });
                 slot.appendChild(img);
                 slotsWrap.appendChild(slot);
             });
@@ -2506,7 +2506,7 @@ function updateFaceRefPreviews() {
                 const addSlot = document.createElement('button');
                 addSlot.type = 'button';
                 addSlot.className = `face-ref-slot empty${slotIndex === refs.length ? ' next' : ''}`;
-                addSlot.title = uiT('composer.faceRefAddTitle', '{count}/{max} face refs - add another', {
+                addSlot.title = uiT('composer.menu.faceRefAddTitle', '{count}/{max} face refs - add another', {
                     count: refs.length,
                     max: maxRefs,
                 });
@@ -2521,7 +2521,7 @@ function updateFaceRefPreviews() {
         if (wrap) {
             wrap.classList.toggle('has-image', refs.length > 0);
             wrap.title = refs.length
-                ? uiT('composer.faceRefsSummary', '{count}/{max} face references. 2-5 clear photos can stabilize identity.', {
+                ? uiT('composer.menu.faceRefsSummary', '{count}/{max} face references. 2-5 clear photos can stabilize identity.', {
                     count: refs.length,
                     max: maxRefs,
                 })

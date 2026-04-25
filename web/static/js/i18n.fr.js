@@ -147,12 +147,26 @@ Object.assign(MESSAGES.fr, {
             description: 'Lance des produits intégrés construits sur l’orchestration locale/cloud, le routage et le runtime JoyBoy.',
             premium: 'Premium',
             empty: 'Aucun module disponible pour le moment.',
+            openModule: 'Ouvrir',
             module_signalatlas_name: 'SignalAtlas',
             module_signalatlas_tagline: 'Intelligence SEO déterministe et visibilité web',
             module_signalatlas_description: 'Crawl technique, indexabilité, architecture, interprétation IA et packs de remédiation prêts à exporter.',
+            module_signalatlas_outcome: 'Analyse crawl, indexation et visibilité SEO.',
+            module_signalatlas_point_1: 'Crawl technique et indexabilité',
+            module_signalatlas_point_2: 'Brief SEO prêt pour dev ou IA',
+            module_signalatlas_use_1: 'Trouver ce qui bloque le crawl et l’indexation',
+            module_signalatlas_use_2: 'Comprendre la structure SEO et les pages utiles',
+            module_signalatlas_use_3: 'Exporter un brief de remédiation pour dev ou IA',
             module_perfatlas_name: 'PerfAtlas',
             module_perfatlas_tagline: 'Performance web, diagnostics lab et remédiation production',
             module_perfatlas_description: 'Données terrain, sondes lab, diagnostic réseau, connecteurs owner, remédiation IA et rapports performance exportables.',
+            module_perfatlas_outcome: 'Mesure vitesse, Core Web Vitals et pistes de correction.',
+            module_perfatlas_point_1: 'Sondes lab sur pages représentatives',
+            module_perfatlas_point_2: 'Plan de correction performance exportable',
+            module_perfatlas_use_1: 'Mesurer les Core Web Vitals et le ressenti vitesse',
+            module_perfatlas_use_2: 'Lancer des sondes lab sur les pages représentatives',
+            module_perfatlas_use_3: 'Sortir un plan de correction performance exploitable',
+            useCasesLabel: 'Cas d’usage',
             capability_technical_audit: 'audit technique',
             capability_crawlability: 'crawlabilité',
             capability_indexability: 'indexabilité',
@@ -2468,5 +2482,83 @@ Object.assign(MESSAGES.fr, {
             providerSummaryOwnerMismatch: '{provider} est configuré, mais le projet ou la zone enregistré(e) ne correspond pas encore à cet hôte.',
             providerSummaryLimited: '{provider} n’est que partiellement disponible dans ce moteur d’exécution, donc PerfAtlas garde un contexte propriétaire prudent.',
         },
+    });
+
+Object.assign(MESSAGES.fr.modelPicker.badges, {
+        cloud: 'Cloud',
+    });
+
+Object.assign(MESSAGES.fr, {
+        openSettings: 'Paramètres',
+    });
+
+Object.assign(MESSAGES.fr.modelPicker.useCase, {
+        cloudRuntime: 'LLM cloud',
+    });
+
+Object.assign(MESSAGES.fr.modules, {
+        restartRequired: 'Redémarre JoyBoy pour activer ce module dans l’app en cours.',
+        restartRequiredShort: 'Redémarrage requis',
+    });
+
+Object.assign(MESSAGES.fr.runtime, {
+        cancelled: 'Arrêté',
+        conversationDeleted: 'Conversation supprimée',
+    });
+
+Object.assign(MESSAGES.fr.signalatlas, {
+        kind: 'Type',
+        query: 'Requête',
+        ownerProjectId: 'ID projet',
+        ownerSiteId: 'ID site',
+        ownerZoneId: 'ID zone',
+        ownerFramework: 'Framework',
+        ownerCustomDomain: 'Domaine personnalisé',
+        ownerProductionBranch: 'Branche de prod',
+        ownerBuildCommand: 'Commande de build',
+        ownerPublishDir: 'Dossier publish',
+        ownerPublishedDeploy: 'Déploiement publié',
+        ownerProductionDomains: 'Domaines de prod',
+        ownerRecentNonReady: 'Déploiements récents non prêts',
+        ownerSnippetCount: 'Snippets injectés',
+        ownerHeadSnippets: 'Snippets head',
+        ownerFooterSnippets: 'Snippets footer',
+        ownerScriptSnippets: 'Snippets script',
+        ownerPlatformSignals: 'Signaux plateforme',
+        ownerRecentDeployments: 'Déploiements récents',
+        ownerSnippetTitles: 'Titres des snippets',
+        ownerDomains: 'Domaines',
+        ownerNameServers: 'Serveurs de noms',
+    });
+
+Object.assign(MESSAGES.fr.terminal, {
+        cloudModelReady: 'LLM cloud prêt : {model}',
+        contextActivity: 'Contexte',
+        taskAnswerStarted: 'Réponse commencée',
+        taskClarification: 'Clarification',
+        taskContinueAfterTools: 'Analyse des résultats et prochaine action',
+        taskFinalSynthesis: 'Synthèse finale de la réponse',
+        taskGatherContext: 'Lecture du contexte',
+        taskPrepareAnswer: 'Préparation de la réponse',
+        taskRepoAnalysis: 'Analyse des fichiers du repository',
+        taskToolSelected: 'Outil choisi',
+        toolRunCommand: 'Exécute',
+    });
+
+Object.assign(MESSAGES.fr.perfatlas, {
+        auditItem: 'cet audit',
+        auditRunning: 'Audit en cours...',
+        untitledAudit: 'Audit sans titre',
+        progressLaunchingCopy: 'PerfAtlas prépare le runtime, l’échantillon de pages représentatif et les premières sondes.',
+        progressCrawlCopy: 'PerfAtlas choisit un échantillon de pages depuis la cible, sa navigation et le premier front de crawl.',
+        progressExtractCopy: 'Les headers, assets, resource hints, politiques de cache et signaux de livraison sont collectés.',
+        progressScoreCopy: 'PerfAtlas pondère les problèmes confirmés et sépare les risques bloquants des symptômes secondaires.',
+        progressAiCopy: 'Le modèle transforme les preuves déterministes en pack de remédiation prêt à implémenter.',
+        progressQueuedCopy: 'L’audit est en file et lancera la prochaine passe performance dès que le worker sera libre.',
+        progressPreparingAiExcerpt: 'Préparation de l’extrait déterministe pour l’IA',
+        progressGeneratingFirstInterpretation: 'Génération de la première interprétation',
+        progressGeneratingSecondInterpretation: 'Génération de la seconde interprétation',
+        progressAuditComplete: 'Audit PerfAtlas terminé',
+        progressAiReady: 'Interprétation IA prête',
     });
 })();
