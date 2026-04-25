@@ -32,16 +32,35 @@ COMMAND_TEXT = {
         "help_intro": "Tape une commande slash dans un projet dev pour lancer un workflow précis.",
         "command_scope": "Terminal",
         "active": "Capacités actives",
-        "mcp_none": "Aucun outil MCP actif pour l'instant.",
+        "mcp_none": "Aucun outil MCP chargé actuellement.",
         "mcp_title": "Outils MCP",
+        "mcp_summary": "Serveurs configurés: {configured} · activés: {enabled} · outils chargés: {tools} · templates: {templates}",
+        "mcp_packages": "Runtime MCP: {packages}",
+        "mcp_active_title": "Outils chargés",
+        "mcp_servers_title": "Serveurs configurés",
+        "mcp_templates_title": "Templates disponibles",
+        "mcp_templates_none": "Aucun template MCP connu.",
+        "mcp_add_hint": "Ajoute ou active un serveur depuis Paramètres > Providers > MCP, ou via la config locale `~/.joyboy/config.json`.",
+        "mcp_status_enabled": "activé",
+        "mcp_status_disabled": "désactivé",
+        "mcp_status_valid": "valide",
+        "mcp_status_invalid": "à corriger",
+        "mcp_package_ok": "ok",
+        "mcp_package_missing": "manquant",
         "tools_title": "Outils JoyBoy Terminal",
-        "skills_title": "Skills locaux",
+        "skills_title": "Skills et workflows",
+        "core_skills_title": "Workflows intégrés",
+        "pack_skills_title": "Skills de packs locaux",
+        "pack_skills_hint": "Les packs locaux se placent hors repo dans `~/.joyboy/packs`; ils peuvent ajouter des skills, prompts, routage et UI overrides.",
+        "pack_status": "Packs installés: {installed} · actifs: {active}",
+        "active_packs_title": "Packs actifs",
+        "pack_capabilities": "capacités: {items}",
         "agents_title": "Agents JoyBoy",
         "context_title": "Contexte terminal",
         "status_title": "Statut du workspace",
         "diff_title": "Diff du workspace",
-        "skills_none": "Aucun skill de pack local actif.",
-        "agents_pack_none": "Aucun agent de pack local détecté.",
+        "skills_none": "Aucun `SKILL.md` de pack local actif, mais les workflows intégrés ci-dessus restent disponibles.",
+        "agents_pack_none": "Aucun agent de pack local détecté; les agents intégrés ci-dessus restent disponibles.",
         "context_note": "Estimation locale : JoyBoy compresse ensuite les résultats d'outils et les fichiers longs avant l'appel modèle.",
         "context_signal": "Signal",
         "context_value": "Valeur",
@@ -52,6 +71,8 @@ COMMAND_TEXT = {
         "context_tools": "Outils terminal",
         "context_mcp": "Outils MCP",
         "context_skills": "Skills locaux",
+        "context_mcp_counts": "{active} chargés / {configured} configurés / {templates} templates",
+        "context_skill_counts": "{core} intégrés / {pack} pack",
         "context_memory": "Mémoire locale",
         "context_project_files": "Fichiers projet clés",
         "context_unknown": "inconnu",
@@ -67,8 +88,8 @@ COMMAND_TEXT = {
         "cap_workspace": "Workspace: lecture, recherche, édition vérifiée, shell sécurisé.",
         "cap_web_active": "Web: web_search + web_fetch.",
         "cap_web_missing": "Web: non configuré.",
-        "cap_mcp": "MCP: {count} outil(s) disponible(s).",
-        "cap_skills": "Skills locaux: {count}.",
+        "cap_mcp": "MCP: {active} outil(s) chargé(s), {configured} serveur(s), {templates} template(s).",
+        "cap_skills": "Skills: {core} workflows intégrés, {pack} skill(s) de pack local.",
         "ultra_fallback": "Relance avec un modèle cloud pour l'arbitrage LLM complet; voici la synthèse locale des passes réalisées.",
         "verify_skipped": "Aucune commande standard de test/lint/build détectée.",
         "no_high_confidence": "Aucun bug haute confiance n'a été confirmé par les passes locales.",
@@ -91,16 +112,35 @@ COMMAND_TEXT = {
         "help_intro": "Type a slash command inside a dev project to launch a precise workflow.",
         "command_scope": "Terminal",
         "active": "Active capabilities",
-        "mcp_none": "No active MCP tools yet.",
+        "mcp_none": "No MCP tool is loaded right now.",
         "mcp_title": "MCP Tools",
+        "mcp_summary": "Configured servers: {configured} · enabled: {enabled} · loaded tools: {tools} · templates: {templates}",
+        "mcp_packages": "MCP runtime: {packages}",
+        "mcp_active_title": "Loaded tools",
+        "mcp_servers_title": "Configured servers",
+        "mcp_templates_title": "Available templates",
+        "mcp_templates_none": "No known MCP template.",
+        "mcp_add_hint": "Add or enable a server from Settings > Providers > MCP, or through the local `~/.joyboy/config.json` config.",
+        "mcp_status_enabled": "enabled",
+        "mcp_status_disabled": "disabled",
+        "mcp_status_valid": "valid",
+        "mcp_status_invalid": "needs fixes",
+        "mcp_package_ok": "ok",
+        "mcp_package_missing": "missing",
         "tools_title": "JoyBoy Terminal Tools",
-        "skills_title": "Local Skills",
+        "skills_title": "Skills and Workflows",
+        "core_skills_title": "Built-in workflows",
+        "pack_skills_title": "Local pack skills",
+        "pack_skills_hint": "Local packs live outside the repo in `~/.joyboy/packs`; they can add skills, prompts, routing, and UI overrides.",
+        "pack_status": "Installed packs: {installed} · active: {active}",
+        "active_packs_title": "Active packs",
+        "pack_capabilities": "capabilities: {items}",
         "agents_title": "JoyBoy Agents",
         "context_title": "Terminal Context",
         "status_title": "Workspace Status",
         "diff_title": "Workspace Diff",
-        "skills_none": "No active local pack skill.",
-        "agents_pack_none": "No local pack agent detected.",
+        "skills_none": "No active local pack `SKILL.md`, but the built-in workflows above remain available.",
+        "agents_pack_none": "No local pack agent detected; the built-in agents above remain available.",
         "context_note": "Local estimate: JoyBoy still compresses tool results and long files before the model call.",
         "context_signal": "Signal",
         "context_value": "Value",
@@ -111,6 +151,8 @@ COMMAND_TEXT = {
         "context_tools": "Terminal tools",
         "context_mcp": "MCP tools",
         "context_skills": "Local skills",
+        "context_mcp_counts": "{active} loaded / {configured} configured / {templates} templates",
+        "context_skill_counts": "{core} core / {pack} pack",
         "context_memory": "Local memory",
         "context_project_files": "Key project files",
         "context_unknown": "unknown",
@@ -126,8 +168,8 @@ COMMAND_TEXT = {
         "cap_workspace": "Workspace: reading, search, verified edits, safe shell.",
         "cap_web_active": "Web: web_search + web_fetch.",
         "cap_web_missing": "Web: not configured.",
-        "cap_mcp": "MCP: {count} available tool(s).",
-        "cap_skills": "Local skills: {count}.",
+        "cap_mcp": "MCP: {active} loaded tool(s), {configured} server(s), {templates} template(s).",
+        "cap_skills": "Skills: {core} built-in workflows, {pack} local pack skill(s).",
         "ultra_fallback": "Run again with a cloud model for the full LLM arbitration; here is the local synthesis of completed passes.",
         "verify_skipped": "No standard test/lint/build command detected.",
         "no_high_confidence": "No high-confidence bug was confirmed by the local passes.",
@@ -150,16 +192,35 @@ COMMAND_TEXT = {
         "help_intro": "Escribe un comando slash dentro de un proyecto dev para lanzar un workflow preciso.",
         "command_scope": "Terminal",
         "active": "Capacidades activas",
-        "mcp_none": "No hay herramientas MCP activas por ahora.",
+        "mcp_none": "No hay herramientas MCP cargadas ahora mismo.",
         "mcp_title": "Herramientas MCP",
+        "mcp_summary": "Servidores configurados: {configured} · activados: {enabled} · herramientas cargadas: {tools} · templates: {templates}",
+        "mcp_packages": "Runtime MCP: {packages}",
+        "mcp_active_title": "Herramientas cargadas",
+        "mcp_servers_title": "Servidores configurados",
+        "mcp_templates_title": "Templates disponibles",
+        "mcp_templates_none": "No hay templates MCP conocidos.",
+        "mcp_add_hint": "Añade o activa un servidor desde Ajustes > Providers > MCP, o mediante la config local `~/.joyboy/config.json`.",
+        "mcp_status_enabled": "activado",
+        "mcp_status_disabled": "desactivado",
+        "mcp_status_valid": "válido",
+        "mcp_status_invalid": "a corregir",
+        "mcp_package_ok": "ok",
+        "mcp_package_missing": "faltante",
         "tools_title": "Herramientas de JoyBoy Terminal",
-        "skills_title": "Skills locales",
+        "skills_title": "Skills y workflows",
+        "core_skills_title": "Workflows integrados",
+        "pack_skills_title": "Skills de packs locales",
+        "pack_skills_hint": "Los packs locales viven fuera del repo en `~/.joyboy/packs`; pueden añadir skills, prompts, routing y overrides de UI.",
+        "pack_status": "Packs instalados: {installed} · activos: {active}",
+        "active_packs_title": "Packs activos",
+        "pack_capabilities": "capacidades: {items}",
         "agents_title": "Agentes JoyBoy",
         "context_title": "Contexto terminal",
         "status_title": "Estado del workspace",
         "diff_title": "Diff del workspace",
-        "skills_none": "No hay skills de packs locales activos.",
-        "agents_pack_none": "No se detectó ningún agente de pack local.",
+        "skills_none": "No hay `SKILL.md` de pack local activo, pero los workflows integrados de arriba siguen disponibles.",
+        "agents_pack_none": "No se detectó ningún agente de pack local; los agentes integrados de arriba siguen disponibles.",
         "context_note": "Estimación local: JoyBoy comprime después resultados de herramientas y archivos largos antes de llamar al modelo.",
         "context_signal": "Señal",
         "context_value": "Valor",
@@ -170,6 +231,8 @@ COMMAND_TEXT = {
         "context_tools": "Herramientas terminal",
         "context_mcp": "Herramientas MCP",
         "context_skills": "Skills locales",
+        "context_mcp_counts": "{active} cargadas / {configured} configurados / {templates} templates",
+        "context_skill_counts": "{core} integrados / {pack} pack",
         "context_memory": "Memoria local",
         "context_project_files": "Archivos clave del proyecto",
         "context_unknown": "desconocido",
@@ -185,8 +248,8 @@ COMMAND_TEXT = {
         "cap_workspace": "Workspace: lectura, búsqueda, ediciones verificadas, shell seguro.",
         "cap_web_active": "Web: web_search + web_fetch.",
         "cap_web_missing": "Web: no configurado.",
-        "cap_mcp": "MCP: {count} herramienta(s) disponible(s).",
-        "cap_skills": "Skills locales: {count}.",
+        "cap_mcp": "MCP: {active} herramienta(s) cargada(s), {configured} servidor(es), {templates} template(s).",
+        "cap_skills": "Skills: {core} workflows integrados, {pack} skill(s) de pack local.",
         "ultra_fallback": "Reintenta con un modelo cloud para el arbitraje LLM completo; aquí va la síntesis local de las pasadas realizadas.",
         "verify_skipped": "No se detectó ningún comando estándar de test/lint/build.",
         "no_high_confidence": "Las pasadas locales no confirmaron ningún bug de alta confianza.",
@@ -209,16 +272,35 @@ COMMAND_TEXT = {
         "help_intro": "Digita un comando slash in un progetto dev per avviare un workflow preciso.",
         "command_scope": "Terminal",
         "active": "Capacità attive",
-        "mcp_none": "Nessuno strumento MCP attivo per ora.",
+        "mcp_none": "Nessuno strumento MCP caricato al momento.",
         "mcp_title": "Strumenti MCP",
+        "mcp_summary": "Server configurati: {configured} · attivi: {enabled} · strumenti caricati: {tools} · template: {templates}",
+        "mcp_packages": "Runtime MCP: {packages}",
+        "mcp_active_title": "Strumenti caricati",
+        "mcp_servers_title": "Server configurati",
+        "mcp_templates_title": "Template disponibili",
+        "mcp_templates_none": "Nessun template MCP noto.",
+        "mcp_add_hint": "Aggiungi o abilita un server da Impostazioni > Providers > MCP, oppure tramite la config locale `~/.joyboy/config.json`.",
+        "mcp_status_enabled": "attivo",
+        "mcp_status_disabled": "disattivato",
+        "mcp_status_valid": "valido",
+        "mcp_status_invalid": "da correggere",
+        "mcp_package_ok": "ok",
+        "mcp_package_missing": "mancante",
         "tools_title": "Strumenti JoyBoy Terminal",
-        "skills_title": "Skill locali",
+        "skills_title": "Skill e workflow",
+        "core_skills_title": "Workflow integrati",
+        "pack_skills_title": "Skill dei pack locali",
+        "pack_skills_hint": "I pack locali vivono fuori dal repo in `~/.joyboy/packs`; possono aggiungere skill, prompt, routing e override UI.",
+        "pack_status": "Pack installati: {installed} · attivi: {active}",
+        "active_packs_title": "Pack attivi",
+        "pack_capabilities": "capacità: {items}",
         "agents_title": "Agenti JoyBoy",
         "context_title": "Contesto terminale",
         "status_title": "Stato workspace",
         "diff_title": "Diff workspace",
-        "skills_none": "Nessuna skill di pack locale attiva.",
-        "agents_pack_none": "Nessun agente di pack locale rilevato.",
+        "skills_none": "Nessun `SKILL.md` di pack locale attivo, ma i workflow integrati sopra restano disponibili.",
+        "agents_pack_none": "Nessun agente di pack locale rilevato; gli agenti integrati sopra restano disponibili.",
         "context_note": "Stima locale: JoyBoy comprime poi risultati degli strumenti e file lunghi prima della chiamata al modello.",
         "context_signal": "Segnale",
         "context_value": "Valore",
@@ -229,6 +311,8 @@ COMMAND_TEXT = {
         "context_tools": "Strumenti terminal",
         "context_mcp": "Strumenti MCP",
         "context_skills": "Skill locali",
+        "context_mcp_counts": "{active} caricati / {configured} configurati / {templates} template",
+        "context_skill_counts": "{core} integrati / {pack} pack",
         "context_memory": "Memoria locale",
         "context_project_files": "File progetto chiave",
         "context_unknown": "sconosciuto",
@@ -244,8 +328,8 @@ COMMAND_TEXT = {
         "cap_workspace": "Workspace: lettura, ricerca, modifiche verificate, shell sicura.",
         "cap_web_active": "Web: web_search + web_fetch.",
         "cap_web_missing": "Web: non configurato.",
-        "cap_mcp": "MCP: {count} strumento/i disponibile/i.",
-        "cap_skills": "Skill locali: {count}.",
+        "cap_mcp": "MCP: {active} strumento/i caricato/i, {configured} server, {templates} template.",
+        "cap_skills": "Skill: {core} workflow integrati, {pack} skill di pack locale.",
         "ultra_fallback": "Rilancia con un modello cloud per l'arbitraggio LLM completo; ecco la sintesi locale dei passaggi eseguiti.",
         "verify_skipped": "Nessun comando standard di test/lint/build rilevato.",
         "no_high_confidence": "Nessun bug ad alta confidenza è stato confermato dai passaggi locali.",
@@ -449,13 +533,20 @@ class TerminalSlashCommandsMixin:
         self._refresh_dynamic_tool_registry()
         tools = self.tool_registry.public_tools()
         mcp_tools = [tool for tool in tools if "mcp" in (tool.get("tags") or [])]
+        mcp_status = self._mcp_runtime_status(load_tools=False)
+        mcp_templates = mcp_status.get("templates") or {}
         web_active = any(tool.get("name") in {"web_search", "web_fetch"} for tool in tools)
-        skill_count = self._pack_skill_count()
+        pack_skill_count = self._pack_skill_count()
+        core_skill_count = len(self._builtin_terminal_skills(locale))
         capabilities = [
             texts["cap_workspace"],
             texts["cap_web_active"] if web_active else texts["cap_web_missing"],
-            texts["cap_mcp"].format(count=len(mcp_tools)),
-            texts["cap_skills"].format(count=skill_count),
+            texts["cap_mcp"].format(
+                active=len(mcp_tools),
+                configured=int(mcp_status.get("configured_count") or 0),
+                templates=len(mcp_templates) if isinstance(mcp_templates, dict) else 0,
+            ),
+            texts["cap_skills"].format(core=core_skill_count, pack=pack_skill_count),
             texts["browser_note"],
         ]
         return {
@@ -478,16 +569,58 @@ class TerminalSlashCommandsMixin:
             for tool in self.tool_registry.public_tools()
             if "mcp" in (tool.get("tags") or [])
         ]
-        if not tools:
-            return f"## {texts['mcp_title']}\n\n{texts['mcp_none']}"
+        status = self._mcp_runtime_status(load_tools=False)
+        templates = status.get("templates") if isinstance(status.get("templates"), dict) else {}
+        servers = status.get("servers") if isinstance(status.get("servers"), dict) else {}
         lines = [f"## {texts['mcp_title']}", ""]
-        for tool in tools[:40]:
-            tags = [tag for tag in tool.get("tags", []) if tag != "mcp"]
-            server = tags[0] if tags else "external"
-            description = truncate_middle(str(tool.get("description", "")), 140)
-            lines.append(f"- `{tool.get('name')}` ({server}) - {description}")
-        if len(tools) > 40:
-            lines.append(f"- ... +{len(tools) - 40}")
+        lines.append(
+            texts["mcp_summary"].format(
+                configured=int(status.get("configured_count") or 0),
+                enabled=int(status.get("enabled_count") or 0),
+                tools=len(tools),
+                templates=len(templates),
+            )
+        )
+        lines.append(texts["mcp_packages"].format(packages=self._format_mcp_package_state(status.get("package_state"), texts)))
+        if status.get("last_error"):
+            lines.append(f"- error: `{truncate_middle(str(status.get('last_error')), 180)}`")
+
+        lines.extend(["", f"### {texts['mcp_active_title']}"])
+        if tools:
+            for tool in tools[:40]:
+                tags = [tag for tag in tool.get("tags", []) if tag != "mcp"]
+                server = tags[0] if tags else "external"
+                description = truncate_middle(str(tool.get("description", "")), 140)
+                lines.append(f"- `{tool.get('name')}` ({server}) - {description}")
+            if len(tools) > 40:
+                lines.append(f"- ... +{len(tools) - 40}")
+        else:
+            lines.append(f"- {texts['mcp_none']}")
+
+        if servers:
+            lines.extend(["", f"### {texts['mcp_servers_title']}"])
+            for name, server in sorted(servers.items()):
+                state = texts["mcp_status_enabled"] if server.get("enabled") else texts["mcp_status_disabled"]
+                validity = texts["mcp_status_valid"] if server.get("valid") else texts["mcp_status_invalid"]
+                description = truncate_middle(str(server.get("description") or ""), 110)
+                suffix = f" - {description}" if description else ""
+                loaded = int(server.get("loaded_tool_count") or 0)
+                lines.append(f"- `{name}` ({state}, {validity}, {loaded} tool(s)){suffix}")
+                issues = list(server.get("issues") or [])[:2]
+                warnings = list(server.get("warnings") or [])[:2]
+                for item in [*issues, *warnings]:
+                    lines.append(f"  - {truncate_middle(str(item), 150)}")
+
+        lines.extend(["", f"### {texts['mcp_templates_title']}"])
+        if templates:
+            for name, template in sorted(templates.items()):
+                transport = str(template.get("type") or "stdio")
+                description = truncate_middle(str(template.get("description") or ""), 130)
+                lines.append(f"- `{name}` ({transport}) - {description}")
+        else:
+            lines.append(f"- {texts['mcp_templates_none']}")
+        if not servers:
+            lines.extend(["", texts["mcp_add_hint"]])
         return "\n".join(lines)
 
     def _build_terminal_tools_text(self, locale: str | None) -> str:
@@ -505,16 +638,32 @@ class TerminalSlashCommandsMixin:
 
     def _build_terminal_skills_text(self, locale: str | None) -> str:
         texts = self._terminal_command_texts(locale)
+        core_skills = self._builtin_terminal_skills(locale)
         skills = self._pack_skills()
-        if not skills:
-            return f"## {texts['skills_title']}\n\n{texts['skills_none']}"
         lines = [f"## {texts['skills_title']}", ""]
+        lines.append(f"### {texts['core_skills_title']}")
+        for skill in core_skills:
+            lines.append(f"- `{skill['id']}` - {skill['name']}: {skill['summary']}")
+
+        pack_index = self._pack_index()
+        installed = len(pack_index.get("packs") or [])
+        active = len(pack_index.get("active") or {})
+        lines.extend(["", f"### {texts['pack_skills_title']}"])
+        lines.append(texts["pack_status"].format(installed=installed, active=active))
+        active_pack_lines = self._active_pack_summary_lines(pack_index, texts)
+        if active_pack_lines:
+            lines.append("")
+            lines.append(f"#### {texts['active_packs_title']}")
+            lines.extend(active_pack_lines)
         for skill in skills[:40]:
             summary = truncate_middle(str(skill.get("summary", "")), 140)
             suffix = f" - {summary}" if summary else ""
             lines.append(f"- `{skill.get('id')}` - {skill.get('name', 'Skill')}{suffix}")
+        if not skills:
+            lines.append(f"- {texts['skills_none']}")
         if len(skills) > 40:
             lines.append(f"- ... +{len(skills) - 40}")
+        lines.extend(["", texts["pack_skills_hint"]])
         return "\n".join(lines)
 
     def _build_terminal_agents_text(self, locale: str | None) -> str:
@@ -553,9 +702,14 @@ class TerminalSlashCommandsMixin:
 
         skills = self._pack_skills()
         lines.append("")
-        lines.append(f"### {texts['skills_title']}")
+        lines.append(f"### {texts['pack_skills_title']}")
         if not skills:
             lines.append(texts["agents_pack_none"])
+            active_pack_lines = self._active_pack_summary_lines(self._pack_index(), texts, limit=6)
+            if active_pack_lines:
+                lines.append("")
+                lines.append(f"#### {texts['active_packs_title']}")
+                lines.extend(active_pack_lines)
         else:
             for skill in skills[:12]:
                 summary = truncate_middle(str(skill.get("summary", "")), 110)
@@ -570,7 +724,10 @@ class TerminalSlashCommandsMixin:
         self._refresh_dynamic_tool_registry()
         tools = self.tool_registry.public_tools()
         mcp_tools = [tool for tool in tools if "mcp" in (tool.get("tags") or [])]
+        mcp_status = self._mcp_runtime_status(load_tools=False)
+        mcp_templates = mcp_status.get("templates") if isinstance(mcp_status.get("templates"), dict) else {}
         skills = self._pack_skills()
+        core_skill_count = len(self._builtin_terminal_skills(locale))
         memory_count = self._terminal_memory_count()
         root = Path(workspace_path or "")
         workspace_name = root.name if root.name else "."
@@ -583,8 +740,15 @@ class TerminalSlashCommandsMixin:
             (texts["context_workspace"], f"`{workspace_name}`"),
             (texts["context_git"], git_summary),
             (texts["context_tools"], str(len(tools))),
-            (texts["context_mcp"], str(len(mcp_tools))),
-            (texts["context_skills"], str(len(skills))),
+            (
+                texts["context_mcp"],
+                texts["context_mcp_counts"].format(
+                    active=len(mcp_tools),
+                    configured=int(mcp_status.get("configured_count") or 0),
+                    templates=len(mcp_templates),
+                ),
+            ),
+            (texts["context_skills"], texts["context_skill_counts"].format(core=core_skill_count, pack=len(skills))),
             (texts["context_memory"], str(memory_count)),
             (texts["context_project_files"], project_files or texts["no_changes"]),
         ]
@@ -592,6 +756,103 @@ class TerminalSlashCommandsMixin:
         lines.extend(f"| {name} | {value} |" for name, value in rows)
         lines.extend(["", texts["context_note"]])
         return "\n".join(lines)
+
+    def _mcp_runtime_status(self, load_tools: bool = False) -> Dict[str, Any]:
+        try:
+            from core.agent_runtime.mcp_runtime import get_mcp_runtime_status
+
+            status = get_mcp_runtime_status(load_tools=load_tools)
+            return status if isinstance(status, dict) else {}
+        except Exception as exc:
+            return {
+                "configured_count": 0,
+                "enabled_count": 0,
+                "package_state": {},
+                "templates": {},
+                "servers": {},
+                "last_error": str(exc),
+            }
+
+    def _format_mcp_package_state(self, package_state: Any, texts: Dict[str, Any]) -> str:
+        if not isinstance(package_state, dict) or not package_state:
+            return texts["context_unknown"]
+        labels = []
+        for name in sorted(package_state):
+            state = texts["mcp_package_ok"] if package_state.get(name) else texts["mcp_package_missing"]
+            labels.append(f"`{name}` {state}")
+        return ", ".join(labels)
+
+    def _pack_index(self) -> Dict[str, Any]:
+        try:
+            from core.infra.packs import get_pack_index
+
+            index = get_pack_index()
+            return index if isinstance(index, dict) else {"packs": [], "active": {}}
+        except Exception:
+            return {"packs": [], "active": {}}
+
+    def _active_pack_summary_lines(self, pack_index: Dict[str, Any], texts: Dict[str, Any], limit: int = 10) -> List[str]:
+        active = pack_index.get("active") if isinstance(pack_index, dict) else {}
+        packs = list(active.values()) if isinstance(active, dict) else []
+        lines: List[str] = []
+        for pack in packs[:limit]:
+            if not isinstance(pack, dict):
+                continue
+            pack_id = str(pack.get("id") or "").strip() or "pack"
+            name = str(pack.get("name") or pack_id).strip()
+            kind = str(pack.get("kind") or "").strip()
+            capabilities = [str(item) for item in (pack.get("capabilities") or []) if str(item).strip()]
+            cap_text = texts["pack_capabilities"].format(items=", ".join(capabilities[:8]) if capabilities else "-")
+            kind_text = f" ({kind})" if kind else ""
+            lines.append(f"- `{pack_id}`{kind_text} - {name}; {cap_text}")
+        if len(packs) > limit:
+            lines.append(f"- ... +{len(packs) - limit}")
+        return lines
+
+    def _builtin_terminal_skills(self, locale: str | None) -> List[Dict[str, str]]:
+        locale_key = _normalise_command_locale(locale)
+        catalog = {
+            "fr": [
+                ("workspace.read", "Lecture ciblée", "liste, recherche et lit les fichiers utiles sans vider tout le repo dans le prompt."),
+                ("workspace.edit", "Édition vérifiée", "écrit ou modifie des fichiers avec garde-fous, preuves de lecture et diff contrôlé."),
+                ("shell.verify", "Shell et vérification", "exécute commandes, tests, lint/build et remonte les sorties importantes."),
+                ("web.research", "Recherche web", "utilise web_search/web_fetch quand la tâche demande des infos actuelles ou sourcées."),
+                ("agents.delegate", "Agents délégués", "lance explorateurs/reviewers/verifiers pour les workflows profonds comme ultrareview."),
+                ("review.ultrareview", "UltraReview", "croise correction, sécurité, qualité et vérification standard du projet."),
+                ("mcp.bridge", "MCP bridge", "expose les tools MCP actifs au terminal via tool_search quand un serveur est configuré."),
+            ],
+            "en": [
+                ("workspace.read", "Targeted reading", "lists, searches, and reads useful files without dumping the whole repo into the prompt."),
+                ("workspace.edit", "Verified editing", "writes or edits files with guardrails, read evidence, and controlled diffs."),
+                ("shell.verify", "Shell and verification", "runs commands, tests, lint/build, and returns the important output."),
+                ("web.research", "Web research", "uses web_search/web_fetch when the task needs current or sourced information."),
+                ("agents.delegate", "Delegated agents", "runs explorers/reviewers/verifiers for deeper workflows like ultrareview."),
+                ("review.ultrareview", "UltraReview", "cross-checks correctness, security, quality, and standard project verification."),
+                ("mcp.bridge", "MCP bridge", "exposes active MCP tools to the terminal through tool_search when a server is configured."),
+            ],
+            "es": [
+                ("workspace.read", "Lectura dirigida", "lista, busca y lee archivos utiles sin volcar todo el repo al prompt."),
+                ("workspace.edit", "Edicion verificada", "escribe o modifica archivos con guardas, prueba de lectura y diff controlado."),
+                ("shell.verify", "Shell y verificacion", "ejecuta comandos, tests, lint/build y devuelve la salida importante."),
+                ("web.research", "Busqueda web", "usa web_search/web_fetch cuando la tarea necesita informacion actual o con fuentes."),
+                ("agents.delegate", "Agentes delegados", "lanza exploradores/reviewers/verifiers para workflows profundos como ultrareview."),
+                ("review.ultrareview", "UltraReview", "cruza correccion, seguridad, calidad y verificacion estandar del proyecto."),
+                ("mcp.bridge", "MCP bridge", "expone herramientas MCP activas al terminal via tool_search cuando hay un servidor configurado."),
+            ],
+            "it": [
+                ("workspace.read", "Lettura mirata", "elenca, cerca e legge file utili senza riversare tutto il repo nel prompt."),
+                ("workspace.edit", "Modifica verificata", "scrive o modifica file con guardrail, prove di lettura e diff controllato."),
+                ("shell.verify", "Shell e verifica", "esegue comandi, test, lint/build e restituisce l'output importante."),
+                ("web.research", "Ricerca web", "usa web_search/web_fetch quando il task richiede informazioni attuali o con fonti."),
+                ("agents.delegate", "Agenti delegati", "lancia explorer/reviewer/verifier per workflow profondi come ultrareview."),
+                ("review.ultrareview", "UltraReview", "incrocia correttezza, sicurezza, qualita e verifica standard del progetto."),
+                ("mcp.bridge", "MCP bridge", "espone tool MCP attivi al terminale via tool_search quando un server e configurato."),
+            ],
+        }[locale_key]
+        return [
+            {"id": skill_id, "name": name, "summary": summary}
+            for skill_id, name, summary in catalog
+        ]
 
     def _terminal_memory_count(self) -> int:
         try:

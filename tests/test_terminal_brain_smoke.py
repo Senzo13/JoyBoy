@@ -239,6 +239,57 @@ Encore beaucoup de détail inutile.
         self.assertTrue(any("Playwright" in item for item in catalog["capabilities"]))
         self.assertEqual([], tool_names)
 
+    def test_terminal_mcp_command_shows_runtime_and_templates_without_loaded_tools(self):
+        brain = TerminalBrain()
+        status = {
+            "configured_count": 0,
+            "enabled_count": 0,
+            "package_state": {"langchain_core": True, "langchain_mcp_adapters": True, "mcp": True},
+            "templates": {
+                "github": {
+                    "type": "stdio",
+                    "description": "Expose GitHub via MCP pour repos, issues et PR.",
+                }
+            },
+            "servers": {},
+            "last_error": "",
+        }
+
+        with (
+            patch.object(brain, "_refresh_dynamic_tool_registry", return_value=None),
+            patch.object(brain, "_mcp_runtime_status", return_value=status),
+        ):
+            text = brain._build_terminal_mcp_text("fr")
+
+        self.assertIn("Serveurs configurés: 0", text)
+        self.assertIn("Runtime MCP", text)
+        self.assertIn("Templates disponibles", text)
+        self.assertIn("`github`", text)
+        self.assertIn("Ajoute ou active un serveur", text)
+
+    def test_terminal_skills_command_shows_core_workflows_and_active_pack_status(self):
+        brain = TerminalBrain()
+        pack = {
+            "id": "local-advanced-runtime",
+            "name": "Local Advanced Runtime",
+            "kind": "adult",
+            "capabilities": ["router_rules", "prompt_assets"],
+        }
+
+        with (
+            patch.object(brain, "_pack_index", return_value={"packs": [pack], "active": {"adult": pack}}),
+            patch.object(brain, "_pack_skills", return_value=[]),
+        ):
+            text = brain._build_terminal_skills_text("fr")
+
+        self.assertIn("Workflows intégrés", text)
+        self.assertIn("workspace.read", text)
+        self.assertIn("UltraReview", text)
+        self.assertIn("Packs installés: 1", text)
+        self.assertIn("Packs actifs", text)
+        self.assertIn("local-advanced-runtime", text)
+        self.assertIn("Aucun `SKILL.md`", text)
+
     def test_terminal_agents_and_context_commands_are_native_read_only(self):
         brain = TerminalBrain()
 
