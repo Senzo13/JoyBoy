@@ -617,6 +617,24 @@ let _editSubmitLock = false;
 
 const EDITOR_DEFAULT_AUTO_FILL_PROMPT = "seamless fill matching surrounding area, natural blend, same lighting, same style, realistic texture, RAW photo, high quality";
 
+function waitForEditorSkeletonPaint() {
+    return new Promise((resolve) => {
+        let done = false;
+        const finish = () => {
+            if (done) return;
+            done = true;
+            setTimeout(resolve, 0);
+        };
+
+        setTimeout(finish, 120);
+        if (typeof requestAnimationFrame === 'function') {
+            requestAnimationFrame(() => requestAnimationFrame(finish));
+        } else {
+            finish();
+        }
+    });
+}
+
 async function resolveEditorAutoFillPrompt() {
     try {
         if (typeof apiSettings === 'undefined' || !apiSettings.getPackEditorPrompts) {
@@ -720,15 +738,25 @@ async function generateEdit() {
     // Activer le mode génération (bouton stop)
     isGenerating = true;
     currentGenerationMode = 'image';
+    currentGenerationChatId = editChatId;
+    currentGenerationId = typeof generateUUID === 'function' ? generateUUID() : `edit-${Date.now()}`;
     currentController = new AbortController();
+    const editController = currentController;
+    const editGenerationId = currentGenerationId;
+    const editAbortSignal = editController.signal;
     if (typeof setSendButtonsMode === 'function') setSendButtonsMode(true);
-
-    // Le backend charge le modèle inpaint à la demande
-    const editModel = getEditModel();
 
     if (typeof startPreviewPolling === 'function') startPreviewPolling();
 
     try {
+        // Laisse le modal se fermer et le skeleton se peindre avant le POST image+masque.
+        await waitForEditorSkeletonPaint();
+        if (editAbortSignal.aborted || currentGenerationId !== editGenerationId) {
+            return;
+        }
+
+        // Le backend charge le modèle inpaint à la demande
+        const editModel = getEditModel();
         const adultPayload = window.getAdultGenerationPayload ? window.getAdultGenerationPayload() : {};
         const result = await apiGeneration.generateEdit({
             image: savedEditImageSrc,
@@ -740,12 +768,14 @@ async function generateEdit() {
             enhance_mode: isGenerativeFill ? 'none' : (userSettings.enhanceMode || 'light'),
             steps: userSettings.steps,
             skip_auto_refine: userSettings.skipAutoRefine === true,
+            chatId: editChatId,
+            generationId: editGenerationId,
             ...adultPayload,
-        }, currentController.signal);
+        }, editAbortSignal);
 
         stopPreviewPolling();
 
-        if (result.aborted || currentController?.signal?.aborted) {
+        if (result.aborted || editAbortSignal.aborted) {
             removeSkeletonMessage(editChatId, { skeletonId: editSkeletonId });
             return;
         }
@@ -772,6 +802,9 @@ async function generateEdit() {
         // Désactiver le mode génération
         isGenerating = false;
         currentController = null;
+        currentGenerationId = null;
+        currentGenerationChatId = null;
+        currentGenerationMode = null;
         if (typeof setSendButtonsMode === 'function') setSendButtonsMode(false);
 
         // Traiter le prochain élément de la queue

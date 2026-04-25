@@ -365,6 +365,17 @@ def terminal_chat():
                     )
                 yield f"data: {json.dumps({'model_progress': {'model': event.get('model', ''), 'provider': event.get('provider', ''), 'iteration': event.get('iteration', 1), 'elapsed_seconds': elapsed_seconds, 'stage': stage, 'context_kind': event.get('context_kind', ''), 'streamed': bool(event.get('streamed')), 'label': event.get('label', '')}})}\n\n"
 
+            elif event_type == 'guidance':
+                if job_manager and terminal_job_id:
+                    job_manager.update(
+                        terminal_job_id,
+                        status="running",
+                        phase="guidance",
+                        progress=None,
+                        message=f"Guidance applied: {event.get('message', '')}"[:160],
+                    )
+                yield f"data: {json.dumps({'guidance': {'count': event.get('count', 1), 'message': event.get('message', '')}})}\n\n"
+
             elif event_type == 'content':
                 if job_manager and terminal_job_id:
                     job_manager.update(
@@ -641,6 +652,56 @@ def terminal_chat():
         response.call_on_close(_close_terminal_stream)
 
     return response
+
+
+@terminal_bp.route('/terminal/chat/orient', methods=['POST'])
+def terminal_chat_orient():
+    """Add user guidance to the active terminal run without cancelling it."""
+    data = request.json or {}
+    message = str(data.get('message') or '').strip()
+    workspace = data.get('workspace') if isinstance(data.get('workspace'), dict) else {}
+    workspace_path = workspace.get('path') or data.get('workspace_path') or ''
+    chat_id = data.get('chatId') or data.get('conversation_id')
+
+    if not message:
+        return jsonify({'success': False, 'error': 'Message requis'}), 400
+    if not workspace_path:
+        return jsonify({'success': False, 'error': 'Workspace requis'}), 400
+
+    from core.runtime import get_active_run_registry, get_job_manager
+
+    terminal_run_key = _terminal_run_key(chat_id, workspace_path)
+    active_run = get_active_run_registry().get(terminal_run_key)
+    if not active_run:
+        return jsonify({
+            'success': False,
+            'error': 'Aucun travail terminal actif',
+            'code': 'terminal_not_busy',
+        }), 409
+
+    job_id = active_run.get('owner')
+    guidance = get_job_manager().add_guidance(
+        job_id,
+        message,
+        metadata={
+            'chat_id': chat_id,
+            'workspace': workspace_path,
+            'source': 'composer_orient',
+        },
+    )
+    if not guidance:
+        return jsonify({
+            'success': False,
+            'error': 'Impossible d’ajouter l’orientation',
+            'code': 'guidance_rejected',
+        }), 409
+
+    print(f"[TERMINAL] Guidance queued for {job_id}: {message[:120]}")
+    return jsonify({
+        'success': True,
+        'job_id': job_id,
+        'guidance': guidance,
+    })
 
 
 # ========== WORKSPACE ENDPOINTS ==========

@@ -149,6 +149,44 @@ class McpRuntimeConfigTests(unittest.TestCase):
         self.assertEqual(status["servers"]["github"]["resolved"]["env_keys"], ["GITHUB_TOKEN"])
         self.assertNotIn("gh-test-token", str(status["servers"]["github"]["resolved"]))
 
+    def test_runtime_templates_include_public_ready_connectors(self) -> None:
+        templates = self.mcp_runtime.get_mcp_server_templates()
+
+        for name in ("notion", "stripe", "sentry", "circleci", "google-drive"):
+            with self.subTest(name=name):
+                self.assertIn(name, templates)
+                self.assertFalse(templates[name]["enabled"])
+
+    def test_runtime_can_scope_enabled_servers_for_fast_mcp_start(self) -> None:
+        self.local_config.set_mcp_servers(
+            {
+                "github": {
+                    "enabled": True,
+                    "type": "stdio",
+                    "command": "npx",
+                    "args": ["-y", "mcp-remote", "https://api.githubcopilot.com/mcp/"],
+                },
+                "netlify": {
+                    "enabled": True,
+                    "type": "stdio",
+                    "command": "npx",
+                    "args": ["-y", "@netlify/mcp"],
+                },
+            }
+        )
+
+        enabled = self.mcp_runtime._enabled_mcp_servers(server_names=["netlify"])
+
+        self.assertEqual(list(enabled.keys()), ["netlify"])
+
+    def test_runtime_derives_server_name_from_single_underscore_prefix(self) -> None:
+        server_name = self.mcp_runtime._server_name_from_tool_name(
+            "netlify_netlify-deploy-services-reader",
+            known_servers=["github", "netlify"],
+        )
+
+        self.assertEqual(server_name, "netlify")
+
     def test_runtime_status_warns_on_missing_env_placeholder(self) -> None:
         os.environ.pop("MISSING_SAMPLE_TOKEN", None)
         self.local_config.set_mcp_servers(
@@ -291,6 +329,27 @@ class McpSettingsRouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("filesystem", response.get_json()["mcp_servers"])
         self.assertIn("mcpServers", response.get_json()["extensions_config"])
+
+    def test_start_mcp_cli_auth_route_launches_supported_provider(self) -> None:
+        with (
+            patch.object(self.settings_routes.shutil, "which", return_value="npx") as which_mock,
+            patch.object(self.settings_routes.subprocess, "Popen", return_value=Mock(pid=1234)) as popen_mock,
+        ):
+            response = self.client.post("/api/mcp/cli-auth/netlify/start")
+
+        data = response.get_json()
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(data["success"])
+        self.assertEqual(data["server"], "netlify")
+        which_mock.assert_called_once_with("npx")
+        popen_mock.assert_called_once()
+        self.assertIn("netlify-cli", popen_mock.call_args.args[0])
+
+    def test_start_mcp_cli_auth_route_rejects_unknown_provider(self) -> None:
+        response = self.client.post("/api/mcp/cli-auth/unknown/start")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(response.get_json()["success"])
 
 
 if __name__ == "__main__":

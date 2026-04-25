@@ -41,6 +41,9 @@ atexit.register(lambda: _SYNC_TOOL_EXECUTOR.shutdown(wait=False))
 _MCP_TOOLS_CACHE: list["McpToolAdapter"] = []
 _MCP_CACHE_SIGNATURE = ""
 _MCP_LAST_ERROR = ""
+_MCP_TOOLS_CACHE_BY_SCOPE: dict[str, list["McpToolAdapter"]] = {}
+_MCP_CACHE_SIGNATURE_BY_SCOPE: dict[str, str] = {}
+_MCP_LAST_ERROR_BY_SCOPE: dict[str, str] = {}
 _MCP_LOCK = threading.Lock()
 _MCP_LOAD_CONDITION = threading.Condition(_MCP_LOCK)
 _MCP_LOADING = False
@@ -146,6 +149,70 @@ MCP_SERVER_TEMPLATES: dict[str, dict[str, Any]] = {
         ],
         "env": {},
         "description": "Expose Linear via le serveur MCP officiel pour issues, projets, commentaires et roadmap.",
+    },
+    "notion": {
+        "enabled": False,
+        "type": "stdio",
+        "command": "npx",
+        "args": [
+            "-y",
+            "mcp-remote",
+            "https://mcp.notion.com/mcp",
+        ],
+        "env": {},
+        "description": "Expose Notion via le MCP officiel hébergé. mcp-remote déclenche l'auth OAuth côté navigateur.",
+    },
+    "stripe": {
+        "enabled": False,
+        "type": "stdio",
+        "command": "npx",
+        "args": [
+            "-y",
+            "mcp-remote",
+            "https://mcp.stripe.com",
+        ],
+        "env": {},
+        "description": "Expose Stripe via le MCP officiel. OAuth est recommandé, avec clé restreinte possible côté config locale.",
+    },
+    "sentry": {
+        "enabled": False,
+        "type": "stdio",
+        "command": "npx",
+        "args": [
+            "-y",
+            "mcp-remote",
+            "https://mcp.sentry.dev/mcp",
+        ],
+        "env": {},
+        "description": "Expose Sentry via le MCP officiel hébergé pour issues, projets, traces et debugging.",
+    },
+    "circleci": {
+        "enabled": False,
+        "type": "stdio",
+        "command": "npx",
+        "args": [
+            "-y",
+            "@circleci/mcp-server-circleci",
+        ],
+        "env": {
+            "CIRCLECI_TOKEN": "$CIRCLECI_TOKEN",
+            "CIRCLECI_BASE_URL": "https://circleci.com",
+        },
+        "description": "Expose CircleCI via le serveur MCP officiel pour pipelines, logs, tests et workflows.",
+    },
+    "google-drive": {
+        "enabled": False,
+        "type": "stdio",
+        "command": "npx",
+        "args": [
+            "-y",
+            "@modelcontextprotocol/server-gdrive",
+        ],
+        "env": {
+            "GDRIVE_OAUTH_PATH": "$GDRIVE_OAUTH_PATH",
+            "GDRIVE_CREDENTIALS_PATH": "$GDRIVE_CREDENTIALS_PATH",
+        },
+        "description": "Expose Google Drive via le serveur MCP de référence. Requiert des fichiers OAuth locaux hors git.",
     },
     "postgres": {
         "enabled": False,
@@ -400,21 +467,63 @@ def _format_exception(exc: BaseException) -> str:
     return str(exc).strip() or exc.__class__.__name__
 
 
-def _config_signature(raw_servers: dict[str, Any]) -> str:
+def _normalise_server_names(server_names: list[str] | tuple[str, ...] | set[str] | str | None) -> tuple[str, ...]:
+    if server_names is None:
+        return ()
+    if isinstance(server_names, str):
+        raw_items = [server_names]
+    else:
+        raw_items = list(server_names)
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for item in raw_items:
+        name = str(item or "").strip()
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        ordered.append(name)
+    return tuple(ordered)
+
+
+def _scope_key(server_names: tuple[str, ...]) -> str:
+    return ",".join(server_names) if server_names else "__all__"
+
+
+def _scoped_servers(raw_servers: dict[str, Any], server_names: tuple[str, ...]) -> dict[str, Any]:
+    if not server_names:
+        return raw_servers
+    allowed = set(server_names)
+    return {
+        name: config
+        for name, config in raw_servers.items()
+        if name in allowed
+    }
+
+
+def _config_signature(raw_servers: dict[str, Any], server_names: list[str] | tuple[str, ...] | set[str] | str | None = None) -> str:
+    names = _normalise_server_names(server_names)
     state = {
         "packages": _package_state(),
-        "servers": raw_servers,
+        "scope": list(names),
+        "servers": _scoped_servers(raw_servers, names),
     }
     blob = json.dumps(state, ensure_ascii=False, sort_keys=True, default=str)
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()
 
 
-def _enabled_mcp_servers(resolve_env: bool = False) -> dict[str, dict[str, Any]]:
+def _enabled_mcp_servers(
+    resolve_env: bool = False,
+    server_names: list[str] | tuple[str, ...] | set[str] | str | None = None,
+) -> dict[str, dict[str, Any]]:
     raw = get_mcp_servers()
+    names = _normalise_server_names(server_names)
+    allowed = set(names)
     enabled = {
         name: config
         for name, config in raw.items()
-        if isinstance(config, dict) and bool(config.get("enabled", True))
+        if isinstance(config, dict)
+        and bool(config.get("enabled", True))
+        and (not allowed or name in allowed)
     }
     if resolve_env:
         return {name: _resolve_env_placeholders(config) for name, config in enabled.items()}
@@ -639,7 +748,10 @@ def _fallback_schema(tool: Any) -> dict[str, Any]:
     return {"type": "object", "properties": {}}
 
 
-def _server_name_from_tool_name(name: str) -> str:
+def _server_name_from_tool_name(name: str, known_servers: list[str] | tuple[str, ...] | set[str] | None = None) -> str:
+    for server_name in sorted((str(item) for item in (known_servers or []) if str(item or "").strip()), key=len, reverse=True):
+        if name.startswith(f"{server_name}__") or name.startswith(f"{server_name}:") or name.startswith(f"{server_name}_"):
+            return server_name
     if "__" in name:
         return name.split("__", 1)[0]
     if ":" in name:
@@ -672,7 +784,7 @@ def _build_tool_invoker(tool: Any) -> Callable[[dict[str, Any]], Any]:
     return invoke
 
 
-def _tool_to_adapter(tool: Any) -> McpToolAdapter:
+def _tool_to_adapter(tool: Any, known_servers: list[str] | tuple[str, ...] | set[str] | None = None) -> McpToolAdapter:
     description = str(getattr(tool, "description", "") or "")
     schema = _fallback_schema(tool)
 
@@ -686,7 +798,7 @@ def _tool_to_adapter(tool: Any) -> McpToolAdapter:
         pass
 
     name = str(getattr(tool, "name", "") or "").strip()
-    server_name = _server_name_from_tool_name(name)
+    server_name = _server_name_from_tool_name(name, known_servers)
     tags = tuple(part for part in ("mcp", server_name) if part)
     return McpToolAdapter(
         name=name,
@@ -698,10 +810,15 @@ def _tool_to_adapter(tool: Any) -> McpToolAdapter:
     )
 
 
-async def _load_mcp_tools_async(server_name: str | None = None, timeout_seconds: int | None = None) -> list[McpToolAdapter]:
+async def _load_mcp_tools_async(
+    server_name: str | None = None,
+    server_names: list[str] | tuple[str, ...] | set[str] | str | None = None,
+    timeout_seconds: int | None = None,
+) -> list[McpToolAdapter]:
     from langchain_mcp_adapters.client import MultiServerMCPClient
 
-    enabled_servers = _enabled_mcp_servers(resolve_env=True)
+    requested_names = _normalise_server_names(server_names or ([server_name] if server_name else None))
+    enabled_servers = _enabled_mcp_servers(resolve_env=True, server_names=requested_names)
     if server_name:
         enabled_servers = {
             name: config
@@ -728,7 +845,7 @@ async def _load_mcp_tools_async(server_name: str | None = None, timeout_seconds:
 
     client = MultiServerMCPClient(servers_config, tool_interceptors=interceptors, tool_name_prefix=True)
     tools = await asyncio.wait_for(client.get_tools(), timeout=timeout_seconds or _mcp_tool_load_timeout_seconds())
-    return [_tool_to_adapter(tool) for tool in tools if getattr(tool, "name", None)]
+    return [_tool_to_adapter(tool, known_servers=servers_config.keys()) for tool in tools if getattr(tool, "name", None)]
 
 
 def get_mcp_server_templates() -> dict[str, dict[str, Any]]:
@@ -816,34 +933,49 @@ def reset_mcp_tool_cache() -> None:
         _MCP_TOOLS_CACHE = []
         _MCP_CACHE_SIGNATURE = ""
         _MCP_LAST_ERROR = ""
+        _MCP_TOOLS_CACHE_BY_SCOPE.clear()
+        _MCP_CACHE_SIGNATURE_BY_SCOPE.clear()
+        _MCP_LAST_ERROR_BY_SCOPE.clear()
         _MCP_LOADING = False
         _MCP_LOADING_SIGNATURE = ""
         _MCP_LOAD_CONDITION.notify_all()
 
 
-def get_cached_mcp_tools(force_refresh: bool = False) -> list[McpToolAdapter]:
+def get_cached_mcp_tools(
+    force_refresh: bool = False,
+    server_names: list[str] | tuple[str, ...] | set[str] | str | None = None,
+) -> list[McpToolAdapter]:
     global _MCP_TOOLS_CACHE, _MCP_CACHE_SIGNATURE, _MCP_LAST_ERROR, _MCP_LOADING, _MCP_LOADING_SIGNATURE
 
     raw_servers = get_mcp_servers()
-    signature = _config_signature(raw_servers)
+    requested_names = _normalise_server_names(server_names)
+    key = _scope_key(requested_names)
+    signature = _config_signature(raw_servers, requested_names)
 
     with _MCP_LOAD_CONDITION:
-        if not force_refresh and signature == _MCP_CACHE_SIGNATURE:
-            return list(_MCP_TOOLS_CACHE)
+        cached_signature = _MCP_CACHE_SIGNATURE_BY_SCOPE.get(key)
+        if not force_refresh and signature == cached_signature:
+            return list(_MCP_TOOLS_CACHE_BY_SCOPE.get(key, []))
         while _MCP_LOADING and _MCP_LOADING_SIGNATURE == signature:
             _MCP_LOAD_CONDITION.wait(timeout=0.25)
-            if not force_refresh and signature == _MCP_CACHE_SIGNATURE:
-                return list(_MCP_TOOLS_CACHE)
+            cached_signature = _MCP_CACHE_SIGNATURE_BY_SCOPE.get(key)
+            if not force_refresh and signature == cached_signature:
+                return list(_MCP_TOOLS_CACHE_BY_SCOPE.get(key, []))
         _MCP_LOADING = True
         _MCP_LOADING_SIGNATURE = signature
 
-    enabled_count = sum(1 for config in raw_servers.values() if isinstance(config, dict) and bool(config.get("enabled", True)))
+    scoped_raw_servers = _scoped_servers(raw_servers, requested_names)
+    enabled_count = sum(1 for config in scoped_raw_servers.values() if isinstance(config, dict) and bool(config.get("enabled", True)))
     packages = _package_state()
     if enabled_count == 0:
         with _MCP_LOAD_CONDITION:
-            _MCP_TOOLS_CACHE = []
-            _MCP_CACHE_SIGNATURE = signature
-            _MCP_LAST_ERROR = ""
+            _MCP_TOOLS_CACHE_BY_SCOPE[key] = []
+            _MCP_CACHE_SIGNATURE_BY_SCOPE[key] = signature
+            _MCP_LAST_ERROR_BY_SCOPE[key] = ""
+            if not requested_names:
+                _MCP_TOOLS_CACHE = []
+                _MCP_CACHE_SIGNATURE = signature
+                _MCP_LAST_ERROR = ""
             _MCP_LOADING = False
             _MCP_LOADING_SIGNATURE = ""
             _MCP_LOAD_CONDITION.notify_all()
@@ -853,9 +985,13 @@ def get_cached_mcp_tools(force_refresh: bool = False) -> list[McpToolAdapter]:
         missing = [name for name, available in packages.items() if not available]
         error = "Missing MCP runtime packages: " + ", ".join(missing)
         with _MCP_LOAD_CONDITION:
-            _MCP_TOOLS_CACHE = []
-            _MCP_CACHE_SIGNATURE = signature
-            _MCP_LAST_ERROR = error
+            _MCP_TOOLS_CACHE_BY_SCOPE[key] = []
+            _MCP_CACHE_SIGNATURE_BY_SCOPE[key] = signature
+            _MCP_LAST_ERROR_BY_SCOPE[key] = error
+            if not requested_names:
+                _MCP_TOOLS_CACHE = []
+                _MCP_CACHE_SIGNATURE = signature
+                _MCP_LAST_ERROR = error
             _MCP_LOADING = False
             _MCP_LOADING_SIGNATURE = ""
             _MCP_LOAD_CONDITION.notify_all()
@@ -863,7 +999,7 @@ def get_cached_mcp_tools(force_refresh: bool = False) -> list[McpToolAdapter]:
         return []
 
     try:
-        adapters = _run_awaitable(_load_mcp_tools_async())
+        adapters = _run_awaitable(_load_mcp_tools_async(server_names=requested_names))
         error = ""
     except Exception as exc:
         adapters = []
@@ -871,9 +1007,13 @@ def get_cached_mcp_tools(force_refresh: bool = False) -> list[McpToolAdapter]:
         logger.error("Failed to load MCP tools: %s", error, exc_info=True)
 
     with _MCP_LOAD_CONDITION:
-        _MCP_TOOLS_CACHE = list(adapters)
-        _MCP_CACHE_SIGNATURE = signature
-        _MCP_LAST_ERROR = error
+        _MCP_TOOLS_CACHE_BY_SCOPE[key] = list(adapters)
+        _MCP_CACHE_SIGNATURE_BY_SCOPE[key] = signature
+        _MCP_LAST_ERROR_BY_SCOPE[key] = error
+        if not requested_names:
+            _MCP_TOOLS_CACHE = list(adapters)
+            _MCP_CACHE_SIGNATURE = signature
+            _MCP_LAST_ERROR = error
         _MCP_LOADING = False
         _MCP_LOADING_SIGNATURE = ""
         _MCP_LOAD_CONDITION.notify_all()

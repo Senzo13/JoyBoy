@@ -27,6 +27,28 @@ const JOYBOY_EXTENSION_CONNECTIONS = {
     figma: {
         mode: 'runtime-oauth',
     },
+    notion: {
+        mode: 'runtime-oauth',
+    },
+    stripe: {
+        mode: 'runtime-oauth',
+    },
+    sentry: {
+        mode: 'runtime-oauth',
+    },
+    circleci: {
+        mode: 'token',
+        envKey: 'CIRCLECI_TOKEN',
+        envDefaults: {
+            CIRCLECI_BASE_URL: 'https://circleci.com',
+        },
+        secretLabel: 'CircleCI token',
+        secretPlaceholder: 'circleci token',
+        tokenUrl: 'https://app.circleci.com/settings/user/tokens',
+    },
+    'google-drive': {
+        mode: 'unsupported-oauth',
+    },
 };
 
 const JOYBOY_EXTENSION_CATALOG = [
@@ -172,6 +194,17 @@ const JOYBOY_EXTENSION_CATALOG = [
         capabilities: ['workers', 'pages', 'dns'],
     },
     {
+        id: 'cloudflare-docs',
+        name: 'Cloudflare Docs',
+        icon: 'book-open',
+        category: 'coding',
+        source: 'mcp',
+        action: 'mcp-template',
+        template: 'cloudflare-docs',
+        developer: 'Cloudflare MCP',
+        capabilities: ['docs', 'workers', 'pages'],
+    },
+    {
         id: 'hugging-face',
         name: 'Hugging Face',
         icon: 'bot',
@@ -196,9 +229,11 @@ const JOYBOY_EXTENSION_CATALOG = [
         name: 'CircleCI',
         icon: 'circle-dot',
         category: 'coding',
-        source: 'planned',
-        action: 'coming-soon',
-        developer: 'Connector',
+        source: 'mcp',
+        action: 'mcp-template',
+        template: 'circleci',
+        developer: 'CircleCI MCP',
+        requiresConnection: true,
         capabilities: ['builds', 'pipelines', 'artifacts'],
     },
     {
@@ -206,9 +241,11 @@ const JOYBOY_EXTENSION_CATALOG = [
         name: 'Sentry',
         icon: 'activity',
         category: 'coding',
-        source: 'planned',
-        action: 'coming-soon',
-        developer: 'Connector',
+        source: 'mcp',
+        action: 'mcp-template',
+        template: 'sentry',
+        developer: 'Sentry MCP',
+        requiresConnection: true,
         capabilities: ['issues', 'events', 'stacktraces'],
     },
     {
@@ -300,9 +337,11 @@ const JOYBOY_EXTENSION_CATALOG = [
         name: 'Google Drive',
         icon: 'hard-drive',
         category: 'productivity',
-        source: 'planned',
-        action: 'coming-soon',
-        developer: 'Connector',
+        source: 'mcp',
+        action: 'mcp-template',
+        template: 'google-drive',
+        developer: 'Model Context Protocol',
+        requiresConnection: true,
         capabilities: ['files', 'docs', 'sheets'],
     },
     {
@@ -330,9 +369,11 @@ const JOYBOY_EXTENSION_CATALOG = [
         name: 'Notion',
         icon: 'notebook-tabs',
         category: 'productivity',
-        source: 'planned',
-        action: 'coming-soon',
-        developer: 'Connector',
+        source: 'mcp',
+        action: 'mcp-template',
+        template: 'notion',
+        developer: 'Notion MCP',
+        requiresConnection: true,
         capabilities: ['pages', 'databases', 'notes'],
     },
     {
@@ -340,9 +381,11 @@ const JOYBOY_EXTENSION_CATALOG = [
         name: 'Stripe',
         icon: 'credit-card',
         category: 'productivity',
-        source: 'planned',
-        action: 'coming-soon',
-        developer: 'Connector',
+        source: 'mcp',
+        action: 'mcp-template',
+        template: 'stripe',
+        developer: 'Stripe MCP',
+        requiresConnection: true,
         capabilities: ['payments', 'customers', 'billing'],
     },
     {
@@ -490,6 +533,10 @@ function extensionHasStoredConnection(item, server) {
         return true;
     }
     if (connection.mode === 'token') {
+        if (connection.envKey) {
+            const value = String(server.env?.[connection.envKey] || '').trim();
+            return Boolean(value && !value.startsWith('$'));
+        }
         if (connection.tokenKind === 'netlify') {
             const value = String(server.env?.NETLIFY_PERSONAL_ACCESS_TOKEN || '').trim();
             return Boolean(value && !value.startsWith('$'));
@@ -918,11 +965,14 @@ function renderExtensionConnectionControls(item, state) {
         const inputId = `extension-connection-token-${item.id}`;
         const oauthBodyKey = connection.mode === 'cli-oauth' ? 'extensions.connectCliOauthBody' : 'extensions.connectOauthBody';
         const oauthBodyFallback = connection.mode === 'cli-oauth'
-            ? 'JoyBoy va activer ce MCP puis lancer le login CLI/OAuth du provider. Termine la fenêtre navigateur ouverte, puis laisse le test revenir.'
+            ? 'JoyBoy va activer ce MCP puis lancer le login CLI/OAuth du provider. Termine la fenêtre navigateur ouverte, puis relance le test de connexion.'
             : 'JoyBoy va activer ce MCP puis lancer un test réel. Si mcp-remote demande OAuth, une fenêtre navigateur peut s’ouvrir ; termine la connexion puis laisse le test revenir.';
         const primaryLabel = connection.mode === 'cli-oauth'
-            ? extensionT('extensions.startCliAuthAndTest', 'Démarrer le login et tester')
+            ? extensionT('extensions.startCliAuth', 'Démarrer le login')
             : extensionT('extensions.startOauthAndTest', 'Démarrer OAuth et tester');
+        const primaryAction = connection.mode === 'cli-oauth'
+            ? `startMcpCliAuthForExtension('${extensionEscapeHtml(item.id)}')`
+            : `connectMcpExtension('${extensionEscapeHtml(item.id)}')`;
         const tokenFallback = connection.tokenKind ? `
             <details class="extension-token-fallback">
                 <summary>${extensionEscapeHtml(extensionT('extensions.tokenFallbackTitle', 'Option token manuel'))}</summary>
@@ -953,7 +1003,7 @@ function renderExtensionConnectionControls(item, state) {
             <div class="extension-modal-section extension-modal-connect">
                 <div class="extension-modal-section-title">${extensionEscapeHtml(extensionT('extensions.connectTitle', 'Lier le compte'))}</div>
                 <div class="extension-modal-about">${extensionEscapeHtml(extensionT(oauthBodyKey, oauthBodyFallback))}</div>
-                <button class="extension-modal-primary compact" type="button" onclick="connectMcpExtension('${extensionEscapeHtml(item.id)}')">
+                <button class="extension-modal-primary compact" type="button" onclick="${primaryAction}">
                     ${extensionEscapeHtml(primaryLabel)}
                 </button>
                 ${tokenFallback}
@@ -1092,7 +1142,16 @@ function applyExtensionConnectionSecret(item, server, token) {
         enabled: true,
     };
 
-    if (!connection || connection.mode !== 'token') return nextServer;
+    if (!connection) return nextServer;
+
+    if (connection.envKey) {
+        nextServer.env = {
+            ...(nextServer.env || {}),
+            ...(connection.envDefaults || {}),
+            [connection.envKey]: cleanToken,
+        };
+        return nextServer;
+    }
 
     if (connection.tokenKind === 'netlify') {
         nextServer.env = {
@@ -1123,6 +1182,47 @@ async function testConnectedMcpExtension(item) {
         throw new Error(error);
     }
     return data;
+}
+
+async function startMcpCliAuthForExtension(extensionId) {
+    const item = getExtensionById(extensionId);
+    const connection = getExtensionConnection(item);
+    if (!item?.template || connection?.mode !== 'cli-oauth') return;
+
+    const actionButtons = Array.from(document.querySelectorAll('.extension-modal-primary'));
+    actionButtons.forEach(button => { button.disabled = true; });
+    try {
+        const snapshot = await loadExtensionMcpSnapshot();
+        const servers = { ...(snapshot.mcp_servers || snapshot.mcpServers || {}) };
+        const templates = snapshot.templates || {};
+        const currentServer = servers[item.template] || templates[item.template];
+        if (!currentServer) throw new Error(item.template);
+
+        servers[item.template] = { ...currentServer, enabled: true };
+        await saveExtensionMcpServers(servers);
+
+        const result = await apiSettings.startMcpCliAuth(item.template);
+        const data = result.data || {};
+        if (!result.ok || !data.success) {
+            throw new Error(data.error || result.error || extensionT('extensions.cliAuthStartFailed', 'Impossible de lancer le login CLI.'));
+        }
+
+        Toast.success(
+            extensionT('extensions.cliAuthStartedTitle', 'Login lancé'),
+            extensionT('extensions.cliAuthStartedBody', 'Termine la fenêtre navigateur, puis reviens tester la connexion.'),
+            5200
+        );
+        await refreshExtensionsCatalog(false);
+        openExtensionModal(item.id);
+    } catch (error) {
+        Toast.error(
+            extensionT('extensions.connectFailedTitle', 'Connexion MCP échouée'),
+            error.message || String(error),
+            6000
+        );
+    } finally {
+        actionButtons.forEach(button => { button.disabled = false; });
+    }
 }
 
 async function connectMcpExtension(extensionId, options = {}) {

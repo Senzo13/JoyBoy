@@ -40,7 +40,10 @@ class TerminalCloudMixin:
     def _turn_token_budget(self, context_size: int, autonomous: bool = False, cloud: bool = False) -> int:
         if cloud:
             if autonomous:
-                return max(32000, min(180000, int(context_size * 0.75)))
+                # Autonomous turns should be deeper than normal turns, but
+                # still checkpoint before a no-progress loop can spend a whole
+                # large-context window on repeated reads/searches.
+                return max(32000, min(90000, int(context_size * 0.45)))
             return max(26000, min(90000, int(context_size * 0.5)))
         if autonomous:
             return max(6500, min(self.MAX_LOCAL_CONTEXT_SIZE, int(context_size * 0.75)))

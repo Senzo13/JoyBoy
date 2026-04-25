@@ -25,12 +25,36 @@ from core.backends.terminal_tools import (
 class TerminalDeferredToolMixin:
     """DeerFlow-style deferred tools and compact tool discovery."""
 
-    def _load_cached_mcp_tools(self):
+    _MCP_REQUEST_ALIASES = {
+        "browser": "cloudflare-browser",
+        "browser run": "cloudflare-browser",
+        "circle ci": "circleci",
+        "circleci": "circleci",
+        "cloudflare": "cloudflare",
+        "figma": "figma",
+        "gdrive": "google-drive",
+        "github": "github",
+        "google drive": "google-drive",
+        "linear": "linear",
+        "netlify": "netlify",
+        "notion": "notion",
+        "postgres": "postgres",
+        "sentry": "sentry",
+        "stripe": "stripe",
+        "vercel": "vercel",
+    }
+
+    def _load_cached_mcp_tools(self, server_names=None):
         owner_module = sys.modules.get(self.__class__.__module__)
         loader = getattr(owner_module, "get_cached_mcp_tools", get_cached_mcp_tools)
+        if server_names:
+            try:
+                return loader(server_names=server_names)
+            except TypeError:
+                return loader()
         return loader()
 
-    def _refresh_dynamic_tool_registry(self, include_mcp: bool = False) -> None:
+    def _refresh_dynamic_tool_registry(self, include_mcp: bool = False, mcp_server_names=None) -> None:
         """Reload optional MCP tools into the terminal registry."""
         registry = build_default_terminal_tool_registry(TOOLS)
         self._mcp_tools_by_name = {}
@@ -40,7 +64,7 @@ class TerminalDeferredToolMixin:
         mcp_tools = []
         if include_mcp:
             try:
-                mcp_tools = self._load_cached_mcp_tools()
+                mcp_tools = self._load_cached_mcp_tools(server_names=mcp_server_names)
             except Exception:
                 mcp_tools = []
 
@@ -75,7 +99,11 @@ class TerminalDeferredToolMixin:
 
     def _reset_deferred_tools(self, initial_message: str = "") -> None:
         """Prepare a DeerFlow-style deferred tool registry for this terminal run."""
-        self._refresh_dynamic_tool_registry(include_mcp=self._should_load_mcp_for_request(initial_message))
+        mcp_server_names = self._mcp_server_names_for_request(initial_message)
+        self._refresh_dynamic_tool_registry(
+            include_mcp=self._should_load_mcp_for_request(initial_message),
+            mcp_server_names=mcp_server_names,
+        )
         self._active_deferred_tool_names = {
             name
             for name in self._ordered_deferred_tool_names
@@ -86,17 +114,19 @@ class TerminalDeferredToolMixin:
     def _should_load_mcp_for_request(self, message: str) -> bool:
         """Avoid opening OAuth bridges during unrelated local coding turns."""
         msg = self._intent_text(message)
-        markers = (
-            "mcp",
-            "github mcp",
-            "vercel mcp",
-            "netlify mcp",
-            "cloudflare mcp",
-            "linear mcp",
-            "figma mcp",
-            "postgres mcp",
-        )
-        return any(marker in msg for marker in markers)
+        return "mcp" in msg or bool(self._mcp_server_names_for_request(message))
+
+    def _mcp_server_names_for_request(self, message: str) -> List[str]:
+        """Infer MCP servers to warm up from the user's wording."""
+        msg = self._intent_text(message)
+        names: List[str] = []
+        seen: set[str] = set()
+        for marker, server_name in self._MCP_REQUEST_ALIASES.items():
+            if marker not in msg or server_name in seen:
+                continue
+            seen.add(server_name)
+            names.append(server_name)
+        return names
 
     def _auto_promoted_deferred_tools(
         self,

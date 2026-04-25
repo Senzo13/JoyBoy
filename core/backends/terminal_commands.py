@@ -94,6 +94,14 @@ COMMAND_TEXT = {
         "verify_skipped": "Aucune commande standard de test/lint/build détectée.",
         "no_high_confidence": "Aucun bug haute confiance n'a été confirmé par les passes locales.",
         "final_blocker": "La synthèse modèle a échoué; je te rends les éléments vérifiés.",
+        "ultra_todo_scope": "Déterminer le périmètre git",
+        "ultra_todo_scope_active": "Détermination du périmètre git",
+        "ultra_todo_reviewers": "Lancer les reviewers spécialisés",
+        "ultra_todo_reviewers_active": "Lancement des reviewers spécialisés",
+        "ultra_todo_verify": "Exécuter une vérification standard",
+        "ultra_todo_verify_active": "Vérification standard",
+        "ultra_todo_synthesis": "Croiser et vérifier les findings",
+        "ultra_todo_synthesis_active": "Croisement des findings",
         "commands": [
             ("/help", "Affiche les commandes et les capacités disponibles."),
             ("/status", "Affiche l'état Git, la branche, le dernier commit et les changements."),
@@ -174,6 +182,14 @@ COMMAND_TEXT = {
         "verify_skipped": "No standard test/lint/build command detected.",
         "no_high_confidence": "No high-confidence bug was confirmed by the local passes.",
         "final_blocker": "The model synthesis failed; here are the verified review materials.",
+        "ultra_todo_scope": "Determine the Git scope",
+        "ultra_todo_scope_active": "Determining the Git scope",
+        "ultra_todo_reviewers": "Run specialized reviewers",
+        "ultra_todo_reviewers_active": "Running specialized reviewers",
+        "ultra_todo_verify": "Run standard verification",
+        "ultra_todo_verify_active": "Running standard verification",
+        "ultra_todo_synthesis": "Cross-check and verify findings",
+        "ultra_todo_synthesis_active": "Cross-checking findings",
         "commands": [
             ("/help", "Show available commands and capabilities."),
             ("/status", "Show Git state, branch, latest commit, and changes."),
@@ -254,6 +270,14 @@ COMMAND_TEXT = {
         "verify_skipped": "No se detectó ningún comando estándar de test/lint/build.",
         "no_high_confidence": "Las pasadas locales no confirmaron ningún bug de alta confianza.",
         "final_blocker": "La síntesis del modelo falló; devuelvo los elementos verificados.",
+        "ultra_todo_scope": "Determinar el alcance Git",
+        "ultra_todo_scope_active": "Determinando el alcance Git",
+        "ultra_todo_reviewers": "Lanzar revisores especializados",
+        "ultra_todo_reviewers_active": "Lanzando revisores especializados",
+        "ultra_todo_verify": "Ejecutar una verificación estándar",
+        "ultra_todo_verify_active": "Ejecutando la verificación estándar",
+        "ultra_todo_synthesis": "Cruzar y verificar hallazgos",
+        "ultra_todo_synthesis_active": "Cruzando hallazgos",
         "commands": [
             ("/help", "Muestra los comandos y capacidades disponibles."),
             ("/status", "Muestra estado Git, rama, último commit y cambios."),
@@ -334,6 +358,14 @@ COMMAND_TEXT = {
         "verify_skipped": "Nessun comando standard di test/lint/build rilevato.",
         "no_high_confidence": "Nessun bug ad alta confidenza è stato confermato dai passaggi locali.",
         "final_blocker": "La sintesi del modello è fallita; restituisco gli elementi verificati.",
+        "ultra_todo_scope": "Determinare lo scope Git",
+        "ultra_todo_scope_active": "Determinazione dello scope Git",
+        "ultra_todo_reviewers": "Avviare revisori specializzati",
+        "ultra_todo_reviewers_active": "Avvio dei revisori specializzati",
+        "ultra_todo_verify": "Eseguire una verifica standard",
+        "ultra_todo_verify_active": "Esecuzione della verifica standard",
+        "ultra_todo_synthesis": "Incrociare e verificare i finding",
+        "ultra_todo_synthesis_active": "Incrocio dei finding",
         "commands": [
             ("/help", "Mostra comandi e capacità disponibili."),
             ("/status", "Mostra stato Git, branch, ultimo commit e modifiche."),
@@ -1020,10 +1052,10 @@ class TerminalSlashCommandsMixin:
 
         todo_args = {
             "todos": [
-                {"id": "scope", "content": "Déterminer le périmètre git", "activeForm": "Détermination du périmètre git", "status": "in_progress"},
-                {"id": "reviewers", "content": "Lancer les reviewers spécialisés", "activeForm": "Lancement des reviewers spécialisés", "status": "pending"},
-                {"id": "verify", "content": "Exécuter une vérification standard", "activeForm": "Vérification standard", "status": "pending"},
-                {"id": "synthesis", "content": "Croiser et vérifier les findings", "activeForm": "Croisement des findings", "status": "pending"},
+                {"id": "scope", "content": texts["ultra_todo_scope"], "activeForm": texts["ultra_todo_scope_active"], "status": "in_progress"},
+                {"id": "reviewers", "content": texts["ultra_todo_reviewers"], "activeForm": texts["ultra_todo_reviewers_active"], "status": "pending"},
+                {"id": "verify", "content": texts["ultra_todo_verify"], "activeForm": texts["ultra_todo_verify_active"], "status": "pending"},
+                {"id": "synthesis", "content": texts["ultra_todo_synthesis"], "activeForm": texts["ultra_todo_synthesis_active"], "status": "pending"},
             ]
         }
         yield from self._execute_and_emit_tool("write_todos", todo_args, workspace_path)

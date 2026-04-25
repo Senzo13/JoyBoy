@@ -169,10 +169,11 @@ function recordTerminalToolCallMetrics(action = '') {
     metrics.toolsByAction[normalized] = (metrics.toolsByAction[normalized] || 0) + 1;
 }
 
-function recordTerminalToolResultMetrics(result = {}) {
+function recordTerminalToolResultMetrics(result = {}, args = null) {
+    const toolArgs = args || window.lastToolCall?.args || {};
     const metrics = ensureTerminalRunMetrics();
     metrics.toolResults += 1;
-    if (!result.success) metrics.toolErrors += 1;
+    if (!result.success && !isTerminalSoftContextFailure(result, toolArgs)) metrics.toolErrors += 1;
     if (!result.success) return;
 
     const action = result.action || result.tool_name || '';
@@ -1089,11 +1090,12 @@ function revealTerminalProgressPanel() {
 
 function renderTerminalProgressLogEntry(entry, label, detail = '', type = 'info') {
     entry.className = `terminal-progress-log-line is-${type}`;
+    const displayLabel = translateTerminalStaticLabel(label);
     const safeDetail = detail ? `<span class="terminal-progress-log-detail">${escapeHtml(detail)}</span>` : '';
     const index = entry.dataset.progressIndex || '';
     entry.innerHTML = `
         <span class="terminal-progress-log-index">${escapeHtml(index)}</span>
-        <span class="terminal-progress-log-text">${escapeHtml(label)}</span>
+        <span class="terminal-progress-log-text">${escapeHtml(displayLabel)}</span>
         ${safeDetail}
     `;
 }
@@ -1238,6 +1240,13 @@ function resetTerminalActivitySummaries() {
 
 function terminalPlural(count, singular, plural = null) {
     return `${count} ${count > 1 ? (plural || `${singular}s`) : singular}`;
+}
+
+function terminalPluralText(count, oneKey, manyKey, oneFallback, manyFallback) {
+    const safeCount = Number(count || 0);
+    return terminalT(safeCount === 1 ? oneKey : manyKey, safeCount === 1 ? oneFallback : manyFallback, {
+        count: safeCount
+    });
 }
 
 function getTerminalActivityKind(action = '') {
@@ -1439,6 +1448,13 @@ function isTerminalContextGatheringToolCall(action = '', args = {}) {
     return Boolean(classifyTerminalShellContextCommand(args?.command || ''));
 }
 
+function isTerminalSoftContextFailure(result = {}, args = {}) {
+    const action = String(result?.action || result?.tool_name || '').trim();
+    if (action !== 'bash') return false;
+    if (!classifyTerminalShellContextCommand(args?.command || result?.command || '')) return false;
+    return ['read', 'write', 'review', 'question', ''].includes(String(terminalProgressIntent || '').toLowerCase());
+}
+
 function terminalContextCountKey(action = '', args = {}) {
     if (action === 'list_files') return 'list';
     if (action === 'read_file') return 'read';
@@ -1465,11 +1481,41 @@ function formatTerminalContextActivitySummary(activity = terminalContextActivity
     if (!activity) return '';
     const counts = activity.counts || {};
     const parts = [];
-    if (counts.list) parts.push(terminalPlural(counts.list, 'exploration', 'explorations'));
-    if (counts.read) parts.push(terminalPlural(counts.read, 'fichier lu', 'fichiers lus'));
-    if (counts.search) parts.push(terminalPlural(counts.search, 'recherche', 'recherches'));
-    if (counts.toolSearch) parts.push(terminalPlural(counts.toolSearch, 'outil chargé', 'outils chargés'));
-    if (counts.shell) parts.push(terminalPlural(counts.shell, 'commande de contexte', 'commandes de contexte'));
+    if (counts.list) parts.push(terminalPluralText(
+        counts.list,
+        'terminal.contextSummaryListOne',
+        'terminal.contextSummaryListMany',
+        '{count} exploration',
+        '{count} explorations'
+    ));
+    if (counts.read) parts.push(terminalPluralText(
+        counts.read,
+        'terminal.contextSummaryReadOne',
+        'terminal.contextSummaryReadMany',
+        '{count} fichier lu',
+        '{count} fichiers lus'
+    ));
+    if (counts.search) parts.push(terminalPluralText(
+        counts.search,
+        'terminal.contextSummarySearchOne',
+        'terminal.contextSummarySearchMany',
+        '{count} recherche',
+        '{count} recherches'
+    ));
+    if (counts.toolSearch) parts.push(terminalPluralText(
+        counts.toolSearch,
+        'terminal.contextSummaryToolOne',
+        'terminal.contextSummaryToolMany',
+        '{count} outil chargé',
+        '{count} outils chargés'
+    ));
+    if (counts.shell) parts.push(terminalPluralText(
+        counts.shell,
+        'terminal.contextSummaryShellOne',
+        'terminal.contextSummaryShellMany',
+        '{count} commande de contexte',
+        '{count} commandes de contexte'
+    ));
     return parts.join(', ');
 }
 
@@ -1502,7 +1548,7 @@ function updateTerminalContextActivity(action = '', target = '', args = {}, stat
     const detail = detailParts.join(' · ');
     const label = terminalT('terminal.contextActivity', 'Contexte');
     const progressType = state === 'error'
-        ? 'error'
+        ? 'warning'
         : state === 'done'
             ? 'success'
             : 'running';
@@ -1513,7 +1559,7 @@ function updateTerminalContextActivity(action = '', target = '', args = {}, stat
     });
 
     if (!isTerminalReadOnlyTurn()) {
-        const taskStatus = state === 'error' ? 'error' : 'running';
+        const taskStatus = state === 'error' ? 'warning' : 'running';
         const taskLabel = terminalT('terminal.taskGatherContext', 'Lecture du contexte');
         const existing = terminalTasks.find(task => task.id === 'context-gathering');
         if (existing) {
@@ -1535,7 +1581,7 @@ function completeTerminalContextActivity() {
         key: 'context-gathering',
         reveal: isTerminalReadOnlyTurn() && !terminalProgressContentStarted
     });
-    updateTerminalTask('context-gathering', terminalContextActivity.hadError ? 'error' : 'done', detail);
+    updateTerminalTask('context-gathering', terminalContextActivity.hadError ? 'warning' : 'done', detail);
 }
 
 function isTerminalReadOnlyTurn() {
@@ -1702,6 +1748,35 @@ function terminalModelProgressKey(data = {}) {
     return TERMINAL_PROGRESS_MODEL_STATUS_KEY;
 }
 
+const TERMINAL_STATIC_LABEL_KEYS = {
+    'Mode autonome': 'terminal.progressAutonomous',
+    'Intention détectée': 'terminal.progressIntent',
+    'Planification': 'terminal.taskPlan',
+    'Lecture du contexte': 'terminal.taskGatherContext',
+    'Contexte': 'terminal.contextActivity',
+    'Analyse du projet': 'terminal.taskAnalyzeRequest',
+    'Modification du projet': 'terminal.taskModifyWorkspace',
+    'Exécution du projet': 'terminal.taskExecuteProject',
+    'Compréhension de la demande': 'terminal.taskUnderstandRequest',
+    'Décision après les résultats': 'terminal.taskContinueAfterTools',
+    'Synthèse après les outils': 'terminal.taskFinalSynthesis',
+    'Choix des fichiers à lire': 'terminal.taskRepoAnalysis',
+    'Synthèse du contexte': 'terminal.taskPrepareAnswer',
+    'Réponse commencée': 'terminal.taskAnswerStarted',
+    'Outil choisi': 'terminal.taskToolSelected',
+    'Finalisation': 'terminal.modelStageFinalizing',
+    'Mise en forme finale': 'terminal.modelStageFormatting',
+    'Rédaction de la synthèse': 'terminal.modelStageDrafting',
+    'Vérification des points utiles': 'terminal.modelStageGrounding',
+    'Réponse du modèle en cours': 'terminal.modelStageWaiting'
+};
+
+function translateTerminalStaticLabel(label = '') {
+    const text = String(label || '').trim();
+    const key = TERMINAL_STATIC_LABEL_KEYS[text];
+    return key ? terminalT(key, text) : text;
+}
+
 function describeTerminalIntentTask(intent = '', autonomous = false) {
     if (autonomous) return terminalT('terminal.progressAutonomous', 'Mode autonome');
     if (intent === 'review') return terminalT('terminal.taskReviewProject', 'Ultrareview du projet');
@@ -1712,7 +1787,7 @@ function describeTerminalIntentTask(intent = '', autonomous = false) {
 }
 
 function describeTerminalModelCall(data = {}) {
-    if (data.label) return String(data.label);
+    if (data.label) return translateTerminalStaticLabel(data.label);
     const iteration = Number(data.iteration || 1);
     const toolsCount = Number(data.tools_count || 0);
     if (iteration > 1 && toolsCount > 0) {
@@ -1731,7 +1806,7 @@ function describeTerminalModelProgress(data = {}) {
     if (data.label) {
         const elapsed = Number(data.elapsed_seconds || 0) > 0 ? formatTerminalElapsed(data.elapsed_seconds) : '';
         const detail = [data.model || '', elapsed].filter(Boolean).join(' · ');
-        return { label: String(data.label), detail };
+        return { label: translateTerminalStaticLabel(data.label), detail };
     }
     const stage = String(data.stage || '').toLowerCase();
     const labels = {
@@ -1793,9 +1868,11 @@ function shouldRevealTerminalProgressForTool(action = '', args = {}) {
 }
 
 function shouldShowTerminalToolResult(result = {}, args = {}) {
-    if (!result || !result.success) return true;
+    if (!result) return true;
     const action = result.action || result.tool_name;
     if (action === 'ask_clarification') return false;
+    if (action === 'bash' && isTerminalContextGatheringToolCall(action, args)) return false;
+    if (!result.success) return true;
     return Boolean(action);
 }
 
@@ -1813,6 +1890,7 @@ function describeTerminalToolResultLabel(result = {}, args = {}) {
 
 function shouldShowTerminalToolCallLine(action = '', args = {}) {
     if (action === 'ask_clarification') return false;
+    if (action === 'bash' && isTerminalContextGatheringToolCall(action, args)) return false;
     return Boolean(action);
 }
 
@@ -1905,12 +1983,13 @@ function renderTerminalTasks() {
             iconName = 'x';
             className = 'task-error';
         }
+        const taskLabel = translateTerminalStaticLabel(task.label);
         const note = task.note ? `<div class="terminal-task-note">${escapeHtml(task.note)}</div>` : '';
         return `
             <div class="terminal-task ${className}">
                 <i data-lucide="${iconName}" class="task-icon ${task.status === 'running' ? 'spin' : ''}"></i>
                 <div class="terminal-task-body">
-                    <span>${escapeHtml(task.label)}</span>
+                    <span>${escapeHtml(taskLabel)}</span>
                     ${note}
                 </div>
             </div>
@@ -2009,11 +2088,11 @@ function scheduleTerminalOutputRender() {
  */
 function getSpeedIndicator(responseTime) {
     const seconds = responseTime / 1000;
-    if (seconds < 3) return 'ultra rapide';
-    if (seconds < 6) return 'rapide';
-    if (seconds < 12) return 'normal';
-    if (seconds < 25) return 'lent';
-    return 'très lent';
+    if (seconds < 3) return terminalT('terminal.speedUltraFast', 'ultra rapide');
+    if (seconds < 6) return terminalT('terminal.speedFast', 'rapide');
+    if (seconds < 12) return terminalT('terminal.speedNormal', 'normal');
+    if (seconds < 25) return terminalT('terminal.speedSlow', 'lent');
+    return terminalT('terminal.speedVerySlow', 'très lent');
 }
 
 function formatTerminalModelList(metrics = terminalRunMetrics) {
@@ -3419,6 +3498,57 @@ async function sendTerminalMessage(message) {
     await streamTerminalChat(message);
 }
 
+async function sendTerminalGuidance(message) {
+    const cleanMessage = String(message || '').trim();
+    if (!cleanMessage) return false;
+    if (!terminalWorkspace?.path || !terminalWorking) {
+        if (typeof Toast !== 'undefined') {
+            Toast.error(terminalT('terminal.orientationNoActiveJob', 'Aucun travail terminal actif à orienter.'));
+        }
+        return false;
+    }
+
+    try {
+        const response = await fetch('/terminal/chat/orient', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                chatId: currentChatId,
+                workspace: terminalWorkspace,
+                message: cleanMessage,
+                locale: window.JoyBoyI18n?.getLocale ? window.JoyBoyI18n.getLocale() : 'fr'
+            })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.success) {
+            throw new Error(data.message || data.error || `HTTP ${response.status}`);
+        }
+
+        addTerminalUserLine(cleanMessage);
+        chatHistory.push({
+            role: 'user',
+            content: cleanMessage,
+            metadata: { terminal_guidance: true }
+        });
+        addTerminalProgressLog(
+            terminalT('terminal.progressGuidanceSent', 'Orientation envoyée'),
+            cleanMessage,
+            'info',
+            { reveal: true, key: 'terminal-guidance-sent' }
+        );
+        updateThinkingText(terminalT('terminal.progressGuidanceSent', 'Orientation envoyée'));
+        const finalHtml = getChatHtmlWithoutSkeleton();
+        saveCurrentChatHtml('', finalHtml);
+        return true;
+    } catch (err) {
+        console.error('[TERMINAL] Guidance failed:', err);
+        if (typeof Toast !== 'undefined') {
+            Toast.error(terminalT('terminal.orientationFailed', 'Impossible d’orienter le travail en cours : {error}', { error: err.message }));
+        }
+        return false;
+    }
+}
+
 /**
  * Chat streaming en mode dev avec auto-continue.
  * Le rendu reste volontairement proche du chat normal; seuls les outils et le
@@ -3659,6 +3789,17 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                         continue;
                     }
 
+                    if (data.guidance) {
+                        const guidanceMessage = data.guidance.message || '';
+                        const label = terminalT('terminal.progressGuidanceApplied', 'Orientation prise en compte');
+                        updateThinkingText(label);
+                        addTerminalProgressLog(label, guidanceMessage, 'info', {
+                            reveal: true,
+                            key: 'terminal-guidance-applied'
+                        });
+                        continue;
+                    }
+
                     // Loop warning - Boucle détectée
                     if (data.loop_warning) {
                         console.log(`[TERMINAL] Boucle détectée: ${data.action}`);
@@ -3736,6 +3877,7 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                     if (data.tool_result) {
                         const result = data.tool_result;
                         console.log(`%c[TERMINAL] ⎿ Tool result reçu: ${result.action} → ${result.success ? 'OK' : result.error}`, 'color: #22c55e; font-weight: bold;');
+                        const currentToolArgs = window.lastToolCall?.args || {};
                         recordTerminalToolResultMetrics(result);
 
                         // Stocker pour Ctrl+O et pour les détails cliquables des écritures multi-fichiers.
@@ -3761,7 +3903,13 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
 
                         // Erreur
                         if (!result.success) {
-                            updateTerminalContextActivity(result.action, result.path || window.lastToolCall?.path || '', window.lastToolCall?.args || {}, 'error', result);
+                            const lastToolArgs = currentToolArgs;
+                            if (isTerminalSoftContextFailure(result, lastToolArgs)) {
+                                updateTerminalContextActivity(result.action, result.path || window.lastToolCall?.path || '', lastToolArgs, 'done', result);
+                                showThinkingAnimation(terminalT('terminal.progressThinking', 'Traitement en cours'));
+                                continue;
+                            }
+                            updateTerminalContextActivity(result.action, result.path || window.lastToolCall?.path || '', lastToolArgs, 'error', result);
                             if (result.permission?.requires_confirmation) {
                                 addToolResult(terminalT('terminal.approvalRequiredLine', 'Autorisation requise'), 'warning');
                                 addTerminalProgressLog(
@@ -3777,7 +3925,7 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                                 continue;
                             }
                             const errorText = result.error || 'Error';
-                            const resultLabel = describeTerminalToolResultLabel(result, window.lastToolCall?.args || {});
+                            const resultLabel = describeTerminalToolResultLabel(result, lastToolArgs);
                             addToolResult(errorText, 'error');
                             addTerminalProgressLog(
                                 terminalT('terminal.progressToolFailed', 'Échec {tool}', { tool: resultLabel || result.action || '' }),

@@ -4,9 +4,18 @@ backend GGUF, gallery, setup wizard, context, prompt helper, output serving).
 """
 from flask import Blueprint, request, jsonify
 import os
+import shutil
+import subprocess
 import threading
 
 settings_bp = Blueprint('settings', __name__)
+
+MCP_CLI_AUTH_COMMANDS = {
+    'netlify': {
+        'label': 'Netlify CLI login',
+        'command': ['npx', '-y', 'netlify-cli', 'login'],
+    },
+}
 
 
 # --- Helper: lazy imports from web.app to avoid circular imports ---
@@ -247,6 +256,56 @@ def mcp_test_server(server_name):
     result = test_mcp_server(server_name)
     status_code = 200 if result.get('success') else 400
     return jsonify(result), status_code
+
+
+@settings_bp.route('/api/mcp/cli-auth/<server_name>/start', methods=['POST'])
+def mcp_start_cli_auth(server_name):
+    """Lance un login CLI provider explicite pour les MCP qui ne déclenchent pas OAuth seuls."""
+    server_name = str(server_name or '').strip().lower()
+    spec = MCP_CLI_AUTH_COMMANDS.get(server_name)
+    if not spec:
+        return jsonify({
+            'success': False,
+            'error': f'Login CLI non supporté pour: {server_name or "inconnu"}',
+        }), 400
+
+    command = list(spec['command'])
+    executable = shutil.which(command[0])
+    if not executable:
+        return jsonify({
+            'success': False,
+            'error': f'Commande introuvable: {command[0]}',
+        }), 400
+    command[0] = executable
+
+    creationflags = 0
+    if os.name == 'nt':
+        creationflags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
+
+    try:
+        process = subprocess.Popen(
+            command,
+            cwd=os.path.expanduser('~'),
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            close_fds=(os.name != 'nt'),
+            creationflags=creationflags,
+        )
+    except OSError as exc:
+        return jsonify({
+            'success': False,
+            'error': f'Impossible de lancer {spec["label"]}: {exc}',
+        }), 400
+
+    return jsonify({
+        'success': True,
+        'server': server_name,
+        'label': spec['label'],
+        'pid': process.pid,
+        'command': ' '.join(spec['command']),
+        'message': 'Login lancé. Termine la fenêtre navigateur, puis relance le test de connexion.',
+    })
 
 
 # ========== FEATURE FLAGS ==========

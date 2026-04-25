@@ -166,6 +166,7 @@ class TerminalBrainSmokeTests(unittest.TestCase):
 
         brain._reset_deferred_tools("utilise le vercel mcp pour inspecter le deploy")
         mock_get_mcp_tools.assert_called_once()
+        self.assertEqual(mock_get_mcp_tools.call_args.kwargs.get("server_names"), ["vercel"])
 
     def test_guard_reason_is_english_and_blocks_root_read(self):
         brain = TerminalBrain()
@@ -1616,6 +1617,48 @@ Encore beaucoup de détail inutile.
         self.assertTrue(any(event.get("type") == "tool_result" for event in events))
 
     @patch("core.backends.terminal_brain.chat_with_cloud_model")
+    def test_autonomous_scaffold_write_files_finishes_without_iteration_churn(self, mock_chat):
+        mock_chat.return_value = {
+            "message": {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                    {
+                        "id": "call_write",
+                        "type": "function",
+                        "function": {
+                            "name": "write_files",
+                            "arguments": {
+                                "files": [
+                                    {"path": "package.json", "content": "{\"scripts\":{\"dev\":\"vite\"}}\n"},
+                                    {"path": "src/App.jsx", "content": "export default function App(){return <main>ok</main>}\n"},
+                                ]
+                            },
+                        },
+                    }
+                ],
+            },
+            "prompt_eval_count": 100,
+            "eval_count": 25,
+        }
+        brain = TerminalBrain()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            events = list(
+                brain.run_agentic_loop(
+                    "/auto crée un template react propre",
+                    tmp,
+                    model="openai:gpt-5.4",
+                    autonomous=True,
+                )
+            )
+
+        done = [event for event in events if event.get("type") == "done"][-1]
+        self.assertEqual(mock_chat.call_count, 1)
+        self.assertIn("écritures ont été vérifiées", done.get("full_response", ""))
+        self.assertFalse(any(event.get("action") == "iteration_limit" for event in events))
+
+    @patch("core.backends.terminal_brain.chat_with_cloud_model")
     def test_full_access_clear_then_scaffold_finishes_in_one_model_call(self, mock_chat):
         mock_chat.return_value = {
             "message": {
@@ -2219,6 +2262,7 @@ Encore beaucoup de détail inutile.
         self.assertEqual(brain._turn_token_budget(65536), 12000)
         self.assertEqual(brain._turn_token_budget(131072), 18000)
         self.assertEqual(brain._turn_token_budget(262144), 26000)
+        self.assertEqual(brain._turn_token_budget(262144, autonomous=True, cloud=True), 90000)
 
     def test_existing_write_requires_read_then_verifies(self):
         brain = TerminalBrain()

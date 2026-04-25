@@ -1108,6 +1108,39 @@ class TerminalBrain(
         tool_error_followups = 0
         failed_tool_signatures: Dict[str, int] = defaultdict(int)
         tool_batch_signatures: Dict[str, int] = defaultdict(int)
+        runtime_job_manager = None
+
+        def _drain_terminal_guidance() -> List[Dict[str, Any]]:
+            nonlocal runtime_job_manager
+            if not job_id:
+                return []
+            try:
+                if runtime_job_manager is None:
+                    from core.runtime import get_job_manager
+
+                    runtime_job_manager = get_job_manager()
+                return runtime_job_manager.drain_guidance(job_id)
+            except Exception as exc:
+                print(f"[BRAIN] Guidance drain skipped: {exc}")
+                return []
+
+        def _apply_terminal_guidance(items: List[Dict[str, Any]]) -> int:
+            applied = 0
+            for item in items or []:
+                guidance_text = str(item.get("message") or "").strip()
+                if not guidance_text:
+                    continue
+                messages.append({
+                    "role": "user",
+                    "content": (
+                        "[USER GUIDANCE RECEIVED WHILE THIS TERMINAL RUN WAS STILL WORKING]\n"
+                        f"{guidance_text}\n\n"
+                        "Adapt the remaining work to this guidance. Do not restart from scratch, "
+                        "do not discard verified work, and do not repeat completed exploration unless the guidance requires it."
+                    ),
+                })
+                applied += 1
+            return applied
 
         while iteration < iteration_budget:
             iteration += 1
@@ -1115,6 +1148,16 @@ class TerminalBrain(
             yield runtime_event('thinking', iteration=iteration, max_iterations=iteration_budget)
 
             try:
+                pending_guidance = _drain_terminal_guidance()
+                if pending_guidance:
+                    applied_count = _apply_terminal_guidance(pending_guidance)
+                    if applied_count:
+                        yield runtime_event(
+                            'guidance',
+                            count=applied_count,
+                            message=str(pending_guidance[-1].get("message") or "")[:240],
+                        )
+
                 messages, tools_for_model, prompt_estimate, tool_schema_stats = self._prepare_model_call(
                     messages=messages,
                     initial_message=initial_message,
@@ -1127,9 +1170,10 @@ class TerminalBrain(
                     "cloud" if use_cloud_model else "ollama",
                 )
 
-                if not autonomous and not force_final and iteration > 1:
+                if not force_final and iteration > 1:
                     remaining_budget = turn_token_budget - total_token_stats['total']
-                    if remaining_budget <= 0 or prompt_estimate >= max(900, remaining_budget):
+                    min_remaining_budget = 1600 if autonomous else 900
+                    if remaining_budget <= 0 or prompt_estimate >= max(min_remaining_budget, remaining_budget):
                         yield runtime_event(
                             'loop_warning',
                             action='token_budget',
@@ -1328,7 +1372,7 @@ class TerminalBrain(
                 print(f"[BRAIN] Tool calls: {len(tool_calls) if tool_calls else 0}")
                 print(f"[BRAIN] Tokens this call: {token_stats.get('total', 0)} | Total session: {total_token_stats['total']}")
 
-                if tool_calls and not autonomous:
+                if tool_calls:
                     tool_calls, dropped_subagents = self._limit_delegate_subagent_calls(tool_calls)
                     if dropped_subagents:
                         if isinstance(message_dict, dict) and message_dict.get('tool_calls'):
@@ -1356,11 +1400,7 @@ class TerminalBrain(
                             ),
                         )
 
-                over_budget = (
-                    not autonomous
-                    and total_token_stats['total'] >= turn_token_budget
-                    and not force_final
-                )
+                over_budget = total_token_stats['total'] >= turn_token_budget and not force_final
 
                 # Si du texte n'a pas déjà été envoyé par le stream cloud, l'envoyer maintenant.
                 content_to_emit = content
@@ -1457,6 +1497,19 @@ class TerminalBrain(
                         })
                         continue  # Relancer la boucle
 
+                    pending_guidance = _drain_terminal_guidance()
+                    if pending_guidance and iteration < iteration_budget:
+                        if content.strip():
+                            messages.append({'role': 'assistant', 'content': content})
+                        applied_count = _apply_terminal_guidance(pending_guidance)
+                        if applied_count:
+                            yield runtime_event(
+                                'guidance',
+                                count=applied_count,
+                                message=str(pending_guidance[-1].get("message") or "")[:240],
+                            )
+                            continue
+
                     _end_resource_lease()
                     yield runtime_event('done', full_response=full_response, token_stats=total_token_stats)
                     return
@@ -1465,7 +1518,7 @@ class TerminalBrain(
                 if batch_signature:
                     tool_batch_signatures[batch_signature] += 1
                     batch_seen = tool_batch_signatures[batch_signature]
-                    if not autonomous and batch_seen >= 3:
+                    if batch_seen >= 3:
                         yield runtime_event(
                             'loop_warning',
                             action='tool_batch_loop',
@@ -1477,7 +1530,7 @@ class TerminalBrain(
                         _end_resource_lease()
                         yield runtime_event('done', full_response=full_response, token_stats=total_token_stats)
                         return
-                    if not autonomous and batch_seen >= 2:
+                    if batch_seen >= 2:
                         yield runtime_event(
                             'loop_warning',
                             action='tool_batch_loop',
@@ -1499,6 +1552,7 @@ class TerminalBrain(
                 messages.append(message_dict)
 
                 # Exécuter chaque tool call
+                guidance_applied_this_iteration = False
                 for tc in tool_calls:
                     # Gérer objet ou dict
                     if hasattr(tc, 'function'):
@@ -1525,7 +1579,7 @@ class TerminalBrain(
                     print(f"[BRAIN] Executing tool: {tool_name}({self._tool_call_debug_preview(tool_name, args)})")
 
                     guard_reason = loop_guard.check(tool_name, args, executed_tools)
-                    if guard_reason and not autonomous:
+                    if guard_reason:
                         guard_hits += 1
                         yield runtime_event('loop_warning', action=tool_name, reason=guard_reason)
                         guard_text = (
@@ -1660,7 +1714,7 @@ class TerminalBrain(
                         )
                         return
 
-                    if not result.success and not autonomous:
+                    if not result.success:
                         failure_reason = self._classify_tool_error(result)
                         followup = self._tool_error_followup_message(
                             initial_message,
@@ -1670,7 +1724,8 @@ class TerminalBrain(
                             failure_reason,
                             repeated_tool_failures,
                         )
-                        if followup and tool_error_followups < 3:
+                        tool_error_followup_limit = 5 if autonomous else 3
+                        if followup and tool_error_followups < tool_error_followup_limit:
                             tool_error_followups += 1
                             messages.append({"role": "user", "content": followup})
 
@@ -1699,9 +1754,23 @@ class TerminalBrain(
                             yield runtime_event('done', full_response=full_response, token_stats=total_token_stats)
                             return
 
+                    pending_guidance = _drain_terminal_guidance()
+                    if pending_guidance:
+                        applied_count = _apply_terminal_guidance(pending_guidance)
+                        if applied_count:
+                            guidance_applied_this_iteration = True
+                            yield runtime_event(
+                                'guidance',
+                                count=applied_count,
+                                message=str(pending_guidance[-1].get("message") or "")[:240],
+                            )
+                            break
+
+                if guidance_applied_this_iteration:
+                    continue
+
                 if (
-                    not autonomous
-                    and not force_final
+                    not force_final
                     and self._should_finalize_after_scaffold_write(initial_message, executed_tools)
                 ):
                     final_text = self._post_write_finalize_answer(initial_message, executed_tools)

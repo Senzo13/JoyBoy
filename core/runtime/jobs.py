@@ -299,6 +299,58 @@ class JobManager:
         self._release_resources_for_job(str(job_id))
         return job
 
+    def add_guidance(
+        self,
+        job_id: str,
+        message: str,
+        *,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any] | None:
+        """Attach user guidance to a running job without cancelling it.
+
+        Terminal agents drain this list between model/tool steps. This mirrors
+        the "steer the active run" UX: the user can correct direction while the
+        current request keeps working, instead of starting a competing request.
+        """
+        clean_message = str(message or "").strip()
+        if not clean_message:
+            return None
+        with self._lock:
+            job = self._jobs.get(str(job_id))
+            if not job or _is_terminal_status(job.get("status")):
+                return None
+            item = {
+                "id": str(uuid.uuid4()),
+                "message": clean_message,
+                "metadata": metadata or {},
+                "created_at": utc_now_iso(),
+            }
+            job.setdefault("guidance", []).append(item)
+            job["updated_at"] = utc_now_iso()
+            self._append_event_locked(
+                str(job_id),
+                "guidance",
+                message=clean_message[:180],
+                progress=job.get("progress"),
+            )
+            self._save_locked()
+            return deepcopy(item)
+
+    def drain_guidance(self, job_id: str) -> list[dict[str, Any]]:
+        """Return and clear pending guidance for an active job."""
+        with self._lock:
+            job = self._jobs.get(str(job_id))
+            if not job:
+                return []
+            guidance = job.get("guidance")
+            if not isinstance(guidance, list) or not guidance:
+                return []
+            drained = deepcopy(guidance)
+            job["guidance"] = []
+            job["updated_at"] = utc_now_iso()
+            self._save_locked()
+            return drained
+
     def cancel_conversation(self, conversation_id: str, message: str = "Conversation closed") -> list[dict[str, Any]]:
         """Cancel every non-terminal job attached to a conversation.
 

@@ -23,6 +23,18 @@ JoyBoy ships DeerFlow-style templates for:
 
 - `filesystem`
 - `github`
+- `netlify`
+- `vercel`
+- `cloudflare`
+- `cloudflare-docs`
+- `cloudflare-browser`
+- `figma`
+- `linear`
+- `notion`
+- `stripe`
+- `sentry`
+- `circleci`
+- `google-drive`
 - `postgres`
 
 You can fetch the current config plus templates from:
@@ -75,3 +87,11 @@ Secrets should stay in environment variables or local provider config, never in 
 - unresolved environment placeholders
 
 That makes it easier to see why an MCP server is not being promoted into the terminal harness.
+
+## Terminal agent usage
+
+The terminal agent keeps MCP tools deferred so normal coding turns do not pay the
+startup cost. When the user asks for a provider by name, for example "use
+Netlify MCP" or "check CircleCI", JoyBoy warms only the matching MCP server when
+possible. The model then calls `tool_search` to fetch the exact tool schema, and
+the promoted MCP tool becomes callable in the same terminal loop.

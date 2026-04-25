@@ -169,6 +169,11 @@ let activeQueueItem = null;
 
 // escapeHtml() moved to utils.js (loaded before state.js)
 
+function queueT(key, fallback = '', params = {}) {
+    if (window.JoyBoyI18n?.t) return window.JoyBoyI18n.t(key, params, fallback);
+    return fallback || key;
+}
+
 function normalizeQueueImageSrc(image = '') {
     const value = String(image || '').trim();
     if (!value) return '';
@@ -204,6 +209,20 @@ function refreshQueueComposerLayout() {
     });
 }
 
+function isTerminalQueueItem(item = {}) {
+    return String(item.mode || '').toLowerCase() === 'terminal'
+        || String(item.type || '').toLowerCase() === 'terminal';
+}
+
+function canOrientQueueItem(item = {}) {
+    return isTerminalQueueItem(item)
+        && !normalizeQueueImageSrc(item.options?.image || '')
+        && typeof terminalMode !== 'undefined'
+        && terminalMode
+        && typeof terminalWorking !== 'undefined'
+        && terminalWorking;
+}
+
 function renderQueueForCurrentChat() {
     // Nettoyer les éléments existants
     const oldContainer = document.getElementById('prompt-queue');
@@ -227,29 +246,32 @@ function renderQueueForCurrentChat() {
     const visibleItems = pending.slice(0, 5);
     const remaining = Math.max(0, pending.length - visibleItems.length);
     container.innerHTML = `
-        <div class="queue-items" role="list" aria-label="File d'attente">
+        <div class="queue-items" role="list" aria-label="${escapeHtml(queueT('composer.queueLabel', 'File d’attente'))}">
             ${visibleItems.map((item, index) => {
                 const imageSrc = normalizeQueueImageSrc(item.options?.image || '');
                 const text = String(item.prompt || '').trim();
+                const orientAction = canOrientQueueItem(item)
+                    ? `<button class="queue-btn queue-orient" type="button" onclick="orientQueueItem('${item.id}')" title="${escapeHtml(queueT('composer.queueOrientTitle', 'Envoyer comme orientation au travail en cours'))}">
+                            <i data-lucide="corner-down-left"></i>
+                            <span>${escapeHtml(queueT('composer.queueOrient', 'Orienter'))}</span>
+                        </button>`
+                    : '';
                 return `
                 <div class="queue-item${imageSrc ? ' has-image' : ''}" data-id="${item.id}" role="listitem">
                     ${imageSrc ? `<img class="queue-thumb" src="${escapeHtml(imageSrc)}" alt="">` : `<span class="queue-index">${index + 1}</span>`}
                     <span class="queue-text">${escapeHtml(text.substring(0, 96))}${text.length > 96 ? '...' : ''}</span>
                     <div class="queue-actions">
-                        <button class="queue-btn queue-orient" type="button" onclick="orientQueueItem('${item.id}')" title="Orienter dans le composer">
-                            <i data-lucide="corner-down-left"></i>
-                            <span>Orienter</span>
-                        </button>
-                        <button class="queue-btn queue-remove" type="button" onclick="removeFromQueue('${item.id}')" title="Retirer">
+                        ${orientAction}
+                        <button class="queue-btn queue-remove" type="button" onclick="removeFromQueue('${item.id}')" title="${escapeHtml(queueT('composer.queueRemoveTitle', 'Retirer'))}">
                             <i data-lucide="trash-2"></i>
                         </button>
-                        <button class="queue-btn queue-clear" type="button" onclick="clearQueue()" title="Vider la file">
+                        <button class="queue-btn queue-clear" type="button" onclick="clearQueue()" title="${escapeHtml(queueT('composer.queueClearTitle', 'Vider la file'))}">
                             <i data-lucide="ellipsis"></i>
                         </button>
                     </div>
                 </div>`;
             }).join('')}
-            ${remaining ? `<div class="queue-more-count">+${remaining} en attente</div>` : ''}
+            ${remaining ? `<div class="queue-more-count">${escapeHtml(queueT('composer.queueMore', '+{count} en attente', { count: remaining }))}</div>` : ''}
         </div>
     `;
 
@@ -263,9 +285,16 @@ function renderQueueForCurrentChat() {
     refreshQueueComposerLayout();
 }
 
-function orientQueueItem(id) {
+async function orientQueueItem(id) {
     const item = globalQueue.find(entry => entry.id === id);
     if (!item) return;
+    if (canOrientQueueItem(item) && typeof sendTerminalGuidance === 'function') {
+        const sent = await sendTerminalGuidance(item.prompt || '');
+        if (sent) {
+            removeFromQueue(id);
+        }
+        return;
+    }
     const { input } = getActiveQueueComposerTarget();
     if (input) {
         input.value = item.prompt || '';
@@ -280,9 +309,12 @@ function orientQueueItem(id) {
 
 function addToQueue(prompt, mode = 'chat', options = {}) {
     const id = 'q_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
-    const type = options.image || currentImage ? 'image' : 'text';
+    const normalizedMode = String(mode || 'chat').toLowerCase();
+    const type = options.image || currentImage
+        ? 'image'
+        : (normalizedMode === 'terminal' ? 'terminal' : 'text');
     globalQueue.push({
-        id, prompt, type,
+        id, prompt, type, mode: normalizedMode,
         options: { ...options, image: options.image || currentImage },
         status: 'pending',
         addedAt: Date.now()

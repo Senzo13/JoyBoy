@@ -926,6 +926,14 @@ async function generate() {
 
     // === MODE TERMINAL ===
     if (terminalMode) {
+        if (isGenerating || terminalWorking) {
+            const options = currentImage ? { image: currentImage } : {};
+            await addToQueue(prompt, 'terminal', options);
+            resetComposerTextarea('prompt-input');
+            refocusChatInput();
+            _genSubmitLock = false;
+            return;
+        }
         resetComposerTextarea('prompt-input');
         refocusChatInput();
         await sendTerminalMessage(prompt);

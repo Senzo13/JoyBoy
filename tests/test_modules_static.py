@@ -133,6 +133,7 @@ class ModulesStaticTests(unittest.TestCase):
         self.assertIn("template: 'netlify'", extensions_js)
         self.assertIn("template: 'vercel'", extensions_js)
         self.assertIn("template: 'cloudflare'", extensions_js)
+        self.assertIn("template: 'cloudflare-docs'", extensions_js)
         self.assertIn("template: 'figma'", extensions_js)
         self.assertIn("template: 'linear'", extensions_js)
         self.assertIn("id: 'hugging-face'", extensions_js)
@@ -142,7 +143,9 @@ class ModulesStaticTests(unittest.TestCase):
         self.assertIn("connectionRequired", extensions_js)
         self.assertIn("extensionSetupNote", extensions_js)
         self.assertIn("connectMcpExtension", extensions_js)
+        self.assertIn("startMcpCliAuthForExtension", extensions_js)
         self.assertIn("testMcpServer", extensions_js)
+        self.assertIn("startMcpCliAuth", extensions_js)
         self.assertIn("JOYBOY_EXTENSION_CONNECTIONS", extensions_js)
         self.assertIn("openExtensionModal", extensions_js)
 
@@ -180,6 +183,11 @@ class ModulesStaticTests(unittest.TestCase):
             '"cloudflare-browser"',
             '"figma"',
             '"linear"',
+            '"notion"',
+            '"stripe"',
+            '"sentry"',
+            '"circleci"',
+            '"google-drive"',
             '"postgres"',
         ):
             with self.subTest(template=template):
@@ -192,6 +200,11 @@ class ModulesStaticTests(unittest.TestCase):
         self.assertIn("https://browser.mcp.cloudflare.com/mcp", mcp_runtime)
         self.assertIn("https://mcp.figma.com/mcp", mcp_runtime)
         self.assertIn("https://mcp.linear.app/mcp", mcp_runtime)
+        self.assertIn("https://mcp.notion.com/mcp", mcp_runtime)
+        self.assertIn("https://mcp.stripe.com", mcp_runtime)
+        self.assertIn("https://mcp.sentry.dev/mcp", mcp_runtime)
+        self.assertIn("@circleci/mcp-server-circleci", mcp_runtime)
+        self.assertIn("@modelcontextprotocol/server-gdrive", mcp_runtime)
         self.assertIn("DEFAULT_MCP_TOOL_LOAD_TIMEOUT_SECONDS", mcp_runtime)
         self.assertIn("def test_mcp_server", mcp_runtime)
 
@@ -199,7 +212,9 @@ class ModulesStaticTests(unittest.TestCase):
         api_js = self.read("web/static/js/api.js")
         runtime_init = self.read("core/agent_runtime/__init__.py")
         self.assertIn("/api/mcp/test/<server_name>", settings_py)
+        self.assertIn("/api/mcp/cli-auth/<server_name>/start", settings_py)
         self.assertIn("testMcpServer(serverName)", api_js)
+        self.assertIn("startMcpCliAuth(serverName)", api_js)
         self.assertIn("test_mcp_server", runtime_init)
 
     def test_modules_hub_refreshes_catalog_and_keeps_native_fallbacks(self):

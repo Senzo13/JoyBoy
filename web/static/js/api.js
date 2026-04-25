@@ -343,6 +343,10 @@ const apiSettings = {
         return apiPost(`/api/mcp/test/${encodeURIComponent(serverName)}`, {});
     },
 
+    async startMcpCliAuth(serverName) {
+        return apiPost(`/api/mcp/cli-auth/${encodeURIComponent(serverName)}/start`, {});
+    },
+
     async clearProviderSecret(key) {
         return apiPost('/api/providers/secret/clear', { key });
     },
