@@ -3,10 +3,25 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from core.runtime.jobs import JobManager, RESTART_CANCEL_MESSAGE
+from core.runtime.jobs import ActiveRunRegistry, JobManager, RESTART_CANCEL_MESSAGE
 
 
 class RuntimeJobManagerTests(unittest.TestCase):
+    def test_active_run_registry_rejects_overlapping_owner(self):
+        registry = ActiveRunRegistry()
+
+        self.assertTrue(registry.acquire("terminal:chat:1", "job-1", {"workspace_name": "Demo"}))
+        self.assertFalse(registry.acquire("terminal:chat:1", "job-2"))
+
+        active = registry.get("terminal:chat:1")
+        self.assertEqual(active["owner"], "job-1")
+        self.assertEqual(active["metadata"]["workspace_name"], "Demo")
+
+        self.assertFalse(registry.release("terminal:chat:1", "job-2"))
+        self.assertIsNotNone(registry.get("terminal:chat:1"))
+        self.assertTrue(registry.release("terminal:chat:1", "job-1"))
+        self.assertIsNone(registry.get("terminal:chat:1"))
+
     def test_load_cancels_non_terminal_jobs_from_previous_process(self):
         with TemporaryDirectory() as tmp:
             path = Path(tmp) / "jobs.json"

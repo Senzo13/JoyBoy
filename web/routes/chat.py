@@ -4,6 +4,7 @@ Blueprint pour les routes chat (chat, chat-stream, get-suggestions, chat-stream/
 from flask import Blueprint, request, jsonify
 import os
 import threading
+import uuid
 
 chat_bp = Blueprint('chat', __name__)
 
@@ -17,6 +18,10 @@ _CHAT_COPY = {
         "it": "Sto generando questa immagine per te...",
     },
 }
+_CHAT_BUSY_MESSAGE = (
+    "Cette conversation traite déjà une réponse. "
+    "Attends la fin ou stoppe la génération avant de relancer."
+)
 
 
 def _apply_chat_response_style(system_content):
@@ -45,6 +50,11 @@ def _chat_copy(key, locale):
     messages = _CHAT_COPY.get(key, {})
     lang = _normalize_chat_locale(locale)
     return messages.get(lang) or messages.get("fr") or key
+
+
+def _chat_run_key(chat_id):
+    chat_key = str(chat_id or "").strip()
+    return f"chat:{chat_key or 'global'}"
 
 
 # ─── Suggestions lock (thread safety for BLIP analysis) ───
@@ -643,8 +653,6 @@ def chat_stream():
     from core import ollama_service
     import json
 
-    _set_chat_stream_cancelled(False)  # Reset au début de la requête (pas dans le générateur)
-
     data = request.json
     message = data.get('message', '')
     image_b64 = data.get('image')
@@ -657,6 +665,7 @@ def chat_stream():
     workspace = data.get('workspace')  # {name, path} ou null
     context_size = data.get('contextSize', 4096)
     locale = data.get('locale') or request.headers.get('Accept-Language', 'fr')
+    chat_id = data.get('chatId') or data.get('conversation_id') or data.get('chat_id')
     from core.agent_runtime import CloudModelError, chat_with_cloud_model, is_cloud_model_name
     use_cloud_model = is_cloud_model_name(chat_model)
     routing_model = chat_model
@@ -747,18 +756,49 @@ def chat_stream():
     except Exception as _e:
         print(f"[CHAT] Skip unload: {_e}")
 
+    from core.runtime import get_active_run_registry
+
+    chat_run_key = _chat_run_key(chat_id)
+    chat_run_owner = str(uuid.uuid4())
+    active_run_registry = get_active_run_registry()
+    if not active_run_registry.acquire(
+        chat_run_key,
+        chat_run_owner,
+        metadata={
+            "kind": "chat",
+            "chat_id": chat_id,
+            "model": chat_model,
+            "message": message[:160],
+        },
+    ):
+        active_run = active_run_registry.get(chat_run_key) or {}
+        return jsonify({
+            'error': 'Chat occupé',
+            'code': 'chat_busy',
+            'message': _CHAT_BUSY_MESSAGE,
+            'active_run': {
+                'started_at': active_run.get('started_at'),
+                'model': (active_run.get('metadata') or {}).get('model'),
+            }
+        }), 409
+    _set_chat_stream_cancelled(False)
+
     # ===== ÉTAPE 1.6: Vérifier si c'est une demande de RECHERCHE WEB =====
     print(f"[WEB-CHECK] Vérification recherche web pour: '{message[:50]}...'")
     from core.utility_ai import check_web_search, generate_deep_search_queries
     from core.web_search import deep_search
 
     # Utiliser le modèle chat pour la traduction (évite la censure du utility model)
-    is_web_search_request, search_query, search_mode = check_web_search(message, model=routing_model)
+    try:
+        is_web_search_request, search_query, search_mode = check_web_search(message, model=routing_model)
+    except Exception:
+        active_run_registry.release(chat_run_key, chat_run_owner)
+        raise
     print(f"[WEB-CHECK] Résultat: is_search={is_web_search_request}, query='{search_query}', mode={search_mode}")
 
     # ===== ÉTAPE 2: Chat normal (recherche web faite DANS le générateur pour feedback temps réel) =====
 
-    def generate():
+    def _generate_chat_events():
         # Vérifier si déjà annulé avant de commencer
         if _get_chat_stream_cancelled():
             print(f"[CANCEL] Chat stream cancelled before generation started")
@@ -981,7 +1021,13 @@ replacement text
 
                 yield f"data: {json.dumps(done_data)}\n\n"
 
-    return Response(
+    def generate():
+        try:
+            yield from _generate_chat_events()
+        finally:
+            active_run_registry.release(chat_run_key, chat_run_owner)
+
+    response = Response(
         stream_with_context(generate()),
         mimetype='text/event-stream',
         headers={
@@ -989,3 +1035,5 @@ replacement text
             'X-Accel-Buffering': 'no'
         }
     )
+    response.call_on_close(lambda: active_run_registry.release(chat_run_key, chat_run_owner))
+    return response

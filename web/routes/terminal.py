@@ -8,8 +8,22 @@ import base64
 import os
 import platform
 import subprocess
+import uuid
 
 terminal_bp = Blueprint('terminal', __name__)
+
+TERMINAL_BUSY_MESSAGE = (
+    "Cette conversation terminal traite déjà une demande. "
+    "Attends la fin ou appuie sur stop avant de relancer."
+)
+
+
+def _terminal_run_key(chat_id, workspace_path):
+    chat_key = str(chat_id or "").strip()
+    if chat_key:
+        return f"terminal:chat:{chat_key}"
+    normalized_workspace = os.path.normcase(os.path.abspath(str(workspace_path or "")))
+    return f"terminal:workspace:{normalized_workspace}"
 
 
 # ===== TERMINAL MODE (joyboy run) =====
@@ -101,6 +115,33 @@ def terminal_chat():
     workspace_path = workspace['path']
     workspace_name = workspace.get('name', os.path.basename(workspace_path))
     brain = get_brain()
+    from core.runtime import get_active_run_registry
+
+    terminal_run_key = _terminal_run_key(chat_id, workspace_path)
+    terminal_run_owner = str(uuid.uuid4())
+    active_run_registry = get_active_run_registry()
+    if not active_run_registry.acquire(
+        terminal_run_key,
+        terminal_run_owner,
+        metadata={
+            "kind": "terminal",
+            "chat_id": chat_id,
+            "workspace": workspace_path,
+            "workspace_name": workspace_name,
+            "model": chat_model,
+            "message": message[:160],
+        },
+    ):
+        active_run = active_run_registry.get(terminal_run_key) or {}
+        return jsonify({
+            'error': 'Terminal occupé',
+            'code': 'terminal_busy',
+            'message': TERMINAL_BUSY_MESSAGE,
+            'active_run': {
+                'started_at': active_run.get('started_at'),
+                'workspace_name': (active_run.get('metadata') or {}).get('workspace_name'),
+            }
+        }), 409
 
     job_manager = None
     terminal_job_id = None
@@ -121,6 +162,7 @@ def terminal_chat():
                 )
         terminal_job = job_manager.create(
             "terminal",
+            job_id=terminal_run_owner,
             conversation_id=chat_id,
             prompt=message,
             model=chat_model,
@@ -132,11 +174,17 @@ def terminal_chat():
 
     # Keep operational guardrails in English for stronger tool-following.
     # The prompt still asks the agent to answer in the user's language.
-    system_content = brain.build_system_prompt(
-        workspace_path=workspace_path,
-        workspace_name=workspace_name,
-        force_response_language="French" if has_image else None,
-    )
+    try:
+        system_content = brain.build_system_prompt(
+            workspace_path=workspace_path,
+            workspace_name=workspace_name,
+            force_response_language="French" if has_image else None,
+        )
+    except Exception:
+        if job_manager and terminal_job_id:
+            job_manager.fail(terminal_job_id, "Terminal prompt build failed")
+        active_run_registry.release(terminal_run_key, terminal_run_owner)
+        raise
 
     chat_messages = [{"role": "system", "content": system_content}]
     recent_history = history[-15:] if len(history) > 15 else history
@@ -183,7 +231,7 @@ def terminal_chat():
                 return value
         return ''
 
-    def generate():
+    def _generate_terminal_events():
         """
         Boucle agentique avec Native Tool Calling (comme Cursor/Claude Code).
         Utilise brain.run_agentic_loop qui gère tout via ollama.chat() avec tools.
@@ -481,6 +529,12 @@ def terminal_chat():
             job_manager.complete(terminal_job_id, message="Terminal request complete")
         yield f"data: {json.dumps({'done': True})}\n\n"
 
+    def generate():
+        try:
+            yield from _generate_terminal_events()
+        finally:
+            active_run_registry.release(terminal_run_key, terminal_run_owner)
+
     response = Response(
         stream_with_context(generate()),
         mimetype='text/event-stream',
@@ -497,6 +551,7 @@ def terminal_chat():
                 # resource leases must not remain active just because the SSE
                 # client disappeared before the agent emitted a final event.
                 job_manager.cancel(terminal_job_id, "Terminal stream closed")
+            active_run_registry.release(terminal_run_key, terminal_run_owner)
 
         response.call_on_close(_close_terminal_stream)
 

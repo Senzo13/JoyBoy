@@ -20,6 +20,59 @@ def _is_terminal_status(status: Any) -> bool:
     return str(status or "").lower() in TERMINAL_STATES
 
 
+class ActiveRunRegistry:
+    """Process-local guard for request streams that must not overlap.
+
+    Durable jobs answer "what happened?". This registry answers the faster
+    runtime question "is this conversation already busy right now?" without
+    persisting transient locks across backend restarts.
+    """
+
+    def __init__(self):
+        self._lock = threading.RLock()
+        self._runs: dict[str, dict[str, Any]] = {}
+
+    def acquire(self, key: str, owner: str, metadata: dict[str, Any] | None = None) -> bool:
+        key = str(key or "").strip()
+        owner = str(owner or "").strip()
+        if not key or not owner:
+            return False
+        with self._lock:
+            if key in self._runs:
+                return False
+            self._runs[key] = {
+                "key": key,
+                "owner": owner,
+                "metadata": deepcopy(metadata or {}),
+                "started_at": utc_now_iso(),
+            }
+            return True
+
+    def release(self, key: str, owner: str) -> bool:
+        key = str(key or "").strip()
+        owner = str(owner or "").strip()
+        if not key or not owner:
+            return False
+        with self._lock:
+            run = self._runs.get(key)
+            if not run or run.get("owner") != owner:
+                return False
+            del self._runs[key]
+            return True
+
+    def get(self, key: str) -> dict[str, Any] | None:
+        key = str(key or "").strip()
+        if not key:
+            return None
+        with self._lock:
+            run = self._runs.get(key)
+            return deepcopy(run) if run else None
+
+    def list(self) -> list[dict[str, Any]]:
+        with self._lock:
+            return deepcopy(list(self._runs.values()))
+
+
 class JobManager:
     """Thread-safe in-process job registry persisted to local JSON.
 
@@ -330,6 +383,8 @@ class JobManager:
 
 _JOB_MANAGER: JobManager | None = None
 _MANAGER_LOCK = threading.Lock()
+_ACTIVE_RUN_REGISTRY: ActiveRunRegistry | None = None
+_ACTIVE_RUN_LOCK = threading.Lock()
 
 
 def get_job_manager() -> JobManager:
@@ -338,3 +393,11 @@ def get_job_manager() -> JobManager:
         if _JOB_MANAGER is None:
             _JOB_MANAGER = JobManager()
         return _JOB_MANAGER
+
+
+def get_active_run_registry() -> ActiveRunRegistry:
+    global _ACTIVE_RUN_REGISTRY
+    with _ACTIVE_RUN_LOCK:
+        if _ACTIVE_RUN_REGISTRY is None:
+            _ACTIVE_RUN_REGISTRY = ActiveRunRegistry()
+        return _ACTIVE_RUN_REGISTRY

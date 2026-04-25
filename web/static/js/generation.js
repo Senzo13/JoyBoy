@@ -396,6 +396,9 @@ function getActiveExportPose() {
 function buildChatStreamParams(prompt) {
     const includeImageContext = !!currentImage && isImageAnalysisPrompt(prompt);
     return {
+        chatId: typeof currentGenerationChatId !== 'undefined'
+            ? (currentGenerationChatId || currentChatId)
+            : currentChatId,
         message: prompt,
         history: getChatContext(),
         memories: [],
@@ -443,6 +446,10 @@ async function handleChatStream(prompt, startTime, targetChatId = (typeof curren
 
     const streamImageReference = !!currentImage && isImageAnalysisPrompt(prompt) ? currentImage : null;
     const streamResponse = await apiChat.stream(buildChatStreamParams(prompt), currentController?.signal);
+    if (!streamResponse.ok) {
+        const errorData = await streamResponse.json().catch(() => ({}));
+        throw new Error(errorData.message || errorData.error || `HTTP ${streamResponse.status}`);
+    }
 
     const msgId = createStreamingMessage(prompt);
     const reader = streamResponse.body.getReader();
@@ -1441,6 +1448,9 @@ async function continueChat() {
         } else {
             removeSkeletonMessage(currentGenerationChatId);
             console.error('Chat error:', err);
+            if (typeof Toast !== 'undefined') {
+                Toast.error(err.message);
+            }
         }
     }
 

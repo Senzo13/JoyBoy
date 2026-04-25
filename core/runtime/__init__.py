@@ -6,13 +6,15 @@ durable notion of conversations and jobs without forcing the image/video/LLM
 pipelines to be rewritten in one step.
 """
 
-from .jobs import JobManager, get_job_manager
+from .jobs import ActiveRunRegistry, JobManager, get_active_run_registry, get_job_manager
 from .conversations import ConversationStore, get_conversation_store
 from .resources import ResourceScheduler, get_resource_scheduler
 
 __all__ = [
     "JobManager",
+    "ActiveRunRegistry",
     "get_job_manager",
+    "get_active_run_registry",
     "ConversationStore",
     "get_conversation_store",
     "ResourceScheduler",
