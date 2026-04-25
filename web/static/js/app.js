@@ -249,13 +249,6 @@ document.getElementById('prompt-input')?.addEventListener('keydown', function(e)
 });
 
 document.getElementById('chat-prompt')?.addEventListener('keydown', function(e) {
-    // Ctrl+C en mode terminal = interrompre
-    if (e.key === 'c' && e.ctrlKey && terminalMode && terminalWorking) {
-        e.preventDefault();
-        interruptTerminal();
-        return;
-    }
-
     if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
         continueChat();

@@ -125,6 +125,8 @@ let terminalRunMetrics = null;
 let terminalCommandCatalogCacheKey = '';
 let terminalCommandCatalogCache = null;
 let terminalCommandCatalogRequest = null;
+const TERMINAL_DOUBLE_ESCAPE_INTERRUPT_MS = 900;
+let terminalLastEscapeInterruptAt = 0;
 
 function formatTerminalCompactNumber(value) {
     const number = Number(value || 0);
@@ -802,9 +804,23 @@ function handleTerminalKeydown(e) {
     if (input.id !== 'prompt-input' && input.id !== 'chat-prompt') return;
 
     if (e.key === 'Escape') {
+        e.preventDefault();
         closeTerminalCommandCatalog();
+        if (terminalWorking) {
+            const now = Date.now();
+            if (now - terminalLastEscapeInterruptAt <= TERMINAL_DOUBLE_ESCAPE_INTERRUPT_MS) {
+                terminalLastEscapeInterruptAt = 0;
+                interruptTerminal('double_escape');
+                return;
+            }
+            terminalLastEscapeInterruptAt = now;
+        } else {
+            terminalLastEscapeInterruptAt = 0;
+        }
         return;
     }
+
+    terminalLastEscapeInterruptAt = 0;
 
     // Flèche haut - historique précédent
     if (e.key === 'ArrowUp') {
@@ -817,15 +833,6 @@ function handleTerminalKeydown(e) {
     if (e.key === 'ArrowDown') {
         e.preventDefault();
         navigateTerminalHistory('down', input);
-        return;
-    }
-
-    // Ctrl+C - Interrompre
-    if (e.ctrlKey && e.key === 'c') {
-        if (terminalWorking) {
-            e.preventDefault();
-            interruptTerminal();
-        }
         return;
     }
 }
@@ -3000,11 +3007,11 @@ function exitTerminalMode() {
 }
 
 /**
- * Interrompt le mode terminal (Ctrl+C)
+ * Interrompt le mode terminal.
  */
-function interruptTerminal() {
+function interruptTerminal(reason = 'manual') {
     if (terminalWorking) {
-        console.log('[TERMINAL] Ctrl+C - Interruption...');
+        console.log(`[TERMINAL] Interruption requested (${reason})`);
         terminalInterrupted = true;
         if (currentController) {
             currentController.abort();
@@ -3018,6 +3025,7 @@ function interruptTerminal() {
 function stopTerminalChat() {
     console.log('[TERMINAL] Stop button pressed');
     terminalInterrupted = true;
+    terminalLastEscapeInterruptAt = 0;
     if (currentController) {
         currentController.abort();
         currentController = null;
@@ -3485,7 +3493,7 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
             if (done) break;
 
             if (terminalInterrupted) {
-                console.log('[TERMINAL] Interrompu par Ctrl+C');
+                console.log('[TERMINAL] Interrompu par l’utilisateur');
                 break;
             }
 
@@ -3945,7 +3953,7 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
     setSendButtonsMode(false);
 
     if (terminalInterrupted) {
-        addTerminalLine(terminalT('terminal.interruptedContinue', 'Interrompu (Ctrl+C) - écris "continue" pour reprendre'), 'warning');
+        addTerminalLine(terminalT('terminal.interruptedContinue', 'Interrompu - écris "continue" pour reprendre'), 'warning');
         terminalInterrupted = false;
     } else {
         // Traiter le prochain élément de la queue (sauf si interrompu)

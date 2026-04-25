@@ -2038,7 +2038,7 @@ Object.assign(MESSAGES.fr.common, {
     });
 
 Object.assign(MESSAGES.fr.terminal, {
-        interruptedContinue: 'Interrompu (Ctrl+C) - écris "continue" pour reprendre',
+        interruptedContinue: 'Interrompu - écris "continue" pour reprendre',
         approvalTitle: 'Autorisation requise',
         approvalQuestion: 'Autoriser JoyBoy à exécuter cette action avec accès complet ?',
         approvalCommandLabel: 'Action',

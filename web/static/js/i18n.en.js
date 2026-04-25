@@ -2028,7 +2028,7 @@ Object.assign(MESSAGES.en.common, {
     });
 
 Object.assign(MESSAGES.en.terminal, {
-        interruptedContinue: 'Interrupted (Ctrl+C) - type "continue" to resume',
+        interruptedContinue: 'Interrupted - type "continue" to resume',
         approvalTitle: 'Authorization required',
         approvalQuestion: 'Allow JoyBoy to run this action with full access?',
         approvalCommandLabel: 'Action',

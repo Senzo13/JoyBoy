@@ -46,7 +46,7 @@ let currentGenerationChatId = null;  // Chat où la génération a été lancée
 // Variables d'état pour le mode terminal - logique dans terminal.js
 let terminalMode = false;           // Mode terminal actif
 let terminalWorkspace = null;       // Workspace actif {name, path}
-let terminalInterrupted = false;    // Ctrl+C pressé
+let terminalInterrupted = false;    // Interruption demandée
 let terminalWorking = false;        // IA en train de travailler (auto-continue)
 let terminalVisionModel = null;     // Modèle vision actif (llava, moondream, etc.)
 

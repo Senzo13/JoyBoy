@@ -1773,7 +1773,7 @@ Object.assign(MESSAGES.it.common, {
     });
 
 Object.assign(MESSAGES.it.terminal, {
-        interruptedContinue: 'Interrotto (Ctrl+C) - scrivi "continue" per riprendere',
+        interruptedContinue: 'Interrotto - scrivi "continue" per riprendere',
         approvalTitle: 'Autorizzazione richiesta',
         approvalQuestion: 'Consentire a JoyBoy di eseguire questa azione con accesso completo?',
         approvalCommandLabel: 'Azione',

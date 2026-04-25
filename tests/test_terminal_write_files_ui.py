@@ -83,6 +83,20 @@ class TerminalWriteFilesUiTests(unittest.TestCase):
         self.assertIn("result_data['tool_result']['commands'] = commands[:4]", terminal_route)
         self.assertNotIn("'<span class=\"cursor\">|</span>'", terminal_js)
 
+    def test_terminal_interrupt_uses_double_escape_not_ctrl_c(self):
+        terminal_js = (ROOT / "web/static/js/terminal.js").read_text(encoding="utf-8")
+        app_js = (ROOT / "web/static/js/app.js").read_text(encoding="utf-8")
+        state_js = (ROOT / "web/static/js/state.js").read_text(encoding="utf-8")
+
+        self.assertIn("TERMINAL_DOUBLE_ESCAPE_INTERRUPT_MS", terminal_js)
+        self.assertIn("terminalLastEscapeInterruptAt", terminal_js)
+        self.assertIn("interruptTerminal('double_escape')", terminal_js)
+        self.assertIn("Interruption demandée", state_js)
+        self.assertNotIn("Ctrl+C en mode terminal", app_js)
+        self.assertNotIn("e.key === 'c' && e.ctrlKey", app_js)
+        self.assertNotIn("e.ctrlKey && e.key === 'c'", terminal_js)
+        self.assertNotIn("Interrompu (Ctrl+C)", terminal_js)
+
 
 if __name__ == "__main__":
     unittest.main()
