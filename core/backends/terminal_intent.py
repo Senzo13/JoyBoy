@@ -150,21 +150,7 @@ class TerminalIntentMixin:
             return False
         if re.search(r"[\w./\\-]+\.(py|js|jsx|ts|tsx|css|html|md|json|yaml|yml|toml|txt|go|rs|java|cs|php|rb)\b", msg):
             return False
-        if any(word in msg for word in repo_words):
-            return True
-
-        vague_targets = (
-            "analyse", "analyse le", "analyse la", "analyse les", "analyse ça",
-            "analyse ca", "analyse ceci", "analyse ici", "regarde ça",
-            "regarde ca", "regarde le", "explore le", "inspecte le",
-        )
-        raw = str(message or "").lower()
-        folded = unicodedata.normalize("NFKD", raw).encode("ascii", "ignore").decode("ascii")
-        compact_candidates = {
-            re.sub(r"\s+", " ", raw).strip(" .!?;:"),
-            re.sub(r"\s+", " ", folded).strip(" .!?;:"),
-        }
-        return any(compact in vague_targets or len(compact.split()) <= 3 for compact in compact_candidates if compact)
+        return any(word in msg for word in repo_words)
 
     def _is_open_workspace_request(self, message: str) -> bool:
         msg = self._intent_text(message)

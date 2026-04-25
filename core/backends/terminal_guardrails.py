@@ -540,13 +540,13 @@ class TerminalGuardrailsMixin:
                 "J'ai coupé avant de relancer le modèle pour ne pas brûler plus de tokens.\n\n"
                 "Dernières observations utiles:\n"
                 + self._format_recent_tool_block(executed_tools[-6:], limit=6)
-                + "\n\nRelance avec une cible plus précise, ou demande `analyse le projet`: "
-                "JoyBoy utilisera le scan borné sans boucle d'exploration."
+                + "\n\nRelance avec une cible plus précise ou demande un audit du workspace: "
+                "JoyBoy utilisera un scan borné sans boucle d'exploration."
             )
 
         return (
             "J'ai coupé avant un nouvel appel modèle pour éviter une boucle coûteuse. "
-            "Aucun outil n'avait encore produit de contexte utile; demande `analyse le projet` "
+            "Aucun outil n'avait encore produit de contexte utile; demande un audit du workspace "
             "ou cible un fichier précis."
         )
 

@@ -23,7 +23,7 @@ class TerminalRequestRouterTests(unittest.TestCase):
         self.assertFalse(should_clear_workspace("supprime le dossier public"))
 
     def test_non_destructive_requests_do_not_route(self):
-        route = classify_terminal_request("analyse le projet")
+        route = classify_terminal_request("audit ce workspace")
 
         self.assertFalse(route.is_clear_workspace)
         self.assertEqual(route.reason, "no-clear-action")

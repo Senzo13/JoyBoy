@@ -51,16 +51,16 @@ class TerminalBrainSmokeTests(unittest.TestCase):
 
         self.assertEqual(reason, "read_file must target a file, not the workspace root")
 
-    def test_vague_analysis_uses_bounded_repo_overview(self):
+    def test_broad_repo_audit_uses_bounded_repo_overview(self):
         brain = TerminalBrain()
 
-        self.assertTrue(brain._is_repo_overview_request("Analyse le"))
-        self.assertTrue(brain._is_repo_overview_request("analyse ça"))
-        self.assertTrue(brain._is_repo_overview_request("analyse le projet"))
+        self.assertTrue(brain._is_repo_overview_request("audit ce workspace"))
+        self.assertTrue(brain._is_repo_overview_request("inspecte le codebase"))
+        self.assertTrue(brain._is_repo_overview_request("regarde ce repo"))
         self.assertFalse(brain._is_repo_overview_request("analyse core/backends/terminal_brain.py"))
 
     @patch("core.backends.terminal_brain.chat_with_cloud_model")
-    def test_deep_repo_overview_brief_reads_local_files_without_subagent(self, mock_chat):
+    def test_repo_overview_brief_reads_local_files_without_subagent(self, mock_chat):
         mock_chat.return_value = {
             "message": {"role": "assistant", "content": "Voici une synthèse du projet."},
             "prompt_eval_count": 40,
@@ -89,7 +89,7 @@ class TerminalBrainSmokeTests(unittest.TestCase):
             )
             Path(app_dir, "globals.css").write_text(".home { color: white; }\n", encoding="utf-8")
 
-            events = list(brain.run_agentic_loop("analyse le projet en détail", tmp, model="openai:gpt-5.4"))
+            events = list(brain.run_agentic_loop("audit ce workspace", tmp, model="openai:gpt-5.4"))
 
         tool_names = [event.get("name") for event in events if event.get("type") == "tool_call"]
         self.assertIn("list_files", tool_names)
@@ -112,7 +112,12 @@ class TerminalBrainSmokeTests(unittest.TestCase):
         self.assertLessEqual(mock_chat.call_args.kwargs["max_tokens"], 650)
 
     @patch("core.backends.terminal_brain.chat_with_cloud_model")
-    def test_quick_repo_overview_returns_direct_deterministic_answer(self, mock_chat):
+    def test_repo_overview_still_uses_model_after_local_brief(self, mock_chat):
+        mock_chat.return_value = {
+            "message": {"role": "assistant", "content": "Synthèse courte basée sur les fichiers lus."},
+            "prompt_eval_count": 30,
+            "eval_count": 8,
+        }
         brain = TerminalBrain()
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -137,15 +142,16 @@ class TerminalBrainSmokeTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            events = list(brain.run_agentic_loop("analyse le projet", tmp, model="openai:gpt-5.4"))
+            events = list(brain.run_agentic_loop("audit ce workspace", tmp, model="openai:gpt-5.4"))
 
-        mock_chat.assert_not_called()
+        mock_chat.assert_called_once()
         text = "".join(event.get("text", "") for event in events if event.get("type") == "content")
-        self.assertIn("Next.js App Router", text)
-        self.assertIn("package.json", text)
-        self.assertIn("`-p`", text)
-        self.assertIn("CSS/JSX", text)
-        self.assertIn("about-content", text)
+        self.assertIn("Synthèse courte", text)
+        messages = mock_chat.call_args.kwargs["messages"]
+        repo_context = "\n".join(str(message.get("content", "")) for message in messages)
+        self.assertIn("--- src/app/page.jsx", repo_context)
+        self.assertIn("--- src/app/layout.jsx", repo_context)
+        self.assertIn("--- src/app/globals.css", repo_context)
 
     def test_repo_overview_response_is_compacted_when_model_is_verbose(self):
         brain = TerminalBrain()
@@ -190,7 +196,7 @@ Encore beaucoup de détail inutile.
             }
         ]
 
-        text = brain._budget_fallback_answer("analyse le", observed)
+        text = brain._budget_fallback_answer("audit ce workspace", observed)
 
         self.assertIn("coupé avant de relancer", text)
         self.assertIn("list_files", text)
@@ -880,7 +886,7 @@ Encore beaucoup de détail inutile.
 
         self.assertTrue(brain._is_casual_greeting_request("yO MEC"))
         self.assertTrue(brain._is_casual_greeting_request("Yo j'ai dis"))
-        self.assertFalse(brain._is_casual_greeting_request("yo analyse le projet"))
+        self.assertFalse(brain._is_casual_greeting_request("yo audit ce workspace"))
         self.assertFalse(brain._is_casual_greeting_request("salut corrige ce fichier"))
 
     def test_vague_followup_without_context_uses_clarification_fast_path(self):
