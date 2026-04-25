@@ -17,6 +17,10 @@ from core.generation.state import (
 )
 from core.generation.video_prompts import _build_framepack_prompt
 from core.infra.gallery_metadata import save_gallery_metadata
+from core.generation.video_sessions import (
+    concat_video_segments,
+    create_video_session,
+)
 
 
 # ========== MMAUDIO — Ajout de son aux vidéos ==========
@@ -33,6 +37,7 @@ def add_audio_to_video(video_path: str, prompt: str = "") -> str:
     """
     global _mmaudio_loaded, _mmaudio_net, _mmaudio_feature_utils, _mmaudio_config
 
+    native_audio_muxed = False
     try:
         from mmaudio.eval_utils import (ModelConfig, all_model_cfg, generate as mmaudio_generate,
                                          load_video, make_video, setup_eval_logging)
@@ -145,7 +150,7 @@ def unload_mmaudio():
         print("[AUDIO] MMAudio déchargé")
 
 
-def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49, num_steps: int = 50, fps: int = 8, video_model: str = "svd", continue_from_last: bool = False, unload_after: bool = True, chat_id: str = None, pipe=None, upscale_pipe=None, cancel_check=None, add_audio: bool = False, quality: str = "720p", face_restore: str = "off", refine_passes: int = 0, release_pipe_before_export=None):
+def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49, num_steps: int = 50, fps: int = 8, video_model: str = "svd", continue_from_last: bool = False, unload_after: bool = True, chat_id: str = None, pipe=None, upscale_pipe=None, cancel_check=None, add_audio: bool = False, quality: str = "720p", face_restore: str = "off", refine_passes: int = 0, release_pipe_before_export=None, continuation_context: dict | None = None, audio_engine: str = "auto", audio_prompt: str = ""):
     """
     Génère une vidéo avec le modèle sélectionné (SVD, CogVideoX, Wan2.1, etc.)
 
@@ -166,8 +171,19 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
 
     Retourne: (video_base64, last_frame, format)
     """
-    # Si on continue depuis la dernière frame
-    if continue_from_last:
+    continuation_context = continuation_context or {}
+    source_video_path = continuation_context.get("source_video_path")
+    persisted_continuation = bool(continuation_context.get("source_session_id"))
+    source_frame_count = int(continuation_context.get("source_frames") or 0)
+
+    # Si on continue depuis une session persistée, la route fournit l'image
+    # d'ancrage et JoyBoy exporte un segment delta avant de le raccorder.
+    if persisted_continuation:
+        if image is None:
+            return None, None, "Pas de frame d'ancrage pour continuer cette vidéo"
+        _state.all_video_frames = []
+        print(f"[VIDEO] Continuation persistée depuis session {continuation_context.get('source_session_id')}")
+    elif continue_from_last:
         if _state.last_video_frame is not None:
             image = _state.last_video_frame
             # Réutiliser le prompt de la vidéo précédente si pas de nouveau prompt
@@ -185,14 +201,17 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
     # Sauvegarder le prompt pour continuation future
     if prompt:
         _state.last_video_prompt = prompt
+    _state.last_video_fps = int(fps or 16)
+
+    from core.models import VIDEO_MODELS
+    model_capabilities = VIDEO_MODELS.get(video_model, {})
 
     # Déterminer le mode: T2V (sans image) ou I2V (avec image)
     is_t2v_mode = False
-    t2v_models = ("wan22-5b", "fastwan", "wan-native-5b", "wan22-t2v-14b", "ltx2", "ltx2_fp8")
 
     if image is None:
         # Vérifier si le modèle supporte T2V
-        if video_model in t2v_models:
+        if bool(model_capabilities.get("supports_t2v", False)):
             # T2V mode: PAS de fallback, on génère sans image
             is_t2v_mode = True
             print(f"[VIDEO] Mode T2V (text-to-video) — génération depuis le texte uniquement")
@@ -224,7 +243,7 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
     update_video_progress(active=True, step=0, total_steps=0, pass_num=0, total_passes=1, phase='loading', message='Préparation VRAM...')
 
     # Le pipe est injecté par l'appelant (ModelManager via generation_pipeline)
-    from core.models import VIDEO_MODELS, VRAM_GB
+    from core.models import VRAM_GB
     if pipe is None:
         raise ValueError("pipe must be provided (injected by ModelManager)")
 
@@ -1435,8 +1454,15 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
     else:
         _state.last_video_frame = None
 
-    # Accumuler les frames
-    if continue_from_last and len(_state.all_video_frames) > 0:
+    # Accumuler les frames. For persisted continuations we export only the new
+    # segment, trimming the first generated frame to avoid duplicating the
+    # selected anchor when the source MP4 is concatenated back in.
+    if persisted_continuation:
+        if len(generated_frames) > 1:
+            _state.all_video_frames = list(generated_frames[1:])
+        else:
+            _state.all_video_frames = list(generated_frames)
+    elif continue_from_last and len(_state.all_video_frames) > 0:
         _state.all_video_frames.extend(generated_frames[1:])
     else:
         _state.all_video_frames.extend(generated_frames)
@@ -1602,9 +1628,11 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
         video_format = "mp4"
         print(f"[VIDEO] Export MP4 réussi (streaming direct, full range bt709)")
 
-        # Muxer l'audio LTX-2 si disponible
+        # Muxer l'audio LTX-2 si disponible. For persisted continuations,
+        # audio is generated after the final concatenated clip so the sound bed
+        # matches the whole video instead of only the new segment.
         ltx2_audio = getattr(_state, 'ltx2_audio', None)
-        if ltx2_audio is not None:
+        if ltx2_audio is not None and not persisted_continuation:
             try:
                 import torch as _t
                 import tempfile, wave
@@ -1636,6 +1664,7 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
                 mux_proc = subprocess.run(mux_cmd, capture_output=True, timeout=60)
                 if mux_proc.returncode == 0:
                     os.replace(muxed_path, str(mp4_path))
+                    native_audio_muxed = True
                     print(f"[VIDEO] Audio LTX-2 muxé dans le MP4 (sr={audio_sr})")
                 else:
                     print(f"[VIDEO] Muxage audio échoué: {mux_proc.stderr[-200:]}")
@@ -1644,6 +1673,9 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
                 _state.ltx2_audio = None
             except Exception as e:
                 print(f"[VIDEO] Erreur muxage audio LTX-2: {e}")
+        elif ltx2_audio is not None and persisted_continuation:
+            _state.ltx2_audio = None
+            print("[VIDEO] Audio LTX-2 segment ignoré: audio final géré après continuation")
     except Exception as e:
         print(f"[VIDEO] MP4 échoué: {e}, fallback GIF...")
         from diffusers.utils import export_to_gif
@@ -1653,11 +1685,26 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
         video_path = gif_path
         video_format = "gif"
 
+    if persisted_continuation and source_video_path and video_format == "mp4":
+        merged_path = concat_video_segments(source_video_path, video_path, fps=fps)
+        if merged_path:
+            video_path = merged_path
+            print(f"[VIDEO] Continuation raccordée au clip source: {video_path}")
+        else:
+            print("[VIDEO] Raccord continuation ignoré: segment généré conservé seul")
+
     # ========== ÉTAPE 6: MMAUDIO - Ajout du son ==========
     # MMAudio is a large extra model. On 8-10GB cards it competes with video
     # generation/cache and can saturate VRAM for a non-essential post-process.
     allow_low_vram_mmaudio = os.environ.get("JOYBOY_ALLOW_MMAUDIO_LOW_VRAM", "").strip().lower() in {"1", "true", "yes", "on"}
-    mmaudio_low_vram_blocked = add_audio and video_format == "mp4" and 0 < float(VRAM_GB or 0) <= 10 and not allow_low_vram_mmaudio
+    normalized_audio_engine = str(audio_engine or "auto").strip().lower()
+    run_mmaudio = (
+        add_audio
+        and video_format == "mp4"
+        and normalized_audio_engine != "native"
+        and not (native_audio_muxed and normalized_audio_engine == "auto")
+    )
+    mmaudio_low_vram_blocked = run_mmaudio and 0 < float(VRAM_GB or 0) <= 10 and not allow_low_vram_mmaudio
     if mmaudio_low_vram_blocked:
         print(
             f"[VIDEO] MMAudio ignoré: {VRAM_GB:.1f}GB VRAM détectés. "
@@ -1665,9 +1712,12 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
             "(override: JOYBOY_ALLOW_MMAUDIO_LOW_VRAM=1)."
         )
         unload_mmaudio()
-    elif add_audio and video_format == "mp4":
+    elif run_mmaudio:
         try:
-            audio_path = add_audio_to_video(str(video_path), prompt or _state.last_video_prompt)
+            audio_path = add_audio_to_video(
+                str(video_path),
+                audio_prompt or prompt or _state.last_video_prompt,
+            )
             if audio_path:
                 video_path = Path(audio_path)
                 print(f"[VIDEO] Son ajouté avec MMAudio")
@@ -1675,18 +1725,53 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
             print(f"[VIDEO] MMAudio ignoré: {e}")
 
     effective_video_prompt = locals().get("video_prompt") or prompt or "Image-to-video motion"
+    segment_frames = len(_state.all_video_frames)
+    total_frames_for_asset = source_frame_count + segment_frames if persisted_continuation else segment_frames
+    total_duration_for_asset = round(total_frames_for_asset / fps, 3) if fps else None
+    session = create_video_session(
+        video_path=video_path,
+        frames=_state.all_video_frames,
+        prompt=prompt or effective_video_prompt,
+        final_prompt=effective_video_prompt,
+        model_id=video_model,
+        model_name=model_info.get("name", video_model),
+        fps=fps,
+        chat_id=chat_id,
+        video_format=video_format,
+        width=locals().get("w_out"),
+        height=locals().get("h_out"),
+        source_session_id=continuation_context.get("source_session_id"),
+        anchor_frame_index=continuation_context.get("anchor_frame_index"),
+        analysis_summary=continuation_context.get("analysis_summary") or {},
+        continuation_prompt=continuation_context.get("continuation_prompt") or "",
+        audio_engine=audio_engine or "auto",
+        audio_prompt=audio_prompt or "",
+        inherited_keyframes=continuation_context.get("source_keyframes") or [],
+        frame_index_offset=source_frame_count if persisted_continuation else 0,
+    )
+    _state.last_video_session = session
+    _state.last_video_total_frames = total_frames_for_asset
+    _state.last_video_duration_sec = total_duration_for_asset or 0
+
     save_gallery_metadata(
         video_path,
+        schema=2,
         asset_type="video",
         source="video",
         model=model_info.get("name", video_model),
         model_id=video_model,
         prompt=prompt or effective_video_prompt,
         final_prompt=effective_video_prompt,
+        video_session_id=session.get("id"),
+        source_video_session_id=session.get("source_session_id"),
+        continuation_prompt=session.get("continuation_prompt"),
+        analysis_summary=session.get("analysis_summary"),
+        audio_engine=session.get("audio_engine"),
+        audio_prompt=session.get("audio_prompt"),
         steps=num_steps,
         fps=fps,
-        frames=len(_state.all_video_frames),
-        duration_sec=round(len(_state.all_video_frames) / fps, 3) if fps else None,
+        frames=total_frames_for_asset,
+        duration_sec=total_duration_for_asset,
         width=w_out,
         height=h_out,
     )
@@ -1696,8 +1781,8 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
     with open(video_path, "rb") as f:
         video_base64 = base64.b64encode(f.read()).decode('utf-8')
 
-    total_duration = len(_state.all_video_frames) / fps
-    print(f"[VIDEO] ✅ Terminé! {len(_state.all_video_frames)} frames (~{total_duration:.1f}s de vidéo)")
+    total_duration = total_duration_for_asset or 0
+    print(f"[VIDEO] ✅ Terminé! {total_frames_for_asset} frames (~{total_duration:.1f}s de vidéo)")
 
     # Nettoyer la progression (le cleanup VRAM est fait par generation_pipeline)
     clear_video_progress()

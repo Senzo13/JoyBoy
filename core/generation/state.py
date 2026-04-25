@@ -39,6 +39,10 @@ class GenerationState:
         # Video
         self.last_video_frame = None
         self.last_video_prompt = ""
+        self.last_video_fps = 16
+        self.last_video_session = None
+        self.last_video_total_frames = 0
+        self.last_video_duration_sec = 0
         self.all_video_frames = []
         self.ltx2_audio = None
         self.ltx2_audio_sr = 24000
@@ -171,11 +175,25 @@ def get_current_images():
 
 def get_video_info():
     """Retourne les infos sur la vidéo en cours"""
+    fps = int(getattr(_state, "last_video_fps", 16) or 16)
+    session = getattr(_state, "last_video_session", None) or {}
+    total_frames = int(getattr(_state, "last_video_total_frames", 0) or len(_state.all_video_frames))
+    duration_sec = float(getattr(_state, "last_video_duration_sec", 0) or (total_frames / fps if fps else 0))
+    try:
+        from core.generation.video_sessions import public_video_session
+        public_session = public_video_session(session)
+    except Exception:
+        public_session = {}
+
     return {
-        "total_frames": len(_state.all_video_frames),
-        "duration_sec": len(_state.all_video_frames) / 16,
+        "total_frames": total_frames,
+        "duration_sec": duration_sec,
         "can_continue": _state.last_video_frame is not None,
-        "last_prompt": _state.last_video_prompt or ""
+        "last_prompt": _state.last_video_prompt or "",
+        "video_session_id": public_session.get("videoSessionId") or session.get("id"),
+        "source_video_session_id": public_session.get("sourceVideoSessionId") or session.get("source_session_id"),
+        "continuation_anchors": public_session.get("continuationAnchors") or [],
+        "analysis_summary": public_session.get("analysisSummary") or session.get("analysis_summary") or {},
     }
 
 
@@ -184,6 +202,10 @@ def reset_video():
     _state.all_video_frames = []
     _state.last_video_frame = None
     _state.last_video_prompt = ""
+    _state.last_video_fps = 16
+    _state.last_video_session = None
+    _state.last_video_total_frames = 0
+    _state.last_video_duration_sec = 0
     print("[VIDEO] Reset - prêt pour nouvelle vidéo")
 
 
