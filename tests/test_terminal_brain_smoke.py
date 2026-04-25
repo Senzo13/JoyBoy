@@ -47,6 +47,86 @@ class TerminalBrainSmokeTests(unittest.TestCase):
         self.assertIn("verified", text)
         self.assertNotIn("Fichier", text)
 
+    def test_recovers_provider_text_tool_tags_as_real_tool_calls(self):
+        brain = TerminalBrain()
+
+        calls, cleaned = brain._recover_text_tool_calls(
+            '<write_todos><todo content="Identifier les surfaces front" '
+            'status="in_progress" activeForm="Analyse du frontend" /></write_todos>\n'
+            '<tool_search>{"name":"read_file"}</tool_search>'
+        )
+
+        names = [brain._tool_call_name(call) for call in calls]
+        self.assertEqual(["write_todos", "tool_search"], names)
+        todo_args = brain._tool_call_args(calls[0])
+        search_args = brain._tool_call_args(calls[1])
+        self.assertEqual("Identifier les surfaces front", todo_args["todos"][0]["content"])
+        self.assertEqual("in_progress", todo_args["todos"][0]["status"])
+        self.assertEqual("Analyse du frontend", todo_args["todos"][0]["activeForm"])
+        self.assertEqual("read_file", search_args["query"])
+        self.assertNotIn("<write_todos>", cleaned)
+        self.assertNotIn("</tool_search>", cleaned)
+
+    def test_recovers_provider_tool_call_wrapper_json(self):
+        brain = TerminalBrain()
+
+        calls, cleaned = brain._recover_text_tool_calls(
+            'Je vais lire le fichier.\n'
+            '<tool_call>{"name":"read_file","arguments":{"path":"src/main.jsx","max_lines":80}}</tool_call>'
+        )
+
+        self.assertEqual(1, len(calls))
+        self.assertEqual("read_file", brain._tool_call_name(calls[0]))
+        self.assertEqual({"path": "src/main.jsx", "max_lines": 80}, brain._tool_call_args(calls[0]))
+        self.assertEqual("Je vais lire le fichier.", cleaned)
+
+    @patch("core.backends.terminal_brain.chat_with_cloud_model")
+    def test_run_loop_executes_recovered_text_tool_call(self, mock_chat):
+        mock_chat.side_effect = [
+            {
+                "message": {
+                    "role": "assistant",
+                    "content": '<tool_call>{"name":"read_file","arguments":{"path":"README.md"}}</tool_call>',
+                },
+                "prompt_eval_count": 20,
+                "eval_count": 8,
+            },
+            {
+                "message": {"role": "assistant", "content": "README lu, je peux continuer."},
+                "prompt_eval_count": 30,
+                "eval_count": 10,
+            },
+        ]
+        brain = TerminalBrain()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            Path(tmp, "README.md").write_text("# Demo\n", encoding="utf-8")
+            events = list(brain.run_agentic_loop("lis le README puis réponds", tmp, model="openai:gpt-5.4"))
+
+        tool_names = [event.get("name") for event in events if event.get("type") == "tool_call"]
+        content = "".join(event.get("text", "") for event in events if event.get("type") == "content")
+        self.assertIn("read_file", tool_names)
+        self.assertEqual(2, mock_chat.call_count)
+        self.assertIn("README lu", content)
+        self.assertNotIn("<tool_call>", content)
+
+    @patch("core.backends.terminal_brain.get_cached_mcp_tools")
+    def test_terminal_brain_init_does_not_autoload_mcp(self, mock_get_mcp_tools):
+        TerminalBrain()
+
+        mock_get_mcp_tools.assert_not_called()
+
+    @patch("core.backends.terminal_brain.get_cached_mcp_tools")
+    def test_deferred_tools_load_mcp_only_for_explicit_mcp_request(self, mock_get_mcp_tools):
+        mock_get_mcp_tools.return_value = []
+        brain = TerminalBrain()
+
+        brain._reset_deferred_tools("audit ce workspace")
+        mock_get_mcp_tools.assert_not_called()
+
+        brain._reset_deferred_tools("utilise le vercel mcp pour inspecter le deploy")
+        mock_get_mcp_tools.assert_called_once()
+
     def test_guard_reason_is_english_and_blocks_root_read(self):
         brain = TerminalBrain()
 
@@ -2165,7 +2245,7 @@ Encore beaucoup de détail inutile.
             )
         ]
         brain = TerminalBrain()
-        brain._reset_deferred_tools()
+        brain._reset_deferred_tools("utilise github mcp")
 
         prompt = brain._build_deferred_tools_prompt()
 
@@ -2190,7 +2270,7 @@ Encore beaucoup de détail inutile.
             )
         ]
         brain = TerminalBrain()
-        brain._reset_deferred_tools()
+        brain._reset_deferred_tools("utilise github mcp")
 
         result = brain.execute_tool("tool_search", {"query": "github repos"}, os.getcwd())
 
@@ -2215,7 +2295,7 @@ Encore beaucoup de détail inutile.
         ]
         brain = TerminalBrain()
         brain.current_intent = "write"
-        brain._reset_deferred_tools()
+        brain._reset_deferred_tools("utilise le mcp github si besoin /auto")
 
         names = brain._select_tool_names_for_turn(
             "utilise le mcp github si besoin /auto",
@@ -2244,7 +2324,7 @@ Encore beaucoup de détail inutile.
             )
         ]
         brain = TerminalBrain()
-        brain._reset_deferred_tools()
+        brain._reset_deferred_tools("utilise github mcp")
 
         promoted = brain.execute_tool("tool_search", {"query": "github"}, os.getcwd())
         executed = brain.execute_tool(

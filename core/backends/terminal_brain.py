@@ -19,6 +19,7 @@ import re
 import threading
 import time
 from collections import defaultdict
+from html import unescape
 from typing import Dict, List, Optional, Any, Generator
 from config import TOOL_CAPABLE_MODELS, TOOL_EXCLUDED_MODELS
 from core.agent_runtime import (
@@ -115,6 +116,62 @@ class TerminalBrain(
     MAX_LOCAL_CONTEXT_SIZE = 262144
     DEFAULT_CLOUD_CONTEXT_SIZE = 262144
     MAX_CLOUD_CONTEXT_SIZE = 1_000_000
+    _TEXT_TOOL_TAG_ALIASES = {
+        "ask_clarification": "ask_clarification",
+        "askclarification": "ask_clarification",
+        "bash": "bash",
+        "clear_workspace": "clear_workspace",
+        "clearworkspace": "clear_workspace",
+        "delegate_subagent": "delegate_subagent",
+        "delegatesubagent": "delegate_subagent",
+        "delete_file": "delete_file",
+        "deletefile": "delete_file",
+        "edit_file": "edit_file",
+        "editfile": "edit_file",
+        "glob": "glob",
+        "list_files": "list_files",
+        "listfiles": "list_files",
+        "list_memory": "list_memory",
+        "listmemory": "list_memory",
+        "load_skill": "load_skill",
+        "loadskill": "load_skill",
+        "open_workspace": "open_workspace",
+        "openworkspace": "open_workspace",
+        "read_file": "read_file",
+        "readfile": "read_file",
+        "remember_fact": "remember_fact",
+        "rememberfact": "remember_fact",
+        "search": "search",
+        "think": "think",
+        "tool_search": "tool_search",
+        "toolsearch": "tool_search",
+        "web_fetch": "web_fetch",
+        "webfetch": "web_fetch",
+        "web_search": "web_search",
+        "websearch": "web_search",
+        "write_file": "write_file",
+        "writefile": "write_file",
+        "write_files": "write_files",
+        "writefiles": "write_files",
+        "write_todos": "write_todos",
+        "writetodos": "write_todos",
+    }
+    _TEXT_TOOL_SCALAR_ARGS = {
+        "ask_clarification": "question",
+        "bash": "command",
+        "delete_file": "path",
+        "glob": "pattern",
+        "list_files": "path",
+        "list_memory": "query",
+        "load_skill": "skill_id",
+        "read_file": "path",
+        "remember_fact": "content",
+        "search": "pattern",
+        "think": "thought",
+        "tool_search": "query",
+        "web_fetch": "url",
+        "web_search": "query",
+    }
 
     def __init__(self):
         self.snapshots: Dict[str, FileSnapshot] = {}
@@ -157,6 +214,229 @@ class TerminalBrain(
         self.tool_registry = build_default_terminal_tool_registry(TOOLS)
         self.permission_engine = PermissionEngine(self.tool_registry)
         self._refresh_dynamic_tool_registry()
+
+    # ===== TEXT TOOL-CALL RECOVERY =====
+
+    def _recover_text_tool_calls(self, content: str | None) -> tuple[List[Dict[str, Any]], str]:
+        """Recover provider-emitted pseudo-XML tool calls.
+
+        Some providers occasionally return literal tags such as
+        ``<write_todos>...</write_todos>`` instead of structured ``tool_calls``.
+        We only recover calls for tools known by the registry; normal execution
+        still passes through PermissionEngine before doing anything.
+        """
+        source = str(content or "")
+        if "<" not in source or ">" not in source:
+            return [], source
+
+        calls: List[Dict[str, Any]] = []
+        spans: List[tuple[int, int]] = []
+
+        wrapper_pattern = re.compile(r"<tool_call\b[^>]*>(?P<body>[\s\S]*?)</tool_call>", re.I)
+        for match in wrapper_pattern.finditer(source):
+            recovered = self._recover_text_tool_calls_from_block(match.group("body"), len(calls))
+            if recovered:
+                calls.extend(recovered)
+                spans.append(match.span())
+
+        direct_pattern = self._text_tool_tag_pattern()
+        for match in direct_pattern.finditer(source):
+            if any(start <= match.start() and match.end() <= end for start, end in spans):
+                continue
+            call = self._text_tool_call_from_match(match, len(calls))
+            if call:
+                calls.append(call)
+                spans.append(match.span())
+
+        if not calls:
+            return [], source
+
+        cleaned = self._remove_text_spans(source, spans)
+        return self._normalise_tool_calls_for_history(calls, prefix="text_call"), cleaned
+
+    @classmethod
+    def _text_tool_tag_pattern(cls) -> re.Pattern:
+        names = sorted(cls._TEXT_TOOL_TAG_ALIASES.keys(), key=len, reverse=True)
+        escaped = "|".join(re.escape(name) for name in names)
+        return re.compile(
+            rf"<(?P<tag>{escaped})\b(?P<attrs>[^>]*)>(?P<body>[\s\S]*?)</(?P=tag)>",
+            re.I,
+        )
+
+    def _recover_text_tool_calls_from_block(self, body: str, start_index: int = 0) -> List[Dict[str, Any]]:
+        source = str(body or "").strip()
+        if not source:
+            return []
+
+        json_payload = self._first_json_payload(source)
+        call = self._text_tool_call_from_payload(json_payload, start_index) if isinstance(json_payload, dict) else None
+        if call:
+            return [call]
+
+        calls: List[Dict[str, Any]] = []
+        for match in self._text_tool_tag_pattern().finditer(source):
+            call = self._text_tool_call_from_match(match, start_index + len(calls))
+            if call:
+                calls.append(call)
+        return calls
+
+    def _text_tool_call_from_payload(self, payload: Dict[str, Any], index: int) -> Optional[Dict[str, Any]]:
+        raw_name = payload.get("name") or payload.get("tool") or payload.get("tool_name")
+        tool_name = self._normalise_text_tool_name(raw_name)
+        if not self._can_recover_text_tool(tool_name):
+            return None
+
+        args = payload.get("arguments", payload.get("args", payload.get("input", {})))
+        if isinstance(args, str):
+            args = self._first_json_payload(args) or {self._TEXT_TOOL_SCALAR_ARGS.get(tool_name, "input"): args}
+        if not isinstance(args, dict):
+            args = {}
+        return self._build_recovered_tool_call(tool_name, self._normalise_recovered_tool_args(tool_name, args), index)
+
+    def _text_tool_call_from_match(self, match: re.Match, index: int) -> Optional[Dict[str, Any]]:
+        tool_name = self._normalise_text_tool_name(match.group("tag"))
+        if not self._can_recover_text_tool(tool_name):
+            return None
+
+        attrs = self._parse_xmlish_attrs(match.group("attrs") or "")
+        args = self._text_tool_args_from_body(tool_name, match.group("body") or "", attrs)
+        if args is None:
+            return None
+        return self._build_recovered_tool_call(tool_name, args, index)
+
+    def _can_recover_text_tool(self, tool_name: str) -> bool:
+        return bool(tool_name and self.tool_registry.get(tool_name))
+
+    @classmethod
+    def _normalise_text_tool_name(cls, raw_name: Any) -> str:
+        name = str(raw_name or "").strip()
+        if not name:
+            return ""
+        compact = re.sub(r"[^a-zA-Z0-9_:-]+", "", name).replace("-", "_").lower()
+        return cls._TEXT_TOOL_TAG_ALIASES.get(compact, compact)
+
+    def _text_tool_args_from_body(
+        self,
+        tool_name: str,
+        body: str,
+        attrs: Optional[Dict[str, str]] = None,
+    ) -> Optional[Dict[str, Any]]:
+        source = unescape(str(body or "").strip())
+        payload = self._first_json_payload(source)
+        if isinstance(payload, dict):
+            return self._normalise_recovered_tool_args(tool_name, payload)
+        if isinstance(payload, list) and tool_name == "write_todos":
+            return {"todos": payload}
+
+        if tool_name == "write_todos":
+            todos = self._parse_text_todos(source)
+            if todos:
+                return {"todos": todos}
+            lines = [line.strip("-* \t") for line in source.splitlines() if line.strip()]
+            if lines:
+                return {"todos": [{"content": line, "status": "pending"} for line in lines[:6]]}
+            return None
+
+        arg_key = self._TEXT_TOOL_SCALAR_ARGS.get(tool_name)
+        if arg_key and source:
+            return self._normalise_recovered_tool_args(tool_name, {arg_key: source})
+        if attrs:
+            return self._normalise_recovered_tool_args(tool_name, attrs)
+        if tool_name == "open_workspace":
+            return {}
+        return None
+
+    def _normalise_recovered_tool_args(self, tool_name: str, args: Dict[str, Any]) -> Dict[str, Any]:
+        payload = dict(args or {})
+        if tool_name == "tool_search" and not payload.get("query"):
+            query = payload.get("name") or payload.get("tool") or payload.get("tool_name")
+            if query:
+                payload["query"] = str(query)
+        if tool_name == "write_todos":
+            todos = payload.get("todos")
+            if isinstance(todos, dict):
+                payload["todos"] = [todos]
+            elif isinstance(todos, str):
+                payload["todos"] = self._parse_text_todos(todos) or [
+                    {"content": todos.strip(), "status": "pending"}
+                ]
+        return payload
+
+    def _parse_text_todos(self, source: str) -> List[Dict[str, Any]]:
+        todos: List[Dict[str, Any]] = []
+        todo_pattern = re.compile(r"<todo\b(?P<attrs>[^>]*)>(?P<body>[\s\S]*?)</todo>|<todo\b(?P<self_attrs>[^>]*)/?>", re.I)
+        for index, match in enumerate(todo_pattern.finditer(str(source or "")), start=1):
+            attrs = self._parse_xmlish_attrs(match.group("attrs") or match.group("self_attrs") or "")
+            body = unescape(str(match.group("body") or "")).strip()
+            content = str(attrs.get("content") or body or "").strip()
+            if not content:
+                continue
+            status = str(attrs.get("status") or attrs.get("state") or "pending").strip().lower()
+            if status not in {"pending", "in_progress", "completed", "blocked"}:
+                status = "pending"
+            todo: Dict[str, Any] = {
+                "id": str(attrs.get("id") or index),
+                "content": content,
+                "status": status,
+            }
+            active_form = attrs.get("activeForm") or attrs.get("active_form") or attrs.get("activeform")
+            if active_form:
+                todo["activeForm"] = str(active_form)
+            note = attrs.get("note")
+            if note:
+                todo["note"] = str(note)
+            todos.append(todo)
+        return todos
+
+    @staticmethod
+    def _parse_xmlish_attrs(source: str) -> Dict[str, str]:
+        attrs: Dict[str, str] = {}
+        attr_pattern = re.compile(r"([a-zA-Z_:][\w:.-]*)\s*=\s*(?:\"([^\"]*)\"|'([^']*)'|([^\s\"'>/]+))")
+        for key, double, single, bare in attr_pattern.findall(str(source or "")):
+            attrs[key] = unescape(double or single or bare or "")
+        return attrs
+
+    @staticmethod
+    def _first_json_payload(source: Any) -> Any:
+        text = str(source or "").strip()
+        if not text:
+            return None
+        decoder = json.JSONDecoder()
+        for index, char in enumerate(text):
+            if char not in "{[":
+                continue
+            try:
+                payload, _ = decoder.raw_decode(text[index:])
+                return payload
+            except Exception:
+                continue
+        return None
+
+    @staticmethod
+    def _remove_text_spans(source: str, spans: List[tuple[int, int]]) -> str:
+        if not spans:
+            return source
+        cleaned: List[str] = []
+        cursor = 0
+        for start, end in sorted(spans):
+            if start < cursor:
+                continue
+            cleaned.append(source[cursor:start])
+            cleaned.append("\n")
+            cursor = end
+        cleaned.append(source[cursor:])
+        return re.sub(r"\n{3,}", "\n\n", "".join(cleaned)).strip()
+
+    @staticmethod
+    def _build_recovered_tool_call(tool_name: str, args: Dict[str, Any], index: int) -> Dict[str, Any]:
+        return {
+            "id": f"text_call_{index}_{tool_name}",
+            "type": "function",
+            "function": {
+                "name": tool_name,
+                "arguments": json.dumps(args or {}, ensure_ascii=False),
+            },
+        }
 
     # ===== TOOL EXECUTION =====
 
@@ -592,7 +872,7 @@ class TerminalBrain(
         self.write_blocked = False
         self._active_read_result_signatures = set()
         self._active_execution_journal = []
-        self._reset_deferred_tools()
+        self._reset_deferred_tools(initial_message)
         self._active_promoted_tool_names.update(self._auto_promoted_deferred_tools(initial_message, []))
         if use_cloud_model:
             response_token_limit = 8192 if autonomous else (2048 if self.is_read_only_intent(self.current_intent) else 4096)
@@ -944,6 +1224,15 @@ class TerminalBrain(
                     message_dict = {'role': 'assistant', 'content': content}
                     if tool_calls:
                         message_dict['tool_calls'] = tool_calls
+
+                if not tool_calls and content:
+                    recovered_tool_calls, recovered_content = self._recover_text_tool_calls(content)
+                    if recovered_tool_calls:
+                        tool_calls = recovered_tool_calls
+                        content = recovered_content
+                        message_dict['content'] = content
+                        message_dict['tool_calls'] = tool_calls
+                        print(f"[BRAIN] Recovered text tool calls: {len(tool_calls)}")
 
                 if repo_brief and content:
                     content = self._compact_repo_overview_response(content)

@@ -41,6 +41,8 @@ const ASSISTANT_TOOL_TRACE_NAMES = [
     'deletefile',
     'tool_search',
     'toolsearch',
+    'tool_call',
+    'toolcall',
     'delegate_subagent',
     'delegatesubagent',
     'write_todos',

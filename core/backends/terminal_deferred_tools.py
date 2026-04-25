@@ -30,17 +30,19 @@ class TerminalDeferredToolMixin:
         loader = getattr(owner_module, "get_cached_mcp_tools", get_cached_mcp_tools)
         return loader()
 
-    def _refresh_dynamic_tool_registry(self) -> None:
+    def _refresh_dynamic_tool_registry(self, include_mcp: bool = False) -> None:
         """Reload optional MCP tools into the terminal registry."""
         registry = build_default_terminal_tool_registry(TOOLS)
         self._mcp_tools_by_name = {}
 
         deferred_order = list(DEFERRED_TOOL_NAMES)
         deferred_seen = set(deferred_order)
-        try:
-            mcp_tools = self._load_cached_mcp_tools()
-        except Exception:
-            mcp_tools = []
+        mcp_tools = []
+        if include_mcp:
+            try:
+                mcp_tools = self._load_cached_mcp_tools()
+            except Exception:
+                mcp_tools = []
 
         for tool in mcp_tools:
             name = str(getattr(tool, "name", "") or "").strip()
@@ -71,15 +73,30 @@ class TerminalDeferredToolMixin:
         self.tool_registry = registry
         self.permission_engine = PermissionEngine(self.tool_registry)
 
-    def _reset_deferred_tools(self) -> None:
+    def _reset_deferred_tools(self, initial_message: str = "") -> None:
         """Prepare a DeerFlow-style deferred tool registry for this terminal run."""
-        self._refresh_dynamic_tool_registry()
+        self._refresh_dynamic_tool_registry(include_mcp=self._should_load_mcp_for_request(initial_message))
         self._active_deferred_tool_names = {
             name
             for name in self._ordered_deferred_tool_names
             if self.tool_registry.get(name)
         }
         self._active_promoted_tool_names = set()
+
+    def _should_load_mcp_for_request(self, message: str) -> bool:
+        """Avoid opening OAuth bridges during unrelated local coding turns."""
+        msg = self._intent_text(message)
+        markers = (
+            "mcp",
+            "github mcp",
+            "vercel mcp",
+            "netlify mcp",
+            "cloudflare mcp",
+            "linear mcp",
+            "figma mcp",
+            "postgres mcp",
+        )
+        return any(marker in msg for marker in markers)
 
     def _auto_promoted_deferred_tools(
         self,

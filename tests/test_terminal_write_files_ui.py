@@ -97,6 +97,7 @@ class TerminalWriteFilesUiTests(unittest.TestCase):
         self.assertIn("'write_todos'", chat_js)
         self.assertIn("'listfiles'", chat_js)
         self.assertIn("'ask_clarification'", chat_js)
+        self.assertIn("'tool_call'", chat_js)
         self.assertIn("rawToolTagPattern", chat_js)
         self.assertIn("stripAssistantToolTraceMarkup(cleanedText)", terminal_js)
 
