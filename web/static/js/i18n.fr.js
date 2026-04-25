@@ -2052,6 +2052,8 @@ Object.assign(MESSAGES.fr, {
                 loading: 'Vérification MCP',
                 connectionRequired: 'Connexion requise',
                 testRequired: 'Test requis',
+                verified: 'Validé',
+                configuredReady: 'Configuré',
                 clientAuthMissing: 'Auth client manquante',
                 configured: 'Configuré, désactivé',
                 available: 'Disponible',

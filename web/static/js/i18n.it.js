@@ -1786,6 +1786,8 @@ Object.assign(MESSAGES.it, {
                 loading: 'Verifica MCP',
                 connectionRequired: 'Connessione richiesta',
                 testRequired: 'Test richiesto',
+                verified: 'Verificato',
+                configuredReady: 'Configurato',
                 clientAuthMissing: 'Auth client mancante',
                 configured: 'Configurato, disattivato',
                 available: 'Disponibile',

@@ -930,11 +930,32 @@ body.terminal-mode .input-bar.terminal-progress-active {
     "prompt prompt prompt prompt prompt prompt"
     "attach permission spacer model video send" !important;
   row-gap: 8px !important;
+  position: relative;
+  overflow: hidden;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  background:
+    radial-gradient(circle at 18% 0%, rgba(96, 165, 250, 0.08), transparent 34%),
+    linear-gradient(180deg, rgba(24, 24, 27, 0.98) 0%, #141414 62%) !important;
+  box-shadow: 0 18px 54px rgba(0, 0, 0, 0.42) !important;
+}
+
+body.terminal-mode .input-bar.terminal-progress-active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 44px;
+  height: 36px;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(20, 20, 20, 0), #141414 82%);
+  z-index: 1;
 }
 
 body.terminal-mode .input-bar.terminal-progress-active > .terminal-progress-panel {
+  position: relative;
+  z-index: 0;
   margin: 0;
-  padding: 0 0 10px;
+  padding: 0 0 8px;
   border: none;
   border-radius: 0;
   background: transparent;
@@ -944,7 +965,19 @@ body.terminal-mode .input-bar.terminal-progress-active > .terminal-progress-pane
 }
 
 body.terminal-mode .input-bar.terminal-progress-active > .terminal-progress-panel .terminal-progress-divider {
-  margin: 10px -2px 9px;
+  margin: 10px -2px 8px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.08), transparent);
+}
+
+body.terminal-mode .input-bar.terminal-progress-active > .composer-attachment-stack,
+body.terminal-mode .input-bar.terminal-progress-active > .prompt-input-wrapper,
+body.terminal-mode .input-bar.terminal-progress-active > .attach-btn,
+body.terminal-mode .input-bar.terminal-progress-active > .terminal-permission-picker,
+body.terminal-mode .input-bar.terminal-progress-active > .model-picker,
+body.terminal-mode .input-bar.terminal-progress-active > .video-btn,
+body.terminal-mode .input-bar.terminal-progress-active > .send-btn {
+  position: relative;
+  z-index: 2;
 }
 
 .terminal-progress-panel {
@@ -996,6 +1029,12 @@ body.terminal-mode .input-bar.terminal-progress-active > .terminal-progress-pane
   animation: none;
   background: #ef4444;
   box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.1);
+}
+
+.terminal-progress-panel.is-interrupted .terminal-progress-pulse {
+  animation: none;
+  background: #f59e0b;
+  box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.12);
 }
 
 @keyframes terminal-progress-pulse {
@@ -1125,8 +1164,9 @@ body.terminal-mode .input-bar.terminal-progress-active > .terminal-progress-pane
   display: none;
 }
 
+.terminal-progress-panel.is-answering .terminal-progress-divider,
 .terminal-progress-panel.is-answering .terminal-progress-log {
-  max-height: 72px;
+  display: none;
 }
 
 /* ===== TERMINAL TASKS (like Claude Code) ===== */

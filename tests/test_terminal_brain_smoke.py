@@ -1240,11 +1240,31 @@ Encore beaucoup de détail inutile.
         self.assertEqual(done.get("token_stats", {}).get("total"), 0)
         self.assertIn("Je suis là", done.get("full_response", ""))
 
+    def test_casual_wellbeing_ignores_active_plan(self):
+        brain = TerminalBrain()
+        brain.current_plan = ExecutionPlan(
+            title="Plan",
+            goal="Finish terminal task",
+            tasks=[PlanTask(id="1", title="Implement", status=PlanStatus.IN_PROGRESS)],
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            events = list(brain.run_agentic_loop("tu vas biene ?", tmp, model="qwen3.5:2b"))
+
+        self.assertFalse(any(event.get("type") == "thinking" for event in events))
+        self.assertFalse(any(event.get("type") == "tool_call" for event in events))
+        done = [event for event in events if event.get("type") == "done"][-1]
+        self.assertEqual(done.get("token_stats", {}).get("total"), 0)
+        self.assertIn("ça va bien", done.get("full_response", ""))
+
     def test_casual_greeting_detection_does_not_capture_real_work(self):
         brain = TerminalBrain()
 
         self.assertTrue(brain._is_casual_greeting_request("yO MEC"))
         self.assertTrue(brain._is_casual_greeting_request("Yo j'ai dis"))
+        self.assertTrue(brain._is_casual_greeting_request("comment tu vas ?"))
+        self.assertTrue(brain._is_casual_greeting_request("tu vas biene ?"))
+        self.assertTrue(brain._is_casual_greeting_request("ça roule ?"))
         self.assertFalse(brain._is_casual_greeting_request("yo audit ce workspace"))
         self.assertFalse(brain._is_casual_greeting_request("salut corrige ce fichier"))
 

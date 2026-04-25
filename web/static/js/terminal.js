@@ -948,6 +948,31 @@ function updateTerminalProgressTimer(done = false) {
     });
 }
 
+function markTerminalProgressInterrupted() {
+    clearInterval(terminalProgressTimer);
+    clearTimeout(terminalProgressAutoHideTimer);
+    clearTimeout(terminalProgressRevealTimer);
+    terminalProgressTimer = null;
+    terminalProgressAutoHideTimer = null;
+    terminalProgressRevealTimer = null;
+    terminalProgressSessionActive = false;
+    terminalProgressContentStarted = false;
+    terminalProgressBufferedLogs = [];
+
+    if (!terminalProgressElement) {
+        refreshTerminalProgressLayout();
+        return;
+    }
+
+    terminalProgressElement.classList.remove('is-complete');
+    terminalProgressElement.classList.add('is-error', 'is-interrupted', 'is-collapsed');
+    if (terminalTasksElement) terminalTasksElement.classList.add('collapsed');
+    if (terminalProgressTimerElement) {
+        terminalProgressTimerElement.textContent = terminalT('terminal.interrupted', 'Génération interrompue.');
+    }
+    refreshTerminalProgressLayout();
+}
+
 function keepTerminalMessagesAboveComposer() {
     const messagesDiv = document.getElementById('chat-messages');
     const inputBar = document.querySelector('#chat-view .chat-input-bar') || document.querySelector('.chat-input-bar');
@@ -1138,7 +1163,6 @@ function addTerminalProgressLog(label, detail = '', type = 'info', options = {})
 function completeTerminalProgressPanel(success = true, options = {}) {
     clearTimeout(terminalProgressRevealTimer);
     terminalProgressRevealTimer = null;
-    const finishingReadOnly = isTerminalReadOnlyTurn();
     terminalProgressSessionActive = false;
     terminalProgressContentStarted = false;
     terminalProgressIntent = '';
@@ -1149,7 +1173,7 @@ function completeTerminalProgressPanel(success = true, options = {}) {
     terminalProgressElement.classList.toggle('is-complete', success);
     terminalProgressElement.classList.toggle('is-error', !success);
     if (success) {
-        const shouldCollapse = options.collapse !== false && !finishingReadOnly;
+        const shouldCollapse = options.collapse !== false;
         terminalProgressElement.classList.toggle('is-collapsed', shouldCollapse);
         if (terminalTasksElement) terminalTasksElement.classList.toggle('collapsed', shouldCollapse);
     }
@@ -1160,6 +1184,9 @@ function completeTerminalProgressPanel(success = true, options = {}) {
 function setTerminalProgressAnswering(active = false) {
     if (terminalProgressElement) {
         terminalProgressElement.classList.toggle('is-answering', Boolean(active));
+        if (active && isTerminalReadOnlyTurn()) {
+            terminalProgressElement.classList.add('is-collapsed');
+        }
     }
     if (terminalTasksElement && active) {
         terminalTasksElement.classList.add('collapsed');
@@ -3031,6 +3058,7 @@ function interruptTerminal(reason = 'manual') {
         if (currentController) {
             currentController.abort();
         }
+        markTerminalProgressInterrupted();
     }
 }
 
@@ -3048,6 +3076,7 @@ function stopTerminalChat() {
     terminalWorking = false;
     isGenerating = false;
     hideThinkingAnimation();
+    markTerminalProgressInterrupted();
     setSendButtonsMode(false);
 
     // Hide autonomous indicator
@@ -3855,6 +3884,8 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
                         if (!firstContentReceived) {
                             firstContentReceived = true;
                             terminalProgressContentStarted = true;
+                            clearTimeout(terminalProgressRevealTimer);
+                            terminalProgressRevealTimer = null;
                             completeTerminalContextActivity();
                             updateTerminalTask('model-call', 'done', terminalT('terminal.taskAnswerStarted', 'Réponse commencée'));
                             setTerminalProgressAnswering(true);
@@ -3958,6 +3989,8 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
             completeTerminalProgressPanel(false);
             updateTerminalTask('terminal-intent', 'error');
             addTerminalLine(`Erreur: ${err.message}`, 'error');
+        } else if (terminalInterrupted) {
+            markTerminalProgressInterrupted();
         }
     }
 
@@ -3969,6 +4002,7 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
     setSendButtonsMode(false);
 
     if (terminalInterrupted) {
+        markTerminalProgressInterrupted();
         addTerminalLine(terminalT('terminal.interruptedContinue', 'Interrompu - écris "continue" pour reprendre'), 'warning');
         terminalInterrupted = false;
     } else {

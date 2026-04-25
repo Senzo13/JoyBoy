@@ -2042,6 +2042,8 @@ Object.assign(MESSAGES.en, {
                 loading: 'Checking MCP',
                 connectionRequired: 'Connection required',
                 testRequired: 'Test required',
+                verified: 'Verified',
+                configuredReady: 'Configured',
                 clientAuthMissing: 'Client auth missing',
                 configured: 'Configured, disabled',
                 available: 'Available',

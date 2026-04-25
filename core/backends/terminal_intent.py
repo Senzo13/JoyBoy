@@ -189,7 +189,27 @@ class TerminalIntentMixin:
         if words and words[0] in greeting_words:
             return True
 
-        return any(phrase in text for phrase in ("ca va", "ça va", "t es la", "tu es la", "t'es la"))
+        casual_phrases = (
+            "ca va",
+            "sa va",
+            "ca va bien",
+            "sa va bien",
+            "comment ca va",
+            "comment tu vas",
+            "tu vas comment",
+            "tu vas bien",
+            "tu va bien",
+            "tu vas biene",
+            "vous allez bien",
+            "ca roule",
+            "la forme",
+            "tout va bien",
+            "ca dit quoi",
+            "t es la",
+            "tu es la",
+            "t'es la",
+        )
+        return any(phrase in text for phrase in casual_phrases)
 
     def _should_clarify_request(self, message: str, history: Optional[List[Dict]] = None) -> bool:
         if self._is_repo_overview_request(message) or self._is_open_workspace_request(message):
@@ -369,6 +389,21 @@ class TerminalIntentMixin:
             return "Hey, I'm here. Tell me what you want to do."
         if "j ai dis" in text or "j'ai dis" in text:
             return "Je suis là, je t'écoute. Le terminal repart en mode conversation propre."
+        wellbeing_phrases = (
+            "ca va",
+            "sa va",
+            "comment ca va",
+            "comment tu vas",
+            "tu vas comment",
+            "tu vas bien",
+            "tu va bien",
+            "tu vas biene",
+            "vous allez bien",
+            "ca roule",
+            "la forme",
+        )
+        if any(phrase in text for phrase in wellbeing_phrases):
+            return "Oui, ça va bien. Et toi ?"
         return "Je suis là, mec. Dis-moi ce que tu veux faire."
 
     def _is_complex_task_request(self, message: str) -> bool:

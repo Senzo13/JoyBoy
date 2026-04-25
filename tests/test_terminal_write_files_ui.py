@@ -79,6 +79,12 @@ class TerminalWriteFilesUiTests(unittest.TestCase):
         self.assertIn("taskStatus = isTerminalVerifierWarning(result) ? 'warning' : 'done'", terminal_js)
         self.assertIn("function setTerminalProgressAnswering(active = false)", terminal_js)
         self.assertIn("setTerminalProgressAnswering(true);", terminal_js)
+        self.assertIn("terminalProgressElement.classList.add('is-collapsed');", terminal_js)
+        self.assertIn("clearTimeout(terminalProgressRevealTimer);", terminal_js)
+        self.assertIn("function markTerminalProgressInterrupted", terminal_js)
+        self.assertIn("markTerminalProgressInterrupted();", terminal_js)
+        self.assertIn("terminalProgressElement.classList.add('is-error', 'is-interrupted', 'is-collapsed');", terminal_js)
+        self.assertIn(".terminal-progress-panel.is-interrupted .terminal-progress-pulse", components_css)
         self.assertIn("progressToolWarning", terminal_js)
         self.assertIn(".terminal-progress-panel.is-answering .terminal-progress-task-slot", components_css)
         self.assertIn(".terminal-progress-panel.is-answering .terminal-progress-log", components_css)
@@ -86,6 +92,14 @@ class TerminalWriteFilesUiTests(unittest.TestCase):
         self.assertIn("result_data['tool_result']['status'] = data.get('status', '')", terminal_route)
         self.assertIn("result_data['tool_result']['commands'] = commands[:4]", terminal_route)
         self.assertNotIn("'<span class=\"cursor\">|</span>'", terminal_js)
+
+    def test_terminal_progress_panel_blends_with_composer(self):
+        components_css = (ROOT / "web/static/css/terminal-components.css").read_text(encoding="utf-8")
+
+        self.assertIn(".input-bar.terminal-progress-active::before", components_css)
+        self.assertIn("overflow: hidden;", components_css)
+        self.assertIn("linear-gradient(180deg, rgba(20, 20, 20, 0), #141414 82%)", components_css)
+        self.assertIn(".terminal-progress-panel.is-answering .terminal-progress-divider", components_css)
 
     def test_terminal_strips_leaked_tool_xml_tags_from_assistant_output(self):
         chat_js = (ROOT / "web/static/js/chat.js").read_text(encoding="utf-8")

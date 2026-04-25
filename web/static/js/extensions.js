@@ -467,12 +467,24 @@ function extensionNeedsConnection(item, server) {
     if (connection?.mode === 'unsupported-oauth') return true;
     const status = getExtensionMcpServerStatus(item.template);
     if (Number(status?.loaded_tool_count || 0) > 0) return false;
+    if (extensionHasVerifiedConnection(item, server)) return false;
+    if (['runtime-oauth', 'cli-oauth'].includes(connection?.mode) && server.enabled !== false) return false;
     return true;
+}
+
+function extensionHasVerifiedConnection(item, server) {
+    if (!item?.template || !server) return false;
+    const status = getExtensionMcpServerStatus(item.template);
+    if (Number(status?.loaded_tool_count || 0) > 0) return true;
+    const storedCount = Number(server._joyboy_loaded_tool_count || server._joyboyLoadedToolCount || 0);
+    const verifiedAt = String(server._joyboy_verified_at || server._joyboyVerifiedAt || '').trim();
+    return storedCount > 0 || Boolean(verifiedAt);
 }
 
 function extensionHasStoredConnection(item, server) {
     const connection = getExtensionConnection(item);
     if (!connection || !server) return false;
+    if (extensionHasVerifiedConnection(item, server)) return true;
     const status = getExtensionMcpServerStatus(item.template);
     if (Array.isArray(status?.uses_env_placeholders) && status.uses_env_placeholders.length && !status.missing_env?.length) {
         return true;
@@ -484,9 +496,6 @@ function extensionHasStoredConnection(item, server) {
         }
         const authHeader = String(server.headers?.Authorization || '').trim();
         return Boolean(authHeader && !authHeader.includes('$') && !authHeader.endsWith('Bearer'));
-    }
-    if (connection.mode === 'runtime-oauth') {
-        return server.enabled !== false;
     }
     return false;
 }
@@ -535,12 +544,21 @@ function getExtensionState(item) {
             };
         }
         if (server && server.enabled !== false) {
+            const connection = getExtensionConnection(item);
+            const verified = extensionHasVerifiedConnection(item, server);
+            const oauthConfigured = item.requiresConnection && ['runtime-oauth', 'cli-oauth'].includes(connection?.mode);
             return {
                 id: 'installed',
-                label: extensionT('extensions.status.installed', 'Installé'),
+                label: verified
+                    ? extensionT('extensions.status.verified', 'Validé')
+                    : oauthConfigured
+                        ? extensionT('extensions.status.configuredReady', 'Configuré')
+                        : extensionT('extensions.status.installed', 'Installé'),
                 icon: 'check',
                 className: 'is-installed',
-                primaryLabel: extensionT('extensions.actions.openMcp', 'Ouvrir la config MCP'),
+                primaryLabel: item.requiresConnection
+                    ? extensionT('extensions.actions.testConnection', 'Tester la connexion')
+                    : extensionT('extensions.actions.openMcp', 'Ouvrir la config MCP'),
                 primaryDisabled: false,
             };
         }
@@ -842,9 +860,14 @@ function renderExtensionModalShell() {
 
 function renderExtensionConnectionControls(item, state) {
     const connection = getExtensionConnection(item);
-    if (!connection || !item.template || !['auth', 'blocked'].includes(state.id)) return '';
     const servers = getExtensionMcpServers();
     const server = servers[item.template] || null;
+    const verified = extensionHasVerifiedConnection(item, server);
+    const showConfiguredOauthPrompt = state.id === 'installed'
+        && item.requiresConnection
+        && !verified
+        && ['runtime-oauth', 'cli-oauth'].includes(connection?.mode);
+    if (!connection || !item.template || (!['auth', 'blocked'].includes(state.id) && !showConfiguredOauthPrompt)) return '';
     const hasStoredConnection = extensionHasStoredConnection(item, server);
     const runtime = getExtensionRuntime();
     const missingPackages = getMissingMcpRuntimePackages(runtime);
@@ -1031,6 +1054,14 @@ function closeExtensionModal() {
     joyboySelectedExtensionId = null;
 }
 
+function focusExtensionConnectionPanel() {
+    const panel = document.querySelector('.extension-modal-connect');
+    if (!panel) return;
+    panel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    panel.classList.add('is-highlighted');
+    window.setTimeout(() => panel.classList.remove('is-highlighted'), 900);
+}
+
 async function loadExtensionMcpSnapshot() {
     if (typeof fetchMcpConfigSnapshot === 'function') {
         return await fetchMcpConfigSnapshot();
@@ -1133,6 +1164,19 @@ async function connectMcpExtension(extensionId, options = {}) {
 
         const testResult = await testConnectedMcpExtension(item);
         const count = Number(testResult.loaded_tool_count || 0);
+        const latestSnapshot = await loadExtensionMcpSnapshot();
+        const latestServers = { ...(latestSnapshot.mcp_servers || latestSnapshot.mcpServers || {}) };
+        const verifiedServer = {
+            ...(latestServers[item.template] || servers[item.template] || {}),
+            enabled: true,
+            _joyboy_verified_at: new Date().toISOString(),
+            _joyboy_loaded_tool_count: count,
+            _joyboy_verified_tools: Array.isArray(testResult.loaded_tools)
+                ? testResult.loaded_tools.map(tool => tool?.name || tool).filter(Boolean).slice(0, 40)
+                : [],
+        };
+        latestServers[item.template] = verifiedServer;
+        await saveExtensionMcpServers(latestServers);
         Toast.success(
             extensionT('extensions.connectSuccessTitle', 'Connexion validée'),
             extensionT('extensions.connectSuccessBody', '{count} tool(s) MCP chargé(s).', { count }),
@@ -1164,6 +1208,14 @@ async function runExtensionPrimaryAction(extensionId) {
         if (servers[item.template]) {
             const state = getExtensionState(item);
             if (state.id === 'auth' || state.id === 'blocked') {
+                if (!extensionHasStoredConnection(item, servers[item.template])) {
+                    focusExtensionConnectionPanel();
+                    return;
+                }
+                await connectMcpExtension(item.id);
+                return;
+            }
+            if (state.id === 'installed' && item.requiresConnection) {
                 await connectMcpExtension(item.id);
                 return;
             }
