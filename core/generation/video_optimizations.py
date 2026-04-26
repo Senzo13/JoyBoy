@@ -477,6 +477,20 @@ def apply_optimized_offload(pipe, vram_gb, model_type="auto"):
             print(f"[OPT] sequential_cpu_offload forcé fallback ({vram_gb:.1f}GB VRAM)")
             return "sequential_cpu_offload"
 
+    force_fastwan_direct = os.environ.get("JOYBOY_FASTWAN_GPU_DIRECT", "").strip().lower() in {"1", "true", "yes", "on"}
+    if model_type == "fastwan" and vram_gb < 42 and not force_fastwan_direct:
+        # FastWan FullAttn can sit at ~39.5GB on A100 40GB and OOM on tiny
+        # transient allocations. Keep the dense Wan 5B GPU-direct path, but
+        # leave FastWan on model offload unless the user explicitly overrides it.
+        try:
+            pipe.enable_model_cpu_offload()
+            print(f"[OPT] model_cpu_offload (FastWan FullAttn margin) ({vram_gb:.1f}GB VRAM)")
+            return "model_cpu_offload"
+        except Exception:
+            pipe.enable_sequential_cpu_offload()
+            print(f"[OPT] sequential_cpu_offload fallback FastWan ({vram_gb:.1f}GB VRAM)")
+            return "sequential_cpu_offload"
+
     # Detect pipelines with text encoders incompatible with group offload
     pipe_class = type(pipe).__name__
     has_text_encoder_issue = any(x in pipe_class for x in [
@@ -595,7 +609,7 @@ def apply_optimized_offload(pipe, vram_gb, model_type="auto"):
 # COMBINED OPTIMIZATION
 # ============================================================================
 
-def optimize_video_pipeline(pipe, vram_gb, enable_sageattention=True, enable_fp8=True):
+def optimize_video_pipeline(pipe, vram_gb, enable_sageattention=True, enable_fp8=True, model_type="auto"):
     """
     Apply all optimizations to a video pipeline.
 
@@ -604,6 +618,7 @@ def optimize_video_pipeline(pipe, vram_gb, enable_sageattention=True, enable_fp8
         vram_gb: Available VRAM
         enable_sageattention: Try to install/enable SageAttention
         enable_fp8: Apply FP8 quantization
+        model_type: Optional JoyBoy model id for model-specific placement quirks
 
     Returns:
         dict with optimization status
@@ -632,7 +647,7 @@ def optimize_video_pipeline(pipe, vram_gb, enable_sageattention=True, enable_fp8
             result["fp8"] = apply_fp8_quantization(transformer, method="layerwise")
 
     # 2. Offload strategy
-    result["offload_strategy"] = apply_optimized_offload(pipe, vram_gb)
+    result["offload_strategy"] = apply_optimized_offload(pipe, vram_gb, model_type=model_type)
 
     # 3. SageAttention (after model is on device) - always good, even on high-end
     if enable_sageattention:

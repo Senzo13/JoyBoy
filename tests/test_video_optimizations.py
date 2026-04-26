@@ -39,6 +39,24 @@ class VideoOptimizationTests(unittest.TestCase):
         self.assertEqual(strategy, "model_cpu_offload")
         self.assertTrue(pipe.cpu_offload)
 
+    def test_fastwan_uses_offload_on_a100_40gb_margin(self):
+        pipe = WanImageToVideoPipeline(transformer_2=None)
+
+        with patch.dict("os.environ", {"JOYBOY_FASTWAN_GPU_DIRECT": ""}):
+            strategy = apply_optimized_offload(pipe, 39.5, model_type="fastwan")
+
+        self.assertEqual(strategy, "model_cpu_offload")
+        self.assertTrue(pipe.cpu_offload)
+
+    def test_fastwan_gpu_direct_can_be_forced(self):
+        pipe = WanImageToVideoPipeline(transformer_2=None)
+
+        with patch.dict("os.environ", {"JOYBOY_FASTWAN_GPU_DIRECT": "1"}):
+            strategy = apply_optimized_offload(pipe, 39.5, model_type="fastwan")
+
+        self.assertEqual(strategy, "gpu_direct")
+        self.assertEqual(pipe.device, "cuda")
+
 
 if __name__ == "__main__":
     unittest.main()
