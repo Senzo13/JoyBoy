@@ -1046,7 +1046,10 @@ def serve_video_session(session_id):
         '.webm': 'video/webm',
         '.gif': 'image/gif',
     }.get(video_path.suffix.lower(), 'application/octet-stream')
-    response = make_response(send_file(video_path, mimetype=mimetype, conditional=True))
+    try:
+        response = make_response(send_file(video_path, mimetype=mimetype, conditional=True))
+    except FileNotFoundError:
+        return jsonify({'error': 'Video file not found'}), 404
     response.headers['Accept-Ranges'] = 'bytes'
     response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
     response.headers['Pragma'] = 'no-cache'

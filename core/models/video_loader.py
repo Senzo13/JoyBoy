@@ -808,7 +808,7 @@ def load_lightx2v(model_name, custom_cache):
     running Flask process.
     """
     from core.models import VIDEO_MODELS
-    from core.models.lightx2v_backend import LightX2VBackend, get_lightx2v_backend_status
+    from core.models.lightx2v_backend import LightX2VBackend, get_lightx2v_backend_status, install_lightx2v_backend
 
     meta = VIDEO_MODELS.get(model_name)
     if not meta:
@@ -816,7 +816,17 @@ def load_lightx2v(model_name, custom_cache):
 
     status = get_lightx2v_backend_status()
     if not status.get("ready"):
-        print("[MM] LightX2V backend manquant: installe-le depuis Modèles > Vidéo")
+        missing = status.get("missing_python_package")
+        reason = f" (dépendance manquante: {missing})" if missing else ""
+        print(f"[MM] LightX2V backend incomplet{reason}. Réparation automatique...")
+        try:
+            status = install_lightx2v_backend()
+        except Exception as exc:
+            raise RuntimeError(
+                "Backend LightX2V non prêt. Relance le téléchargement depuis Modèles > Vidéo "
+                f"ou installe la dépendance manquante ({missing or 'pack LightX2V'})."
+            ) from exc
+        print(f"[MM] LightX2V backend réparé: {status.get('repo_dir')}")
     else:
         print(f"[MM] LightX2V backend prêt: {status.get('repo_dir')}")
     return {
