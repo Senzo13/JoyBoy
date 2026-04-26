@@ -251,7 +251,11 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
         return _build_video_prompt(prompt, default_prompt, has_visual_source=has_visual_source)
 
     def _source_fidelity_negative(negative_prompt: str = "") -> str:
-        return _build_video_negative_prompt(negative_prompt, has_visual_source=has_visual_source)
+        return _build_video_negative_prompt(
+            negative_prompt,
+            has_visual_source=has_visual_source,
+            user_prompt=prompt,
+        )
 
     # ========== INITIALISER PROGRESSION ==========
     update_video_progress(active=True, step=0, total_steps=0, pass_num=0, total_passes=1, phase='loading', message='Préparation VRAM...')
@@ -597,7 +601,9 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
     # === GÉNÉRATION SELON LE MODÈLE ===
     if is_native_wan:
         # Backend NATIF Wan — code officiel sans diffusers
-        video_prompt = _source_fidelity_prompt("The person in the image moves naturally with subtle, realistic motion.")
+        video_prompt = _source_fidelity_prompt(
+            "The person in the image moves slowly and naturally with subtle, realistic motion."
+        )
         negative_prompt = _source_fidelity_negative("")  # Backend natif gère différemment
         print(f"[VIDEO] (Natif) Prompt: {video_prompt}")
 
@@ -650,7 +656,9 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
 
     elif is_wan5b:
         # Wan 2.2 TI2V 5B / FastWan 2.2 5B — I2V avec qualité variable
-        video_prompt = _source_fidelity_prompt("The person in the image moves naturally with subtle, realistic motion.")
+        video_prompt = _source_fidelity_prompt(
+            "The person in the image moves slowly and naturally with subtle, realistic motion."
+        )
         negative_prompt = _source_fidelity_negative(
             "Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, "
             "static, overall gray, worst quality, low quality, JPEG compression residue, ugly, incomplete, "
@@ -771,7 +779,9 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
         generated_frames = video_output.frames[0]  # Liste de PIL Images
 
     elif is_wan:
-        video_prompt = _source_fidelity_prompt("The person in the image moves naturally with subtle, realistic motion.")
+        video_prompt = _source_fidelity_prompt(
+            "The person in the image moves slowly and naturally with subtle, realistic motion."
+        )
         negative_prompt = _source_fidelity_negative(
             "Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, "
             "static, overall gray, worst quality, low quality, JPEG compression residue, ugly, incomplete, "

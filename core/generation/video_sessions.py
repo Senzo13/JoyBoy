@@ -24,6 +24,8 @@ import numpy as np
 from PIL import Image
 from pydantic import BaseModel, Field
 
+from core.generation.video_prompts import _allows_fast_motion
+
 
 VIDEO_OUTPUT_DIR = Path("output") / "videos"
 VIDEO_SESSION_DIR = VIDEO_OUTPUT_DIR / "sessions"
@@ -683,6 +685,7 @@ def build_continuation_prompt(
         "musclé", "enceinte", "transforme", "modifier le corps",
     )
     allows_identity_or_body_change = any(word in user_direction.lower() for word in edit_intent_words)
+    allows_fast_motion = _allows_fast_motion(user_direction)
     parts = [
         "Continue the same video naturally from the selected anchor frame.",
         "Keep subject identity, lighting, composition, camera direction, and motion continuity.",
@@ -690,10 +693,15 @@ def build_continuation_prompt(
         (
             "Match the source video look and quality: preserve original exposure, contrast, color grade, sharpness, "
             "grain/noise, compression artifacts, skin texture, camera/lens feel, and detail level. Do not beautify, "
-            "upscale, denoise, over-sharpen, relight, color-correct, boost saturation, increase contrast, make more cinematic, "
+            "upscale, denoise, over-sharpen, relight, color-correct, boost saturation, increase contrast, add glossy or oily skin, "
+            "add harsh skin reflections, make more cinematic, "
             "or improve the source unless explicitly requested."
         ),
     ]
+    if not allows_fast_motion:
+        parts.append(
+            "Use restrained, slow, natural motion by default. Do not make the person move quickly, snap into new poses, or accelerate the action unless explicitly requested."
+        )
     if not allows_identity_or_body_change:
         parts.append(
             "If a human/person is visible, preserve the same face, facial structure, skin tone, hair, body shape, proportions, outfit, and age. "

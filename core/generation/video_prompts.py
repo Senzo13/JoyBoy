@@ -9,6 +9,14 @@ from __future__ import annotations
 import re
 
 
+FAST_MOTION_INTENT_WORDS = (
+    "fast", "quick", "rapid", "rapidly", "speed", "speed up", "quickly",
+    "run", "running", "jump", "jumping", "dance", "dancing", "energetic",
+    "vite", "rapidement", "rapide", "bouge vite", "accelere", "accélère",
+    "courir", "court", "danse", "saut", "saute",
+)
+
+
 def _clip_safe_words(text: str, max_words: int) -> tuple[str, bool]:
     """Trim long text before CLIP truncates the important motion suffix."""
     clean = " ".join((text or "").split())
@@ -28,13 +36,23 @@ FRAMEPACK_QUALITY_SUFFIX = (
 VISUAL_SOURCE_FIDELITY_SUFFIX = (
     "Match the source image/video look and quality as closely as possible: preserve the original exposure, contrast, "
     "color grade, sharpness, grain/noise, compression artifacts, skin texture, lens/camera feel, and detail level. "
+    "Use restrained, slow, natural motion by default; preserve the source motion speed unless faster movement is explicitly requested. "
     "Do not beautify, upscale, denoise, over-sharpen, relight, color-correct, make more cinematic, or improve the source unless explicitly requested."
 )
 VISUAL_SOURCE_FIDELITY_NEGATIVE = (
     "oversaturated colors, boosted saturation, high contrast, crushed shadows, blown highlights, HDR look, "
-    "cinematic color grading, vivid colors, glossy skin, artificial beauty filter, relit scene, denoised source, "
-    "over-sharpened details, source quality drift"
+    "cinematic color grading, vivid colors, glossy skin, oily skin, wet skin, harsh specular highlights, "
+    "strong skin reflections, artificial beauty filter, relit scene, denoised source, over-sharpened details, source quality drift"
 )
+VISUAL_SOURCE_MOTION_NEGATIVE = (
+    "rapid motion, hyperactive movement, fast body movement, jerky movement, exaggerated motion, sudden pose change, "
+    "violent camera movement, motion speed drift"
+)
+
+
+def _allows_fast_motion(text: str = "") -> bool:
+    lower = f" {str(text or '').lower()} "
+    return any(word in lower for word in FAST_MOTION_INTENT_WORDS)
 
 
 def _append_visual_source_fidelity(prompt: str, *, has_visual_source: bool = True) -> str:
@@ -53,16 +71,25 @@ def _build_video_prompt(prompt: str, default_prompt: str, *, has_visual_source: 
     return _append_visual_source_fidelity(base_prompt, has_visual_source=has_visual_source)
 
 
-def _build_video_negative_prompt(negative_prompt: str = "", *, has_visual_source: bool = True) -> str:
+def _build_video_negative_prompt(
+    negative_prompt: str = "",
+    *,
+    has_visual_source: bool = True,
+    user_prompt: str = "",
+) -> str:
     base = (negative_prompt or "").strip()
     if not has_visual_source:
         return base
-    lower = base.lower()
-    if "oversaturated colors" in lower and "source quality drift" in lower:
-        return base
-    if not base:
-        return VISUAL_SOURCE_FIDELITY_NEGATIVE
-    return f"{base.rstrip(' ,')}, {VISUAL_SOURCE_FIDELITY_NEGATIVE}"
+    additions = [VISUAL_SOURCE_FIDELITY_NEGATIVE]
+    if not _allows_fast_motion(user_prompt):
+        additions.append(VISUAL_SOURCE_MOTION_NEGATIVE)
+    result = base
+    for addition in additions:
+        lower = result.lower()
+        if addition.split(",", 1)[0].lower() in lower:
+            continue
+        result = addition if not result else f"{result.rstrip(' ,')}, {addition}"
+    return result
 
 
 def _build_framepack_prompt(prompt: str, *, fast: bool = False, has_visual_source: bool = True) -> tuple[str, bool]:
