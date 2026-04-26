@@ -56,6 +56,7 @@
     <link rel="stylesheet" href="/static/css/settings-modal.css">
     <link rel="stylesheet" href="/static/css/settings-addons.css">
     <link rel="stylesheet" href="/static/css/extensions.css">
+    <link rel="stylesheet" href="/static/css/browser-use.css">
     <link rel="stylesheet" href="/static/css/settings-models.css">
     <link rel="stylesheet" href="/static/css/onboarding.css">
     <link rel="stylesheet" href="/static/css/settings-local-models.css">
@@ -1022,8 +1023,85 @@
         </div>
     </div>
 
+    <aside class="browser-use-dock" id="browser-use-dock" aria-hidden="true" style="--browser-use-width: 520px;">
+        <div class="browser-use-resize" id="browser-use-resize" aria-hidden="true"></div>
+        <div class="browser-use-header">
+            <div class="browser-use-heading">
+                <div class="browser-use-logo"><i data-lucide="mouse-pointer-click"></i></div>
+                <div class="browser-use-title-block">
+                    <div class="browser-use-title-row">
+                        <h2 class="browser-use-name" data-i18n="browserUse.title">Browser Use</h2>
+                        <span class="browser-use-status" id="browser-use-status">Runtime</span>
+                    </div>
+                    <div class="browser-use-subtitle" id="browser-use-title" data-i18n="browserUse.subtitle">Navigateur local pilotable par JoyBoy</div>
+                </div>
+            </div>
+            <div class="browser-use-header-actions">
+                <button class="browser-use-icon-btn" type="button" data-browser-use-action="screenshot" onclick="browserUseAction('screenshot')" data-i18n-tooltip="browserUse.refreshTooltip" aria-label="Refresh">
+                    <i data-lucide="scan-eye"></i>
+                </button>
+                <button class="browser-use-icon-btn" type="button" onclick="closeBrowserUsePanel()" data-i18n-tooltip="common.close" aria-label="Close">
+                    <i data-lucide="x"></i>
+                </button>
+            </div>
+        </div>
+        <div class="browser-use-toolbar">
+            <div class="browser-use-nav">
+                <button class="browser-use-icon-btn" type="button" data-browser-use-action="back" onclick="browserUseAction('back')" aria-label="Back">
+                    <i data-lucide="arrow-left"></i>
+                </button>
+                <button class="browser-use-icon-btn" type="button" data-browser-use-action="forward" onclick="browserUseAction('forward')" aria-label="Forward">
+                    <i data-lucide="arrow-right"></i>
+                </button>
+                <button class="browser-use-icon-btn" type="button" data-browser-use-action="reload" onclick="browserUseAction('reload')" aria-label="Reload">
+                    <i data-lucide="rotate-cw"></i>
+                </button>
+            </div>
+            <label class="browser-use-url-wrap">
+                <i data-lucide="globe-2"></i>
+                <input class="browser-use-url" id="browser-use-url" type="text" autocomplete="off" spellcheck="false" placeholder="localhost:3000">
+            </label>
+            <button class="browser-use-primary" type="button" data-browser-use-action="open" onclick="navigateBrowserUseUrl()">
+                <i data-lucide="corner-down-right"></i>
+                <span data-i18n="browserUse.open">Ouvrir</span>
+            </button>
+        </div>
+        <div class="browser-use-main">
+            <div class="browser-use-install" id="browser-use-install">
+                <div class="browser-use-install-icon"><i data-lucide="download"></i></div>
+                <div>
+                    <h3 data-i18n="browserUse.installTitle">Installer le runtime navigateur</h3>
+                    <p data-i18n="browserUse.installBody">JoyBoy installe Playwright et Chromium localement. Rien n'est committé dans le repo.</p>
+                    <button class="browser-use-primary" type="button" data-browser-use-action="install" onclick="installBrowserUseRuntime(false)">
+                        <i data-lucide="package-plus"></i>
+                        <span data-i18n="browserUse.installButton">Installer</span>
+                    </button>
+                </div>
+            </div>
+            <div class="browser-use-viewport" id="browser-use-viewport">
+                <div class="browser-use-empty" id="browser-use-empty">
+                    <div class="browser-use-empty-icon"><i data-lucide="mouse-pointer-click"></i></div>
+                    <strong data-i18n="browserUse.emptyTitle">Prêt à ouvrir une page</strong>
+                    <span data-i18n="browserUse.emptyBody">Tape @browser-use dans le chat, colle une URL, ou clique sur une capture pour piloter la page.</span>
+                </div>
+                <img class="browser-use-shot" id="browser-use-shot" alt="Browser Use screenshot">
+            </div>
+            <div class="browser-use-commandbar" id="browser-use-tools">
+                <textarea class="browser-use-command" id="browser-use-command" rows="2" data-i18n="browserUse.commandPlaceholder" data-i18n-attr="placeholder" placeholder="Ex: ouvre localhost:3000 et vérifie le bouton principal"></textarea>
+                <button class="browser-use-command-send" type="button" data-browser-use-action="task" onclick="submitBrowserUseCommand()" aria-label="Run">
+                    <i data-lucide="send"></i>
+                </button>
+            </div>
+            <div class="browser-use-hint">
+                <i data-lucide="info"></i>
+                <span data-i18n="browserUse.hint">Clique dans la capture pour cliquer la page. Molette pour scroller.</span>
+            </div>
+        </div>
+    </aside>
+
     <script src="/static/js/chat.js"></script>
     <script src="/static/js/editor.js"></script>
+    <script src="/static/js/browser-use.js"></script>
     <script src="/static/js/generation.js"></script>
     <script src="/static/js/terminal.js"></script>
     <script src="/static/js/runtime-console.js"></script>

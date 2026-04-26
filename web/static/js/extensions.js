@@ -114,9 +114,19 @@ const JOYBOY_EXTENSION_CATALOG = [
     },
     {
         id: 'browser-use',
-        name: 'Browser Run',
+        name: 'Browser Use',
         icon: 'mouse-pointer-click',
         category: 'featured',
+        source: 'native',
+        action: 'native-browser-use',
+        developer: 'JoyBoy local runtime',
+        capabilities: ['browser_control', 'screenshots', 'click_type', 'local_preview'],
+    },
+    {
+        id: 'cloudflare-browser-run',
+        name: 'Browser Run MCP',
+        icon: 'cloud',
+        category: 'research',
         source: 'mcp',
         action: 'mcp-template',
         template: 'cloudflare-browser',
@@ -618,6 +628,38 @@ function getExtensionState(item) {
     const templates = getExtensionMcpTemplates();
     const server = item.template ? servers[item.template] : null;
     const templateAvailable = item.template ? Boolean(templates[item.template]) : false;
+
+    if (item.action === 'native-browser-use') {
+        const status = window.joyboyBrowserUseStatus || null;
+        if (!status) {
+            return {
+                id: 'loading',
+                label: extensionT('extensions.status.checkingRuntime', 'Vérification runtime'),
+                icon: 'loader',
+                className: 'is-available',
+                primaryLabel: extensionT('extensions.actions.openBrowserUse', 'Ouvrir Browser Use'),
+                primaryDisabled: false,
+            };
+        }
+        if (status.usable || status.playwright_installed) {
+            return {
+                id: 'installed',
+                label: extensionT('extensions.status.browserUseReady', 'Runtime prêt'),
+                icon: 'check',
+                className: 'is-installed',
+                primaryLabel: extensionT('extensions.actions.openBrowserUse', 'Ouvrir Browser Use'),
+                primaryDisabled: false,
+            };
+        }
+        return {
+            id: 'available',
+            label: extensionT('extensions.status.browserUseMissing', 'Runtime à installer'),
+            icon: 'download',
+            className: 'is-available',
+            primaryLabel: extensionT('extensions.actions.installBrowserUse', 'Installer le runtime'),
+            primaryDisabled: false,
+        };
+    }
 
     if (item.action === 'mcp-template') {
         if (!snapshot) {
@@ -1449,6 +1491,18 @@ async function runExtensionPrimaryAction(extensionId) {
     const state = getExtensionState(item);
     if (state.primaryDisabled) return;
 
+    if (item.action === 'native-browser-use') {
+        closeExtensionModal();
+        if (typeof openBrowserUsePanel === 'function') {
+            openBrowserUsePanel();
+        }
+        if (state.id === 'available' && typeof installBrowserUseRuntime === 'function') {
+            await installBrowserUseRuntime(false);
+        }
+        await refreshExtensionsCatalog(false);
+        return;
+    }
+
     if (item.action === 'mcp-template' && item.template) {
         const servers = getExtensionMcpServers();
         if (servers[item.template]) {
@@ -1527,6 +1581,20 @@ async function refreshExtensionsCatalog(showToast = false) {
     if (joyboyExtensionsSnapshotLoading) return;
     joyboyExtensionsSnapshotLoading = true;
     try {
+        if (apiSettings?.getBrowserUseStatus) {
+            try {
+                const browserResult = await apiSettings.getBrowserUseStatus();
+                if (browserResult.ok && browserResult.data) {
+                    window.joyboyBrowserUseStatus = browserResult.data;
+                }
+            } catch (browserError) {
+                window.joyboyBrowserUseStatus = {
+                    success: false,
+                    usable: false,
+                    error: browserError.message || String(browserError),
+                };
+            }
+        }
         if (apiSettings?.getMcpConfig) {
             const result = await apiSettings.getMcpConfig({ loadTools: false });
             if (result.ok && result.data?.success) {

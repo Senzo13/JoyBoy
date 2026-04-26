@@ -917,6 +917,14 @@ async function generate() {
         return;
     }
 
+    if (typeof maybeHandleBrowserUsePromptSubmit === 'function') {
+        const browserUseHandled = await maybeHandleBrowserUsePromptSubmit('prompt-input');
+        if (browserUseHandled) {
+            _genSubmitLock = false;
+            return;
+        }
+    }
+
     if (currentVideoSource?.videoSessionId) {
         openVideoContinuationPanel({
             videoSessionId: currentVideoSource.videoSessionId,
@@ -1260,6 +1268,10 @@ async function continueChat() {
     const prompt = document.getElementById('chat-prompt').value.trim();
     if (!prompt) {
         return;
+    }
+    if (typeof maybeHandleBrowserUsePromptSubmit === 'function') {
+        const browserUseHandled = await maybeHandleBrowserUsePromptSubmit('chat-prompt');
+        if (browserUseHandled) return;
     }
     if (currentVideoSource?.videoSessionId) {
         openVideoContinuationPanel({

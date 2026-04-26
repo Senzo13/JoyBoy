@@ -1816,6 +1816,9 @@ Object.assign(MESSAGES.it, {
                 localPack: 'Pack locale',
                 provider: 'Provider',
                 planned: 'Da collegare',
+                checkingRuntime: 'Verifica runtime',
+                browserUseReady: 'Runtime pronto',
+                browserUseMissing: 'Runtime da installare',
             },
             actions: {
                 openMcp: 'Apri config MCP',
@@ -1828,6 +1831,8 @@ Object.assign(MESSAGES.it, {
                 openModels: 'Apri provider',
                 refreshRuntime: 'Aggiorna runtime',
                 comingSoon: 'Collega via MCP custom',
+                openBrowserUse: 'Apri Browser Use',
+                installBrowserUse: 'Installa runtime',
             },
             capabilities: {
                 web_search: 'ricerca web',
@@ -1840,6 +1845,7 @@ Object.assign(MESSAGES.it, {
                 browser_control: 'controllo browser',
                 screenshots: 'screenshot',
                 click_type: 'clic e scrittura',
+                local_preview: 'anteprima locale',
                 xlsx: 'XLSX',
                 csv: 'CSV',
                 charts: 'grafici',
@@ -1967,7 +1973,8 @@ Object.assign(MESSAGES.it, {
             catalog: {
                 'web-research': { desc: 'Ricerca web locale con SearXNG quando disponibile, poi lettura leggibile di pagine pubbliche.' },
                 github: { desc: 'Espone repo, issue, pull request e CI tramite un server MCP configurabile.' },
-                'browser-use': { desc: 'Template MCP Cloudflare Browser Run per recuperare pagine, produrre Markdown e fare screenshot. Il controllo in-app completo richiede ancora uno strumento nativo.' },
+                'browser-use': { desc: 'Browser locale opzionale controllabile da @browser-use, con pannello destro ridimensionabile, screenshot, clic e scroll.' },
+                'cloudflare-browser-run': { desc: 'Template MCP Cloudflare Browser Run per recuperare pagine, produrre Markdown e fare screenshot via MCP.' },
                 spreadsheets: { desc: 'Template MCP Google Workspace per creare, leggere e modificare fogli Sheets/CSV.' },
                 presentations: { desc: 'Template MCP Google Workspace per creare, modificare ed esportare presentazioni Slides.' },
                 documents: { desc: 'Template MCP Google Workspace per creare, revisionare e commentare documenti Docs.' },
@@ -2001,6 +2008,32 @@ Object.assign(MESSAGES.it, {
             },
         },
     });
+
+Object.assign(MESSAGES.it, {
+    browserUse: {
+        title: 'Browser Use',
+        subtitle: 'Browser locale controllato da JoyBoy',
+        ready: 'Runtime pronto',
+        missing: 'Runtime da installare',
+        running: 'Navigazione in corso...',
+        installing: 'Installazione browser locale...',
+        installTitle: 'Installa runtime browser',
+        installBody: 'JoyBoy installa Playwright e Chromium localmente. Nulla viene committato nel repo.',
+        installButton: 'Installa',
+        installDone: 'Runtime installato.',
+        installFailed: 'Installazione fallita',
+        needInstallForTask: 'Installa Browser Use per eseguire questa richiesta.',
+        open: 'Apri',
+        refreshTooltip: 'Aggiorna screenshot',
+        emptyTitle: 'Pronto ad aprire una pagina',
+        emptyBody: 'Scrivi @browser-use nella chat, incolla un URL o clicca uno screenshot per controllare la pagina.',
+        commandPlaceholder: 'Es: apri localhost:3000 e verifica il bottone principale',
+        hint: 'Clicca nello screenshot per cliccare la pagina. Usa la rotella per scorrere.',
+        openPanel: 'Apri il browser',
+        openedResult: 'Browser aperto: {title}',
+        installHintResult: 'Browser Use è pronto nel pannello destro. Installa il runtime se JoyBoy lo richiede.',
+    },
+});
 
 Object.assign(MESSAGES.it.settings, {
         addons: {

@@ -347,6 +347,18 @@ const apiSettings = {
         return apiPost(`/api/mcp/cli-auth/${encodeURIComponent(serverName)}/start`, {});
     },
 
+    async getBrowserUseStatus() {
+        return apiGet('/api/browser-use/status');
+    },
+
+    async installBrowserUse(options = {}) {
+        return apiPost('/api/browser-use/install', options);
+    },
+
+    async browserUseAction(action, payload = {}) {
+        return apiPost('/api/browser-use/action', { action, payload });
+    },
+
     async clearProviderSecret(key) {
         return apiPost('/api/providers/secret/clear', { key });
     },
