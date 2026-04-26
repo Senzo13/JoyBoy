@@ -1315,14 +1315,16 @@ function addMessageVideo(videoBase64, generationTime = null, sourceImage = null,
     const videoFormat = metadata?.format || 'mp4';
     const metadataSessionId = metadata?.videoSessionId || metadata?.video_session_id || null;
     const cacheTag = Date.now();
-    const videoUrl = metadataSessionId
+    const serverVideoUrl = metadataSessionId
         ? `/videos/session/${metadataSessionId}?t=${cacheTag}`
-        : `data:video/${videoFormat};base64,${videoBase64}`;
-    const playableVideoUrl = typeof createPlayableVideoUrl === 'function'
-        ? createPlayableVideoUrl(videoBase64 || videoUrl, videoFormat)
-        : videoUrl;
-    const fallbackVideoUrl = metadataSessionId ? videoUrl : '';
-    const downloadUrl = metadataSessionId ? videoUrl : playableVideoUrl;
+        : '';
+    const payloadVideo = videoBase64 || metadata?.video || metadata?.videoBase64 || metadata?.video_base64 || '';
+    const blobVideoUrl = typeof createPlayableVideoUrl === 'function'
+        ? createPlayableVideoUrl(payloadVideo, videoFormat)
+        : (payloadVideo ? `data:video/${videoFormat};base64,${payloadVideo}` : '');
+    const playableVideoUrl = serverVideoUrl || blobVideoUrl;
+    const fallbackVideoUrl = serverVideoUrl ? blobVideoUrl : '';
+    const downloadUrl = serverVideoUrl || blobVideoUrl || playableVideoUrl;
     const sourceType = videoFormat === 'webm' ? 'video/webm' : 'video/mp4';
 
     const sourceHtml = sourceImage ? `

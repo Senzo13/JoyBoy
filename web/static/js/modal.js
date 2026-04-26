@@ -1499,28 +1499,38 @@ function createPlayableVideoUrl(videoSrc, format = 'mp4') {
 
 function wirePlayableVideo(video, primaryUrl, fallbackUrl = '') {
     if (!video) return;
+    const primary = String(primaryUrl || '').trim();
     const fallback = String(fallbackUrl || '').trim();
     let triedFallback = false;
+    const shell = video.closest('.video-player-shell');
+
+    const setVideoSource = (url) => {
+        if (!url) return;
+        video.querySelectorAll('source').forEach(source => source.remove());
+        if (video.src !== url) {
+            video.src = url;
+        }
+        video.load();
+        video.play?.().catch(() => {});
+    };
 
     video.addEventListener('error', () => {
-        if (!triedFallback && fallback && video.src !== fallback) {
+        if (!triedFallback && fallback && video.currentSrc !== fallback) {
             triedFallback = true;
             console.warn('[VIDEO] Lecteur: fallback URL serveur');
-            video.src = fallback;
-            video.load();
+            setVideoSource(fallback);
+        } else {
+            shell?.classList.add('video-load-error');
         }
     }, { once: false });
 
     video.addEventListener('loadeddata', () => {
+        shell?.classList.remove('video-load-error');
         video.classList.add('is-ready');
         video.play?.().catch(() => {});
     }, { once: true });
 
-    if (primaryUrl && video.src !== primaryUrl) {
-        video.src = primaryUrl;
-    }
-    video.load();
-    video.play?.().catch(() => {});
+    setVideoSource(primary || fallback);
 }
 
 function replaceVideoSkeletonWithReal(videoSrc, format, genTime, chatId, metadata = {}) {
@@ -1553,13 +1563,15 @@ function replaceVideoSkeletonWithReal(videoSrc, format, genTime, chatId, metadat
     // Utiliser l'URL serveur pour la persistance (le fichier est sauvé sur le serveur)
     const metadataSessionId = metadata?.videoSessionId || metadata?.video_session_id || null;
     const sourceSessionId = metadata?.sourceVideoSessionId || metadata?.source_video_session_id || null;
+    const payloadVideo = videoSrc || metadata?.video || metadata?.videoBase64 || metadata?.video_base64 || '';
     const exactVideoUrl = metadataSessionId && metadataSessionId !== sourceSessionId
         ? `/videos/session/${metadataSessionId}?t=${cacheTag}`
         : null;
     const serverVideoUrl = exactVideoUrl || (chatId ? `/videos/${chatId}?t=${cacheTag}` : '');
-    const playableVideoUrl = videoSrc ? createPlayableVideoUrl(videoSrc, format) : serverVideoUrl;
-    const videoUrl = playableVideoUrl || serverVideoUrl || videoSrc;
-    const downloadUrl = serverVideoUrl || videoUrl;
+    const blobVideoUrl = payloadVideo ? createPlayableVideoUrl(payloadVideo, format) : '';
+    const videoUrl = serverVideoUrl || blobVideoUrl || payloadVideo;
+    const fallbackVideoUrl = serverVideoUrl ? blobVideoUrl : '';
+    const downloadUrl = serverVideoUrl || blobVideoUrl || videoUrl;
     const sourceType = format === 'webm' ? 'video/webm' : 'video/mp4';
 
     // Bouton Continuer si la continuation est dispo
@@ -1603,7 +1615,7 @@ function replaceVideoSkeletonWithReal(videoSrc, format, genTime, chatId, metadat
             <div class="ai-message">
                 <div class="video-container video-result-container">
                     <div class="video-player-shell">
-                        <video class="result-video" controls autoplay loop muted playsinline preload="auto" data-fallback-src="${serverVideoUrl || ''}" data-download-src="${downloadUrl || ''}">
+                        <video class="result-video" controls autoplay loop muted playsinline preload="auto" data-fallback-src="${fallbackVideoUrl || ''}" data-download-src="${downloadUrl || ''}">
                             <source src="${videoUrl}" type="${sourceType}">
                         </video>
                         <div class="video-controls">
@@ -1622,7 +1634,7 @@ function replaceVideoSkeletonWithReal(videoSrc, format, genTime, chatId, metadat
     if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [messageDiv] });
     const renderedVideo = messageDiv.querySelector('video.result-video');
     if (renderedVideo) {
-        wirePlayableVideo(renderedVideo, videoUrl, serverVideoUrl);
+        wirePlayableVideo(renderedVideo, videoUrl, fallbackVideoUrl);
     }
     if (typeof saveCurrentChatHtml === 'function') {
         const messagesDiv = document.getElementById('chat-messages');
