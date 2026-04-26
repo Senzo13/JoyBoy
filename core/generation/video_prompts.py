@@ -23,11 +23,32 @@ def _clip_safe_words(text: str, max_words: int) -> tuple[str, bool]:
 FRAMEPACK_MOTION_DEFAULT = "Natural visible movement with subtle camera parallax and clear subject action."
 FRAMEPACK_QUALITY_SUFFIX = (
     "Preserve identity, outfit, scene, lighting, anatomy. "
-    "Photoreal coherent movement, stable details, clear full-speed progression."
+    "Coherent movement, stable details, clear full-speed progression."
+)
+VISUAL_SOURCE_FIDELITY_SUFFIX = (
+    "Match the source image/video look and quality as closely as possible: preserve the original exposure, contrast, "
+    "color grade, sharpness, grain/noise, compression artifacts, skin texture, lens/camera feel, and detail level. "
+    "Do not beautify, upscale, denoise, over-sharpen, relight, color-correct, make more cinematic, or improve the source unless explicitly requested."
 )
 
 
-def _build_framepack_prompt(prompt: str, *, fast: bool = False) -> tuple[str, bool]:
+def _append_visual_source_fidelity(prompt: str, *, has_visual_source: bool = True) -> str:
+    """Ask video models to preserve the source quality instead of improving it."""
+    base = (prompt or "").strip()
+    if not base or not has_visual_source:
+        return base
+    lower = base.lower()
+    if "match the source image/video look" in lower or "preserve the original exposure" in lower:
+        return base
+    return f"{base.rstrip('. ')}. {VISUAL_SOURCE_FIDELITY_SUFFIX}"
+
+
+def _build_video_prompt(prompt: str, default_prompt: str, *, has_visual_source: bool = True) -> str:
+    base_prompt = (prompt or default_prompt or "").strip()
+    return _append_visual_source_fidelity(base_prompt, has_visual_source=has_visual_source)
+
+
+def _build_framepack_prompt(prompt: str, *, fast: bool = False, has_visual_source: bool = True) -> tuple[str, bool]:
     """Build FramePack's positive prompt without leaking negative concepts.
 
     Avoid phrases such as "no slow motion" in the positive prompt: diffusion
@@ -38,4 +59,5 @@ def _build_framepack_prompt(prompt: str, *, fast: bool = False) -> tuple[str, bo
     base_prompt = (prompt.strip() if prompt else FRAMEPACK_MOTION_DEFAULT).rstrip(". ")
     prompt_word_budget = 28 if fast else 34
     base_prompt, was_trimmed = _clip_safe_words(base_prompt, max_words=prompt_word_budget)
-    return f"{base_prompt}. {FRAMEPACK_QUALITY_SUFFIX}", was_trimmed
+    final_prompt = f"{base_prompt}. {FRAMEPACK_QUALITY_SUFFIX}"
+    return _append_visual_source_fidelity(final_prompt, has_visual_source=has_visual_source), was_trimmed

@@ -687,6 +687,11 @@ def build_continuation_prompt(
         "Continue the same video naturally from the selected anchor frame.",
         "Keep subject identity, lighting, composition, camera direction, and motion continuity.",
         "Start from the anchor frame exactly: preserve the last visible pose, crop, camera angle, lens feel, and scene layout.",
+        (
+            "Match the source video look and quality: preserve original exposure, contrast, color grade, sharpness, "
+            "grain/noise, compression artifacts, skin texture, camera/lens feel, and detail level. Do not beautify, "
+            "upscale, denoise, over-sharpen, relight, color-correct, make more cinematic, or improve the source unless explicitly requested."
+        ),
     ]
     if not allows_identity_or_body_change:
         parts.append(
