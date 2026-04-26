@@ -2079,6 +2079,14 @@ function filterTerminalModels(models) {
 
     // 1. Filtrer les tool-capable
     const toolCapable = models.filter(m => m.toolCapable === true);
+    const selectedLocalModelId =
+        (typeof terminalToolModel !== 'undefined' && terminalToolModel && !isTerminalCloudModelId(terminalToolModel) && terminalToolModel)
+        || (userSettings.terminalModel && !isTerminalCloudModelId(userSettings.terminalModel) && userSettings.terminalModel)
+        || (selectedChatModel && !isTerminalCloudModelId(selectedChatModel) && selectedChatModel)
+        || null;
+    const selectedLocalModel = selectedLocalModelId
+        ? (models || []).find(model => model.id === selectedLocalModelId)
+        : null;
 
     // 2. Dédupliquer par famille de modèle
     const seen = new Map();  // baseName → model
@@ -2112,10 +2120,14 @@ function filterTerminalModels(models) {
     }
 
     // 3. Retourner la liste dédupliquée
-    return dedupeModelsById([
+    const filtered = [
+        ...(selectedLocalModel && !selectedLocalModel.toolCapable
+            ? [{ ...selectedLocalModel, badge: selectedLocalModel.badge || 'balanced' }]
+            : []),
         ...Array.from(seen.values()).map(v => v.model),
         ...(cloudModels || []),
-    ]);
+    ];
+    return dedupeModelsById(filtered);
 }
 
 function getSelectedModelForTab(tab) {

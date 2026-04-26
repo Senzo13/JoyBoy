@@ -425,12 +425,18 @@ def preload_model(model_name):
                 "think": False,
                 "options": {"num_predict": 1}
             },
-            timeout=60
+            timeout=180
         )
         if response.status_code == 200:
             return True
+        print(f"[OLLAMA] Warmup failed for {model_name}: HTTP {response.status_code} {response.text[:300]}")
         return False
     except Exception as e:
+        print(f"[OLLAMA] Warmup exception for {model_name}: {e}")
+        try:
+            return model_name in get_loaded_models()
+        except Exception:
+            pass
         return False
 
 
