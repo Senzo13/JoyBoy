@@ -15,7 +15,11 @@ from core.generation.state import (
     _state, GenerationCancelledException,
     update_video_progress, clear_video_progress,
 )
-from core.generation.video_prompts import _build_framepack_prompt, _build_video_prompt
+from core.generation.video_prompts import (
+    _build_framepack_prompt,
+    _build_video_negative_prompt,
+    _build_video_prompt,
+)
 from core.infra.gallery_metadata import save_gallery_metadata
 from core.generation.video_sessions import (
     concat_video_segments,
@@ -245,6 +249,9 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
 
     def _source_fidelity_prompt(default_prompt: str) -> str:
         return _build_video_prompt(prompt, default_prompt, has_visual_source=has_visual_source)
+
+    def _source_fidelity_negative(negative_prompt: str = "") -> str:
+        return _build_video_negative_prompt(negative_prompt, has_visual_source=has_visual_source)
 
     # ========== INITIALISER PROGRESSION ==========
     update_video_progress(active=True, step=0, total_steps=0, pass_num=0, total_passes=1, phase='loading', message='Préparation VRAM...')
@@ -591,7 +598,7 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
     if is_native_wan:
         # Backend NATIF Wan — code officiel sans diffusers
         video_prompt = _source_fidelity_prompt("The person in the image moves naturally with subtle, realistic motion.")
-        negative_prompt = ""  # Backend natif gère différemment
+        negative_prompt = _source_fidelity_negative("")  # Backend natif gère différemment
         print(f"[VIDEO] (Natif) Prompt: {video_prompt}")
 
         # Params selon modèle
@@ -644,7 +651,7 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
     elif is_wan5b:
         # Wan 2.2 TI2V 5B / FastWan 2.2 5B — I2V avec qualité variable
         video_prompt = _source_fidelity_prompt("The person in the image moves naturally with subtle, realistic motion.")
-        negative_prompt = (
+        negative_prompt = _source_fidelity_negative(
             "Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, "
             "static, overall gray, worst quality, low quality, JPEG compression residue, ugly, incomplete, "
             "extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured, misshapen limbs, "
@@ -765,7 +772,7 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
 
     elif is_wan:
         video_prompt = _source_fidelity_prompt("The person in the image moves naturally with subtle, realistic motion.")
-        negative_prompt = (
+        negative_prompt = _source_fidelity_negative(
             "Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, "
             "static, overall gray, worst quality, low quality, JPEG compression residue, ugly, incomplete, "
             "extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured, misshapen limbs, "
@@ -1602,8 +1609,8 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
             '-preset', 'ultrafast',
             '-pix_fmt', 'yuv420p',
             '-crf', '23',
-            '-vf', 'scale=in_range=pc:out_range=pc',
-            '-color_range', 'pc',
+            '-vf', 'scale=in_range=pc:out_range=tv',
+            '-color_range', 'tv',
             '-colorspace', 'bt709',
             '-color_trc', 'bt709',
             '-color_primaries', 'bt709',
@@ -1652,7 +1659,7 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
 
         video_path = mp4_path
         video_format = "mp4"
-        print(f"[VIDEO] Export MP4 réussi (streaming direct, full range bt709)")
+        print(f"[VIDEO] Export MP4 réussi (streaming direct, bt709 standard range)")
 
         # Muxer l'audio LTX-2 si disponible. For persisted continuations,
         # audio is generated after the final concatenated clip so the sound bed

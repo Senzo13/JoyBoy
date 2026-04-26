@@ -30,6 +30,11 @@ VISUAL_SOURCE_FIDELITY_SUFFIX = (
     "color grade, sharpness, grain/noise, compression artifacts, skin texture, lens/camera feel, and detail level. "
     "Do not beautify, upscale, denoise, over-sharpen, relight, color-correct, make more cinematic, or improve the source unless explicitly requested."
 )
+VISUAL_SOURCE_FIDELITY_NEGATIVE = (
+    "oversaturated colors, boosted saturation, high contrast, crushed shadows, blown highlights, HDR look, "
+    "cinematic color grading, vivid colors, glossy skin, artificial beauty filter, relit scene, denoised source, "
+    "over-sharpened details, source quality drift"
+)
 
 
 def _append_visual_source_fidelity(prompt: str, *, has_visual_source: bool = True) -> str:
@@ -46,6 +51,18 @@ def _append_visual_source_fidelity(prompt: str, *, has_visual_source: bool = Tru
 def _build_video_prompt(prompt: str, default_prompt: str, *, has_visual_source: bool = True) -> str:
     base_prompt = (prompt or default_prompt or "").strip()
     return _append_visual_source_fidelity(base_prompt, has_visual_source=has_visual_source)
+
+
+def _build_video_negative_prompt(negative_prompt: str = "", *, has_visual_source: bool = True) -> str:
+    base = (negative_prompt or "").strip()
+    if not has_visual_source:
+        return base
+    lower = base.lower()
+    if "oversaturated colors" in lower and "source quality drift" in lower:
+        return base
+    if not base:
+        return VISUAL_SOURCE_FIDELITY_NEGATIVE
+    return f"{base.rstrip(' ,')}, {VISUAL_SOURCE_FIDELITY_NEGATIVE}"
 
 
 def _build_framepack_prompt(prompt: str, *, fast: bool = False, has_visual_source: bool = True) -> tuple[str, bool]:
