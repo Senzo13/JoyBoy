@@ -326,6 +326,33 @@ body.terminal-mode .user-bubble::before {
     opacity: 0.7;
 }
 
+body.terminal-mode .terminal-queued-user-message .user-message {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
+}
+
+body.terminal-mode .terminal-queued-user-status {
+    align-self: flex-end;
+    width: fit-content;
+    max-width: 100%;
+    border: 1px solid rgba(0, 210, 106, 0.22);
+    border-radius: 999px;
+    background: rgba(0, 210, 106, 0.08);
+    color: rgba(196, 255, 219, 0.78);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+    padding: 5px 8px;
+}
+
+body.terminal-mode .terminal-queued-user-message.is-running .terminal-queued-user-status {
+    border-color: rgba(0, 210, 106, 0.38);
+    background: rgba(0, 210, 106, 0.14);
+    color: #d8ffe9;
+}
+
 body.terminal-mode .chat-bubble {
     background: transparent;
     border: none;

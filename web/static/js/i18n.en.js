@@ -1632,6 +1632,9 @@ Object.assign(MESSAGES.en, {
             orientationFailed: 'Could not orient the current work: {error}',
             progressGuidanceSent: 'Guidance sent',
             progressGuidanceApplied: 'Guidance taken into account',
+            queuedUserWaiting: 'Queued',
+            queuedUserRunning: 'Running',
+            queuedUserDone: 'Started',
             permissions: {
                 label: 'Permissions',
                 default: 'Default permissions',

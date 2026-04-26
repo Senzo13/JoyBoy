@@ -1642,6 +1642,9 @@ Object.assign(MESSAGES.fr, {
             orientationFailed: 'Impossible d’orienter le travail en cours : {error}',
             progressGuidanceSent: 'Orientation envoyée',
             progressGuidanceApplied: 'Orientation prise en compte',
+            queuedUserWaiting: 'En attente',
+            queuedUserRunning: 'En cours',
+            queuedUserDone: 'Lancé',
             permissions: {
                 label: 'Autorisations',
                 default: 'Autorisations par défaut',

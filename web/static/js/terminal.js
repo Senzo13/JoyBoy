@@ -3498,7 +3498,7 @@ async function sendTerminalMessage(message) {
     await streamTerminalChat(message);
 }
 
-async function sendTerminalGuidance(message) {
+async function sendTerminalGuidance(message, options = {}) {
     const cleanMessage = String(message || '').trim();
     if (!cleanMessage) return false;
     if (!terminalWorkspace?.path || !terminalWorking) {
@@ -3524,7 +3524,11 @@ async function sendTerminalGuidance(message) {
             throw new Error(data.message || data.error || `HTTP ${response.status}`);
         }
 
-        addTerminalUserLine(cleanMessage);
+        if (options.renderUserLine !== false) {
+            addTerminalUserLine(cleanMessage);
+        } else if (options.queueId && typeof markTerminalQueuedUserLine === 'function') {
+            markTerminalQueuedUserLine(options.queueId, 'done');
+        }
         chatHistory.push({
             role: 'user',
             content: cleanMessage,
@@ -3571,9 +3575,16 @@ async function streamTerminalChat(message, isAutoContinue = false, options = {})
     const permissionModeForRequest = permissionModeOverride || getTerminalPermissionMode();
 
     // Ajouter le message utilisateur dans le rendu chat normal (pas de skeleton).
+    // Les prompts terminal qui viennent de la queue sont déjà visibles en
+    // bulle "En attente"; on les réutilise au lieu de dupliquer le message.
     if (!isAutoContinue) {
-        addTerminalUserLine(message);
+        if (options.renderUserLine !== false) {
+            addTerminalUserLine(message);
+        }
         chatHistory.push({ role: 'user', content: message });
+        if (typeof saveCurrentChatHtml === 'function' && typeof getChatHtmlWithoutSkeleton === 'function') {
+            saveCurrentChatHtml('', getChatHtmlWithoutSkeleton());
+        }
     }
 
     const startTime = Date.now();

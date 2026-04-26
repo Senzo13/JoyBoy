@@ -2209,19 +2209,69 @@ function hideAllTerminalLoading() {
 /**
  * Ajoute un message utilisateur style terminal
  */
-function addTerminalUserLine(text) {
+function terminalQueuedUserStatusLabel(status = 'queued') {
+    const normalized = String(status || 'queued').toLowerCase();
+    if (normalized === 'running') return chatT('terminal.queuedUserRunning', 'En cours');
+    if (normalized === 'done') return chatT('terminal.queuedUserDone', 'Lancé');
+    return chatT('terminal.queuedUserWaiting', 'En attente');
+}
+
+function addTerminalUserLine(text, options = {}) {
     const messagesDiv = getChatMessages();
     if (!messagesDiv) return;
 
     const messageEl = document.createElement('div');
     messageEl.className = 'message terminal-chat-message';
+    if (options.queueId) {
+        messageEl.dataset.terminalQueueId = String(options.queueId);
+        messageEl.classList.add('terminal-queued-user-message');
+        messageEl.classList.toggle('is-running', options.queueStatus === 'running');
+        messageEl.classList.toggle('is-queued', options.queueStatus !== 'running');
+    }
+    const statusHtml = options.queueStatus
+        ? `<div class="terminal-queued-user-status" data-terminal-queue-status="${escapeHtml(String(options.queueStatus))}">
+                ${escapeHtml(terminalQueuedUserStatusLabel(options.queueStatus))}
+           </div>`
+        : '';
     messageEl.innerHTML = `
         <div class="user-message">
             ${buildUserPromptBubble(text)}
+            ${statusHtml}
         </div>
     `;
     messagesDiv.appendChild(messageEl);
     scrollToBottom();
+    return messageEl;
+}
+
+function markTerminalQueuedUserLine(queueId, status = 'running') {
+    if (!queueId) return;
+    const messagesDiv = getChatMessages();
+    if (!messagesDiv) return;
+    const escapedQueueId = (window.CSS && typeof CSS.escape === 'function')
+        ? CSS.escape(String(queueId))
+        : String(queueId).replace(/["\\]/g, '\\$&');
+    const selector = `.terminal-chat-message[data-terminal-queue-id="${escapedQueueId}"]`;
+    const messageEl = messagesDiv.querySelector(selector);
+    if (!messageEl) return;
+
+    let statusEl = messageEl.querySelector('.terminal-queued-user-status');
+    if (status === 'done') {
+        statusEl?.remove();
+        messageEl.classList.remove('terminal-queued-user-message', 'is-queued', 'is-running');
+        return;
+    }
+
+    if (!statusEl) {
+        statusEl = document.createElement('div');
+        statusEl.className = 'terminal-queued-user-status';
+        messageEl.querySelector('.user-message')?.appendChild(statusEl);
+    }
+    statusEl.dataset.terminalQueueStatus = String(status);
+    statusEl.textContent = terminalQueuedUserStatusLabel(status);
+    messageEl.classList.toggle('is-running', status === 'running');
+    messageEl.classList.toggle('is-queued', status !== 'running');
+    scrollToBottom(document.body.classList.contains('terminal-mode'));
 }
 
 /**

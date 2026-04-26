@@ -298,7 +298,11 @@ async function orientQueueItem(id) {
     const item = globalQueue.find(entry => entry.id === id);
     if (!item) return;
     if (canOrientQueueItem(item) && typeof sendTerminalGuidance === 'function') {
-        const sent = await sendTerminalGuidance(item.prompt || '');
+        const renderedMessageId = item.options?.renderedMessageId || '';
+        const sent = await sendTerminalGuidance(item.prompt || '', {
+            queueId: renderedMessageId || item.id,
+            renderUserLine: !renderedMessageId,
+        });
         if (sent) {
             removeFromQueue(id);
         }
@@ -322,9 +326,17 @@ function addToQueue(prompt, mode = 'chat', options = {}) {
     const type = normalizedMode === 'video' || options.videoSource
         ? 'video'
         : ((options.image || currentImage) ? 'image' : (normalizedMode === 'terminal' ? 'terminal' : 'text'));
+    let renderedMessageId = '';
+    if (type === 'terminal' && typeof addTerminalUserLine === 'function' && typeof terminalMode !== 'undefined' && terminalMode) {
+        addTerminalUserLine(prompt, { queueId: id, queueStatus: 'queued' });
+        renderedMessageId = id;
+        if (typeof saveCurrentChatHtml === 'function' && typeof getChatHtmlWithoutSkeleton === 'function') {
+            saveCurrentChatHtml('', getChatHtmlWithoutSkeleton());
+        }
+    }
     globalQueue.push({
         id, prompt, type, mode: normalizedMode,
-        options: { ...options, image: options.image || currentImage },
+        options: { ...options, image: options.image || currentImage, renderedMessageId },
         status: 'pending',
         addedAt: Date.now()
     });
@@ -355,7 +367,13 @@ async function processNextInQueue() {
     console.log(`[QUEUE] Traitement: ${next.type} - "${next.prompt.substring(0, 30)}..."`);
 
     try {
-        if (next.type === 'video' && typeof generateVideoFromImageWithPrompt === 'function') {
+        if (next.type === 'terminal' && typeof streamTerminalChat === 'function') {
+            executingFromQueueChat = true;
+            if (typeof markTerminalQueuedUserLine === 'function') {
+                markTerminalQueuedUserLine(next.options?.renderedMessageId || next.id, 'running');
+            }
+            await streamTerminalChat(next.prompt || '', false, { renderUserLine: false, fromQueue: true });
+        } else if (next.type === 'video' && typeof generateVideoFromImageWithPrompt === 'function') {
             executingFromQueue = true;
             if (next.options?.image) {
                 await generateVideoFromImageWithPrompt(next.options.image, next.prompt || '');
@@ -393,6 +411,9 @@ async function processNextInQueue() {
     // Cleanup après que la génération est terminée
     executingFromQueue = false;
     executingFromQueueChat = false;
+    if (next.type === 'terminal' && typeof markTerminalQueuedUserLine === 'function') {
+        markTerminalQueuedUserLine(next.options?.renderedMessageId || next.id, 'done');
+    }
     next.status = 'completed';
     activeQueueItem = null;
     globalQueue = globalQueue.filter(i => i.status !== 'completed');

@@ -1376,6 +1376,9 @@ Object.assign(MESSAGES.es, {
             orientationFailed: 'No se pudo orientar el trabajo en curso: {error}',
             progressGuidanceSent: 'Orientación enviada',
             progressGuidanceApplied: 'Orientación tenida en cuenta',
+            queuedUserWaiting: 'En espera',
+            queuedUserRunning: 'En curso',
+            queuedUserDone: 'Iniciado',
             permissions: {
                 label: 'Permisos',
                 default: 'Permisos predeterminados',
