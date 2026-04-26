@@ -190,7 +190,7 @@ function updateVideoQualityVisibility() {
         'wan22': { fps: 16, steps: 40, configurable: false },
         'wan': { fps: 16, steps: 50, configurable: false },
         'wan22-5b': { fps: 24, steps: 30, configurable: true },
-        'fastwan': { fps: 24, steps: 8, configurable: false },
+        'fastwan': { fps: 24, steps: 3, configurable: false },
         'hunyuan': { fps: 15, steps: 12, configurable: false },
         'framepack': { fps: 18, steps: 9, configurable: false },
         'framepack-fast': { fps: 12, steps: 7, configurable: false },

@@ -20,6 +20,7 @@ Each load_* function returns a dict with:
 
 import gc
 import os
+import shutil
 import sys
 import subprocess
 import torch
@@ -118,16 +119,8 @@ def _install_wan_native_backend():
     except subprocess.CalledProcessError as exc:
         print(f"[MM] Installation Wan standard échouée: {exc}")
 
-    print("[MM] Fallback: installation des dépendances Wan sans build isolé...")
+    print("[MM] Fallback: installation Wan sans dépendance flash_attn obligatoire...")
     fallback_commands = [
-        [
-            sys.executable,
-            "-m",
-            "pip",
-            "install",
-            "--no-build-isolation",
-            "flash_attn",
-        ],
         [
             sys.executable,
             "-m",
@@ -147,8 +140,27 @@ def _install_wan_native_backend():
             "git+https://github.com/Wan-Video/Wan2.2.git",
         ],
     ]
+    cuda_toolkit_available = bool(os.environ.get("CUDA_HOME") or os.environ.get("CUDA_PATH") or shutil.which("nvcc"))
+    if cuda_toolkit_available:
+        fallback_commands.insert(0, [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "--no-build-isolation",
+            "flash_attn",
+        ])
+    else:
+        print("[MM] flash_attn ignoré: nvcc/CUDA_HOME absent. Wan utilisera les kernels PyTorch si possible.")
+
     for fallback in fallback_commands:
-        subprocess.run(fallback, check=True)
+        try:
+            subprocess.run(fallback, check=True)
+        except subprocess.CalledProcessError as exc:
+            if "flash_attn" in fallback:
+                print(f"[MM] flash_attn indisponible ({exc}); poursuite sans flash_attn.")
+                continue
+            raise
 
 
 # ============================================================

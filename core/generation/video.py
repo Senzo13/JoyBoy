@@ -551,7 +551,7 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
         # Backend natif: 50 pour 5B, 40 pour 14B (configs officielles)
         num_steps = 40 if video_model == "wan-native-14b" else 50
     elif is_wan5b and video_model == "fastwan":
-        num_steps = 8  # FastWan: distillé DMD, fixe
+        num_steps = 3  # FastWan DMD: profil officiel 3 steps
     elif is_wan5b:
         # Wan 2.2 5B: configurable (slider, default 30, clamp 20-50)
         num_steps = max(20, min(50, num_steps))
@@ -663,7 +663,7 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
             wan_frames = ((wan_frames - 1) // 4) * 4 + 1
             print(f"[VIDEO] Frames ajusté: {target_frames} → {wan_frames} (formule 4k+1)")
 
-        WAN5B_GUIDANCE = 5.0
+        WAN5B_GUIDANCE = 1.0 if video_model == "fastwan" else 5.0
         if is_wan_t2v_14b:
             model_label = "Wan 2.2 T2V-14B MoE"
         elif video_model == "fastwan":
@@ -674,23 +674,38 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
         print(f"[VIDEO] Mode: {model_label} ({quality}, {mode_str}) — guidance={WAN5B_GUIDANCE}, steps={num_steps}, flow_shift={flow_shift}")
 
         import torch
+        import inspect
+
+        def _apply_fastwan_dmd_timesteps(pipeline_obj, kwargs):
+            if video_model != "fastwan":
+                return kwargs
+            try:
+                signature = inspect.signature(pipeline_obj.__call__)
+                if "timesteps" in signature.parameters:
+                    kwargs["timesteps"] = [1000, 757, 522]
+                    kwargs["num_inference_steps"] = 3
+                    print("[VIDEO] FastWan DMD timesteps officiels: 1000,757,522")
+            except Exception:
+                pass
+            return kwargs
 
         # Génération directe avec VAE slicing (activé au chargement du modèle)
         # Le slicing décode frame par frame, évitant l'OOM sans decode manuel
         if is_wan_t2v_14b:
             # T2V-14B: déjà chargé comme WanPipeline (T2V only)
             # Appel direct sans conversion
-            video_output = pipe(
-                prompt=video_prompt,
-                negative_prompt=negative_prompt,
-                height=target_h,
-                width=target_w,
-                num_frames=wan_frames,
-                num_inference_steps=num_steps,
-                guidance_scale=WAN5B_GUIDANCE,
-                generator=gen,
-                callback_on_step_end=video_step_callback,
-            )
+            call_kwargs = _apply_fastwan_dmd_timesteps(pipe, {
+                "prompt": video_prompt,
+                "negative_prompt": negative_prompt,
+                "height": target_h,
+                "width": target_w,
+                "num_frames": wan_frames,
+                "num_inference_steps": num_steps,
+                "guidance_scale": WAN5B_GUIDANCE,
+                "generator": gen,
+                "callback_on_step_end": video_step_callback,
+            })
+            video_output = pipe(**call_kwargs)
         elif is_t2v_mode:
             # T2V avec modèle I2V: besoin de WanPipeline (pas WanImageToVideoPipeline)
             # Créer dynamiquement à partir des composants existants
@@ -708,33 +723,35 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
             t2v_pipe.vae.to(dtype=torch.float32)
             print(f"[VIDEO] T2V VAE forcé float32 (fix qualité)")
 
-            video_output = t2v_pipe(
-                prompt=video_prompt,
-                negative_prompt=negative_prompt,
-                height=target_h,
-                width=target_w,
-                num_frames=wan_frames,
-                num_inference_steps=num_steps,
-                guidance_scale=WAN5B_GUIDANCE,
-                generator=gen,
-                callback_on_step_end=video_step_callback,
-            )
+            call_kwargs = _apply_fastwan_dmd_timesteps(t2v_pipe, {
+                "prompt": video_prompt,
+                "negative_prompt": negative_prompt,
+                "height": target_h,
+                "width": target_w,
+                "num_frames": wan_frames,
+                "num_inference_steps": num_steps,
+                "guidance_scale": WAN5B_GUIDANCE,
+                "generator": gen,
+                "callback_on_step_end": video_step_callback,
+            })
+            video_output = t2v_pipe(**call_kwargs)
             # Libérer le pipe T2V temporaire
             del t2v_pipe
         else:
             # I2V: avec image
-            video_output = pipe(
-                image=image_resized,
-                prompt=video_prompt,
-                negative_prompt=negative_prompt,
-                height=target_h,
-                width=target_w,
-                num_frames=wan_frames,
-                num_inference_steps=num_steps,
-                guidance_scale=WAN5B_GUIDANCE,
-                generator=gen,
-                callback_on_step_end=video_step_callback,
-            )
+            call_kwargs = _apply_fastwan_dmd_timesteps(pipe, {
+                "image": image_resized,
+                "prompt": video_prompt,
+                "negative_prompt": negative_prompt,
+                "height": target_h,
+                "width": target_w,
+                "num_frames": wan_frames,
+                "num_inference_steps": num_steps,
+                "guidance_scale": WAN5B_GUIDANCE,
+                "generator": gen,
+                "callback_on_step_end": video_step_callback,
+            })
+            video_output = pipe(**call_kwargs)
         generated_frames = video_output.frames[0]  # Liste de PIL Images
 
     elif is_wan:
