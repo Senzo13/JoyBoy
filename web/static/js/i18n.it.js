@@ -3495,5 +3495,14 @@ Object.assign(MESSAGES.it.onboarding, {
         setupStageHardwareShort: 'Hardware',
         setupStageModelsShort: 'Modelli',
         setupStageReadyShort: 'Pronto',
+        previewHardwareReady: 'Hardware rilevato, preparazione consigli...',
+        previewModelsReady: 'Catalogo modelli e provider verificati...',
+        previewGpu: 'GPU locale rilevata',
+        previewVram: 'Auto · in base alla macchina',
+        previewRam: 'Memoria di sistema pronta',
+        previewModel: 'Modello consigliato selezionato automaticamente',
+        previewQuality: 'Qualità adattata alla GPU',
+        previewImageModel: 'Flux Fill / SDXL',
+        previewTime: 'Tempo stimato dopo warmup',
     });
 })();

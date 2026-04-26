@@ -3722,5 +3722,14 @@ Object.assign(MESSAGES.fr.onboarding, {
         setupStageHardwareShort: 'Matériel',
         setupStageModelsShort: 'Modèles',
         setupStageReadyShort: 'Prêt',
+        previewHardwareReady: 'Matériel détecté, recommandations en préparation...',
+        previewModelsReady: 'Catalogue modèles et providers vérifiés...',
+        previewGpu: 'GPU local détecté',
+        previewVram: 'Auto · selon machine',
+        previewRam: 'Mémoire système prête',
+        previewModel: 'Modèle recommandé automatiquement',
+        previewQuality: 'Qualité adaptée au GPU',
+        previewImageModel: 'Flux Fill / SDXL',
+        previewTime: 'Temps estimé après warmup',
     });
 })();

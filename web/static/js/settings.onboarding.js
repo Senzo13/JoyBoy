@@ -4,6 +4,8 @@
 let currentOnboardingStep = 1;
 let selectedProfileType = null;
 let onboardingDoctor = null;
+let onboardingPreviewMode = false;
+let onboardingPreviewTimer = null;
 
 const ONBOARDING_SETUP_STAGES = [
     { id: 'runtime', threshold: 0, key: 'onboarding.setupStageRuntime', fallback: 'Initialisation locale' },
@@ -23,6 +25,57 @@ function setOnboardingSetupCopy() {
     Object.entries(stageLabels).forEach(([id, [key, fallback]]) => {
         setRuntimeText(`onboarding-setup-stage-${id}`, key, fallback);
     });
+}
+
+function isOnboardingPreviewRequested() {
+    try {
+        const params = new URLSearchParams(window.location.search);
+        return params.get('onboarding') === 'preview' || params.get('setup') === 'preview';
+    } catch (_) {
+        return false;
+    }
+}
+
+function getOnboardingPreviewInitialStep() {
+    if (!onboardingPreviewMode) return 1;
+    try {
+        const params = new URLSearchParams(window.location.search);
+        const value = (params.get('preview_step') || params.get('onboarding_step') || '').toLowerCase();
+        if (value === 'setup' || value === '3') return 3;
+        if (value === 'profile' || value === '2') return 2;
+        return 1;
+    } catch (_) {
+        return 1;
+    }
+}
+
+function clearOnboardingPreviewTimer() {
+    if (onboardingPreviewTimer) {
+        clearInterval(onboardingPreviewTimer);
+        onboardingPreviewTimer = null;
+    }
+}
+
+function applyOnboardingPreviewInitialStep() {
+    const targetStep = getOnboardingPreviewInitialStep();
+    if (!onboardingPreviewMode || targetStep <= 1) return;
+
+    [1, 2, 3].forEach(step => {
+        const el = document.getElementById(`onboarding-step-${step}`);
+        if (el) el.classList.toggle('hidden', step !== targetStep);
+    });
+
+    currentOnboardingStep = targetStep;
+    updateOnboardingDots(targetStep);
+    setOnboardingButtonState(targetStep);
+    resetOnboardingScroll();
+
+    if (targetStep === 2) {
+        document.getElementById('onboarding-name')?.focus();
+    } else if (targetStep === 3) {
+        document.getElementById('onboarding-next-btn')?.classList.add('hidden');
+        startOnboardingPreviewSetup();
+    }
 }
 
 function setSetupProgressLabel(key, fallback, params = {}) {
@@ -102,6 +155,15 @@ function setOnboardingButtonState(step = currentOnboardingStep) {
 }
 
 async function checkOnboarding() {
+    if (isOnboardingPreviewRequested()) {
+        onboardingPreviewMode = true;
+        loadProfile();
+        document.body.classList.add('app-hidden');
+        openOnboarding();
+        return;
+    }
+    onboardingPreviewMode = false;
+
     const forceOnboarding = sessionStorage.getItem('forceOnboardingAfterReset') === '1';
     if (forceOnboarding) {
         sessionStorage.removeItem('forceOnboardingAfterReset');
@@ -230,6 +292,7 @@ function openOnboarding() {
     currentOnboardingStep = 1;
     selectedProfileType = userProfile.type || 'casual';
     benchmarkData = null;
+    clearOnboardingPreviewTimer();
 
     // Hide the app while onboarding is active
     document.body.classList.add('app-hidden');
@@ -266,6 +329,7 @@ function openOnboarding() {
     setRuntimeText('setup-label', 'onboarding.analysing', 'Analyse...');
     document.getElementById('hardware-info').classList.add('hidden');
     document.getElementById('setup-eta').classList.add('hidden');
+    renderOnboardingReadiness(null);
     setRuntimeText('setup-status', 'onboarding.detectHardware', 'Détection du matériel...');
 
     // Reset selections & dots
@@ -277,11 +341,13 @@ function openOnboarding() {
     updateOnboardingDots(1);
     initOnboardingDots();
     setOnboardingButtonState(1);
+    applyOnboardingPreviewInitialStep();
 }
 
 function closeOnboarding() {
     const modal = document.getElementById('onboarding-modal');
     modal.classList.add('closing');
+    clearOnboardingPreviewTimer();
 
     // Remove keyboard listener
     document.removeEventListener('keydown', handleOnboardingKeydown);
@@ -385,6 +451,9 @@ function updateOnboardingDots(step) {
 
 function goToOnboardingStep(targetStep) {
     if (targetStep >= currentOnboardingStep || targetStep < 1) return;
+    if (onboardingPreviewMode && targetStep < 3) {
+        clearOnboardingPreviewTimer();
+    }
 
     const currentEl = document.getElementById(`onboarding-step-${currentOnboardingStep}`);
     const targetEl = document.getElementById(`onboarding-step-${targetStep}`);
@@ -454,7 +523,11 @@ function nextOnboardingStep() {
             document.getElementById('onboarding-next-btn').classList.add('hidden');
             setOnboardingButtonState(3);
             resetOnboardingScroll();
-            startBenchmark();
+            if (onboardingPreviewMode) {
+                startOnboardingPreviewSetup();
+            } else {
+                startBenchmark();
+            }
         }, 250);
         currentOnboardingStep = 3;
         updateOnboardingDots(3);
@@ -656,6 +729,127 @@ function renderOnboardingReadiness(doctorData) {
     }
 
     wrapper.classList.remove('hidden');
+}
+
+function showOnboardingPreviewHardware() {
+    const values = {
+        'hw-gpu': t('onboarding.previewGpu', 'GPU local détecté'),
+        'hw-vram': t('onboarding.previewVram', 'Auto · selon machine'),
+        'hw-ram': t('onboarding.previewRam', 'Mémoire système prête'),
+        'hw-model': t('onboarding.previewModel', 'Modèle recommandé automatiquement'),
+        'hw-quality': t('onboarding.previewQuality', 'Qualité adaptée au GPU'),
+        'hw-image-model': t('onboarding.previewImageModel', 'Flux Fill / SDXL'),
+        'hw-gen-time': t('onboarding.previewTime', 'Temps estimé après warmup'),
+    };
+
+    Object.entries(values).forEach(([id, value]) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = value;
+    });
+
+    document.getElementById('hardware-info')?.classList.remove('hidden');
+}
+
+function getOnboardingPreviewDoctor() {
+    return {
+        status: 'ok',
+        ready: true,
+        checks: [
+            { key: 'providers', status: 'warning' },
+            { key: 'ollama', status: 'ok' },
+            { key: 'packs', status: 'ok', detail: 'pack local avancé actif: preview' },
+            { key: 'storage', status: 'ok', detail: '128 GB libres · config locale ~/.joyboy' },
+            { key: 'models', status: 'ok' },
+        ],
+    };
+}
+
+function startOnboardingPreviewSetup() {
+    clearOnboardingPreviewTimer();
+
+    const progressLabel = document.getElementById('setup-label');
+    const setupStatus = document.getElementById('setup-status');
+    const circularProgress = document.getElementById('setup-progress');
+    const nextBtn = document.getElementById('onboarding-next-btn');
+    const skipBtn = document.getElementById('onboarding-skip-btn');
+
+    circularProgress.classList.remove('complete', 'error');
+    circularProgress.classList.add('analyzing');
+    document.getElementById('hardware-info')?.classList.add('hidden');
+    document.getElementById('setup-eta')?.classList.add('hidden');
+    renderOnboardingReadiness(null);
+    if (nextBtn) nextBtn.classList.add('hidden');
+    if (skipBtn) skipBtn.classList.remove('hidden');
+
+    const previewSteps = [
+        {
+            progress: 12,
+            stageKey: 'onboarding.setupStageRuntime',
+            stageFallback: 'Initialisation locale',
+            statusKey: 'onboarding.detectHardware',
+            statusFallback: 'Détection du matériel...',
+        },
+        {
+            progress: 38,
+            stageKey: 'onboarding.setupStageHardware',
+            stageFallback: 'Détection matériel',
+            statusKey: 'onboarding.previewHardwareReady',
+            statusFallback: 'Matériel détecté, recommandations en préparation...',
+            hardware: true,
+        },
+        {
+            progress: 72,
+            stageKey: 'onboarding.setupStageModels',
+            stageFallback: 'Préparation modèles',
+            statusKey: 'onboarding.previewModelsReady',
+            statusFallback: 'Catalogue modèles et providers vérifiés...',
+            readiness: true,
+        },
+        {
+            progress: 100,
+            stageKey: 'onboarding.setupStageReady',
+            stageFallback: 'Prêt à démarrer',
+            statusKey: 'onboarding.allReady',
+            statusFallback: 'Tout est prêt!',
+            complete: true,
+        },
+    ];
+
+    let stepIndex = 0;
+    const applyPreviewStep = () => {
+        const step = previewSteps[Math.min(stepIndex, previewSteps.length - 1)];
+        setProgress(step.progress);
+        setSetupProgressLabel(step.stageKey, step.stageFallback);
+        setRuntimeText(progressLabel, step.complete ? 'common.ready' : 'onboarding.analysing', step.complete ? 'PRÊT' : 'Analyse...');
+        setRuntimeText(setupStatus, step.statusKey, step.statusFallback);
+
+        if (step.hardware) {
+            showOnboardingPreviewHardware();
+        }
+        if (step.readiness || step.complete) {
+            onboardingDoctor = getOnboardingPreviewDoctor();
+            renderOnboardingReadiness(onboardingDoctor);
+        }
+        if (step.complete) {
+            circularProgress.classList.remove('analyzing');
+            circularProgress.classList.add('complete');
+            if (nextBtn) {
+                nextBtn.classList.remove('hidden');
+                nextBtn.disabled = false;
+                setRuntimeText(nextBtn, 'onboarding.start', 'Commencer');
+            }
+            if (skipBtn) {
+                skipBtn.classList.add('hidden');
+            }
+            clearOnboardingPreviewTimer();
+            return;
+        }
+
+        stepIndex += 1;
+    };
+
+    applyPreviewStep();
+    onboardingPreviewTimer = setInterval(applyPreviewStep, 900);
 }
 
 async function startBenchmark() {
@@ -1017,6 +1211,11 @@ function applyImageModels(imageModels) {
 }
 
 async function skipOnboarding() {
+    if (onboardingPreviewMode) {
+        closeOnboarding();
+        return;
+    }
+
     // Stop any running setup
     if (setupCheckInterval) {
         clearInterval(setupCheckInterval);
@@ -1055,6 +1254,11 @@ async function skipOnboarding() {
 
 async function completeOnboarding() {
     const name = document.getElementById('onboarding-name').value.trim();
+
+    if (onboardingPreviewMode) {
+        closeOnboarding();
+        return;
+    }
 
     userProfile.hasCompletedOnboarding = true;
     userProfile.type = selectedProfileType || 'casual';

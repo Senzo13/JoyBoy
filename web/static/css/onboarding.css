@@ -111,8 +111,8 @@
     align-items: center;
     justify-content: center;
     gap: 10px;
-    min-height: 98px;
-    padding: 18px 180px 14px;
+    min-height: 88px;
+    padding: 14px 180px 12px;
     border-bottom: 1px solid rgba(255,255,255,0.055);
     background:
         radial-gradient(circle at 50% 0%, rgba(59, 130, 246, 0.12), transparent 52%),
@@ -139,7 +139,7 @@
     min-height: 0;
     overflow-x: hidden;
     overflow-y: scroll;
-    padding: 24px 28px 30px;
+    padding: 20px 28px 26px;
     scrollbar-gutter: stable;
     scrollbar-width: thin;
     scrollbar-color: rgba(96, 165, 250, 0.72) rgba(255, 255, 255, 0.075);
@@ -259,8 +259,8 @@
     width: 100%;
     display: flex;
     flex-direction: column;
-    gap: 10px;
-    margin-bottom: 18px;
+    gap: 8px;
+    margin-bottom: 14px;
 }
 
 .onboarding-kicker {
@@ -279,7 +279,7 @@
 }
 
 .onboarding-hero-title {
-    font-size: 28px;
+    font-size: 25px;
     line-height: 1.14;
     letter-spacing: -0.03em;
     font-weight: 700;
@@ -292,8 +292,8 @@
 .onboarding-body-copy,
 .onboarding-focus-hint {
     width: 100%;
-    font-size: 14px;
-    line-height: 1.65;
+    font-size: 13px;
+    line-height: 1.5;
     color: #a4afc3;
     text-align: left;
 }
@@ -301,34 +301,34 @@
 .onboarding-capability-grid {
     width: 100%;
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 12px;
-    margin-bottom: 18px;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 8px;
+    margin-bottom: 14px;
 }
 
 .onboarding-capability-card {
-    padding: 14px;
-    border-radius: 18px;
+    padding: 10px;
+    border-radius: 12px;
     background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.015));
     border: 1px solid rgba(255,255,255,0.06);
-    min-height: 110px;
+    min-height: 86px;
     text-align: left;
 }
 
 .onboarding-capability-card:last-child {
-    grid-column: 1 / -1;
+    grid-column: auto;
 }
 
 .onboarding-capability-icon {
-    width: 34px;
-    height: 34px;
-    border-radius: 12px;
+    width: 28px;
+    height: 28px;
+    border-radius: 10px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     background: rgba(59, 130, 246, 0.12);
     color: #60a5fa;
-    margin-bottom: 12px;
+    margin-bottom: 8px;
 }
 
 .onboarding-capability-icon svg {
@@ -338,15 +338,17 @@
 
 .onboarding-capability-title {
     color: #f8fafc;
-    font-size: 14px;
+    font-size: 12px;
+    line-height: 1.25;
     font-weight: 600;
-    margin-bottom: 5px;
+    margin-bottom: 0;
 }
 
 .onboarding-capability-desc {
     color: #8d99ae;
     font-size: 12px;
     line-height: 1.55;
+    display: none;
 }
 
 .onboarding-focus-block,
@@ -927,7 +929,7 @@
     }
 
     .onboarding-capability-grid {
-        grid-template-columns: 1fr;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
     .onboarding-capability-card:last-child {

@@ -335,15 +335,18 @@ body {
 }
 
 .loading-heading {
+    flex: 1 1 auto;
     min-width: 0;
 }
 
 .loading-subtitle {
+    max-width: 100%;
     font-size: 14px;
     line-height: 1.5;
     color: rgba(172, 184, 204, 0.86);
     margin-bottom: 4px;
     letter-spacing: 0;
+    white-space: normal;
 }
 
 .loading-stage-rail {

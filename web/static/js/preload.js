@@ -52,6 +52,16 @@ function preloadT(key, fallback, params = {}) {
     return window.JoyBoyI18n?.t?.(key, params, fallback) || fallback;
 }
 
+function shouldSkipLoadingForPreview() {
+    try {
+        const params = new URLSearchParams(window.location.search);
+        return params.get('skip_loading') === '1'
+            && (params.get('onboarding') === 'preview' || params.get('setup') === 'preview');
+    } catch (_) {
+        return false;
+    }
+}
+
 function buildCacheSummary(summary, ready = false) {
     if (!summary) {
         return preloadT('loading.cacheSummaryFallback', 'Vérification du cache local et des dépendances…');
@@ -316,6 +326,12 @@ function hideLoadingScreen() {
 document.addEventListener('DOMContentLoaded', function() {
     // Petit délai pour que le CSS soit chargé
     localizeLoadingShell();
+    if (shouldSkipLoadingForPreview()) {
+        const loadingScreen = document.getElementById('loading-screen');
+        if (loadingScreen) loadingScreen.remove();
+        preloadComplete = true;
+        return;
+    }
     startLoadingTips();
     setTimeout(initPreload, 100);
 });
