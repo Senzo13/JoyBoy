@@ -14,6 +14,19 @@ machine-specific packs stay outside git.
 JoyBoy does not auto-pull these heavy models. Install them explicitly with
 Ollama when the machine has enough VRAM/RAM.
 
+## Runtime optimization
+
+On CUDA GPUs, video generation enables cuDNN benchmarking and TF32 matmul for
+faster inference without changing model choice, resolution, steps, or prompts.
+High-VRAM 5B Wan/FastWan pipelines prefer GPU-direct placement when they fit;
+large MoE/14B pipelines keep CPU offload when needed.
+
+Set `JOYBOY_VIDEO_FORCE_CPU_OFFLOAD=1` to force Diffusers video pipelines back
+to CPU offload, or `JOYBOY_WAN_NATIVE_FORCE_OFFLOAD=1` to force native Wan 5B
+offload if a specific machine is too tight on VRAM. Set
+`JOYBOY_VIDEO_DISABLE_OOM_RETRY=1` to disable the automatic Wan/FastWan retry
+from GPU-direct to CPU offload.
+
 ## Video continuation
 
 Each generated video now gets a persisted session under `output/videos`, which

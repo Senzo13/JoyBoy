@@ -6,6 +6,7 @@ Video Generation Optimizations
 """
 
 import torch
+import os
 import subprocess
 import sys
 from functools import lru_cache
@@ -14,6 +15,32 @@ from functools import lru_cache
 IS_WINDOWS = sys.platform == 'win32'
 IS_LINUX = sys.platform == 'linux'
 IS_MAC = sys.platform == 'darwin'
+
+
+@lru_cache(maxsize=1)
+def configure_video_torch_runtime():
+    """Enable CUDA runtime knobs that improve inference throughput without changing model settings."""
+    if not torch.cuda.is_available():
+        return False
+
+    try:
+        torch.backends.cudnn.benchmark = True
+    except Exception:
+        pass
+
+    try:
+        torch.backends.cuda.matmul.allow_tf32 = True
+        torch.backends.cudnn.allow_tf32 = True
+    except Exception:
+        pass
+
+    try:
+        torch.set_float32_matmul_precision("high")
+    except Exception:
+        pass
+
+    print("[OPT] CUDA video runtime: cuDNN benchmark + TF32 matmul actifs")
+    return True
 
 
 # ============================================================================
@@ -439,6 +466,17 @@ def apply_optimized_offload(pipe, vram_gb, model_type="auto"):
         vram_gb: Available VRAM in GB
         model_type: For model-specific optimizations
     """
+    force_cpu_offload = os.environ.get("JOYBOY_VIDEO_FORCE_CPU_OFFLOAD", "").strip().lower() in {"1", "true", "yes", "on"}
+    if force_cpu_offload:
+        try:
+            pipe.enable_model_cpu_offload()
+            print(f"[OPT] model_cpu_offload forcé par JOYBOY_VIDEO_FORCE_CPU_OFFLOAD ({vram_gb:.1f}GB VRAM)")
+            return "model_cpu_offload"
+        except Exception:
+            pipe.enable_sequential_cpu_offload()
+            print(f"[OPT] sequential_cpu_offload forcé fallback ({vram_gb:.1f}GB VRAM)")
+            return "sequential_cpu_offload"
+
     # Detect pipelines with text encoders incompatible with group offload
     pipe_class = type(pipe).__name__
     has_text_encoder_issue = any(x in pipe_class for x in [
@@ -446,7 +484,8 @@ def apply_optimized_offload(pipe, vram_gb, model_type="auto"):
     ])
 
     # Detect MoE models (2 transformers) - need cpu_offload even on high-end GPUs
-    is_moe = hasattr(pipe, 'transformer_2')
+    secondary_transformer = getattr(pipe, 'transformer_2', None)
+    is_moe = secondary_transformer is not None
 
     # Detect large dense models (14B+) - also need cpu_offload on 40GB
     # Wan 2.1 14B: transformer ~28GB + text_encoder ~9GB = ~37GB (doesn't fit in 40GB with intermediates)
@@ -575,6 +614,8 @@ def optimize_video_pipeline(pipe, vram_gb, enable_sageattention=True, enable_fp8
         "offload_strategy": None,
         "high_end_mode": False
     }
+
+    configure_video_torch_runtime()
 
     # High-end GPU mode (36GB+ réel, nominalement 40GB+): skip FP8, use native bf16
     # Note: A100 40GB reports ~39.4GB, A6000 48GB reports ~47GB

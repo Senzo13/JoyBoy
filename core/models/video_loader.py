@@ -1331,6 +1331,9 @@ def load_wan_native(model_name, custom_cache):
 
     from huggingface_hub import snapshot_download
     from core.models import VIDEO_MODELS
+    from core.generation.video_optimizations import configure_video_torch_runtime
+
+    configure_video_torch_runtime()
 
     model_info = VIDEO_MODELS[model_name]
     model_id = model_info["id"]

@@ -177,6 +177,8 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
 
     Retourne: (video_base64, last_frame, format)
     """
+    import torch
+
     continuation_context = continuation_context or {}
     source_video_path = continuation_context.get("source_video_path")
     persisted_continuation = bool(continuation_context.get("source_session_id"))
@@ -264,6 +266,8 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
 
     # Le pipe est injecté par l'appelant (ModelManager via generation_pipeline)
     from core.models import VRAM_GB
+    from core.generation.video_optimizations import configure_video_torch_runtime
+    configure_video_torch_runtime()
     if pipe is None:
         raise ValueError("pipe must be provided (injected by ModelManager)")
 
@@ -626,23 +630,44 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
         # max_area pour calcul latent (720p = 1280*704 = 901120, 480p = 832*480 = 399360)
         max_area = target_w * target_h
 
-        print(f"[VIDEO] Mode: {video_model} (natif) — guidance={guidance}, steps={num_steps}, shift={shift}")
+        native_gpu_direct = (
+            video_model == "wan-native-5b"
+            and float(VRAM_GB or 0) >= 36
+            and os.environ.get("JOYBOY_WAN_NATIVE_FORCE_OFFLOAD", "").strip().lower() not in {"1", "true", "yes", "on"}
+        )
+        native_offload = not native_gpu_direct
+        offload_label = "gpu_direct" if native_gpu_direct else "offload"
+        print(f"[VIDEO] Mode: {video_model} (natif) — guidance={guidance}, steps={num_steps}, shift={shift}, {offload_label}")
 
         # Génération via API native
         # Le pipe est un WanI2V (pas un DiffusionPipeline)
-        video_tensor = pipe.generate(
-            input_prompt=video_prompt,
-            img=image_resized,
-            max_area=max_area,
-            frame_num=wan_frames,
-            shift=shift,
-            sample_solver='unipc',
-            sampling_steps=num_steps,
-            guide_scale=guidance,
-            n_prompt=negative_prompt,
-            seed=42,
-            offload_model=True,  # Économise VRAM
-        )
+        def _run_native_wan(offload_model: bool):
+            with torch.inference_mode():
+                return pipe.generate(
+                    input_prompt=video_prompt,
+                    img=image_resized,
+                    max_area=max_area,
+                    frame_num=wan_frames,
+                    shift=shift,
+                    sample_solver='unipc',
+                    sampling_steps=num_steps,
+                    guide_scale=guidance,
+                    n_prompt=negative_prompt,
+                    seed=42,
+                    offload_model=offload_model,
+                )
+
+        try:
+            video_tensor = _run_native_wan(native_offload)
+        except RuntimeError as exc:
+            is_oom = "out of memory" in str(exc).lower() or "cuda oom" in str(exc).lower()
+            if not native_offload and is_oom:
+                print("[VIDEO] Wan natif GPU direct OOM, retry avec offload CPU")
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                video_tensor = _run_native_wan(True)
+            else:
+                raise
         # video_tensor: (C, N, H, W) float, range [0, 1]
         # Convertir en liste de PIL Images
         import torch
@@ -711,6 +736,31 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
                 pass
             return kwargs
 
+        wan5b_cpu_retry_done = False
+
+        def _run_wan5b_pipeline(pipeline_obj, call_kwargs):
+            nonlocal wan5b_cpu_retry_done
+            try:
+                with torch.inference_mode():
+                    return pipeline_obj(**call_kwargs)
+            except RuntimeError as exc:
+                is_oom = "out of memory" in str(exc).lower() or "cuda oom" in str(exc).lower()
+                force_offload = os.environ.get("JOYBOY_VIDEO_DISABLE_OOM_RETRY", "").strip().lower() in {"1", "true", "yes", "on"}
+                if not is_oom or wan5b_cpu_retry_done or force_offload:
+                    raise
+
+                enable_offload = getattr(pipeline_obj, "enable_model_cpu_offload", None)
+                if not callable(enable_offload):
+                    raise
+
+                wan5b_cpu_retry_done = True
+                print("[VIDEO] Wan/FastWan GPU direct OOM, retry avec model_cpu_offload")
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                enable_offload()
+                with torch.inference_mode():
+                    return pipeline_obj(**call_kwargs)
+
         # Génération directe avec VAE slicing (activé au chargement du modèle)
         # Le slicing décode frame par frame, évitant l'OOM sans decode manuel
         if is_wan_t2v_14b:
@@ -727,7 +777,7 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
                 "generator": gen,
                 "callback_on_step_end": video_step_callback,
             })
-            video_output = pipe(**call_kwargs)
+            video_output = _run_wan5b_pipeline(pipe, call_kwargs)
         elif is_t2v_mode:
             # T2V avec modèle I2V: besoin de WanPipeline (pas WanImageToVideoPipeline)
             # Créer dynamiquement à partir des composants existants
@@ -756,7 +806,7 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
                 "generator": gen,
                 "callback_on_step_end": video_step_callback,
             })
-            video_output = t2v_pipe(**call_kwargs)
+            video_output = _run_wan5b_pipeline(t2v_pipe, call_kwargs)
             # Libérer le pipe T2V temporaire
             del t2v_pipe
         else:
@@ -773,7 +823,7 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
                 "generator": gen,
                 "callback_on_step_end": video_step_callback,
             })
-            video_output = pipe(**call_kwargs)
+            video_output = _run_wan5b_pipeline(pipe, call_kwargs)
         generated_frames = video_output.frames[0]  # Liste de PIL Images
 
     elif is_wan:
@@ -805,36 +855,38 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
             print(f"[VIDEO] Mode: Wan 2.2 MoE A14B — guidance={WAN22_GUIDANCE}, steps={WAN22_STEPS}")
 
             # Génération directe avec VAE slicing
-            video_frames = pipe(
-                image=image_resized,
-                prompt=video_prompt,
-                negative_prompt=negative_prompt,
-                height=target_h,
-                width=target_w,
-                num_frames=wan_frames,
-                num_inference_steps=WAN22_STEPS,
-                guidance_scale=WAN22_GUIDANCE,
-                generator=gen,
-                callback_on_step_end=video_step_callback,
-            ).frames[0]
+            with torch.inference_mode():
+                video_frames = pipe(
+                    image=image_resized,
+                    prompt=video_prompt,
+                    negative_prompt=negative_prompt,
+                    height=target_h,
+                    width=target_w,
+                    num_frames=wan_frames,
+                    num_inference_steps=WAN22_STEPS,
+                    guidance_scale=WAN22_GUIDANCE,
+                    generator=gen,
+                    callback_on_step_end=video_step_callback,
+                ).frames[0]
             generated_frames = list(video_frames)
         else:
             # Wan 2.1 I2V 14B
             print(f"[VIDEO] Mode: Wan 2.1 I2V 14B (480P) — guidance=5.0, steps={num_steps}")
 
             # Génération directe avec VAE slicing
-            video_frames = pipe(
-                image=image_resized,
-                prompt=video_prompt,
-                negative_prompt=negative_prompt,
-                height=target_h,
-                width=target_w,
-                num_frames=wan_frames,
-                num_inference_steps=num_steps,
-                guidance_scale=5.0,
-                generator=gen,
-                callback_on_step_end=video_step_callback,
-            ).frames[0]
+            with torch.inference_mode():
+                video_frames = pipe(
+                    image=image_resized,
+                    prompt=video_prompt,
+                    negative_prompt=negative_prompt,
+                    height=target_h,
+                    width=target_w,
+                    num_frames=wan_frames,
+                    num_inference_steps=num_steps,
+                    guidance_scale=5.0,
+                    generator=gen,
+                    callback_on_step_end=video_step_callback,
+                ).frames[0]
             generated_frames = list(video_frames)
 
     elif is_hunyuan:
@@ -849,24 +901,26 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
         print(f"[VIDEO] Mode: HunyuanVideo 1.5 I2V (480P) — steps={num_steps}, frames={target_frames}")
 
         try:
-            video_frames = pipe(
-                prompt=video_prompt,
-                image=image_resized,
-                generator=gen,
-                num_frames=target_frames,
-                num_inference_steps=num_steps,
-                callback_on_step_end=video_step_callback,
-            ).frames[0]
+            with torch.inference_mode():
+                video_frames = pipe(
+                    prompt=video_prompt,
+                    image=image_resized,
+                    generator=gen,
+                    num_frames=target_frames,
+                    num_inference_steps=num_steps,
+                    callback_on_step_end=video_step_callback,
+                ).frames[0]
         except TypeError:
             # Fallback sans callback
             print("[VIDEO] Fallback: génération sans progress bar")
-            video_frames = pipe(
-                prompt=video_prompt,
-                image=image_resized,
-                generator=gen,
-                num_frames=target_frames,
-                num_inference_steps=num_steps,
-            ).frames[0]
+            with torch.inference_mode():
+                video_frames = pipe(
+                    prompt=video_prompt,
+                    image=image_resized,
+                    generator=gen,
+                    num_frames=target_frames,
+                    num_inference_steps=num_steps,
+                ).frames[0]
 
         generated_frames = list(video_frames)
 
@@ -922,35 +976,37 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
 
         framepack_output_type = "latent" if low_vram_framepack else "pil"
         try:
-            framepack_result = pipe(
-                image=image_resized,
-                prompt=video_prompt,
-                negative_prompt=negative_prompt,
-                height=target_h,
-                width=target_w,
-                num_frames=framepack_frames,
-                num_inference_steps=num_steps,
-                guidance_scale=framepack_guidance,
-                generator=gen,
-                sampling_type="vanilla",
-                output_type=framepack_output_type,
-                callback_on_step_end=video_step_callback,
-            ).frames
+            with torch.inference_mode():
+                framepack_result = pipe(
+                    image=image_resized,
+                    prompt=video_prompt,
+                    negative_prompt=negative_prompt,
+                    height=target_h,
+                    width=target_w,
+                    num_frames=framepack_frames,
+                    num_inference_steps=num_steps,
+                    guidance_scale=framepack_guidance,
+                    generator=gen,
+                    sampling_type="vanilla",
+                    output_type=framepack_output_type,
+                    callback_on_step_end=video_step_callback,
+                ).frames
         except TypeError:
             print("[VIDEO] FramePack fallback: génération sans callback")
-            framepack_result = pipe(
-                image=image_resized,
-                prompt=video_prompt,
-                negative_prompt=negative_prompt,
-                height=target_h,
-                width=target_w,
-                num_frames=framepack_frames,
-                num_inference_steps=num_steps,
-                guidance_scale=framepack_guidance,
-                generator=gen,
-                sampling_type="vanilla",
-                output_type=framepack_output_type,
-            ).frames
+            with torch.inference_mode():
+                framepack_result = pipe(
+                    image=image_resized,
+                    prompt=video_prompt,
+                    negative_prompt=negative_prompt,
+                    height=target_h,
+                    width=target_w,
+                    num_frames=framepack_frames,
+                    num_inference_steps=num_steps,
+                    guidance_scale=framepack_guidance,
+                    generator=gen,
+                    sampling_type="vanilla",
+                    output_type=framepack_output_type,
+                ).frames
 
         if low_vram_framepack:
             video_frames = _decode_framepack_latents(pipe, framepack_result, max_frames=framepack_frames)
@@ -1010,7 +1066,8 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
 
         # output_type="np" pour pouvoir encoder audio+video ensemble
         gen_kwargs["output_type"] = "np"
-        result = pipe(**gen_kwargs)
+        with torch.inference_mode():
+            result = pipe(**gen_kwargs)
 
         # LTX2Pipeline retourne (video, audio) en tuple
         if isinstance(result, tuple) and len(result) >= 2:
@@ -1068,15 +1125,16 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
         # Génération via DistilledPipeline natif
         # API: prompt, seed, height, width, num_frames, frame_rate, images
         # Retourne: (Iterator[Tensor], Tensor) — video frames iterator + audio
-        result = pipe(
-            prompt=video_prompt,
-            seed=42,
-            height=target_h,
-            width=target_w,
-            num_frames=ltx2_frames,
-            frame_rate=float(fps),
-            images=images_arg,
-        )
+        with torch.inference_mode():
+            result = pipe(
+                prompt=video_prompt,
+                seed=42,
+                height=target_h,
+                width=target_w,
+                num_frames=ltx2_frames,
+                frame_rate=float(fps),
+                images=images_arg,
+            )
 
         # Output: (video_frames_iterator, audio_tensor)
         if isinstance(result, tuple) and len(result) >= 2:
@@ -1202,96 +1260,15 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
                 print(f"[VIDEO] Mode: LTX-Video 2B distillé multi-scale")
                 print(f"[VIDEO]   Pass 1: {ds_w}x{ds_h} → {len(PASS1_TIMESTEPS)} steps")
 
-                latents = pipe(
-                    conditions=[condition],
-                    prompt=video_prompt,
-                    negative_prompt=negative_prompt,
-                    height=ds_h,
-                    width=ds_w,
-                    num_frames=ltx_frames,
-                    timesteps=PASS1_TIMESTEPS,
-                    guidance_scale=1.0,
-                    guidance_rescale=0.7,
-                    decode_timestep=0.05,
-                    decode_noise_scale=0.025,
-                    image_cond_noise_scale=0.0,
-                    generator=gen,
-                    callback_on_step_end=video_step_callback,
-                    output_type="latent",
-                ).frames
-
-                # Upscale latents (2x spatial)
-                print(f"[VIDEO]   Upscale latents ({ds_w}x{ds_h} → {ds_w*2}x{ds_h*2})")
-                upscaled_latents = upscale_pipe(
-                    latents=latents,
-                    adain_factor=1.0,
-                    tone_map_compression_ratio=0.6,
-                    output_type="latent",
-                ).frames
-
-                # Pass 2: raffiner à pleine résolution → latents
-                up_h, up_w = ds_h * 2, ds_w * 2
-                decode_h, decode_w = up_h, up_w
-                print(f"[VIDEO]   Pass 2: {up_w}x{up_h} → {len(PASS2_TIMESTEPS)} steps (raffinement)")
-
-                ltx_latents = pipe(
-                    conditions=[condition],
-                    prompt=video_prompt,
-                    negative_prompt=negative_prompt,
-                    height=up_h,
-                    width=up_w,
-                    num_frames=ltx_frames,
-                    denoise_strength=0.999,
-                    timesteps=PASS2_TIMESTEPS,
-                    latents=upscaled_latents,
-                    guidance_scale=1.0,
-                    guidance_rescale=0.7,
-                    decode_timestep=0.05,
-                    decode_noise_scale=0.025,
-                    image_cond_noise_scale=0.0,
-                    generator=gen,
-                    callback_on_step_end=video_step_callback,
-                    output_type="latent",
-                ).frames
-
-            else:
-                # === SINGLE-PASS (fallback sans upscaler) ===
-                print(f"[VIDEO] Mode: LTX-Video 2B distillé single-pass — {len(PASS1_TIMESTEPS)} steps")
-
-                ltx_latents = pipe(
-                    conditions=[condition],
-                    prompt=video_prompt,
-                    negative_prompt=negative_prompt,
-                    height=target_h,
-                    width=target_w,
-                    num_frames=ltx_frames,
-                    timesteps=PASS1_TIMESTEPS,
-                    guidance_scale=1.0,
-                    guidance_rescale=0.7,
-                    decode_timestep=0.05,
-                    decode_noise_scale=0.025,
-                    image_cond_noise_scale=0.0,
-                    generator=gen,
-                    callback_on_step_end=video_step_callback,
-                    output_type="latent",
-                ).frames
-
-            # === PASSES DE RAFFINEMENT (optionnel) ===
-            if refine_passes > 0 and ltx_latents is not None:
-                REFINE_TIMESTEPS = [1000, 909, 725, 421, 0]
-                for rp in range(refine_passes):
-                    strength = max(0.05, 0.15 - rp * 0.02)  # 0.15, 0.13, 0.11, 0.09, 0.07
-                    print(f"[VIDEO]   Refine pass {rp+1}/{refine_passes} (denoise_strength={strength})")
-                    ltx_latents = pipe(
+                with torch.inference_mode():
+                    latents = pipe(
                         conditions=[condition],
                         prompt=video_prompt,
                         negative_prompt=negative_prompt,
-                        height=decode_h,
-                        width=decode_w,
+                        height=ds_h,
+                        width=ds_w,
                         num_frames=ltx_frames,
-                        denoise_strength=strength,
-                        timesteps=REFINE_TIMESTEPS,
-                        latents=ltx_latents,
+                        timesteps=PASS1_TIMESTEPS,
                         guidance_scale=1.0,
                         guidance_rescale=0.7,
                         decode_timestep=0.05,
@@ -1302,25 +1279,112 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
                         output_type="latent",
                     ).frames
 
+                # Upscale latents (2x spatial)
+                print(f"[VIDEO]   Upscale latents ({ds_w}x{ds_h} → {ds_w*2}x{ds_h*2})")
+                with torch.inference_mode():
+                    upscaled_latents = upscale_pipe(
+                        latents=latents,
+                        adain_factor=1.0,
+                        tone_map_compression_ratio=0.6,
+                        output_type="latent",
+                    ).frames
+
+                # Pass 2: raffiner à pleine résolution → latents
+                up_h, up_w = ds_h * 2, ds_w * 2
+                decode_h, decode_w = up_h, up_w
+                print(f"[VIDEO]   Pass 2: {up_w}x{up_h} → {len(PASS2_TIMESTEPS)} steps (raffinement)")
+
+                with torch.inference_mode():
+                    ltx_latents = pipe(
+                        conditions=[condition],
+                        prompt=video_prompt,
+                        negative_prompt=negative_prompt,
+                        height=up_h,
+                        width=up_w,
+                        num_frames=ltx_frames,
+                        denoise_strength=0.999,
+                        timesteps=PASS2_TIMESTEPS,
+                        latents=upscaled_latents,
+                        guidance_scale=1.0,
+                        guidance_rescale=0.7,
+                        decode_timestep=0.05,
+                        decode_noise_scale=0.025,
+                        image_cond_noise_scale=0.0,
+                        generator=gen,
+                        callback_on_step_end=video_step_callback,
+                        output_type="latent",
+                    ).frames
+
+            else:
+                # === SINGLE-PASS (fallback sans upscaler) ===
+                print(f"[VIDEO] Mode: LTX-Video 2B distillé single-pass — {len(PASS1_TIMESTEPS)} steps")
+
+                with torch.inference_mode():
+                    ltx_latents = pipe(
+                        conditions=[condition],
+                        prompt=video_prompt,
+                        negative_prompt=negative_prompt,
+                        height=target_h,
+                        width=target_w,
+                        num_frames=ltx_frames,
+                        timesteps=PASS1_TIMESTEPS,
+                        guidance_scale=1.0,
+                        guidance_rescale=0.7,
+                        decode_timestep=0.05,
+                        decode_noise_scale=0.025,
+                        image_cond_noise_scale=0.0,
+                        generator=gen,
+                        callback_on_step_end=video_step_callback,
+                        output_type="latent",
+                    ).frames
+
+            # === PASSES DE RAFFINEMENT (optionnel) ===
+            if refine_passes > 0 and ltx_latents is not None:
+                REFINE_TIMESTEPS = [1000, 909, 725, 421, 0]
+                for rp in range(refine_passes):
+                    strength = max(0.05, 0.15 - rp * 0.02)  # 0.15, 0.13, 0.11, 0.09, 0.07
+                    print(f"[VIDEO]   Refine pass {rp+1}/{refine_passes} (denoise_strength={strength})")
+                    with torch.inference_mode():
+                        ltx_latents = pipe(
+                            conditions=[condition],
+                            prompt=video_prompt,
+                            negative_prompt=negative_prompt,
+                            height=decode_h,
+                            width=decode_w,
+                            num_frames=ltx_frames,
+                            denoise_strength=strength,
+                            timesteps=REFINE_TIMESTEPS,
+                            latents=ltx_latents,
+                            guidance_scale=1.0,
+                            guidance_rescale=0.7,
+                            decode_timestep=0.05,
+                            decode_noise_scale=0.025,
+                            image_cond_noise_scale=0.0,
+                            generator=gen,
+                            callback_on_step_end=video_step_callback,
+                            output_type="latent",
+                        ).frames
+
             # === DECODE FINAL ===
             # Le VAE LTX nécessite temb (timestep embedding) qu'on n'a pas lors du décodage manuel.
             # Solution: refaire un pass avec output_type="pil" pour que le pipeline décode lui-même.
             print(f"[VIDEO]   Décodage VAE (via pipeline)...")
-            video_frames = pipe(
-                conditions=[condition],
-                prompt=video_prompt,
-                negative_prompt=negative_prompt,
-                height=decode_h,
-                width=decode_w,
-                num_frames=ltx_frames,
-                latents=ltx_latents,
-                denoise_strength=0.0,  # Pas de débruitage, juste décoder
-                guidance_scale=1.0,
-                decode_timestep=0.05,
-                decode_noise_scale=0.025,
-                generator=gen,
-                output_type="pil",
-            ).frames[0]
+            with torch.inference_mode():
+                video_frames = pipe(
+                    conditions=[condition],
+                    prompt=video_prompt,
+                    negative_prompt=negative_prompt,
+                    height=decode_h,
+                    width=decode_w,
+                    num_frames=ltx_frames,
+                    latents=ltx_latents,
+                    denoise_strength=0.0,  # Pas de débruitage, juste décoder
+                    guidance_scale=1.0,
+                    decode_timestep=0.05,
+                    decode_noise_scale=0.025,
+                    generator=gen,
+                    output_type="pil",
+                ).frames[0]
 
             # Resize final à la résolution cible si différent (multi-scale)
             if decode_h != target_h or decode_w != target_w:
@@ -1331,38 +1395,40 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
             print(f"[VIDEO] Mode: LTX-Video 2B base — guidance={LTX_GUIDANCE}, steps={num_steps}")
 
             if _use_turbo_vaed:
-                result_base = pipe(
-                    image=image_resized,
-                    prompt=video_prompt,
-                    negative_prompt=negative_prompt,
-                    height=target_h,
-                    width=target_w,
-                    num_frames=ltx_frames,
-                    num_inference_steps=num_steps,
-                    guidance_scale=LTX_GUIDANCE,
-                    generator=gen,
-                    decode_timestep=0.03,
-                    decode_noise_scale=0.025,
-                    callback_on_step_end=video_step_callback,
-                    output_type="latent",
-                )
+                with torch.inference_mode():
+                    result_base = pipe(
+                        image=image_resized,
+                        prompt=video_prompt,
+                        negative_prompt=negative_prompt,
+                        height=target_h,
+                        width=target_w,
+                        num_frames=ltx_frames,
+                        num_inference_steps=num_steps,
+                        guidance_scale=LTX_GUIDANCE,
+                        generator=gen,
+                        decode_timestep=0.03,
+                        decode_noise_scale=0.025,
+                        callback_on_step_end=video_step_callback,
+                        output_type="latent",
+                    )
                 latents_base = result_base.frames
                 video_frames = turbo_vaed_decode_ltx(latents_base, pipe.vae, skip_denorm=_turbo_skip_denorm)
             else:
-                video_frames = pipe(
-                    image=image_resized,
-                    prompt=video_prompt,
-                    negative_prompt=negative_prompt,
-                    height=target_h,
-                    width=target_w,
-                    num_frames=ltx_frames,
-                    num_inference_steps=num_steps,
-                    guidance_scale=LTX_GUIDANCE,
-                    generator=gen,
-                    decode_timestep=0.03,
-                    decode_noise_scale=0.025,
-                    callback_on_step_end=video_step_callback,
-                ).frames[0]
+                with torch.inference_mode():
+                    video_frames = pipe(
+                        image=image_resized,
+                        prompt=video_prompt,
+                        negative_prompt=negative_prompt,
+                        height=target_h,
+                        width=target_w,
+                        num_frames=ltx_frames,
+                        num_inference_steps=num_steps,
+                        guidance_scale=LTX_GUIDANCE,
+                        generator=gen,
+                        decode_timestep=0.03,
+                        decode_noise_scale=0.025,
+                        callback_on_step_end=video_step_callback,
+                    ).frames[0]
 
         generated_frames = list(video_frames)
 
@@ -1400,33 +1466,35 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
         if supports_image:
             # CogVideoX-5B I2V — dynamic_cfg désactivé (bug diffusers #9641)
             print(f"[VIDEO] Mode: Image-to-Video (I2V) — guidance={COG_GUIDANCE}, steps={COG_STEPS}")
-            video_frames = pipe(
-                prompt=video_prompt,
-                negative_prompt=negative_prompt_cog,
-                image=image_resized,
-                num_videos_per_prompt=1,
-                num_inference_steps=COG_STEPS,
-                num_frames=cog_frames,
-                height=target_h,
-                width=target_w,
-                guidance_scale=COG_GUIDANCE,
-                generator=gen,
-                callback_on_step_end=video_step_callback,
-            ).frames[0]
+            with torch.inference_mode():
+                video_frames = pipe(
+                    prompt=video_prompt,
+                    negative_prompt=negative_prompt_cog,
+                    image=image_resized,
+                    num_videos_per_prompt=1,
+                    num_inference_steps=COG_STEPS,
+                    num_frames=cog_frames,
+                    height=target_h,
+                    width=target_w,
+                    guidance_scale=COG_GUIDANCE,
+                    generator=gen,
+                    callback_on_step_end=video_step_callback,
+                ).frames[0]
         else:
             print(f"[VIDEO] Mode: Text-to-Video (T2V) — guidance={COG_GUIDANCE}, steps={COG_STEPS}")
-            video_frames = pipe(
-                prompt=video_prompt,
-                negative_prompt=negative_prompt_cog,
-                num_videos_per_prompt=1,
-                num_inference_steps=COG_STEPS,
-                num_frames=cog_frames,
-                height=target_h,
-                width=target_w,
-                guidance_scale=COG_GUIDANCE,
-                generator=gen,
-                callback_on_step_end=video_step_callback,
-            ).frames[0]
+            with torch.inference_mode():
+                video_frames = pipe(
+                    prompt=video_prompt,
+                    negative_prompt=negative_prompt_cog,
+                    num_videos_per_prompt=1,
+                    num_inference_steps=COG_STEPS,
+                    num_frames=cog_frames,
+                    height=target_h,
+                    width=target_w,
+                    guidance_scale=COG_GUIDANCE,
+                    generator=gen,
+                    callback_on_step_end=video_step_callback,
+                ).frames[0]
 
         generated_frames = list(video_frames)
 
@@ -1449,18 +1517,19 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
             svd_conditioning_fps = 6
             svd_decode_chunk_size = 1 if (low_vram_svd and fast_svd_8gb) else 2
 
-            frames = pipe(
-                current_frame,
-                decode_chunk_size=svd_decode_chunk_size,
-                num_frames=frames_this_pass,
-                motion_bucket_id=127,
-                noise_aug_strength=0.02,
-                fps=svd_conditioning_fps,
-                num_inference_steps=num_steps,
-                height=target_h,
-                width=target_w,
-                callback_on_step_end=video_step_callback,
-            ).frames[0]
+            with torch.inference_mode():
+                frames = pipe(
+                    current_frame,
+                    decode_chunk_size=svd_decode_chunk_size,
+                    num_frames=frames_this_pass,
+                    motion_bucket_id=127,
+                    noise_aug_strength=0.02,
+                    fps=svd_conditioning_fps,
+                    num_inference_steps=num_steps,
+                    height=target_h,
+                    width=target_w,
+                    callback_on_step_end=video_step_callback,
+                ).frames[0]
 
             if pass_num > 0 and len(generated_frames) > 0:
                 generated_frames.extend(frames[1:])
