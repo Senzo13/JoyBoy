@@ -1497,12 +1497,14 @@ function replaceVideoSkeletonWithReal(videoSrc, format, genTime, chatId, metadat
 
     const isGif = format === 'gif';
     const timeText = genTime ? `${Math.round(genTime / 1000)}s` : '';
+    const cacheTag = Date.now();
 
     // Utiliser l'URL serveur pour la persistance (le fichier est sauvé sur le serveur)
     const metadataSessionId = metadata?.videoSessionId || metadata?.video_session_id || null;
-    const exactVideoUrl = metadataSessionId ? `/videos/session/${metadataSessionId}` : null;
-    const videoUrl = exactVideoUrl || (chatId ? `/videos/${chatId}` : videoSrc);
+    const exactVideoUrl = metadataSessionId ? `/videos/session/${metadataSessionId}?t=${cacheTag}` : null;
+    const videoUrl = exactVideoUrl || (chatId ? `/videos/${chatId}?t=${cacheTag}` : videoSrc);
     const downloadUrl = videoUrl;
+    const sourceType = format === 'webm' ? 'video/webm' : 'video/mp4';
 
     // Bouton Continuer si la continuation est dispo
     if (typeof updateLastVideoContextFromResult === 'function' && metadata && Object.keys(metadata).length) {
@@ -1545,9 +1547,7 @@ function replaceVideoSkeletonWithReal(videoSrc, format, genTime, chatId, metadat
             <div class="ai-message">
                 <div class="video-container video-result-container">
                     <div class="video-player-shell">
-                        <video class="result-video" controls autoplay loop muted playsinline preload="metadata">
-                            <source src="${videoUrl}" type="video/mp4">
-                        </video>
+                        <video class="result-video" controls autoplay loop muted playsinline preload="auto" src="${videoUrl}" type="${sourceType}"></video>
                         <div class="video-controls">
                             <button class="video-control-btn" onclick="toggleVideoPlay(this)" data-playing="true"><i data-lucide="pause"></i></button>
                             <button class="video-control-btn" onclick="toggleVideoMute(this)" data-muted="true"><i data-lucide="volume-x"></i></button>

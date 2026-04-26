@@ -777,7 +777,7 @@ def serve_video(chat_id):
 @video_bp.route('/videos/session/<session_id>')
 def serve_video_session(session_id):
     """Sert une video exacte depuis une session de continuation."""
-    from flask import send_from_directory, make_response
+    from flask import send_file, make_response
     from pathlib import Path
     from core.generation.video_sessions import load_video_session
 
@@ -789,7 +789,13 @@ def serve_video_session(session_id):
     if not video_path.exists() or video_path.suffix.lower() not in {'.mp4', '.webm', '.gif'}:
         return jsonify({'error': 'Video file not found'}), 404
 
-    response = make_response(send_from_directory(video_path.parent, video_path.name))
+    mimetype = {
+        '.mp4': 'video/mp4',
+        '.webm': 'video/webm',
+        '.gif': 'image/gif',
+    }.get(video_path.suffix.lower(), 'application/octet-stream')
+    response = make_response(send_file(video_path, mimetype=mimetype, conditional=True))
+    response.headers['Accept-Ranges'] = 'bytes'
     response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
     response.headers['Pragma'] = 'no-cache'
     response.headers['Expires'] = '0'

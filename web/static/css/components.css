@@ -3,21 +3,18 @@
 /* ===== PROMPT QUEUE — composer dock ===== */
 .prompt-queue {
   position: relative;
-  z-index: 1;
+  z-index: 4;
   width: 100%;
   max-width: 850px;
-  margin: 0 auto -10px;
+  margin: 0 auto 8px;
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-bottom-color: transparent;
-  border-radius: 18px 18px 16px 16px;
-  background:
-    linear-gradient(180deg, rgba(18, 18, 18, 0.94) 0%, rgba(18, 18, 18, 0.78) 68%, rgba(18, 18, 18, 0.1) 100%);
+  border-radius: 18px;
+  background: rgba(18, 18, 18, 0.94);
   box-shadow: 0 18px 48px rgba(0, 0, 0, 0.24);
   overflow: hidden;
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   animation: queueDockIn 0.18s ease-out;
-  transform: translateY(2px);
 }
 
 .chat-input-bar > .input-bar,
@@ -27,8 +24,8 @@
 }
 
 @keyframes queueDockIn {
-  from { opacity: 0; transform: translateY(-2px); }
-  to { opacity: 1; transform: translateY(2px); }
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .queue-items {
@@ -67,15 +64,12 @@
 }
 
 .queue-item.has-image {
-  min-height: 58px;
+  min-height: 50px;
   grid-template-columns: 42px minmax(0, 1fr) auto;
-  align-items: end;
+  align-items: center;
 }
 
 .queue-thumb {
-  position: absolute;
-  left: 12px;
-  bottom: 8px;
   width: 34px;
   height: 34px;
   border-radius: 8px;
@@ -105,6 +99,16 @@
   color: #d6d6d6;
   font-size: 13px;
   font-weight: 500;
+}
+
+.queue-mode {
+  display: inline-flex;
+  align-items: center;
+  margin-right: 7px;
+  color: #93c5fd;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
 }
 
 .queue-actions {

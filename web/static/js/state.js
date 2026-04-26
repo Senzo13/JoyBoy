@@ -251,6 +251,14 @@ function renderQueueForCurrentChat() {
             ${visibleItems.map((item, index) => {
                 const imageSrc = normalizeQueueImageSrc(item.options?.image || item.options?.videoSource?.thumbnail || '');
                 const text = String(item.prompt || '').trim();
+                const modeLabel = item.type === 'video'
+                    ? 'Vidéo'
+                    : item.type === 'image'
+                    ? 'Image'
+                    : item.type === 'terminal'
+                    ? 'Dev'
+                    : 'Chat';
+                const displayText = text || (item.type === 'video' ? 'Demande vidéo' : queueT('composer.queueUntitled', 'Sans prompt'));
                 const orientAction = canOrientQueueItem(item)
                     ? `<button class="queue-btn queue-orient" type="button" onclick="orientQueueItem('${item.id}')" title="${escapeHtml(queueT('composer.queueOrientTitle', 'Envoyer comme orientation au travail en cours'))}">
                             <i data-lucide="corner-down-left"></i>
@@ -260,7 +268,7 @@ function renderQueueForCurrentChat() {
                 return `
                 <div class="queue-item${imageSrc ? ' has-image' : ''}" data-id="${item.id}" role="listitem">
                     ${imageSrc ? `<img class="queue-thumb" src="${escapeHtml(imageSrc)}" alt="">` : `<span class="queue-index">${index + 1}</span>`}
-                    <span class="queue-text">${escapeHtml(text.substring(0, 96))}${text.length > 96 ? '...' : ''}</span>
+                    <span class="queue-text"><span class="queue-mode">${escapeHtml(modeLabel)}</span>${escapeHtml(displayText.substring(0, 96))}${displayText.length > 96 ? '...' : ''}</span>
                     <div class="queue-actions">
                         ${orientAction}
                         <button class="queue-btn queue-remove" type="button" onclick="removeFromQueue('${item.id}')" title="${escapeHtml(queueT('composer.queueRemoveTitle', 'Retirer'))}">

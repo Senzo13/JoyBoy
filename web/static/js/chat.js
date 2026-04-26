@@ -1257,9 +1257,11 @@ function addMessageVideo(videoBase64, generationTime = null, sourceImage = null,
     const label = modelName || imageLabelT('video', 'Vidéo');
     const videoFormat = metadata?.format || 'mp4';
     const metadataSessionId = metadata?.videoSessionId || metadata?.video_session_id || null;
+    const cacheTag = Date.now();
     const videoUrl = metadataSessionId
-        ? `/videos/session/${metadataSessionId}`
+        ? `/videos/session/${metadataSessionId}?t=${cacheTag}`
         : `data:video/${videoFormat};base64,${videoBase64}`;
+    const sourceType = videoFormat === 'webm' ? 'video/webm' : 'video/mp4';
 
     const sourceHtml = sourceImage ? `
         <div class="result-image-container">
@@ -1293,9 +1295,7 @@ function addMessageVideo(videoBase64, generationTime = null, sourceImage = null,
                     ${sourceHtml}
                     <div class="result-image-container video-container video-result-container">
                         <div class="video-player-shell">
-                            <video controls autoplay loop muted playsinline class="result-video">
-                                <source src="${videoUrl}" type="video/${videoFormat}">
-                            </video>
+                            <video controls autoplay loop muted playsinline preload="auto" class="result-video" src="${videoUrl}" type="${sourceType}"></video>
                             <div class="video-actions">
                                 <a href="${videoUrl}" download="video.${videoFormat}" class="edit-btn" title="Télécharger">${downloadIcon}</a>
                             </div>
