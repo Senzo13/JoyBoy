@@ -7,12 +7,88 @@ let onboardingDoctor = null;
 let onboardingPreviewMode = false;
 let onboardingPreviewTimer = null;
 
+const ONBOARDING_PREVIEW_FEATURES = {
+    chat: { icon: 'messages-square', suffix: 'Chat' },
+    web: { icon: 'globe', suffix: 'Web' },
+    image: { icon: 'wand-sparkles', suffix: 'Image' },
+    video: { icon: 'clapperboard', suffix: 'Video' },
+    adaptive: { icon: 'gauge', suffix: 'Adaptive' },
+};
+
 const ONBOARDING_SETUP_STAGES = [
     { id: 'runtime', threshold: 0, key: 'onboarding.setupStageRuntime', fallback: 'Initialisation locale' },
     { id: 'hardware', threshold: 25, key: 'onboarding.setupStageHardware', fallback: 'Détection matériel' },
     { id: 'models', threshold: 48, key: 'onboarding.setupStageModels', fallback: 'Préparation modèles' },
     { id: 'ready', threshold: 96, key: 'onboarding.setupStageReady', fallback: 'Prêt à démarrer' },
 ];
+
+function getOnboardingPreviewFeature() {
+    if (!onboardingPreviewMode) return '';
+    try {
+        const params = new URLSearchParams(window.location.search);
+        const feature = String(params.get('feature') || params.get('onboarding_feature') || '').trim().toLowerCase();
+        return ONBOARDING_PREVIEW_FEATURES[feature] ? feature : '';
+    } catch (_) {
+        return '';
+    }
+}
+
+function setOnboardingSpotlightText(id, key, fallback) {
+    const el = document.getElementById(id);
+    if (el) setRuntimeText(el, key, fallback);
+}
+
+function clearOnboardingFeatureSpotlight() {
+    const content = document.querySelector('#onboarding-modal .onboarding-content');
+    const spotlight = document.getElementById('onboarding-feature-spotlight');
+    content?.classList.remove('feature-preview-active');
+    spotlight?.classList.add('hidden');
+    document.querySelectorAll('[data-onboarding-feature]').forEach(card => {
+        card.classList.remove('is-spotlight');
+    });
+}
+
+function applyOnboardingFeatureSpotlight() {
+    const feature = getOnboardingPreviewFeature();
+    if (!feature) {
+        clearOnboardingFeatureSpotlight();
+        return;
+    }
+
+    const meta = ONBOARDING_PREVIEW_FEATURES[feature];
+    const content = document.querySelector('#onboarding-modal .onboarding-content');
+    const spotlight = document.getElementById('onboarding-feature-spotlight');
+    const icon = document.getElementById('onboarding-feature-spotlight-icon');
+    if (!spotlight || !meta) return;
+
+    document.querySelectorAll('[data-onboarding-feature]').forEach(card => {
+        card.classList.toggle('is-spotlight', card.dataset.onboardingFeature === feature);
+    });
+
+    if (icon) {
+        icon.innerHTML = `<i data-lucide="${meta.icon}"></i>`;
+    }
+
+    setOnboardingSpotlightText(
+        'onboarding-feature-spotlight-kicker',
+        `onboarding.spotlight${meta.suffix}Kicker`,
+        'Focus'
+    );
+    setOnboardingSpotlightText(
+        'onboarding-feature-spotlight-title',
+        `onboarding.spotlight${meta.suffix}Title`,
+        'JoyBoy s’adapte à ton usage'
+    );
+    setOnboardingSpotlightText(
+        'onboarding-feature-spotlight-body',
+        `onboarding.spotlight${meta.suffix}Body`,
+        'Choisis une surface pour voir ce qu’elle apporte dès le premier lancement.'
+    );
+
+    content?.classList.add('feature-preview-active');
+    spotlight.classList.remove('hidden');
+    if (window.lucide) lucide.createIcons({ nodes: [spotlight] });
+}
 
 function setOnboardingSetupCopy() {
     const stageLabels = {
@@ -341,6 +417,7 @@ function openOnboarding() {
     updateOnboardingDots(1);
     initOnboardingDots();
     setOnboardingButtonState(1);
+    applyOnboardingFeatureSpotlight();
     applyOnboardingPreviewInitialStep();
 }
 
@@ -348,6 +425,7 @@ function closeOnboarding() {
     const modal = document.getElementById('onboarding-modal');
     modal.classList.add('closing');
     clearOnboardingPreviewTimer();
+    clearOnboardingFeatureSpotlight();
 
     // Remove keyboard listener
     document.removeEventListener('keydown', handleOnboardingKeydown);
@@ -1366,3 +1444,10 @@ async function restartOnboarding() {
 function initProfileTab() {
     updateProfileUI();
 }
+
+window.addEventListener('joyboy:locale-changed', () => {
+    if (document.getElementById('onboarding-modal')?.classList.contains('open')) {
+        setOnboardingSetupCopy();
+        applyOnboardingFeatureSpotlight();
+    }
+});
