@@ -75,7 +75,7 @@
 }
 
 .joy-tooltip-inner {
-  max-width: min(280px, calc(100vw - 24px));
+  max-width: min(380px, calc(100vw - 24px));
   padding: 8px 10px;
   border-radius: 10px;
   background: rgba(10, 10, 14, 0.96);
@@ -85,6 +85,9 @@
   font-size: 12px;
   font-weight: 500;
   line-height: 1.35;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .sr-only {
