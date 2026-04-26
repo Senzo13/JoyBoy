@@ -1503,6 +1503,126 @@ async function regenerateChat(prompt) {
 let previewPollingActive = false;
 let lastPreviewStep = 0;
 let lastPreviewPhase = 'generation';
+let previewHeartbeatInterval = null;
+
+function formatImageProgressElapsed(ms) {
+    const totalSeconds = Math.max(0, Math.floor(Number(ms) / 1000));
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    if (minutes > 0) {
+        return `${minutes}m ${String(seconds).padStart(2, '0')}s`;
+    }
+    return `${seconds}s`;
+}
+
+function getImageProgressPhaseLabel(phase) {
+    const labels = {
+        prepare_generation: 'Préparation',
+        prepare_region: 'Zone',
+        prefill_inpaint: 'Pré-remplissage',
+        diffusion: 'Diffusion',
+        generation: 'Diffusion',
+        fine_tuning: 'Affinage',
+        refine: 'Affinage',
+        load_text2img_model: 'Chargement',
+        download_text2img_model: 'Téléchargement',
+        prepare_text2img: 'Préparation',
+        prepare_prompt: 'Prompt',
+        prepare_preview_decoder: 'Preview',
+        load_loras: 'LoRA',
+        prepare_assets: 'Assets',
+        download_assets: 'Assets',
+        quantize_model: 'Quantification',
+    };
+    return labels[phase] || 'Image';
+}
+
+function ensureImageProgressPercentNode(container, stepText) {
+    let percentText = container.querySelector('.generation-progress-percent');
+    if (!percentText && stepText) {
+        percentText = document.createElement('div');
+        percentText.className = 'generation-progress-percent';
+        stepText.insertAdjacentElement('afterend', percentText);
+    }
+    return percentText;
+}
+
+function computeVisibleImageProgress(container, phase, step, total) {
+    const safeStep = Number(step) || 0;
+    const safeTotal = Number(total) || 0;
+    const lastPercent = Number(container.dataset.progressPercent) || 0;
+    let percent = 0;
+
+    if (safeTotal > 0) {
+        percent = Math.round((Math.min(safeStep, safeTotal) / safeTotal) * 100);
+    } else if (GENERATION_SETUP_PHASES.has(phase)) {
+        percent = 4;
+    }
+
+    if (previewPollingActive) {
+        const now = Date.now();
+        const sameStepKey = `${phase}:${safeStep}:${safeTotal}`;
+        if (container.dataset.progressStepKey !== sameStepKey) {
+            container.dataset.progressStepKey = sameStepKey;
+            container.dataset.progressStepStartedAt = String(now);
+        }
+        const stepStartedAt = Number(container.dataset.progressStepStartedAt) || now;
+        const microCreep = Math.min(4, Math.floor((now - stepStartedAt) / 2500));
+        percent = Math.max(lastPercent, Math.min(99, percent + microCreep));
+    }
+
+    return Math.max(0, Math.min(99, percent));
+}
+
+function updateImageSkeletonLiveProgress(container) {
+    if (!container) return;
+    const progressBar = container.querySelector('.generation-progress-bar');
+    const stepText = container.querySelector('.generation-step-text');
+    if (stepText) {
+        ensureImageProgressPercentNode(container, stepText);
+    }
+    if (!progressBar || !stepText) return;
+
+    const percentText = ensureImageProgressPercentNode(container, stepText);
+    const phase = container.dataset.progressPhase || 'prepare_generation';
+    const step = Number(container.dataset.progressStep) || 0;
+    const total = Number(container.dataset.progressTotal) || 0;
+    const message = container.dataset.progressMessage || '';
+    const now = Date.now();
+
+    if (!container.dataset.progressStartedAt) {
+        container.dataset.progressStartedAt = String(now);
+    }
+    const elapsedText = formatImageProgressElapsed(now - (Number(container.dataset.progressStartedAt) || now));
+    const visiblePercent = computeVisibleImageProgress(container, phase, step, total);
+    container.dataset.progressPercent = String(visiblePercent);
+
+    const progressText = formatGenerationProgressText(phase, step, total, message) || 'Préparation image...';
+    const phaseLabel = getImageProgressPhaseLabel(phase);
+    stepText.textContent = `${phaseLabel} · ${progressText} · ${elapsedText}`;
+    stepText.classList.add('is-live');
+
+    if (percentText) {
+        percentText.textContent = `${Math.round(visiblePercent)}%`;
+    }
+
+    progressBar.style.width = `${visiblePercent}%`;
+    progressBar.classList.add('is-live');
+    if (phase === 'fine_tuning' || phase === 'refine') {
+        progressBar.classList.add('fine-tuning');
+    } else {
+        progressBar.classList.remove('fine-tuning');
+    }
+}
+
+function updateActiveImageSkeletonLiveness() {
+    const targetChatId = typeof currentGenerationChatId !== 'undefined'
+        ? (currentGenerationChatId || currentChatId)
+        : currentChatId;
+    const container = findActiveImagePreviewContainer(targetChatId)
+        || document.querySelector('.modified-skeleton-container .skeleton-preview-container');
+    updateImageSkeletonLiveProgress(container);
+}
 
 // Démarre le long polling de preview
 function startPreviewPolling() {
@@ -1512,6 +1632,9 @@ function startPreviewPolling() {
     previewPollingActive = true;
     lastPreviewStep = 0;
     lastPreviewPhase = 'generation';
+    clearInterval(previewHeartbeatInterval);
+    previewHeartbeatInterval = setInterval(updateActiveImageSkeletonLiveness, 500);
+    updateActiveImageSkeletonLiveness();
 
     // Fonction récursive de long polling
     async function pollPreview() {
@@ -1564,6 +1687,8 @@ function stopPreviewPolling() {
     previewPollingActive = false;
     lastPreviewStep = 0;
     lastPreviewPhase = 'generation';
+    clearInterval(previewHeartbeatInterval);
+    previewHeartbeatInterval = null;
 }
 
 function findActiveImagePreviewContainer(targetChatId = null) {
@@ -1652,23 +1777,7 @@ function updateSkeletonPreview(previewBase64, step, total, phase = 'generation',
         });
     }
 
-    if (progressBar && total > 0) {
-        const percent = (step / total) * 100;
-        progressBar.style.width = percent + '%';
-        // Couleur différente pour le fine tuning / refine
-        if (phase === 'fine_tuning' || phase === 'refine') {
-            progressBar.classList.add('fine-tuning');
-        } else {
-            progressBar.classList.remove('fine-tuning');
-        }
-    }
-
-    if (stepText && (step > 0 || message || phase)) {
-        const progressText = formatGenerationProgressText(phase, step, total, message);
-        if (progressText) {
-            stepText.textContent = progressText;
-        }
-    }
+    updateImageSkeletonLiveProgress(container);
 
     // Scroll pour garder la preview visible pendant la génération
     scrollToBottom();
