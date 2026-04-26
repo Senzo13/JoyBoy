@@ -33,6 +33,18 @@
     padding-right: 12px;
 }
 
+.user-message-with-thumb {
+    align-items: flex-start;
+}
+
+.user-attachment-cluster {
+    display: flex;
+    align-items: flex-start;
+    justify-content: flex-end;
+    gap: 8px;
+    max-width: min(92%, 720px);
+}
+
 .user-bubble {
     background: #1a1a1a;
     border: 1px solid #2a2a2a;
@@ -54,6 +66,10 @@
 
 .user-bubble-wrap .user-bubble {
     max-width: 100%;
+}
+
+.user-attachment-cluster .user-bubble-wrap {
+    max-width: calc(100% - 60px);
 }
 
 .prompt-copy-btn {
@@ -113,10 +129,52 @@
 }
 
 .user-thumb {
-    width: 44px;
-    height: 44px;
-    border-radius: 8px;
+    width: 52px;
+    height: 52px;
+    border-radius: 10px;
     object-fit: cover;
+    display: block;
+}
+
+.user-thumb-button {
+    width: 56px;
+    height: 56px;
+    min-width: 56px;
+    padding: 2px;
+    border: 1px solid #2f3a4c;
+    border-radius: 12px;
+    background: #12151b;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.24);
+    cursor: pointer;
+    overflow: hidden;
+    transition: border-color 0.16s ease, transform 0.16s ease;
+}
+
+.user-thumb-button:hover {
+    border-color: #4b6da6;
+    transform: translateY(-1px);
+}
+
+.user-thumb-button .user-thumb {
+    border-radius: 9px;
+}
+
+@media (max-width: 640px) {
+    .user-attachment-cluster {
+        max-width: 94%;
+        gap: 6px;
+    }
+
+    .user-thumb-button {
+        width: 48px;
+        height: 48px;
+        min-width: 48px;
+    }
+
+    .user-thumb-button .user-thumb {
+        width: 44px;
+        height: 44px;
+    }
 }
 
 /* ===== AI RESPONSE ===== */

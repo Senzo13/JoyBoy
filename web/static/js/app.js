@@ -497,7 +497,7 @@ async function generateVideoFromText(prompt) {
             ? buildVideoUserPromptHtml(title, prompt)
             : displayPrompt;
         addUserMessageToChat(renderedPrompt, {
-            fullPrompt: prompt ? `${title}\n${prompt}` : title,
+            fullPrompt: prompt || '',
             renderedHtml: typeof buildVideoUserPromptHtml === 'function',
         });
     }
@@ -610,7 +610,7 @@ async function generateVideoFromImageWithPrompt(imgSrc, prompt) {
     const usedVideoSkeleton = typeof addUserMessageWithThumb === 'function' && typeof addVideoSkeletonToChat === 'function';
     if (typeof addUserMessageWithThumb === 'function' && typeof addVideoSkeletonToChat === 'function') {
         addUserMessageWithThumb(renderedPrompt, imgSrc, {
-            fullPrompt: prompt ? `${modelName}\n${prompt}` : modelName,
+            fullPrompt: prompt || '',
             renderedHtml: typeof buildVideoUserPromptHtml === 'function',
         });
         addVideoSkeletonToChat(imgSrc, requestChatId);

@@ -1468,7 +1468,7 @@ async function runVideoContinuation(options = {}) {
     const videoPromptTitle = `Continuation ${videoDefaults.name} +${continuationDurationSec}s`;
     const displayPrompt = promptText ? `${videoPromptTitle}: ${promptText}` : videoPromptTitle;
     const displayPromptHtml = buildVideoUserPromptHtml(videoPromptTitle, promptText);
-    const fullPromptForCopy = promptText ? `${videoPromptTitle}\n${promptText}` : videoPromptTitle;
+    const fullPromptForCopy = promptText;
     if (sourceThumb && typeof addUserMessageWithThumb === 'function') {
         addUserMessageWithThumb(displayPromptHtml, sourceThumb, {
             fullPrompt: fullPromptForCopy,

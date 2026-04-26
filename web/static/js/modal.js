@@ -1736,9 +1736,13 @@ function addUserMessageWithThumb(text, imageSrc, options = {}) {
             : `<div class="user-bubble">${text}</div>`);
     const messageHtml = `
         <div class="message">
-            <div class="user-message">
-                ${bubbleHtml}
-                <img src="${imageSrc}" class="user-thumb" onclick="openModalSingle(this.src)">
+            <div class="user-message user-message-with-thumb">
+                <div class="user-attachment-cluster">
+                    ${bubbleHtml}
+                    <button class="user-thumb-button" type="button" onclick="openModalSingle(this.querySelector('img').src)" title="Ouvrir l'image source">
+                        <img src="${imageSrc}" class="user-thumb" alt="">
+                    </button>
+                </div>
             </div>
         </div>
     `;
