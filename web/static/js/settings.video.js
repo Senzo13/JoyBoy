@@ -5,6 +5,24 @@
 
 let videoModelRuntimeDefaults = null;
 
+function normalizeRuntimeVideoModelId(modelId, models = []) {
+    const value = String(modelId || '').trim();
+    if (!value) return '';
+    if (models.some(model => model.id === value)) return value;
+
+    const byRepo = models.find(model => model.repo_id === value || model.repo === value);
+    if (byRepo?.id) return byRepo.id;
+
+    const aliases = {
+        'Wan-AI/Wan2.2-TI2V-5B-Diffusers': 'wan22-5b',
+        'FastVideo/FastWan2.2-TI2V-5B-FullAttn-Diffusers': 'fastwan',
+        'Wan-AI/Wan2.2-T2V-A14B-Diffusers': 'wan22-t2v-14b',
+        'Wan-AI/Wan2.2-TI2V-5B': 'wan-native-5b',
+        'Wan-AI/Wan2.2-I2V-A14B': 'wan-native-14b',
+    };
+    return aliases[value] || value;
+}
+
 function getVideoModelGroupLabel(category) {
     if (category === 'recommended') {
         return t('settings.generation.videoGroupRecommended', 'Recommandé pour cette machine');
@@ -114,12 +132,13 @@ function renderRuntimeVideoModels(catalog) {
     }
 
     const availableIds = new Set(selectableModels.map(model => model.id));
-    const currentModel = userSettings.videoModel || catalog.default_model || 'svd';
+    const rawCurrentModel = userSettings.videoModel || catalog.default_model || 'svd';
+    const currentModel = normalizeRuntimeVideoModelId(rawCurrentModel, catalog.models);
     const fallbackModel = selectableModels.find(model => model.id === catalog.default_model)
         || selectableModels[0]
         || catalog.models[0];
     const nextModel = availableIds.has(currentModel) ? currentModel : (fallbackModel?.id || 'svd');
-    if (nextModel !== currentModel) {
+    if (currentModel !== rawCurrentModel || nextModel !== currentModel) {
         saveSetting('videoModel', nextModel);
     }
     select.value = nextModel;

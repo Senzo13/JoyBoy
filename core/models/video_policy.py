@@ -15,6 +15,15 @@ from typing import Any
 LOW_VRAM_LIMIT_GB = 10.0
 HIGH_END_VIDEO_LIMIT_GB = 48.0
 LOW_VRAM_SAFE_DEFAULT = "svd"
+VIDEO_MODEL_ALIASES = {
+    # Older UI builds and manual localStorage edits may store Hugging Face repo
+    # ids instead of JoyBoy's stable catalog keys.
+    "Wan-AI/Wan2.2-TI2V-5B-Diffusers": "wan22-5b",
+    "FastVideo/FastWan2.2-TI2V-5B-FullAttn-Diffusers": "fastwan",
+    "Wan-AI/Wan2.2-T2V-A14B-Diffusers": "wan22-t2v-14b",
+    "Wan-AI/Wan2.2-TI2V-5B": "wan-native-5b",
+    "Wan-AI/Wan2.2-I2V-A14B": "wan-native-14b",
+}
 MISSING_VIDEO_BACKEND_MODELS = set()
 LOW_VRAM_BLOCKED_MODELS = {
     "cogvideox",
@@ -72,6 +81,11 @@ def is_low_vram(vram_gb: float | int | None) -> bool:
     return bool(vram_gb and 0 < float(vram_gb) <= LOW_VRAM_LIMIT_GB)
 
 
+def normalize_video_model_id(model_id: str | None) -> str:
+    requested = (model_id or LOW_VRAM_SAFE_DEFAULT).strip() or LOW_VRAM_SAFE_DEFAULT
+    return VIDEO_MODEL_ALIASES.get(requested, requested)
+
+
 def resolve_video_model_for_runtime(
     requested_model: str | None,
     *,
@@ -85,7 +99,7 @@ def resolve_video_model_for_runtime(
     ship. Keep these paths opt-in until JoyBoy has a proven low-VRAM loader for
     them.
     """
-    requested = (requested_model or LOW_VRAM_SAFE_DEFAULT).strip() or LOW_VRAM_SAFE_DEFAULT
+    requested = normalize_video_model_id(requested_model)
 
     if requested in MISSING_VIDEO_BACKEND_MODELS:
         return VideoModelDecision(
@@ -135,6 +149,7 @@ def _public_model_entry(
     requires_experimental_env = launch_status == "manual_test"
     return {
         "id": model_id,
+        "repo_id": meta.get("id", ""),
         "name": meta.get("name", model_id),
         "description": meta.get("description", ""),
         "vram": meta.get("vram", ""),
@@ -288,7 +303,13 @@ def build_video_model_catalog(
         default_model = next((model_id for model_id in high_end_preference if model_id in visible_ids), None)
         default_model = default_model or (visible[0]["id"] if visible else LOW_VRAM_SAFE_DEFAULT)
     else:
-        default_model = visible[0]["id"] if visible else LOW_VRAM_SAFE_DEFAULT
+        # On 16-40GB machines, prefer the normal Wan 5B quality path as the
+        # neutral default. FastWan stays available, but should not silently take
+        # over when a saved setting is missing or from an older build.
+        normal_preference = ("wan22-5b", "wan-native-5b", "wan22", "hunyuan", "ltx2", "fastwan", "svd")
+        visible_ids = {item["id"] for item in visible}
+        default_model = next((model_id for model_id in normal_preference if model_id in visible_ids), None)
+        default_model = default_model or (visible[0]["id"] if visible else LOW_VRAM_SAFE_DEFAULT)
     if not any(item["id"] == default_model for item in visible) and visible:
         default_model = visible[0]["id"]
 
