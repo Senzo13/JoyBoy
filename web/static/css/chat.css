@@ -40,12 +40,15 @@
     padding: 12px 18px;
     max-width: 90%;
     font-size: 15px;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
 }
 
 .user-bubble-wrap {
     display: flex;
-    align-items: flex-start;
-    gap: 6px;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 5px;
     max-width: 90%;
 }
 
@@ -65,13 +68,8 @@
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    opacity: 0;
-    transition: opacity 0.16s ease, color 0.16s ease, border-color 0.16s ease;
-}
-
-.user-message:hover .prompt-copy-btn,
-.prompt-copy-btn:focus-visible {
     opacity: 1;
+    transition: opacity 0.16s ease, color 0.16s ease, border-color 0.16s ease;
 }
 
 .prompt-copy-btn:hover {
@@ -82,6 +80,30 @@
 .prompt-copy-btn svg {
     width: 15px;
     height: 15px;
+}
+
+.user-prompt-line {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.user-prompt-icon {
+    width: 16px;
+    height: 16px;
+    flex: 0 0 auto;
+    color: #d8d9e3;
+}
+
+.user-prompt-icon svg {
+    width: 16px;
+    height: 16px;
+    display: block;
+}
+
+.user-prompt-body {
+    margin-top: 8px;
+    color: #f3f4f6;
 }
 
 @media (hover: none) {

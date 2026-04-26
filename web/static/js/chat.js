@@ -17,6 +17,7 @@ function imageLabelAttr(key) {
 const ICON_EDIT = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`;
 const ICON_FIX_DETAILS = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5L12 3z"/><path d="M5 19l1 3 1-3 3-1-3-1-1-3-1 3-3 1 3 1z"/><path d="M19 12l1 2 1-2 2-1-2-1-1-2-1 2-2 1 2 1z"/></svg>`;
 const ICON_COPY = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`;
+const ICON_VIDEO = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m22 8-6 4 6 4V8Z"/><rect x="2" y="6" width="14" height="12" rx="2" ry="2"/></svg>`;
 
 // Cached DOM reference for chat-messages container (queried 20+ times)
 let _chatMessagesEl = null;
@@ -253,6 +254,21 @@ function formatUserPromptForChat(prompt) {
     if (!text) return '';
     if (typeof formatMarkdown === 'function') return formatMarkdown(text);
     return escapeHtml(text).replace(/\n/g, '<br>');
+}
+
+function buildVideoUserPromptHtml(title, prompt = '') {
+    const safeTitle = escapeHtml(String(title || '').trim());
+    const promptText = String(prompt || '').trim();
+    const promptHtml = promptText
+        ? `<div class="user-prompt-body">${formatUserPromptForChat(promptText)}</div>`
+        : '';
+    return `
+        <div class="user-prompt-line user-prompt-line-video">
+            <span class="user-prompt-icon" aria-hidden="true">${ICON_VIDEO}</span>
+            <span>${safeTitle}</span>
+        </div>
+        ${promptHtml}
+    `;
 }
 
 function buildPromptCopyButton(fullPrompt) {
@@ -1352,7 +1368,7 @@ function addMessageVideo(videoBase64, generationTime = null, sourceImage = null,
     const messageHtml = `
         <div class="message">
             <div class="user-message">
-                ${buildUserPromptBubble('🎬 Génération vidéo')}
+                ${buildRenderedUserBubble(buildVideoUserPromptHtml('Génération vidéo'), 'Génération vidéo')}
             </div>
             <div class="ai-response">
                 <div class="result-images">
@@ -1381,7 +1397,7 @@ function addMessageVideo(videoBase64, generationTime = null, sourceImage = null,
     }
     scrollToBottom();
 
-    saveCurrentChat('🎬 Génération vidéo', '[Vidéo générée]', messageHtml, chatId);
+    saveCurrentChat('Génération vidéo', '[Vidéo générée]', messageHtml, chatId);
 
     return messageHtml;
 }
@@ -1449,14 +1465,20 @@ async function runVideoContinuation(options = {}) {
         updateSendButtonState('chat');
     }
 
-    const displayPrompt = `🎬 Continuation ${videoDefaults.name} +${continuationDurationSec}s${promptText ? `: ${promptText.substring(0, 80)}` : ''}`;
+    const videoPromptTitle = `Continuation ${videoDefaults.name} +${continuationDurationSec}s`;
+    const displayPrompt = promptText ? `${videoPromptTitle}: ${promptText}` : videoPromptTitle;
+    const displayPromptHtml = buildVideoUserPromptHtml(videoPromptTitle, promptText);
+    const fullPromptForCopy = promptText ? `${videoPromptTitle}\n${promptText}` : videoPromptTitle;
     if (sourceThumb && typeof addUserMessageWithThumb === 'function') {
-        addUserMessageWithThumb(formatUserPromptForChat(displayPrompt), sourceThumb, {
-            fullPrompt: promptText || displayPrompt,
+        addUserMessageWithThumb(displayPromptHtml, sourceThumb, {
+            fullPrompt: fullPromptForCopy,
             renderedHtml: true,
         });
     } else if (typeof addUserMessageToChat === 'function') {
-        addUserMessageToChat(displayPrompt, { fullPrompt: promptText || displayPrompt });
+        addUserMessageToChat(displayPromptHtml, {
+            fullPrompt: fullPromptForCopy,
+            renderedHtml: true,
+        });
     }
     if (typeof addVideoSkeletonToChat === 'function') {
         addVideoSkeletonToChat(sourceThumb, requestChatId, {
@@ -2220,10 +2242,13 @@ function addChatSkeletonMessageSmart(prompt) {
  */
 function addUserMessageToChat(text, options = {}) {
     const messagesDiv = getChatMessages();
+    const bubbleHtml = options.renderedHtml === true
+        ? buildRenderedUserBubble(text, options.fullPrompt || text)
+        : buildUserPromptBubble(text, options.fullPrompt || text);
     const msgHtml = `
         <div class="message">
             <div class="user-message">
-                ${buildUserPromptBubble(text, options.fullPrompt || text)}
+                ${bubbleHtml}
             </div>
         </div>
     `;

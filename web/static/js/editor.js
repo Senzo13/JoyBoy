@@ -1472,8 +1472,13 @@ async function generateVideoFromEdit() {
         await createNewChat();
     }
 
-    const promptText = prompt ? prompt.substring(0, 40) + '...' : '';
-    addUserMessageWithThumb(`🎬 ${modelName}${promptText ? ' - ' + promptText : ''}`, sourceImage);
+    const renderedPrompt = typeof buildVideoUserPromptHtml === 'function'
+        ? buildVideoUserPromptHtml(modelName, prompt)
+        : (prompt ? `${modelName}: ${prompt}` : modelName);
+    addUserMessageWithThumb(renderedPrompt, sourceImage, {
+        fullPrompt: prompt ? `${modelName}\n${prompt}` : modelName,
+        renderedHtml: typeof buildVideoUserPromptHtml === 'function',
+    });
 
     addVideoSkeletonToChat(sourceImage);
 

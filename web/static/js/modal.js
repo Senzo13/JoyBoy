@@ -1382,7 +1382,14 @@ async function generateVideoFromImage() {
     const numSteps = videoDefaults.steps;
     const modelName = videoDefaults.name;
 
-    addUserMessageWithThumb(`🎬 ${modelName} - ${duration}s`, sourceImage);
+    const videoPromptTitle = `${modelName} - ${duration}s`;
+    const renderedPrompt = typeof buildVideoUserPromptHtml === 'function'
+        ? buildVideoUserPromptHtml(videoPromptTitle)
+        : videoPromptTitle;
+    addUserMessageWithThumb(renderedPrompt, sourceImage, {
+        fullPrompt: videoPromptTitle,
+        renderedHtml: typeof buildVideoUserPromptHtml === 'function',
+    });
 
     // Ajouter skeleton pour le résultat (vidéo)
     addVideoSkeletonToChat(sourceImage);

@@ -491,8 +491,15 @@ async function generateVideoFromText(prompt) {
 
     // Add user message with video prompt
     if (typeof addUserMessageToChat === 'function') {
-        const displayPrompt = prompt.length > 50 ? `🎬 T2V: ${prompt.substring(0, 50)}...` : `🎬 T2V: ${prompt}`;
-        addUserMessageToChat(displayPrompt, { fullPrompt: prompt });
+        const title = 'Text to Video';
+        const displayPrompt = prompt ? `${title}: ${prompt}` : title;
+        const renderedPrompt = typeof buildVideoUserPromptHtml === 'function'
+            ? buildVideoUserPromptHtml(title, prompt)
+            : displayPrompt;
+        addUserMessageToChat(renderedPrompt, {
+            fullPrompt: prompt ? `${title}\n${prompt}` : title,
+            renderedHtml: typeof buildVideoUserPromptHtml === 'function',
+        });
     }
 
     // Add video skeleton (no source image for T2V)
@@ -596,11 +603,16 @@ async function generateVideoFromImageWithPrompt(imgSrc, prompt) {
     resetComposerTextarea('prompt-input');
     resetComposerTextarea('chat-prompt');
 
-    const clippedPrompt = prompt && prompt.length > 40 ? `${prompt.substring(0, 40)}...` : prompt;
-    const displayPrompt = prompt ? `🎬 ${modelName}: ${clippedPrompt}` : `🎬 ${modelName}`;
+    const displayPrompt = prompt ? `${modelName}: ${prompt}` : modelName;
+    const renderedPrompt = typeof buildVideoUserPromptHtml === 'function'
+        ? buildVideoUserPromptHtml(modelName, prompt)
+        : displayPrompt;
     const usedVideoSkeleton = typeof addUserMessageWithThumb === 'function' && typeof addVideoSkeletonToChat === 'function';
     if (typeof addUserMessageWithThumb === 'function' && typeof addVideoSkeletonToChat === 'function') {
-        addUserMessageWithThumb(displayPrompt, imgSrc, { fullPrompt: prompt || displayPrompt });
+        addUserMessageWithThumb(renderedPrompt, imgSrc, {
+            fullPrompt: prompt ? `${modelName}\n${prompt}` : modelName,
+            renderedHtml: typeof buildVideoUserPromptHtml === 'function',
+        });
         addVideoSkeletonToChat(imgSrc, requestChatId);
     } else if (typeof addSkeletonMessage === 'function') {
         addSkeletonMessage(displayPrompt, imgSrc, true, null, requestChatId);
