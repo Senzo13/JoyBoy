@@ -118,6 +118,70 @@ class LightX2VBackendTests(unittest.TestCase):
         self.assertEqual(repos, ["Wan-AI/Wan2.2-I2V-A14B", "lightx2v/Wan2.2-Distill-Models"])
         self.assertEqual(size, 12)
 
+    def test_lightx2v_downloaded_requires_declared_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cache_dir = Path(tmp)
+            meta = self._meta()
+            meta["hf_required_files"] = {
+                "lightx2v/Wan2.2-Distill-Models": [
+                    "wan2.2_i2v_A14b_high_noise_lightx2v_4step.safetensors",
+                    "wan2.2_i2v_A14b_low_noise_lightx2v_4step.safetensors",
+                ],
+            }
+            base = cache_dir / "Wan-AI--Wan2.2-I2V-A14B"
+            distill = cache_dir / "lightx2v--Wan2.2-Distill-Models"
+            base.mkdir(parents=True)
+            distill.mkdir(parents=True)
+            (base / "marker.bin").write_bytes(b"ok")
+            (distill / "unrelated.bin").write_bytes(b"old partial download")
+
+            with patch.object(backend, "is_lightx2v_backend_available", return_value=True):
+                self.assertFalse(backend.is_lightx2v_model_downloaded(meta, cache_dir))
+                (distill / "wan2.2_i2v_A14b_high_noise_lightx2v_4step.safetensors").write_bytes(b"high")
+                self.assertFalse(backend.is_lightx2v_model_downloaded(meta, cache_dir))
+                (distill / "wan2.2_i2v_A14b_low_noise_lightx2v_4step.safetensors").write_bytes(b"low")
+                self.assertTrue(backend.is_lightx2v_model_downloaded(meta, cache_dir))
+
+    def test_lightx2v_download_patterns_filter_distill_repo(self):
+        meta = self._meta()
+        meta["hf_allow_patterns"] = {
+            "lightx2v/Wan2.2-Distill-Models": [
+                "wan2.2_i2v_A14b_high_noise_lightx2v_4step.safetensors",
+                "wan2.2_i2v_A14b_low_noise_lightx2v_4step.safetensors",
+            ],
+        }
+        patterns = video_routes._video_repo_allow_patterns(meta, "lightx2v/Wan2.2-Distill-Models")
+
+        self.assertEqual(len(patterns), 2)
+        self.assertTrue(video_routes._matches_hf_patterns("wan2.2_i2v_A14b_high_noise_lightx2v_4step.safetensors", patterns))
+        self.assertFalse(video_routes._matches_hf_patterns("wan2.2_i2v_A14b_high_noise_scaled_fp8_e4m3_lightx2v_4step.safetensors", patterns))
+
+    def test_video_repo_size_requests_file_metadata_and_filters_patterns(self):
+        class Sibling:
+            def __init__(self, name, size):
+                self.rfilename = name
+                self.size = size
+
+        class FakeApi:
+            def __init__(self):
+                self.kwargs = None
+
+            def repo_info(self, **kwargs):
+                self.kwargs = kwargs
+                return type("Info", (), {
+                    "siblings": [
+                        Sibling("keep.safetensors", 10),
+                        Sibling("skip.safetensors", 99),
+                    ]
+                })()
+
+        fake_api = FakeApi()
+        with patch("huggingface_hub.HfApi", return_value=fake_api):
+            size = video_routes._video_repo_size("owner/repo", ["keep.safetensors"])
+
+        self.assertTrue(fake_api.kwargs["files_metadata"])
+        self.assertEqual(size, 10)
+
     def test_video_download_space_error_mentions_pack_for_multi_repo(self):
         with tempfile.TemporaryDirectory() as tmp:
             disk_usage = type("Usage", (), {"free": 512 * 1024 ** 2})()

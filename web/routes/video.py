@@ -3,6 +3,7 @@ Blueprint pour les routes video (generate-video, video-progress, video-models, r
 """
 from flask import Blueprint, request, jsonify
 import base64
+import fnmatch
 import os
 import shutil
 import threading
@@ -530,12 +531,42 @@ def _video_repo_downloaded(repo_id, cache_dir):
     return False
 
 
-def _video_repo_size(repo_id):
+def _normalize_hf_patterns(value):
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, (list, tuple)):
+        return [str(pattern).strip() for pattern in value if str(pattern).strip()]
+    return []
+
+
+def _video_repo_allow_patterns(meta, repo_id):
+    allow = (meta or {}).get("hf_allow_patterns")
+    if not isinstance(allow, dict):
+        return []
+    patterns = allow.get(repo_id) or allow.get(str(repo_id).replace("/", "--"))
+    return _normalize_hf_patterns(patterns)
+
+
+def _matches_hf_patterns(path, patterns):
+    if not patterns:
+        return True
+    normalized = str(path).replace("\\", "/")
+    basename = os.path.basename(normalized)
+    return any(
+        fnmatch.fnmatch(normalized, pattern) or fnmatch.fnmatch(basename, pattern)
+        for pattern in patterns
+    )
+
+
+def _video_repo_size(repo_id, allow_patterns=None):
     try:
         from huggingface_hub import HfApi
-        repo_info = HfApi().repo_info(repo_id=repo_id, repo_type="model")
+        repo_info = HfApi().repo_info(repo_id=repo_id, repo_type="model", files_metadata=True)
         total = 0
         for sibling in repo_info.siblings:
+            name = getattr(sibling, "rfilename", "") or getattr(sibling, "path", "") or ""
+            if allow_patterns and not _matches_hf_patterns(name, allow_patterns):
+                continue
             size = getattr(sibling, "size", None)
             if size:
                 total += int(size)
@@ -552,14 +583,18 @@ def _video_model_repos(meta):
     return [repo_id] if repo_id else []
 
 
-def _folder_size(path):
+def _folder_size(path, allow_patterns=None):
     total = 0
     if not path or not os.path.exists(path):
         return 0
     for root, _, files in os.walk(path):
         for filename in files:
             try:
-                total += os.path.getsize(os.path.join(root, filename))
+                file_path = os.path.join(root, filename)
+                rel_path = os.path.relpath(file_path, path).replace(os.sep, "/")
+                if allow_patterns and not _matches_hf_patterns(rel_path, allow_patterns):
+                    continue
+                total += os.path.getsize(file_path)
             except OSError:
                 pass
     return total
@@ -579,26 +614,29 @@ def _video_model_downloaded(meta, cache_dir):
 def _video_model_downloaded_size(meta, cache_dir):
     total = 0
     for repo_id in _video_model_repos(meta):
-        total += _folder_size(os.path.join(cache_dir, repo_id.replace("/", "--")))
+        total += _folder_size(
+            os.path.join(cache_dir, repo_id.replace("/", "--")),
+            _video_repo_allow_patterns(meta, repo_id),
+        )
     return total
 
 
 def _video_model_total_size(meta):
-    return sum(_video_repo_size(repo_id) for repo_id in _video_model_repos(meta))
+    return sum(_video_repo_size(repo_id, _video_repo_allow_patterns(meta, repo_id)) for repo_id in _video_model_repos(meta))
 
 
 def _format_gb(size_bytes):
     return f"{size_bytes / (1024 ** 3):.1f} GB"
 
 
-def _download_space_error(repo_id, cache_dir, total_size):
+def _download_space_error(repo_id, cache_dir, total_size, allow_patterns=None):
     """Return a user-facing error when a video download cannot fit on disk."""
     if not total_size:
         return None
     local_dir = os.path.join(cache_dir, repo_id.replace("/", "--"))
     parent = os.path.dirname(local_dir) or cache_dir
     os.makedirs(parent, exist_ok=True)
-    downloaded = _folder_size(local_dir)
+    downloaded = _folder_size(local_dir, allow_patterns)
     remaining = max(total_size - downloaded, 0)
     # HF may keep temporary blobs while reconstructing files; keep a small buffer.
     required = int(remaining + min(max(total_size * 0.10, 2 * 1024 ** 3), 20 * 1024 ** 3))
@@ -616,7 +654,12 @@ def _download_space_error(repo_id, cache_dir, total_size):
 def _download_model_space_error(meta, cache_dir, total_size):
     repos = _video_model_repos(meta)
     if len(repos) <= 1:
-        return _download_space_error(repos[0], cache_dir, total_size) if repos else None
+        return _download_space_error(
+            repos[0],
+            cache_dir,
+            total_size,
+            _video_repo_allow_patterns(meta, repos[0]),
+        ) if repos else None
     if not total_size:
         return None
     os.makedirs(cache_dir, exist_ok=True)
@@ -682,6 +725,8 @@ def _video_model_status_payload(include_advanced=False, allow_experimental=False
             "downloaded_bytes": status.get("downloaded_size", 0),
             "total_bytes": status.get("total_size", 0),
             "stage": status.get("stage"),
+            "download_repo": status.get("repo"),
+            "download_message": status.get("message"),
             "error": status.get("error"),
         }
         models.append(item)
@@ -727,6 +772,8 @@ def download_video_model():
             "downloaded_size": _video_model_downloaded_size(meta, custom_cache),
             "total_size": total_size,
             "error": space_error,
+            "stage": "error",
+            "message": "Espace disque insuffisant",
         }
         return jsonify({"success": False, "error": space_error}), 400
 
@@ -740,13 +787,22 @@ def download_video_model():
             "downloaded_size": 0,
             "total_size": total_size,
             "stage": "backend" if meta.get("backend") == "lightx2v" else "models",
+            "message": "Installation du backend LightX2V" if meta.get("backend") == "lightx2v" else "Préparation du téléchargement",
+            "started_at": time.time(),
         }
         stop_monitoring = threading.Event()
 
         def monitor():
             while not stop_monitoring.is_set():
+                current = video_download_status.get(model_id, {})
+                stage = current.get("stage")
+                elapsed = max(0, time.time() - float(current.get("started_at") or time.time()))
                 downloaded = _video_model_downloaded_size(meta, custom_cache)
                 progress = min(99, int(downloaded * 100 / total_size)) if total_size else 0
+                if stage == "backend":
+                    progress = max(int(current.get("progress") or 0), min(12, 1 + int(elapsed // 3)))
+                elif stage == "models" and meta.get("backend") == "lightx2v":
+                    progress = max(12, progress)
                 video_download_status[model_id].update({
                     "progress": progress,
                     "downloaded_size": downloaded,
@@ -757,14 +813,30 @@ def download_video_model():
         monitor_thread.start()
         try:
             if meta.get("backend") == "lightx2v":
-                video_download_status[model_id].update({"stage": "backend", "progress": 1})
+                video_download_status[model_id].update({
+                    "stage": "backend",
+                    "progress": 1,
+                    "message": "Installation du backend LightX2V",
+                })
                 from core.models.lightx2v_backend import install_lightx2v_backend
                 install_lightx2v_backend()
 
-            video_download_status[model_id].update({"stage": "models"})
             for current_repo in repos:
                 local_dir = os.path.join(custom_cache, current_repo.replace("/", "--"))
-                snapshot_download(repo_id=current_repo, cache_dir=custom_cache, local_dir=local_dir)
+                allow_patterns = _video_repo_allow_patterns(meta, current_repo)
+                video_download_status[model_id].update({
+                    "stage": "models",
+                    "repo": current_repo,
+                    "message": f"Téléchargement {current_repo}",
+                })
+                kwargs = {
+                    "repo_id": current_repo,
+                    "cache_dir": custom_cache,
+                    "local_dir": local_dir,
+                }
+                if allow_patterns:
+                    kwargs["allow_patterns"] = allow_patterns
+                snapshot_download(**kwargs)
             stop_monitoring.set()
             video_download_status[model_id] = {
                 "downloading": False,
@@ -772,6 +844,7 @@ def download_video_model():
                 "downloaded_size": _video_model_downloaded_size(meta, custom_cache),
                 "total_size": total_size,
                 "stage": "complete",
+                "message": "Modèle prêt",
             }
         except Exception as exc:
             stop_monitoring.set()
@@ -782,6 +855,7 @@ def download_video_model():
                 "total_size": total_size,
                 "error": str(exc),
                 "stage": "error",
+                "message": "Téléchargement interrompu",
             }
             print(f"[VIDEO_MODELS] Download failed for {model_id}: {exc}")
 

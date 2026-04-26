@@ -651,6 +651,18 @@ VIDEO_MODELS = {
             "Wan-AI/Wan2.2-I2V-A14B",
             "lightx2v/Wan2.2-Distill-Models",
         ],
+        "hf_allow_patterns": {
+            "lightx2v/Wan2.2-Distill-Models": [
+                "wan2.2_i2v_A14b_high_noise_lightx2v_4step.safetensors",
+                "wan2.2_i2v_A14b_low_noise_lightx2v_4step.safetensors",
+            ],
+        },
+        "hf_required_files": {
+            "lightx2v/Wan2.2-Distill-Models": [
+                "wan2.2_i2v_A14b_high_noise_lightx2v_4step.safetensors",
+                "wan2.2_i2v_A14b_low_noise_lightx2v_4step.safetensors",
+            ],
+        },
         "vram": "14GB+ (offload) / 40GB recommande",
         "description": "Wan 2.2 A14B I2V distille LightX2V en 4 steps, rapide + qualite, backend local optionnel",
         "supports_prompt": True,
@@ -675,6 +687,18 @@ VIDEO_MODELS = {
             "Wan-AI/Wan2.2-T2V-A14B",
             "lightx2v/Wan2.2-Distill-Loras",
         ],
+        "hf_allow_patterns": {
+            "lightx2v/Wan2.2-Distill-Loras": [
+                "wan2.2_t2v_A14b_high_noise_lora_rank64_lightx2v_4step_1217.safetensors",
+                "wan2.2_t2v_A14b_low_noise_lora_rank64_lightx2v_4step_1217.safetensors",
+            ],
+        },
+        "hf_required_files": {
+            "lightx2v/Wan2.2-Distill-Loras": [
+                "wan2.2_t2v_A14b_high_noise_lora_rank64_lightx2v_4step_1217.safetensors",
+                "wan2.2_t2v_A14b_low_noise_lora_rank64_lightx2v_4step_1217.safetensors",
+            ],
+        },
         "vram": "14GB+ (offload) / 40GB recommande",
         "description": "Wan 2.2 A14B text-to-video LightX2V distille LoRA 4 steps",
         "supports_prompt": True,
@@ -698,6 +722,18 @@ VIDEO_MODELS = {
             "Wan-AI/Wan2.2-I2V-A14B",
             "lightx2v/Wan2.2-Distill-Models",
         ],
+        "hf_allow_patterns": {
+            "lightx2v/Wan2.2-Distill-Models": [
+                "wan2.2_i2v_A14b_high_noise_lightx2v_4step.safetensors",
+                "wan2.2_i2v_A14b_low_noise_lightx2v_4step.safetensors",
+            ],
+        },
+        "hf_required_files": {
+            "lightx2v/Wan2.2-Distill-Models": [
+                "wan2.2_i2v_A14b_high_noise_lightx2v_4step.safetensors",
+                "wan2.2_i2v_A14b_low_noise_lightx2v_4step.safetensors",
+            ],
+        },
         "vram": "8GB experimental (offload agressif)",
         "description": "Profil LightX2V low-resource: Wan 2.2 I2V 4 steps avec offload, a tester manuellement sur 8GB",
         "supports_prompt": True,

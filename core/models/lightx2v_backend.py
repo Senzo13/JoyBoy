@@ -164,6 +164,36 @@ def get_lightx2v_repo_local_dirs(meta: dict[str, Any] | None, cache_dir: str | P
     return [_repo_local_dir(cache_dir, repo_id) for repo_id in get_lightx2v_repo_specs(meta)]
 
 
+def _required_files_for_repo(meta: dict[str, Any] | None, repo_id: str) -> list[str]:
+    required = (meta or {}).get("hf_required_files")
+    if not isinstance(required, dict):
+        return []
+    files = required.get(repo_id) or required.get(str(repo_id).replace("/", "--"))
+    if isinstance(files, str):
+        return [files]
+    if isinstance(files, (list, tuple)):
+        return [str(path).strip() for path in files if str(path).strip()]
+    return []
+
+
+def get_lightx2v_missing_paths(meta: dict[str, Any] | None, cache_dir: str | Path) -> list[Path]:
+    missing: list[Path] = []
+    for repo_id in get_lightx2v_repo_specs(meta):
+        repo_dir = _repo_local_dir(cache_dir, repo_id)
+        required_files = _required_files_for_repo(meta, repo_id)
+        if required_files:
+            for rel_path in required_files:
+                path = repo_dir / rel_path
+                try:
+                    if not path.is_file() or path.stat().st_size <= 0:
+                        missing.append(path)
+                except OSError:
+                    missing.append(path)
+        elif not _nonempty_dir(repo_dir):
+            missing.append(repo_dir)
+    return missing
+
+
 def _nonempty_dir(path: Path) -> bool:
     try:
         return path.exists() and path.is_dir() and any(path.iterdir())
@@ -201,7 +231,7 @@ def get_lightx2v_backend_status() -> dict[str, Any]:
 def is_lightx2v_model_downloaded(meta: dict[str, Any] | None, cache_dir: str | Path) -> bool:
     if not is_lightx2v_backend_available():
         return False
-    return all(_nonempty_dir(path) for path in get_lightx2v_repo_local_dirs(meta, cache_dir))
+    return not get_lightx2v_missing_paths(meta, cache_dir)
 
 
 def install_lightx2v_backend(*, upgrade: bool = False) -> dict[str, Any]:
@@ -476,7 +506,7 @@ def run_lightx2v_generation(
         )
 
     cache_dir = Path(cache_dir)
-    missing = [str(path) for path in get_lightx2v_repo_local_dirs(meta, cache_dir) if not _nonempty_dir(path)]
+    missing = [str(path) for path in get_lightx2v_missing_paths(meta, cache_dir)]
     if missing:
         raise RuntimeError("Artefacts LightX2V manquants: " + ", ".join(missing))
 

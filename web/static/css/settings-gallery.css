@@ -713,13 +713,114 @@
 }
 
 /* ===== DOWNLOADING STATE ===== */
-.ollama-model-item.downloading {
+.video-model-item.downloading {
+    border-color: rgba(96, 165, 250, 0.34);
+    background: linear-gradient(180deg, rgba(59, 130, 246, 0.08), rgba(17, 17, 17, 0.98));
+}
+
+.video-model-item {
+    align-items: flex-start;
+    gap: 16px;
+}
+
+.video-model-item .model-info {
+    min-width: 0;
+}
+
+.video-model-item .model-actions {
+    align-self: center;
+    flex: 0 0 auto;
+}
+
+.video-download-progress {
+    width: 100%;
+    max-width: 560px;
+    margin-top: 10px;
+    padding: 10px 12px;
+    border: 1px solid rgba(96, 165, 250, 0.18);
+    border-radius: 8px;
+    background: rgba(10, 18, 32, 0.78);
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.download-progress-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.video-download-progress .download-status {
+    display: inline-flex;
+    align-items: center;
+    min-width: 0;
+    gap: 6px;
+    font-size: 11px;
+    color: #bfdbfe;
+    line-height: 1.25;
+    text-align: left;
+}
+
+.video-download-progress .download-status svg {
+    width: 13px;
+    height: 13px;
+    color: #60a5fa;
+    animation: joyboy-progress-spin 1.1s linear infinite;
+}
+
+.video-download-progress .download-percent {
+    flex: 0 0 auto;
+    font-size: 11px;
+    font-weight: 700;
+    color: #e5f0ff;
+    font-variant-numeric: tabular-nums;
+}
+
+.video-download-progress .progress-bar {
+    width: 100%;
+    height: 5px;
+    margin-top: 8px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.video-download-progress .progress-bar-fill {
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, #60a5fa, #22d3ee);
+    transition: width 0.25s ease;
+}
+
+.video-download-progress.indeterminate .progress-bar-fill {
+    min-width: 64px;
+    animation: joyboy-progress-sweep 1.4s ease-in-out infinite;
+}
+
+.video-download-progress .download-detail {
+    margin-top: 6px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #718096;
+    font-size: 10px;
+    font-variant-numeric: tabular-nums;
+}
+
+.btn-install-model.is-downloading svg {
+    animation: joyboy-progress-spin 1.1s linear infinite;
+}
+
+.ollama-model-item:not(.video-model-item).downloading {
     flex-wrap: wrap;
     border-color: rgba(59, 130, 246, 0.5);
     background: rgba(59, 130, 246, 0.05);
 }
 
-.download-progress {
+.ollama-model-item:not(.video-model-item) > .download-progress {
     width: 100%;
     max-width: 280px;
     margin-top: 12px;
@@ -731,20 +832,38 @@
     align-items: flex-end;
 }
 
-.download-status {
-    font-size: 11px;
-    color: #3b82f6;
+.ollama-model-item:not(.video-model-item) > .download-progress .download-status {
     margin-bottom: 4px;
+    color: #3b82f6;
+    font-size: 11px;
     text-align: right;
 }
 
-.download-progress .progress-bar {
+.ollama-model-item:not(.video-model-item) > .download-progress .progress-bar {
     width: 100%;
     max-width: 280px;
 }
 
-.download-progress .progress-text {
+.ollama-model-item:not(.video-model-item) > .download-progress .progress-text {
     text-align: right;
+}
+
+@keyframes joyboy-progress-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@keyframes joyboy-progress-sweep {
+    0% {
+        transform: translateX(-80%);
+    }
+    50% {
+        transform: translateX(65%);
+    }
+    100% {
+        transform: translateX(210%);
+    }
 }
 
 /* ===== MODEL BADGES ===== */

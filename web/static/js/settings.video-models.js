@@ -3,6 +3,7 @@
 
 let allVideoModels = [];
 let currentVideoFilter = 'all';
+const videoModelDownloadPollers = new Map();
 
 function videoModelCapabilities(model) {
     const caps = [];
@@ -23,6 +24,52 @@ function filterVideoModels(models) {
         if (currentVideoFilter === 'audio') return model.supports_audio_native;
         return true;
     });
+}
+
+function formatVideoDownloadBytes(bytes) {
+    const value = Number(bytes || 0);
+    if (!Number.isFinite(value) || value <= 0) return '';
+    if (value >= 1024 ** 3) return `${(value / (1024 ** 3)).toFixed(1)} GB`;
+    if (value >= 1024 ** 2) return `${(value / (1024 ** 2)).toFixed(0)} MB`;
+    return `${Math.max(1, Math.round(value / 1024))} KB`;
+}
+
+function videoDownloadStageLabel(model) {
+    const stage = String(model.stage || '').toLowerCase();
+    if (stage === 'backend') return 'Installation du backend';
+    if (stage === 'models') return 'Téléchargement des poids';
+    if (stage === 'complete') return 'Prêt';
+    if (stage === 'error') return 'Erreur';
+    return 'Préparation';
+}
+
+function renderVideoDownloadProgress(model) {
+    const progress = Math.max(0, Math.min(100, Number(model.progress || 0)));
+    const downloaded = Number(model.downloaded_bytes || 0);
+    const total = Number(model.total_bytes || 0);
+    const hasMeasuredProgress = total > 0 && progress > 0;
+    const label = model.download_message || videoDownloadStageLabel(model);
+    const repo = model.download_repo || '';
+    const byteText = total
+        ? `${formatVideoDownloadBytes(downloaded)} / ${formatVideoDownloadBytes(total)}`
+        : '';
+    const detail = [repo, byteText].filter(Boolean).join(' · ');
+    const progressClass = hasMeasuredProgress ? '' : ' indeterminate';
+    const progressWidth = hasMeasuredProgress ? progress : Math.max(8, progress || 8);
+
+    return `
+        <div class="download-progress video-download-progress${progressClass}">
+            <div class="download-progress-head">
+                <span class="download-status">
+                    <i data-lucide="loader-circle"></i>
+                    ${escapeHtml(label)}
+                </span>
+                <span class="download-percent">${Math.round(progress)}%</span>
+            </div>
+            <div class="progress-bar"><div class="progress-bar-fill" style="width: ${progressWidth}%"></div></div>
+            ${detail ? `<div class="download-detail">${escapeHtml(detail)}</div>` : ''}
+        </div>
+    `;
 }
 
 async function checkVideoModelsStatus() {
@@ -58,11 +105,18 @@ function renderVideoModelItem(model, isInstalled) {
     const size = model.total_bytes ? `${(model.total_bytes / (1024 ** 3)).toFixed(1)} GB` : (model.vram || '');
     const statusBits = [
         model.category,
-        model.launch_status === 'missing_backend' ? 'backend manquant' : '',
+        model.launch_status === 'missing_backend' ? 'backend à installer' : '',
         model.experimental_low_vram ? 'test manuel' : '',
     ].filter(Boolean).join(' · ');
 
-    const action = isInstalled
+    const action = model.downloading
+        ? `
+            <button class="btn-install-model is-downloading" data-model-id="${modelKey}" disabled>
+                <i data-lucide="loader-circle"></i>
+                <span>${escapeHtml(t('settings.models.inProgress', 'En cours...'))}</span>
+            </button>
+        `
+        : isInstalled
         ? `
             <button class="btn-equip ${isEquipped ? 'equipped' : ''}" data-model-id="${modelKey}" onclick="equipVideoModelFromButton(this)">
                 ${isEquipped ? `<i data-lucide="check"></i> ${escapeHtml(t('settings.models.equipped', 'Équipé'))}` : escapeHtml(t('settings.models.equip', 'Équiper'))}
@@ -70,12 +124,13 @@ function renderVideoModelItem(model, isInstalled) {
         `
         : `
             <button class="btn-install-model" data-model-id="${modelKey}" onclick="downloadVideoModelFromButton(this)">
-                ${escapeHtml(t('settings.models.download', 'Télécharger'))}
+                <i data-lucide="download"></i>
+                <span>${escapeHtml(t('settings.models.download', 'Télécharger'))}</span>
             </button>
         `;
 
     return `
-        <div class="ollama-model-item ${isEquipped ? 'equipped' : ''}">
+        <div class="ollama-model-item video-model-item ${isEquipped ? 'equipped' : ''} ${model.downloading ? 'downloading' : ''}" data-model-id="${modelKey}">
             <div class="model-info">
                 <div class="model-name-row">
                     <span class="model-name">${modelName}</span>
@@ -85,6 +140,7 @@ function renderVideoModelItem(model, isInstalled) {
                 <span class="model-size">${escapeHtml(caps || 'Vidéo')}</span>
                 <span class="model-size">${escapeHtml(size || '~')} · ${repo}</span>
                 ${statusBits ? `<span class="model-size">${escapeHtml(statusBits)}</span>` : ''}
+                ${model.downloading ? renderVideoDownloadProgress(model) : ''}
             </div>
             <div class="model-actions">${action}</div>
         </div>
@@ -147,11 +203,12 @@ function downloadVideoModelFromButton(button) {
 }
 
 async function downloadVideoModel(modelId, sourceButton = null) {
-    const btn = sourceButton || event?.target;
+    const btn = sourceButton || (typeof event !== 'undefined' ? event?.target : null);
     const modelItem = btn?.closest('.ollama-model-item');
     if (btn) {
         btn.disabled = true;
-        btn.textContent = t('settings.models.checking', 'Vérification...');
+        btn.innerHTML = `<i data-lucide="loader-circle"></i><span>${escapeHtml(t('settings.models.checking', 'Vérification...'))}</span>`;
+        if (window.lucide) lucide.createIcons();
     }
 
     try {
@@ -169,28 +226,33 @@ async function downloadVideoModel(modelId, sourceButton = null) {
             return;
         }
 
-        if (modelItem && !modelItem.querySelector('.download-progress')) {
-            modelItem.insertAdjacentHTML('beforeend', `
-                <div class="download-progress">
-                    <div class="download-status">${escapeHtml(t('settings.models.downloadInProgress', 'Téléchargement en cours...'))}</div>
-                    <div class="progress-bar"><div class="progress-bar-fill" style="width: 0%"></div></div>
-                    <div class="progress-text">0%</div>
-                </div>
-            `);
+        const optimistic = allVideoModels.find(item => item.key === modelId || item.id === modelId);
+        if (optimistic) {
+            optimistic.downloading = true;
+            optimistic.progress = Math.max(optimistic.progress || 0, 1);
+            optimistic.stage = optimistic.stage || 'queued';
+            optimistic.download_message = optimistic.download_message || 'Préparation du téléchargement';
+            renderCachedVideoModelLists();
+        } else if (modelItem) {
+            modelItem.classList.add('downloading');
         }
-        if (btn) btn.textContent = t('settings.models.inProgress', 'En cours...');
-        Toast.info(t('settings.models.downloadStartedTitle', 'Téléchargement'), t('settings.models.downloadStartedBody', 'Téléchargement démarré (~6 GB)'), 5000);
-        pollVideoModelDownload(modelId, btn, modelItem);
+        Toast.info(t('settings.models.downloadStartedTitle', 'Téléchargement'), 'Installation lancée. Le statut se met à jour ici.', 5000);
+        pollVideoModelDownload(modelId);
     } catch (error) {
         Toast.error(t('common.error', 'Erreur'), error.message || String(error));
         if (btn) {
             btn.disabled = false;
-            btn.textContent = t('settings.models.download', 'Télécharger');
+            btn.innerHTML = `<i data-lucide="download"></i><span>${escapeHtml(t('settings.models.download', 'Télécharger'))}</span>`;
+            if (window.lucide) lucide.createIcons();
         }
+        checkVideoModelsStatus();
     }
 }
 
-function pollVideoModelDownload(modelId, btn, modelItem) {
+function pollVideoModelDownload(modelId) {
+    if (videoModelDownloadPollers.has(modelId)) {
+        clearInterval(videoModelDownloadPollers.get(modelId));
+    }
     const interval = setInterval(async () => {
         try {
             const response = await fetch('/api/video-models/status?advanced=1&allow_experimental=1');
@@ -199,44 +261,31 @@ function pollVideoModelDownload(modelId, btn, modelItem) {
             allVideoModels = Array.isArray(data.models) ? data.models : [];
             const model = allVideoModels.find(item => item.key === modelId || item.id === modelId);
             if (!model) return;
-
-            if (model.downloading && modelItem) {
-                const progress = model.progress || 0;
-                const fill = modelItem.querySelector('.progress-bar-fill');
-                const status = modelItem.querySelector('.download-status');
-                const text = modelItem.querySelector('.progress-text');
-                if (fill) fill.style.width = `${progress}%`;
-                if (text) text.textContent = `${progress}%`;
-                if (status && model.total_bytes) {
-                    const downloaded = (model.downloaded_bytes || 0) / (1024 ** 3);
-                    const total = model.total_bytes / (1024 ** 3);
-                    status.textContent = `${downloaded.toFixed(1)} GB / ${total.toFixed(1)} GB`;
-                }
-            }
+            renderCachedVideoModelLists();
 
             if (model.downloaded && !model.downloading) {
                 clearInterval(interval);
+                videoModelDownloadPollers.delete(modelId);
                 Toast.success(t('settings.models.downloadDoneTitle', 'Téléchargement terminé'), t('settings.models.downloadDoneBody', '{model} est prêt', { model: model.name || modelId }));
                 checkVideoModelsStatus();
             }
             if (model.error && !model.downloading) {
                 clearInterval(interval);
+                videoModelDownloadPollers.delete(modelId);
                 Toast.error(t('common.error', 'Erreur'), model.error);
-                if (btn) {
-                    btn.disabled = false;
-                    btn.textContent = t('settings.models.download', 'Télécharger');
-                }
+                checkVideoModelsStatus();
             }
         } catch (error) {
             console.warn('[VIDEO_MODELS] Poll error:', error);
         }
     }, 2500);
+    videoModelDownloadPollers.set(modelId, interval);
 
     setTimeout(() => {
-        clearInterval(interval);
-        if (btn && btn.disabled) {
-            btn.disabled = false;
-            btn.textContent = t('settings.models.verifyAction', 'Vérifier');
+        if (videoModelDownloadPollers.get(modelId) === interval) {
+            clearInterval(interval);
+            videoModelDownloadPollers.delete(modelId);
+            checkVideoModelsStatus();
         }
     }, 120 * 60 * 1000);
 }
