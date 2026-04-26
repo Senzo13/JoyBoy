@@ -169,8 +169,8 @@
   text-align: left;
 }
 
-/* ===== RAM PANEL (Popup) ===== */
-.ram-panel {
+/* ===== RESOURCE PANEL (shared VRAM/RAM popup) ===== */
+.resource-panel {
   position: fixed;
   top: 60px;
   right: 20px;
@@ -186,13 +186,13 @@
   transition: all 0.2s ease;
 }
 
-.ram-panel.visible {
+.resource-panel.visible {
   opacity: 1;
   transform: translateY(0);
   pointer-events: auto;
 }
 
-.ram-panel-header {
+.resource-panel-header {
   display: flex;
   justify-content: flex-start;
   align-items: center;
@@ -200,10 +200,17 @@
   padding: 12px 16px;
   border-bottom: 1px solid #333;
   font-weight: 600;
+}
+
+.resource-panel.is-vram .resource-panel-title {
+  color: #fff;
+}
+
+.resource-panel.is-ram .resource-panel-title {
   color: #3b82f6;
 }
 
-.ram-panel-close {
+.resource-panel-close {
   background: none;
   border: none;
   color: #666;
@@ -213,12 +220,16 @@
   line-height: 1;
 }
 
-.ram-panel-close:hover {
+.resource-panel-close:hover {
   color: #fff;
 }
 
-.ram-panel-content {
+.resource-panel-content {
   padding: 16px;
+}
+
+.resource-panel-view[hidden] {
+  display: none !important;
 }
 
 .ram-gauge {
@@ -408,58 +419,6 @@
   height: 1px;
   background: rgba(255, 255, 255, 0.08);
   margin: 12px 0;
-}
-
-/* ===== VRAM PANEL (Popup) ===== */
-.vram-panel {
-  position: fixed;
-  top: 60px;
-  right: 20px;
-  width: 300px;
-  background: #1a1a1a;
-  border: 1px solid #333;
-  border-radius: 12px;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
-  z-index: 1000;
-  opacity: 0;
-  transform: translateY(-10px);
-  pointer-events: none;
-  transition: all 0.2s ease;
-}
-
-.vram-panel.visible {
-  opacity: 1;
-  transform: translateY(0);
-  pointer-events: auto;
-}
-
-.vram-panel-header {
-  display: flex;
-  justify-content: flex-start;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
-  border-bottom: 1px solid #333;
-  font-weight: 600;
-  color: #fff;
-}
-
-.vram-panel-close {
-  background: none;
-  border: none;
-  color: #666;
-  font-size: 20px;
-  cursor: pointer;
-  padding: 0;
-  line-height: 1;
-}
-
-.vram-panel-close:hover {
-  color: #fff;
-}
-
-.vram-panel-content {
-  padding: 16px;
 }
 
 .vram-gauge {

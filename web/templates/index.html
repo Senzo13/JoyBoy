@@ -961,13 +961,13 @@
     <script src="/static/js/effects.js"></script>
     <script src="/static/js/ui.js"></script>
     <script src="/static/js/modal.js"></script>
-    <!-- VRAM Panel (popup) -->
-    <div class="vram-panel" id="vram-panel">
-        <div class="vram-panel-header">
-            <button class="vram-panel-close" onclick="hideVramPanel()">×</button>
-            <span data-i18n="shell.vramPanelTitle">État VRAM GPU</span>
+    <!-- Resource Panel: single reusable popup for VRAM/RAM -->
+    <div class="resource-panel" id="resource-panel" data-resource-kind="vram">
+        <div class="resource-panel-header">
+            <button class="resource-panel-close" onclick="hideResourcePanel()">×</button>
+            <span class="resource-panel-title" id="resource-panel-title" data-i18n="shell.vramPanelTitle">État VRAM GPU</span>
         </div>
-        <div class="vram-panel-content">
+        <div class="resource-panel-content resource-panel-view" id="resource-panel-vram" data-resource-view="vram">
             <div class="vram-gauge">
                 <div class="vram-gauge-fill" id="vram-gauge-fill"></div>
                 <div class="vram-gauge-text">
@@ -989,15 +989,7 @@
                 </button>
             </div>
         </div>
-    </div>
-
-    <!-- RAM Panel -->
-    <div class="ram-panel" id="ram-panel">
-        <div class="ram-panel-header">
-            <button class="ram-panel-close" onclick="hideRamPanel()">×</button>
-            <span data-i18n="shell.ramPanelTitle">État RAM système</span>
-        </div>
-        <div class="ram-panel-content">
+        <div class="resource-panel-content resource-panel-view" id="resource-panel-ram" data-resource-view="ram" hidden>
             <div class="ram-gauge">
                 <div class="ram-gauge-fill" id="ram-gauge-fill"></div>
                 <div class="ram-gauge-text">

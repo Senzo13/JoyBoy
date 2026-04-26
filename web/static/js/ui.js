@@ -23,6 +23,7 @@ let vramPollingInterval = null;
 let ramPollingInterval = null;
 let lastVramData = null;
 let vramPanelVisible = false;
+let activeResourcePanel = null;
 const VRAM_POLL_SLOW = 2000;   // 2s quand panel fermé
 const VRAM_POLL_FAST = 800;    // 0.8s quand panel ouvert
 const RAM_POLL_INTERVAL = 5000; // 5s pour RAM (moins fréquent)
@@ -97,6 +98,54 @@ async function refreshRamStatus() {
  * Met à jour l'affichage RAM (header chat + home)
  */
 let ramPanelVisible = false;
+
+function showResourcePanel(kind = 'vram') {
+    const normalized = kind === 'ram' ? 'ram' : 'vram';
+    const panel = document.getElementById('resource-panel');
+    const title = document.getElementById('resource-panel-title');
+    const vramView = document.getElementById('resource-panel-vram');
+    const ramView = document.getElementById('resource-panel-ram');
+    if (!panel || !vramView || !ramView) return;
+
+    activeResourcePanel = normalized;
+    vramPanelVisible = normalized === 'vram';
+    ramPanelVisible = normalized === 'ram';
+
+    panel.dataset.resourceKind = normalized;
+    panel.classList.add('visible');
+    panel.classList.toggle('is-vram', normalized === 'vram');
+    panel.classList.toggle('is-ram', normalized === 'ram');
+    vramView.hidden = normalized !== 'vram';
+    ramView.hidden = normalized !== 'ram';
+
+    if (title) {
+        const key = normalized === 'ram' ? 'shell.ramPanelTitle' : 'shell.vramPanelTitle';
+        const fallback = normalized === 'ram' ? 'État RAM système' : 'État VRAM GPU';
+        title.dataset.i18n = key;
+        title.textContent = uiT(key, fallback);
+    }
+
+    if (normalized === 'vram') {
+        refreshVramStatus();
+        setVramPollingSpeed(true);
+    } else {
+        refreshRamStatus();
+        setVramPollingSpeed(false);
+    }
+
+    if (window.lucide) lucide.createIcons({ nodes: [panel] });
+}
+
+function hideResourcePanel() {
+    const panel = document.getElementById('resource-panel');
+    if (panel) {
+        panel.classList.remove('visible', 'is-vram', 'is-ram');
+    }
+    activeResourcePanel = null;
+    vramPanelVisible = false;
+    ramPanelVisible = false;
+    setVramPollingSpeed(false);
+}
 
 function updateRamDisplay(data) {
     const { ram, models, models_ram_mb } = data;
@@ -219,23 +268,11 @@ function updateDiskDisplay(disk) {
 }
 
 function showRamPanel() {
-    // Fermer le panel VRAM si ouvert
-    hideVramPanel();
-    const panel = document.getElementById('ram-panel');
-    if (panel) {
-        panel.classList.add('visible');
-        ramPanelVisible = true;
-        refreshRamStatus();
-        if (window.lucide) lucide.createIcons();
-    }
+    showResourcePanel('ram');
 }
 
 function hideRamPanel() {
-    const panel = document.getElementById('ram-panel');
-    if (panel) {
-        panel.classList.remove('visible');
-        ramPanelVisible = false;
-    }
+    hideResourcePanel();
 }
 
 async function freeRam() {
@@ -410,26 +447,14 @@ function updateRuntimeResourceDisplay(resources) {
  * Affiche le panel VRAM
  */
 function showVramPanel() {
-    const panel = document.getElementById('vram-panel');
-    if (panel) {
-        panel.classList.add('visible');
-        vramPanelVisible = true;
-        refreshVramStatus();  // Refresh immédiat
-        setVramPollingSpeed(true);  // Polling rapide
-        if (window.lucide) lucide.createIcons();
-    }
+    showResourcePanel('vram');
 }
 
 /**
  * Cache le panel VRAM
  */
 function hideVramPanel() {
-    const panel = document.getElementById('vram-panel');
-    if (panel) {
-        panel.classList.remove('visible');
-        vramPanelVisible = false;
-        setVramPollingSpeed(false);  // Retour au polling lent
-    }
+    hideResourcePanel();
 }
 
 /**

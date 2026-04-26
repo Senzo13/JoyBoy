@@ -32,9 +32,8 @@
         border-radius: 22px;
     }
 
-    /* === VRAM PANEL === */
-    .vram-panel,
-    .ram-panel {
+    /* === RESOURCE PANEL === */
+    .resource-panel {
         right: 8px;
         left: 8px;
         width: auto;
@@ -133,9 +132,8 @@
         display: none;
     }
 
-    /* VRAM/RAM panels full width */
-    .vram-panel,
-    .ram-panel {
+    /* Resource panel full width */
+    .resource-panel {
         top: 50px;
         right: 4px;
         left: 4px;
