@@ -1501,7 +1501,10 @@ function replaceVideoSkeletonWithReal(videoSrc, format, genTime, chatId, metadat
 
     // Utiliser l'URL serveur pour la persistance (le fichier est sauvé sur le serveur)
     const metadataSessionId = metadata?.videoSessionId || metadata?.video_session_id || null;
-    const exactVideoUrl = metadataSessionId ? `/videos/session/${metadataSessionId}?t=${cacheTag}` : null;
+    const sourceSessionId = metadata?.sourceVideoSessionId || metadata?.source_video_session_id || null;
+    const exactVideoUrl = metadataSessionId && metadataSessionId !== sourceSessionId
+        ? `/videos/session/${metadataSessionId}?t=${cacheTag}`
+        : null;
     const videoUrl = exactVideoUrl || (chatId ? `/videos/${chatId}?t=${cacheTag}` : videoSrc);
     const downloadUrl = videoUrl;
     const sourceType = format === 'webm' ? 'video/webm' : 'video/mp4';

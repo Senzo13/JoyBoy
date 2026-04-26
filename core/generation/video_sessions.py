@@ -270,6 +270,56 @@ def _probe_video_duration(video_path: str | Path) -> float | None:
         return None
 
 
+def _probe_video_size(video_path: str | Path) -> tuple[int, int] | None:
+    """Return the first video stream size using ffmpeg stderr metadata."""
+    try:
+        import imageio_ffmpeg
+
+        ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()
+        result = subprocess.run(
+            [ffmpeg_path, "-hide_banner", "-i", str(video_path)],
+            capture_output=True,
+            timeout=20,
+        )
+        output = (result.stderr or b"").decode(errors="replace")
+        match = re.search(r"Video:.*?,\s*(\d{2,5})x(\d{2,5})", output)
+        if not match:
+            return None
+        width, height = match.groups()
+        return int(width), int(height)
+    except Exception as exc:
+        print(f"[VIDEO_SESSION] size probe skipped: {exc}")
+        return None
+
+
+def _concat_output_is_valid(
+    source_path: str | Path,
+    segment_path: str | Path,
+    output_path: str | Path,
+) -> bool:
+    source_duration = _probe_video_duration(source_path) or 0.0
+    segment_duration = _probe_video_duration(segment_path) or 0.0
+    output_duration = _probe_video_duration(output_path) or 0.0
+    if source_duration > 0 and segment_duration > 0 and output_duration <= 0:
+        print(
+            "[VIDEO_SESSION] concat rejected: output duration unavailable "
+            f"(source={source_duration:.2f}s segment={segment_duration:.2f}s)"
+        )
+        return False
+    if source_duration <= 0 or segment_duration <= 0:
+        return Path(output_path).exists() and Path(output_path).stat().st_size > 0
+
+    expected_min = source_duration + max(0.5, segment_duration * 0.65)
+    if output_duration >= expected_min:
+        return True
+
+    print(
+        "[VIDEO_SESSION] concat rejected: "
+        f"source={source_duration:.2f}s segment={segment_duration:.2f}s output={output_duration:.2f}s"
+    )
+    return False
+
+
 def _extract_video_frame(video_path: str | Path, output_path: Path, *, at_time: float | None = None, last: bool = False) -> bool:
     try:
         import imageio_ffmpeg
@@ -555,6 +605,12 @@ def concat_video_segments(source_path: str | Path, new_segment_path: str | Path,
     segment = Path(new_segment_path)
     if not source.exists() or not segment.exists():
         return None
+    try:
+        if source.resolve() == segment.resolve():
+            print("[VIDEO_SESSION] concat skipped: source and segment point to the same file")
+            return None
+    except Exception:
+        pass
 
     output = segment.with_name(segment.stem + "_continued.mp4")
     try:
@@ -562,11 +618,18 @@ def concat_video_segments(source_path: str | Path, new_segment_path: str | Path,
         import subprocess
 
         ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()
-        frame_rate_args = ["-r", str(int(fps))] if fps else []
+        width, height = _probe_video_size(source) or _probe_video_size(segment) or (0, 0)
+        if width <= 0 or height <= 0:
+            print("[VIDEO_SESSION] concat skipped: unable to probe video size")
+            return None
+        width -= width % 2
+        height -= height % 2
+        fps_filter = f",fps={int(fps)}" if fps else ""
         filter_graph = (
-            "[1:v][0:v]scale2ref=w=iw:h=ih[seg][base];"
-            "[base]setpts=PTS-STARTPTS,setsar=1[v0];"
-            "[seg]setpts=PTS-STARTPTS,setsar=1[v1];"
+            f"[0:v]scale={width}:{height}:force_original_aspect_ratio=decrease,"
+            f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,setpts=PTS-STARTPTS,setsar=1{fps_filter}[v0];"
+            f"[1:v]scale={width}:{height}:force_original_aspect_ratio=decrease,"
+            f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,setpts=PTS-STARTPTS,setsar=1{fps_filter}[v1];"
             "[v0][v1]concat=n=2:v=1:a=0[v]"
         )
         cmd = [
@@ -580,7 +643,7 @@ def concat_video_segments(source_path: str | Path, new_segment_path: str | Path,
             filter_graph,
             "-map",
             "[v]",
-            *frame_rate_args,
+            "-an",
             "-c:v",
             "libx264",
             "-preset",
@@ -589,12 +652,16 @@ def concat_video_segments(source_path: str | Path, new_segment_path: str | Path,
             "yuv420p",
             "-crf",
             "23",
+            "-movflags",
+            "+faststart",
             str(output),
         ]
         result = subprocess.run(cmd, capture_output=True, timeout=300)
         if result.returncode == 0 and output.exists():
-            os.replace(output, segment)
-            return segment
+            if _concat_output_is_valid(source, segment, output):
+                os.replace(output, segment)
+                return segment
+            output.unlink(missing_ok=True)
         stderr = result.stderr.decode(errors="replace")[-500:]
         print(f"[VIDEO_SESSION] concat filter failed: {stderr}")
     except Exception as exc:

@@ -1122,11 +1122,21 @@ let _lastVideoContext = {
 };
 
 function updateLastVideoContextFromResult(data = {}, prompt = '', sourceImage = null, chatId = null) {
+    const hasFreshVideoResult = Boolean(
+        data.video
+        || data.totalFrames
+        || data.totalDuration
+        || data.sourceVideoSessionId
+        || data.source_video_session_id
+    );
+    const nextVideoSessionId = data.videoSessionId
+        || data.video_session_id
+        || (!hasFreshVideoResult ? _lastVideoContext.videoSessionId : null);
     _lastVideoContext = {
         prompt: prompt || _lastVideoContext.prompt || '',
         sourceImage,
         canContinue: Boolean(data.canContinue),
-        videoSessionId: data.videoSessionId || data.video_session_id || _lastVideoContext.videoSessionId || null,
+        videoSessionId: nextVideoSessionId,
         anchors: Array.isArray(data.continuationAnchors) ? data.continuationAnchors : [],
         analysisSummary: data.analysisSummary || {},
         chatId: chatId || (typeof currentChatId !== 'undefined' ? currentChatId : null),

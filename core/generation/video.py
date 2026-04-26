@@ -1702,10 +1702,12 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
         video_path = gif_path
         video_format = "gif"
 
+    continuation_merged = False
     if persisted_continuation and source_video_path and video_format == "mp4":
         merged_path = concat_video_segments(source_video_path, video_path, fps=fps)
         if merged_path:
             video_path = merged_path
+            continuation_merged = True
             print(f"[VIDEO] Continuation raccordée au clip source: {video_path}")
         else:
             print("[VIDEO] Raccord continuation ignoré: segment généré conservé seul")
@@ -1743,7 +1745,9 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
 
     effective_video_prompt = locals().get("video_prompt") or prompt or "Image-to-video motion"
     segment_frames = len(_state.all_video_frames)
-    total_frames_for_asset = source_frame_count + segment_frames if persisted_continuation else segment_frames
+    include_source_frames = persisted_continuation and continuation_merged
+    inherited_keyframes = (continuation_context.get("source_keyframes") or []) if include_source_frames else []
+    total_frames_for_asset = source_frame_count + segment_frames if include_source_frames else segment_frames
     total_duration_for_asset = round(total_frames_for_asset / fps, 3) if fps else None
     session = create_video_session(
         video_path=video_path,
@@ -1763,8 +1767,8 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
         continuation_prompt=continuation_context.get("continuation_prompt") or "",
         audio_engine=audio_engine or "auto",
         audio_prompt=audio_prompt or "",
-        inherited_keyframes=continuation_context.get("source_keyframes") or [],
-        frame_index_offset=source_frame_count if persisted_continuation else 0,
+        inherited_keyframes=inherited_keyframes,
+        frame_index_offset=source_frame_count if include_source_frames else 0,
     )
     _state.last_video_session = session
     _state.last_video_total_frames = total_frames_for_asset
