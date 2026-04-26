@@ -257,6 +257,8 @@ def generate_video_endpoint():
                     "source_session_id": source_video_session.get("id"),
                     "source_video_path": source_video_session.get("video_path"),
                     "source_frames": source_video_session.get("frames") or 0,
+                    "source_width": source_video_session.get("width"),
+                    "source_height": source_video_session.get("height"),
                     "source_keyframes": source_video_session.get("keyframes") or [],
                     "anchor_frame_index": anchor_frame_index,
                     "continuation_prompt": user_continuation,

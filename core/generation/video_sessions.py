@@ -376,6 +376,7 @@ def create_video_source_session(
     shutil.copyfile(source, imported_path)
 
     duration = _probe_video_duration(imported_path) or 0.0
+    source_size = _probe_video_size(imported_path)
     frame_count = max(1, int(round(duration * max(1, int(fps or 24))))) if duration else 0
     session_keyframe_dir = VIDEO_KEYFRAME_DIR / session_id
 
@@ -415,8 +416,8 @@ def create_video_source_session(
         "fps": int(fps or 24),
         "frames": frame_count or len(keyframes),
         "duration_sec": round(duration, 3) if duration else None,
-        "width": None,
-        "height": None,
+        "width": source_size[0] if source_size else None,
+        "height": source_size[1] if source_size else None,
         "last_frame_path": str(last_frame_path) if saved_last else (keyframes[-1]["path"] if keyframes else None),
         "keyframes": keyframes,
         "source_session_id": None,
@@ -457,18 +458,18 @@ def get_anchor_image(session: dict[str, Any] | None, anchor_frame_index: int | N
         for frame in candidates:
             if int(frame.get("index", -1)) == int(anchor_frame_index):
                 return frame_to_pil(Image.open(frame["path"]))
+    last_frame_path = session.get("last_frame_path")
+    if last_frame_path:
+        try:
+            return frame_to_pil(Image.open(last_frame_path))
+        except Exception:
+            pass
     if candidates:
         last = candidates[-1]
         try:
             return frame_to_pil(Image.open(last["path"]))
         except Exception:
             pass
-    last_frame_path = session.get("last_frame_path")
-    if last_frame_path:
-        try:
-            return frame_to_pil(Image.open(last_frame_path))
-        except Exception:
-            return None
     return None
 
 
@@ -539,6 +540,7 @@ def analyze_video_session(
                     "role": "user",
                     "content": (
                         "Analyze the scene, subjects, camera, motion, and last frame. "
+                        "For visible people, describe stable visual identity cues: face, hair, outfit, body proportions, pose, and crop. "
                         "Build a continuity prompt for the next generated segment. "
                         f"Previous prompt: {session.get('final_prompt') or session.get('prompt') or ''}\n"
                         f"User continuation request: {user_prompt or ''}"
@@ -572,10 +574,30 @@ def build_continuation_prompt(
 ) -> str:
     """Build a deterministic prompt for natural video continuation."""
     analysis = analysis or {}
+    user_direction = (user_prompt or "").strip()
+    edit_intent_words = (
+        "change face", "change identity", "different person", "new person",
+        "older", "younger", "fatter", "thinner", "bigger", "smaller",
+        "muscular", "pregnant", "transform", "morph", "modify body",
+        "modifier le visage", "changer le visage", "changer la personne",
+        "grossir", "maigrir", "plus gros", "plus grosse", "plus mince",
+        "musclé", "enceinte", "transforme", "modifier le corps",
+    )
+    allows_identity_or_body_change = any(word in user_direction.lower() for word in edit_intent_words)
     parts = [
         "Continue the same video naturally from the selected anchor frame.",
         "Keep subject identity, lighting, composition, camera direction, and motion continuity.",
+        "Start from the anchor frame exactly: preserve the last visible pose, crop, camera angle, lens feel, and scene layout.",
     ]
+    if not allows_identity_or_body_change:
+        parts.append(
+            "If a human/person is visible, preserve the same face, facial structure, skin tone, hair, body shape, proportions, outfit, and age. "
+            "Do not beautify, replace, reshape, slim, enlarge, age, de-age, or redesign the person."
+        )
+    else:
+        parts.append(
+            "Preserve any person visually except for the explicit body/face change requested by the user."
+        )
     if previous_prompt:
         parts.append(f"Previous video prompt: {previous_prompt.strip()}")
     for key, label in (
@@ -592,7 +614,7 @@ def build_continuation_prompt(
     if continuity:
         parts.append(f"Continuity direction: {continuity}")
     if user_prompt:
-        parts.append(f"New user direction: {user_prompt.strip()}")
+        parts.append(f"New user direction: {user_direction}")
     else:
         parts.append("New user direction: continue the existing action smoothly.")
     parts.append("Avoid jump cuts, sudden subject changes, duplicated limbs, warped faces, and abrupt camera resets.")

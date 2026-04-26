@@ -175,6 +175,8 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
     source_video_path = continuation_context.get("source_video_path")
     persisted_continuation = bool(continuation_context.get("source_session_id"))
     source_frame_count = int(continuation_context.get("source_frames") or 0)
+    source_width = int(continuation_context.get("source_width") or 0)
+    source_height = int(continuation_context.get("source_height") or 0)
 
     # Si on continue depuis une session persistée, la route fournit l'image
     # d'ancrage et JoyBoy exporte un segment delta avant de le raccorder.
@@ -281,21 +283,34 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
         and 0 < float(VRAM_GB or 0) <= 10
     )
 
+    def _aspect_locked_size(base_w: int, base_h: int, *, max_area: int, mod_value: int = 16, min_side: int = 256):
+        """Keep source aspect ratio while snapping to model-friendly multiples."""
+        base_w = max(1, int(base_w or w or 1))
+        base_h = max(1, int(base_h or h or 1))
+        aspect_ratio = base_h / base_w
+        target_h_local = round(np.sqrt(max_area * aspect_ratio)) // mod_value * mod_value
+        target_w_local = round(np.sqrt(max_area / aspect_ratio)) // mod_value * mod_value
+        target_w_local = max(min_side, target_w_local)
+        target_h_local = max(min_side, target_h_local)
+        return int(target_w_local), int(target_h_local)
+
+    def _source_aspect_size(*, quality_value: str = "720p", max_480: int = 480 * 832, max_720: int = 704 * 1280, mod_value: int = 16):
+        base_w = source_width or w
+        base_h = source_height or h
+        max_area = max_480 if quality_value == "480p" else max_720
+        return _aspect_locked_size(base_w, base_h, max_area=max_area, mod_value=mod_value)
+
     if is_native_wan:
         # Backend NATIF Wan — résolutions fixes comme Wan 2.2 5B
         is_portrait = h > w
         if video_model == "wan-native-14b":
             # 14B I2V: 480p uniquement (stride 8)
-            target_w, target_h = (480, 832) if is_portrait else (832, 480)
-            print(f"[VIDEO] Wan 2.2 14B (natif) en 480p ({'portrait' if is_portrait else 'paysage'})")
+            target_w, target_h = _source_aspect_size(quality_value="480p", mod_value=16)
+            print(f"[VIDEO] Wan 2.2 14B (natif) en 480p ratio source: {target_w}x{target_h}")
         else:
             # 5B TI2V: 720p / 480p (stride 16)
-            if quality == "480p":
-                target_w, target_h = (480, 832) if is_portrait else (832, 480)
-                print(f"[VIDEO] Wan 2.2 5B (natif) en 480p ({'portrait' if is_portrait else 'paysage'})")
-            else:
-                target_w, target_h = (704, 1280) if is_portrait else (1280, 704)
-                print(f"[VIDEO] Wan 2.2 5B (natif) en 720p ({'portrait' if is_portrait else 'paysage'})")
+            target_w, target_h = _source_aspect_size(quality_value=quality, mod_value=16)
+            print(f"[VIDEO] Wan 2.2 5B (natif) en {quality} ratio source: {target_w}x{target_h}")
     elif is_wan5b:
         # Wan 2.2 TI2V 5B / FastWan / T2V-14B: RÉSOLUTIONS FIXES uniquement
         # T2V-14B: 480p only
@@ -306,17 +321,16 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
             target_w, target_h = (480, 832) if is_portrait else (832, 480)
             print(f"[VIDEO] Wan 2.2 T2V-14B en 480p ({'portrait' if is_portrait else 'paysage'})")
         elif quality == "480p":
-            target_w, target_h = (480, 832) if is_portrait else (832, 480)
-            print(f"[VIDEO] Wan 2.2 5B en 480p ({'portrait' if is_portrait else 'paysage'})")
+            target_w, target_h = _source_aspect_size(quality_value="480p", mod_value=16)
+            print(f"[VIDEO] Wan 2.2 5B en 480p ratio source: {target_w}x{target_h}")
         else:
-            target_w, target_h = (704, 1280) if is_portrait else (1280, 704)
-            print(f"[VIDEO] Wan 2.2 5B en 720p ({'portrait' if is_portrait else 'paysage'})")
+            target_w, target_h = _source_aspect_size(quality_value="720p", mod_value=16)
+            print(f"[VIDEO] Wan 2.2 5B en 720p ratio source: {target_w}x{target_h}")
     elif is_wan:
         # Wan 2.1/2.2 14B: RÉSOLUTIONS FIXES (modèles 480P/720P séparés)
         # 480p: 832x480 (paysage) ou 480x832 (portrait)
-        is_portrait = h > w
-        target_w, target_h = (480, 832) if is_portrait else (832, 480)
-        print(f"[VIDEO] Wan 14B en 480p ({'portrait' if is_portrait else 'paysage'})")
+        target_w, target_h = _source_aspect_size(quality_value="480p", mod_value=16)
+        print(f"[VIDEO] Wan 14B en 480p ratio source: {target_w}x{target_h}")
     elif is_hunyuan:
         # HunyuanVideo 1.5: 480p, résolution doit être multiple de 16
         max_area = 480 * 832
