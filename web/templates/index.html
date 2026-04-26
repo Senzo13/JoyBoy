@@ -398,7 +398,7 @@
 
     {% include 'partials/onboarding_modal.html' %}
 
-    <input type="file" id="file-input" accept="image/*">
+    <input type="file" id="file-input" accept="image/*,video/*">
     <input type="file" id="face-ref-input" accept="image/*" multiple style="display:none">
     <input type="file" id="style-ref-input" accept="image/*" style="display:none">
     <input type="file" id="pack-archive-input" accept=".zip,application/zip" style="display:none" onchange="handlePackArchiveSelected(event)">
@@ -444,6 +444,16 @@
                 <div class="image-preview-container">
                     <img id="image-preview" class="image-preview">
                     <button id="clear-image-btn" class="clear-image-btn" onclick="clearImage()">✕</button>
+                </div>
+                <div class="video-source-preview-container" id="video-source-preview-container">
+                    <div class="video-source-thumb-wrap">
+                        <img id="video-source-preview" class="video-source-preview" alt="">
+                    </div>
+                    <div class="video-source-meta">
+                        <span id="video-source-name">Vidéo</span>
+                        <span id="video-source-duration"></span>
+                    </div>
+                    <button id="clear-video-source-btn" class="clear-image-btn" onclick="clearVideoSource()">✕</button>
                 </div>
                 <div class="face-ref-container" id="face-ref-container">
                     <div class="face-ref-slots" id="face-ref-slots"></div>
@@ -656,6 +666,16 @@
                     <div class="image-preview-container">
                         <img id="chat-image-preview" class="image-preview">
                         <button id="chat-clear-image-btn" class="clear-image-btn" onclick="clearImage()">✕</button>
+                    </div>
+                    <div class="video-source-preview-container" id="chat-video-source-preview-container">
+                        <div class="video-source-thumb-wrap">
+                            <img id="chat-video-source-preview" class="video-source-preview" alt="">
+                        </div>
+                        <div class="video-source-meta">
+                            <span id="chat-video-source-name">Vidéo</span>
+                            <span id="chat-video-source-duration"></span>
+                        </div>
+                        <button id="chat-clear-video-source-btn" class="clear-image-btn" onclick="clearVideoSource()">✕</button>
                     </div>
                     <div class="face-ref-container" id="chat-face-ref-container">
                         <div class="face-ref-slots" id="chat-face-ref-slots"></div>

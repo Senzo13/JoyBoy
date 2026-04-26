@@ -2,9 +2,11 @@
 Blueprint pour les routes video (generate-video, video-progress, video-models, reset-video, etc.).
 """
 from flask import Blueprint, request, jsonify
+import base64
 import os
 import shutil
 import threading
+import tempfile
 import uuid
 
 video_bp = Blueprint('video', __name__)
@@ -47,6 +49,80 @@ def _pil_to_base64(img):
 
 
 # --- Routes ---
+
+@video_bp.route('/video-source', methods=['POST'])
+def register_video_source():
+    """Register an uploaded/pasted video as a continuation source session."""
+    from core.api_helpers import validation_error
+
+    try:
+        data = request.json or {}
+        video_data = str(data.get('video') or '').strip()
+        if not video_data:
+            return validation_error('Video requise')
+
+        header = ''
+        payload = video_data
+        if ',' in video_data and video_data.startswith('data:'):
+            header, payload = video_data.split(',', 1)
+        mime = 'video/mp4'
+        if header:
+            mime = header.split(';', 1)[0].replace('data:', '') or mime
+        if not mime.startswith('video/'):
+            return validation_error('Le fichier colle doit etre une video')
+
+        ext_map = {
+            'video/mp4': '.mp4',
+            'video/webm': '.webm',
+            'video/quicktime': '.mov',
+            'video/x-matroska': '.mkv',
+        }
+        suffix = ext_map.get(mime, '.mp4')
+        try:
+            raw = base64.b64decode(payload, validate=True)
+        except Exception:
+            return validation_error('Video base64 invalide')
+
+        max_bytes = int(os.environ.get('JOYBOY_VIDEO_UPLOAD_MAX_MB', '512')) * 1024 * 1024
+        if len(raw) > max_bytes:
+            return validation_error('Video trop lourde pour cet upload local')
+
+        fd, tmp_path = tempfile.mkstemp(suffix=suffix)
+        os.close(fd)
+        try:
+            with open(tmp_path, 'wb') as handle:
+                handle.write(raw)
+
+            from core.generation.video_sessions import create_video_source_session, public_video_session
+
+            fps = int(data.get('fps') or 24)
+            session = create_video_source_session(
+                video_path=tmp_path,
+                prompt=str(data.get('prompt') or '').strip(),
+                model_id=str(data.get('video_model') or 'external-video'),
+                model_name='Video importee',
+                fps=fps,
+                chat_id=data.get('chatId'),
+                video_format=suffix.lstrip('.'),
+            )
+            public = public_video_session(session)
+            return jsonify({
+                'success': True,
+                **public,
+                'durationSec': session.get('duration_sec'),
+                'frames': session.get('frames'),
+                'fps': session.get('fps'),
+                'fileName': data.get('fileName') or 'video',
+            })
+        finally:
+            try:
+                os.remove(tmp_path)
+            except Exception:
+                pass
+    except Exception as exc:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(exc)}), 500
 
 @video_bp.route('/generate-video', methods=['POST'])
 def generate_video_endpoint():

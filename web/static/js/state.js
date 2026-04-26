@@ -10,6 +10,7 @@ let APP_CONFIG = {
 
 // Images
 let currentImage = null;
+let currentVideoSource = null;
 let originalImage = null;
 let modifiedImage = null;
 let pendingImage = null;

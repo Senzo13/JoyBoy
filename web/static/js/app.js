@@ -11,6 +11,7 @@ function appT(key, fallback = '', params = {}) {
  * @param {string} imageSrc - Data URL de l'image
  */
 async function setCurrentImage(imageSrc) {
+    if (typeof clearVideoSource === 'function') clearVideoSource();
     currentImage = await resizeImageToTarget(imageSrc);
     updateImagePreviews();
     updateModelPickerDisplay();
@@ -152,12 +153,17 @@ function chooseComposerAction(type) {
 document.getElementById('file-input')?.addEventListener('change', function(e) {
     const file = e.target.files[0];
     if (file) {
-        const reader = new FileReader();
-        reader.onload = async function(e) {
-            await setCurrentImage(e.target.result);
-        };
-        reader.readAsDataURL(file);
+        if (file.type?.startsWith('video/')) {
+            setCurrentVideoSourceFromFile(file);
+        } else {
+            const reader = new FileReader();
+            reader.onload = async function(e) {
+                await setCurrentImage(e.target.result);
+            };
+            reader.readAsDataURL(file);
+        }
     }
+    e.target.value = '';
 });
 
 function readFileAsDataUrl(file) {
@@ -216,6 +222,16 @@ document.addEventListener('paste', function(e) {
     const items = e.clipboardData?.items;
     if (!items) return;
     for (let i = 0; i < items.length; i++) {
+        if (items[i].type.indexOf('video') !== -1) {
+            const blob = items[i].getAsFile();
+            if (blob) {
+                setCurrentVideoSourceFromFile(blob);
+                e.preventDefault();
+                return;
+            }
+        }
+    }
+    for (let i = 0; i < items.length; i++) {
         if (items[i].type.indexOf('image') !== -1) {
             const blob = items[i].getAsFile();
             const reader = new FileReader();
@@ -228,6 +244,50 @@ document.addEventListener('paste', function(e) {
         }
     }
 });
+
+async function setCurrentVideoSourceFromFile(file) {
+    if (!file || !file.type?.startsWith('video/')) return;
+    try {
+        const dataUrl = await readFileAsDataUrl(file);
+        const videoModel = userSettings.videoModel || 'svd';
+        const videoDefaults = getVideoModelDefaults(videoModel);
+        const activeInput = document.activeElement?.id === 'chat-prompt'
+            ? document.getElementById('chat-prompt')
+            : document.getElementById('prompt-input');
+        const prompt = activeInput?.value?.trim?.() || '';
+        if (window.Toast?.info) Toast.info('Vidéo ajoutée comme source de continuation');
+        const result = await apiGeneration.registerVideoSource({
+            video: dataUrl,
+            fileName: file.name || 'video',
+            prompt,
+            video_model: videoModel,
+            fps: videoDefaults.fps,
+            chatId: typeof currentChatId !== 'undefined' ? currentChatId : null,
+        });
+        if (!result.ok || !result.data?.success) {
+            Toast.error(result.data?.error || 'Impossible de préparer la vidéo');
+            return;
+        }
+        currentImage = null;
+        updateImagePreviews();
+        currentVideoSource = {
+            ...result.data,
+            thumbnail: result.data.continuationAnchors?.[0]?.thumbnail || '',
+            fileName: result.data.fileName || file.name || 'video',
+        };
+        if (typeof updateLastVideoContextFromResult === 'function') {
+            updateLastVideoContextFromResult(result.data, prompt, null, currentChatId);
+        }
+        updateVideoSourcePreviews();
+        if (typeof updateSendButtonState === 'function') {
+            updateSendButtonState('home');
+            updateSendButtonState('chat');
+        }
+    } catch (error) {
+        console.error('[VIDEO] Source upload error:', error);
+        Toast.error(error.message || 'Erreur upload vidéo');
+    }
+}
 
 // Cancel only the local fetch on page unload.
 // Do NOT send /cancel-all here: long image/video jobs are durable now and the
@@ -343,7 +403,18 @@ async function handleVideoClick() {
     // Get prompt from the appropriate input
     const homePrompt = document.getElementById('prompt-input');
     const chatPrompt = document.getElementById('chat-prompt');
-    const prompt = (homePrompt?.value || chatPrompt?.value || '').trim();
+    const prompt = (document.activeElement?.id === 'chat-prompt'
+        ? (chatPrompt?.value || homePrompt?.value || '')
+        : (homePrompt?.value || chatPrompt?.value || '')
+    ).trim();
+
+    if (currentVideoSource?.videoSessionId) {
+        openVideoContinuationPanel({
+            videoSessionId: currentVideoSource.videoSessionId,
+            prefillPrompt: prompt,
+        });
+        return;
+    }
 
     // Check if there's an image in the input
     const homePreview = document.getElementById('image-preview');

@@ -917,6 +917,15 @@ async function generate() {
         return;
     }
 
+    if (currentVideoSource?.videoSessionId) {
+        openVideoContinuationPanel({
+            videoSessionId: currentVideoSource.videoSessionId,
+            prefillPrompt: prompt,
+        });
+        _genSubmitLock = false;
+        return;
+    }
+
     // Mode privé : vider le chat précédent avant chaque nouvelle demande
     if (Settings.get('privacyMode')) {
         const messagesDiv = document.getElementById('chat-messages');
@@ -1233,6 +1242,13 @@ async function generate() {
 async function continueChat() {
     const prompt = document.getElementById('chat-prompt').value.trim();
     if (!prompt) {
+        return;
+    }
+    if (currentVideoSource?.videoSessionId) {
+        openVideoContinuationPanel({
+            videoSessionId: currentVideoSource.videoSessionId,
+            prefillPrompt: prompt,
+        });
         return;
     }
     const directTextToImage = !currentImage && isDirectTextToImagePrompt(prompt);

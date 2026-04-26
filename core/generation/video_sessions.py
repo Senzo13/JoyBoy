@@ -14,6 +14,8 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
+import subprocess
 import tempfile
 import uuid
 from typing import Any
@@ -27,6 +29,7 @@ VIDEO_OUTPUT_DIR = Path("output") / "videos"
 VIDEO_SESSION_DIR = VIDEO_OUTPUT_DIR / "sessions"
 VIDEO_KEYFRAME_DIR = VIDEO_OUTPUT_DIR / "keyframes"
 VIDEO_SESSION_SCHEMA = 2
+VIDEO_IMPORT_DIR = VIDEO_OUTPUT_DIR / "imports"
 
 DEFAULT_VIDEO_ANALYSIS_MODEL = os.environ.get(
     "JOYBOY_VIDEO_ANALYSIS_MODEL",
@@ -52,6 +55,7 @@ def _safe_session_id(value: str | None) -> str:
 def _ensure_dirs() -> None:
     VIDEO_SESSION_DIR.mkdir(parents=True, exist_ok=True)
     VIDEO_KEYFRAME_DIR.mkdir(parents=True, exist_ok=True)
+    VIDEO_IMPORT_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def _json_safe(value: Any) -> Any:
@@ -240,6 +244,138 @@ def create_video_session(
         "analysis_summary": analysis_summary or {},
         "audio_engine": audio_engine,
         "audio_prompt": audio_prompt,
+    }
+    return save_video_session(session)
+
+
+def _probe_video_duration(video_path: str | Path) -> float | None:
+    """Return duration in seconds using ffmpeg stderr metadata when available."""
+    try:
+        import imageio_ffmpeg
+
+        ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()
+        result = subprocess.run(
+            [ffmpeg_path, "-hide_banner", "-i", str(video_path)],
+            capture_output=True,
+            timeout=20,
+        )
+        output = (result.stderr or b"").decode(errors="replace")
+        match = re.search(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)", output)
+        if not match:
+            return None
+        hours, minutes, seconds = match.groups()
+        return int(hours) * 3600 + int(minutes) * 60 + float(seconds)
+    except Exception as exc:
+        print(f"[VIDEO_SESSION] duration probe skipped: {exc}")
+        return None
+
+
+def _extract_video_frame(video_path: str | Path, output_path: Path, *, at_time: float | None = None, last: bool = False) -> bool:
+    try:
+        import imageio_ffmpeg
+
+        ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        if last:
+            cmd = [
+                ffmpeg_path,
+                "-y",
+                "-sseof",
+                "-1",
+                "-i",
+                str(video_path),
+                "-frames:v",
+                "1",
+                str(output_path),
+            ]
+        else:
+            cmd = [
+                ffmpeg_path,
+                "-y",
+                "-ss",
+                str(max(0.0, float(at_time or 0))),
+                "-i",
+                str(video_path),
+                "-frames:v",
+                "1",
+                str(output_path),
+            ]
+        result = subprocess.run(cmd, capture_output=True, timeout=60)
+        return result.returncode == 0 and output_path.exists()
+    except Exception as exc:
+        print(f"[VIDEO_SESSION] frame extract skipped: {exc}")
+        return False
+
+
+def create_video_source_session(
+    *,
+    video_path: str | Path,
+    prompt: str = "",
+    model_id: str = "external-video",
+    model_name: str = "Vidéo importée",
+    fps: int = 24,
+    chat_id: str | None = None,
+    video_format: str = "mp4",
+) -> dict[str, Any]:
+    """Persist an uploaded video as a continuation-ready source session."""
+    _ensure_dirs()
+    session_id = f"vid_{uuid.uuid4().hex[:12]}"
+    source = Path(video_path)
+    suffix = source.suffix.lower() or f".{video_format or 'mp4'}"
+    imported_path = VIDEO_IMPORT_DIR / f"{session_id}{suffix}"
+    shutil.copyfile(source, imported_path)
+
+    duration = _probe_video_duration(imported_path) or 0.0
+    frame_count = max(1, int(round(duration * max(1, int(fps or 24))))) if duration else 0
+    session_keyframe_dir = VIDEO_KEYFRAME_DIR / session_id
+
+    keyframes: list[dict[str, Any]] = []
+    if duration > 0:
+        sample_count = min(5, max(1, int(duration)))
+        for idx in range(sample_count):
+            time_sec = 0.0 if sample_count == 1 else (duration * idx / (sample_count - 1))
+            frame_index = int(round(time_sec * max(1, int(fps or 24))))
+            image_path = session_keyframe_dir / f"frame_{frame_index:05d}.png"
+            if _extract_video_frame(imported_path, image_path, at_time=time_sec):
+                keyframes.append({
+                    "index": frame_index,
+                    "time_sec": round(time_sec, 3),
+                    "path": str(image_path),
+                })
+
+    last_frame_path = session_keyframe_dir / "last_frame.png"
+    saved_last = _extract_video_frame(imported_path, last_frame_path, last=True)
+    if saved_last and not keyframes:
+        keyframes.append({
+            "index": max(0, frame_count - 1),
+            "time_sec": round(duration, 3) if duration else None,
+            "path": str(last_frame_path),
+        })
+
+    session = {
+        "id": session_id,
+        "created_at": datetime.now().isoformat(timespec="seconds"),
+        "video_path": str(imported_path),
+        "format": video_format,
+        "chat_id": chat_id,
+        "model_id": model_id,
+        "model_name": model_name,
+        "prompt": prompt,
+        "final_prompt": prompt,
+        "fps": int(fps or 24),
+        "frames": frame_count or len(keyframes),
+        "duration_sec": round(duration, 3) if duration else None,
+        "width": None,
+        "height": None,
+        "last_frame_path": str(last_frame_path) if saved_last else (keyframes[-1]["path"] if keyframes else None),
+        "keyframes": keyframes,
+        "source_session_id": None,
+        "anchor_frame_index": None,
+        "continuation_prompt": "",
+        "analysis_summary": {},
+        "audio_engine": "auto",
+        "audio_prompt": prompt,
+        "imported": True,
     }
     return save_video_session(session)
 
@@ -482,6 +618,7 @@ __all__ = [
     "build_continuation_prompt",
     "concat_video_segments",
     "create_video_session",
+    "create_video_source_session",
     "find_latest_video_session",
     "frame_to_pil",
     "get_anchor_image",

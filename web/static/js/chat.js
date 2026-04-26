@@ -1386,6 +1386,8 @@ async function runVideoContinuation(options = {}) {
 
         if (data?.success && data.video) {
             updateLastVideoContextFromResult(data, options.prompt || _lastVideoContext.prompt, null, _lastVideoContext.chatId);
+            currentVideoSource = null;
+            if (typeof updateVideoSourcePreviews === 'function') updateVideoSourcePreviews();
             addMessageVideo(data.video, generationTime, null, data.canContinue, videoDefaults.name, _lastVideoContext.chatId, data);
         } else {
             removeSkeletonMessage();

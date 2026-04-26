@@ -692,6 +692,13 @@ const apiGeneration = {
     },
 
     /**
+     * Register uploaded/pasted video as continuation source
+     */
+    async registerVideoSource(params) {
+        return apiPost('/video-source', params);
+    },
+
+    /**
      * Get video generation progress
      */
     async getVideoProgress() {

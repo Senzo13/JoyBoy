@@ -2449,7 +2449,7 @@ function updateComposerAttachmentState() {
     const refs = typeof getFaceRefImages === 'function'
         ? getFaceRefImages()
         : (faceRefImage ? [faceRefImage] : []);
-    const hasAttachments = Boolean(currentImage || styleRefImage || refs.length);
+    const hasAttachments = Boolean(currentImage || currentVideoSource || styleRefImage || refs.length);
     document.querySelectorAll('.input-bar').forEach((bar) => {
         bar.classList.toggle('has-attachments', hasAttachments);
     });
@@ -2480,6 +2480,59 @@ function updateImagePreviews() {
         chatClearBtn.style.display = currentImage ? 'flex' : 'none';
     }
     updateComposerAttachmentState();
+}
+
+function updateVideoSourcePreviews() {
+    const pairs = [
+        {
+            container: document.getElementById('video-source-preview-container'),
+            preview: document.getElementById('video-source-preview'),
+            name: document.getElementById('video-source-name'),
+            duration: document.getElementById('video-source-duration'),
+            clear: document.getElementById('clear-video-source-btn'),
+        },
+        {
+            container: document.getElementById('chat-video-source-preview-container'),
+            preview: document.getElementById('chat-video-source-preview'),
+            name: document.getElementById('chat-video-source-name'),
+            duration: document.getElementById('chat-video-source-duration'),
+            clear: document.getElementById('chat-clear-video-source-btn'),
+        },
+    ];
+    const thumb = currentVideoSource?.thumbnail || currentVideoSource?.continuationAnchors?.[0]?.thumbnail || '';
+    const durationText = currentVideoSource?.durationSec
+        ? `${Number(currentVideoSource.durationSec).toFixed(1)}s`
+        : 'Source vidéo';
+    for (const item of pairs) {
+        if (!item.container) continue;
+        item.container.classList.toggle('has-video', Boolean(currentVideoSource));
+        if (item.preview) {
+            item.preview.src = thumb || '';
+            item.preview.style.display = currentVideoSource ? 'block' : 'none';
+        }
+        if (item.name) item.name.textContent = currentVideoSource?.fileName || 'Vidéo';
+        if (item.duration) item.duration.textContent = durationText;
+        if (item.clear) item.clear.style.display = currentVideoSource ? 'flex' : 'none';
+    }
+    updateComposerAttachmentState();
+}
+
+function clearVideoSource() {
+    const clearedSessionId = currentVideoSource?.videoSessionId || null;
+    currentVideoSource = null;
+    if (typeof _lastVideoContext !== 'undefined') {
+        const activeSessionId = _lastVideoContext.videoSessionId || null;
+        if (clearedSessionId && activeSessionId === clearedSessionId) {
+            _lastVideoContext.canContinue = false;
+            _lastVideoContext.videoSessionId = null;
+            _lastVideoContext.anchors = [];
+        }
+    }
+    updateVideoSourcePreviews();
+    if (typeof updateSendButtonState === 'function') {
+        updateSendButtonState('home');
+        updateSendButtonState('chat');
+    }
 }
 
 function clearImage() {
