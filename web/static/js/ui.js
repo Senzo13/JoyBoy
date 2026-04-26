@@ -825,8 +825,10 @@ function updateChatPadding() {
     const minRequestTop = window.matchMedia?.('(max-width: 768px)').matches ? 80 : 112;
     const naturalTop = Math.max(requestedTop, minRequestTop);
 
-    // Le skeleton est temporaire — le "vrai" dernier message détermine le scroll max
-    const realMsgs = messagesDiv.querySelectorAll('.message:not(.skeleton-message)');
+    // Les skeletons sont temporaires : le vrai dernier message détermine le scroll max.
+    const realMsgs = messagesDiv.querySelectorAll(
+        '.message:not(.skeleton-message):not(.image-skeleton-message):not(.video-skeleton-message)'
+    );
     const lastRealMsg = realMsgs.length ? realMsgs[realMsgs.length - 1] : lastChild;
 
     const contentEnd = lastChild.offsetTop + lastChild.offsetHeight;
