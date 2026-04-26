@@ -163,6 +163,7 @@ See [Local Packs](docs/LOCAL_PACKS.md), [Addons](docs/ADDONS.md), and [Third-Par
 - [MCP](docs/MCP.md)
 - [Local Packs](docs/LOCAL_PACKS.md)
 - [Addons and Pack Templates](docs/ADDONS.md)
+- [Packaging](docs/PACKAGING.md)
 - [Third-Party Packs](docs/THIRD_PARTY_PACKS.md)
 - [VRAM Management](docs/VRAM_MANAGEMENT.md)
 - [Releases and update checks](docs/RELEASES.md)

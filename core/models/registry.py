@@ -17,6 +17,7 @@ import subprocess
 import torch
 import gc
 import torch._dynamo
+from core.infra.paths import get_models_dir
 from core.models.runtime_env import configure_huggingface_env
 
 # Supprimer les FutureWarning de diffusers et autres
@@ -32,7 +33,8 @@ try:
     from config import AI_NAME
 except ImportError:
     AI_NAME = "JoyBoy"
-custom_cache = os.path.join(PROJECT_DIR, "models", "huggingface")
+MODELS_DIR = str(get_models_dir())
+custom_cache = os.path.join(MODELS_DIR, "huggingface")
 os.makedirs(custom_cache, exist_ok=True)
 from config import HF_TOKEN
 
@@ -353,7 +355,7 @@ def resolve_single_file_model(model_name):
 def _download_civitai_model(repo_id, filename):
     """Télécharge un modèle depuis CivitAI si pas déjà en cache."""
     version_id = repo_id.split(":")[1]
-    cache_dir = os.path.join(PROJECT_DIR, "models", "civitai")
+    cache_dir = os.path.join(MODELS_DIR, "civitai")
     os.makedirs(cache_dir, exist_ok=True)
     local_path = os.path.join(cache_dir, filename)
 
@@ -843,7 +845,6 @@ ALL_MODELS = {
         "category": "txt2img",
         "desc": "Tres rapide (4 steps)"
     },
-
     "txt2img_flux_dev_int4": {
         "name": "Flux Dev INT4",
         "repo": "black-forest-labs/FLUX.1-dev",
@@ -860,6 +861,7 @@ ALL_MODELS = {
         "desc": "Flux Dev 12B INT8 - rendu premium pour A100/A6000",
         "quant": "int8",
     },
+
     "inpaint_cyberrealistic_pony": {
         "name": "CyberRealistic Pony (Moyen)",
         "repo": "cyberdelia/CyberRealisticPony",

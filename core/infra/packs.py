@@ -24,16 +24,16 @@ from pathlib import Path
 import sys
 
 from core.infra.local_config import (
-    LOCAL_DIR,
     PROJECT_DIR,
     clear_active_pack,
     get_feature_flags,
     get_pack_preferences,
     set_active_pack,
 )
+from core.infra.paths import get_packs_dir as resolve_packs_dir
 
 
-PACKS_DIR = LOCAL_DIR / "packs"
+PACKS_DIR = resolve_packs_dir()
 PACK_MANIFEST_NAME = "pack.json"
 SUPPORTED_PACK_KINDS = {"adult", "creative", "experimental"}
 LOCAL_PACK_SOURCES_DIR = PROJECT_DIR / "local_pack_sources"

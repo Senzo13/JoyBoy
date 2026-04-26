@@ -12,9 +12,10 @@ import threading
 from pathlib import Path
 from typing import Generator, Callable
 
+from core.infra.paths import get_models_dir
+
 # Cache directory
-PROJECT_DIR = Path(__file__).parent.parent
-QUANTIZED_CACHE_DIR = PROJECT_DIR / "models" / "quantized"
+QUANTIZED_CACHE_DIR = get_models_dir() / "quantized"
 QUANTIZED_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 CURRENT_INPAINT_CACHE_KEY = "john6666_epicrealism-xl-vxvii-crystal-clear-realism-sdxl_fooocus"

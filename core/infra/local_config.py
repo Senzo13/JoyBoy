@@ -18,11 +18,11 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
+from core.infra.paths import PROJECT_DIR, get_joyboy_home
 
-PROJECT_DIR = Path(__file__).resolve().parents[2]
 LEGACY_LOCAL_DIR = PROJECT_DIR / ".joyboy"
 LEGACY_LOCAL_CONFIG_PATH = LEGACY_LOCAL_DIR / "config.json"
-LOCAL_DIR = Path(os.environ.get("JOYBOY_HOME", "~/.joyboy")).expanduser()
+LOCAL_DIR = get_joyboy_home()
 LOCAL_CONFIG_PATH = LOCAL_DIR / "config.json"
 
 DEFAULT_LOCAL_CONFIG = {
