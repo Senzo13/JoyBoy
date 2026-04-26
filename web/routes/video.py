@@ -2,9 +2,12 @@
 Blueprint pour les routes video (generate-video, video-progress, video-models, reset-video, etc.).
 """
 from flask import Blueprint, request, jsonify
+import os
+import threading
 import uuid
 
 video_bp = Blueprint('video', __name__)
+video_download_status = {}
 
 
 # --- Helper: lazy imports from web.app to avoid circular imports ---
@@ -394,6 +397,177 @@ def get_video_models():
         include_advanced=include_advanced,
         allow_experimental=allow_experimental,
     ))
+
+
+def _video_repo_downloaded(repo_id, cache_dir):
+    """Return whether a Hugging Face video repo is already cached locally."""
+    local_dir = os.path.join(cache_dir, str(repo_id).replace("/", "--"))
+    if os.path.exists(local_dir):
+        try:
+            with os.scandir(local_dir) as entries:
+                if any(entries):
+                    return True
+        except OSError:
+            pass
+
+    try:
+        from huggingface_hub import scan_cache_dir
+        cache_dirs = [
+            cache_dir,
+            os.path.expanduser("~/.cache/huggingface"),
+            os.path.join(os.environ.get("USERPROFILE", ""), ".cache", "huggingface"),
+        ]
+        for candidate in cache_dirs:
+            if not candidate or not os.path.exists(candidate):
+                continue
+            try:
+                cache_info = scan_cache_dir(candidate)
+                if any(repo.repo_id == repo_id for repo in cache_info.repos):
+                    return True
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return False
+
+
+def _video_repo_size(repo_id):
+    try:
+        from huggingface_hub import HfApi
+        repo_info = HfApi().repo_info(repo_id=repo_id, repo_type="model")
+        total = 0
+        for sibling in repo_info.siblings:
+            size = getattr(sibling, "size", None)
+            if size:
+                total += int(size)
+        return total
+    except Exception:
+        return 0
+
+
+def _folder_size(path):
+    total = 0
+    if not path or not os.path.exists(path):
+        return 0
+    for root, _, files in os.walk(path):
+        for filename in files:
+            try:
+                total += os.path.getsize(os.path.join(root, filename))
+            except OSError:
+                pass
+    return total
+
+
+def _video_model_status_payload(include_advanced=False, allow_experimental=False):
+    from core.models import VIDEO_MODELS, VRAM_GB, custom_cache
+    from core.models.video_policy import build_video_model_catalog
+
+    catalog = build_video_model_catalog(
+        VIDEO_MODELS,
+        vram_gb=VRAM_GB,
+        include_advanced=include_advanced,
+        allow_experimental=allow_experimental,
+    )
+    models = []
+    for model in catalog.get("models", []):
+        model_id = model.get("id")
+        meta = VIDEO_MODELS.get(model_id, {})
+        repo_id = model.get("repo_id") or model.get("hf_repo") or meta.get("id")
+        status = video_download_status.get(model_id, {})
+        downloading = bool(status.get("downloading"))
+        downloaded = _video_repo_downloaded(repo_id, custom_cache) if repo_id and not downloading else False
+        item = {
+            **model,
+            "key": model_id,
+            "repo": repo_id,
+            "native_backend": bool(meta.get("native_backend")),
+            "downloaded": downloaded,
+            "downloading": downloading,
+            "progress": status.get("progress", 0),
+            "downloaded_bytes": status.get("downloaded_size", 0),
+            "total_bytes": status.get("total_size", 0),
+            "error": status.get("error"),
+        }
+        models.append(item)
+    return {**catalog, "success": True, "models": models}
+
+
+@video_bp.route('/api/video-models/status', methods=['GET'])
+def get_video_models_status():
+    include_advanced = str(request.args.get("advanced", "1")).lower() in {"1", "true", "yes", "on"}
+    allow_experimental = str(request.args.get("allow_experimental", "1")).lower() in {"1", "true", "yes", "on"}
+    return jsonify(_video_model_status_payload(include_advanced=include_advanced, allow_experimental=allow_experimental))
+
+
+@video_bp.route('/api/video-models/download', methods=['POST'])
+def download_video_model():
+    data = request.json or {}
+    model_id = str(data.get("model_id") or data.get("model") or "").strip()
+    if not model_id:
+        return jsonify({"success": False, "error": "model_id requis"}), 400
+
+    from core.models import VIDEO_MODELS, custom_cache
+
+    if model_id not in VIDEO_MODELS:
+        return jsonify({"success": False, "error": "Modèle vidéo inconnu"}), 400
+
+    repo_id = VIDEO_MODELS[model_id].get("id")
+    if not repo_id:
+        return jsonify({"success": False, "error": "Repo Hugging Face manquant"}), 400
+
+    if _video_repo_downloaded(repo_id, custom_cache):
+        return jsonify({"success": True, "message": "already_cached"})
+    if video_download_status.get(model_id, {}).get("downloading"):
+        return jsonify({"success": True, "message": "downloading"})
+
+    def download_thread():
+        import time
+        from huggingface_hub import snapshot_download
+
+        total_size = _video_repo_size(repo_id)
+        local_dir = os.path.join(custom_cache, repo_id.replace("/", "--"))
+        video_download_status[model_id] = {
+            "downloading": True,
+            "progress": 0,
+            "downloaded_size": 0,
+            "total_size": total_size,
+        }
+        stop_monitoring = threading.Event()
+
+        def monitor():
+            while not stop_monitoring.is_set():
+                downloaded = _folder_size(local_dir)
+                progress = min(99, int(downloaded * 100 / total_size)) if total_size else 0
+                video_download_status[model_id].update({
+                    "progress": progress,
+                    "downloaded_size": downloaded,
+                })
+                time.sleep(2)
+
+        monitor_thread = threading.Thread(target=monitor, daemon=True)
+        monitor_thread.start()
+        try:
+            snapshot_download(repo_id=repo_id, cache_dir=custom_cache, local_dir=local_dir)
+            stop_monitoring.set()
+            video_download_status[model_id] = {
+                "downloading": False,
+                "progress": 100,
+                "downloaded_size": _folder_size(local_dir),
+                "total_size": total_size,
+            }
+        except Exception as exc:
+            stop_monitoring.set()
+            video_download_status[model_id] = {
+                "downloading": False,
+                "progress": 0,
+                "downloaded_size": _folder_size(local_dir),
+                "total_size": total_size,
+                "error": str(exc),
+            }
+            print(f"[VIDEO_MODELS] Download failed for {model_id}: {exc}")
+
+    threading.Thread(target=download_thread, daemon=True).start()
+    return jsonify({"success": True, "message": "downloading"})
 
 
 @video_bp.route('/reset-video', methods=['POST'])

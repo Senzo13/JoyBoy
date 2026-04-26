@@ -166,6 +166,11 @@ function switchModelsSubtab(type, clickedEl) {
         document.getElementById('models-image-panel')?.classList.add('active');
         // Auto-charger les modèles image
         checkModelsStatus();
+    } else if (type === 'video') {
+        document.getElementById('models-video-panel')?.classList.add('active');
+        if (typeof checkVideoModelsStatus === 'function') {
+            checkVideoModelsStatus();
+        }
     }
 }
 
@@ -182,6 +187,11 @@ function switchModelsInnerTab(panelId, tabName, clickedEl) {
 
     if (panelId === 'models-image-panel' && (tabName === 'catalog' || tabName === 'installed')) {
         checkModelsStatus();
+    }
+    if (panelId === 'models-video-panel' && (tabName === 'catalog' || tabName === 'installed')) {
+        if (typeof checkVideoModelsStatus === 'function') {
+            checkVideoModelsStatus();
+        }
     }
 }
 
