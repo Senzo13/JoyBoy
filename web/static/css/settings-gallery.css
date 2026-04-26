@@ -416,7 +416,7 @@
 .gallery-viewer-zoom-hint {
     position: absolute;
     left: 14px;
-    bottom: 14px;
+    top: 14px;
     padding: 7px 10px;
     border-radius: 999px;
     background: rgba(8, 8, 10, 0.72);
@@ -780,4 +780,3 @@
     background: rgba(245, 158, 11, 0.15);
     color: #f59e0b;
 }
-
