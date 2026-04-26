@@ -96,6 +96,61 @@ def _ensure_framepack_dependency_versions():
         )
 
 
+def _install_wan_native_backend():
+    """Install the official Wan backend without hiding torch from flash-attn.
+
+    flash-attn reads torch during its build metadata step. pip's default build
+    isolation creates a temporary env without torch, so Wan's dependency install
+    can fail even when torch is present in JoyBoy's venv.
+    """
+    print("[MM] Installation du backend natif Wan...")
+    command = [
+        sys.executable,
+        "-m",
+        "pip",
+        "install",
+        "--no-build-isolation",
+        "git+https://github.com/Wan-Video/Wan2.2.git",
+    ]
+    try:
+        subprocess.run(command, check=True)
+        return
+    except subprocess.CalledProcessError as exc:
+        print(f"[MM] Installation Wan standard échouée: {exc}")
+
+    print("[MM] Fallback: installation des dépendances Wan sans build isolé...")
+    fallback_commands = [
+        [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "--no-build-isolation",
+            "flash_attn",
+        ],
+        [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "dashscope",
+            "easydict",
+            "ftfy",
+            "imageio-ffmpeg",
+        ],
+        [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "--no-deps",
+            "git+https://github.com/Wan-Video/Wan2.2.git",
+        ],
+    ]
+    for fallback in fallback_commands:
+        subprocess.run(fallback, check=True)
+
+
 # ============================================================
 # PER-MODEL LOADERS
 # ============================================================
@@ -1252,11 +1307,7 @@ def load_wan_native(model_name, custom_cache):
     try:
         import wan
     except ImportError:
-        print("[MM] Installation du backend natif Wan...")
-        subprocess.run([
-            sys.executable, '-m', 'pip', 'install',
-            'git+https://github.com/Wan-Video/Wan2.2.git'
-        ], check=True)
+        _install_wan_native_backend()
         import wan
 
     from huggingface_hub import snapshot_download

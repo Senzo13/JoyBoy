@@ -133,6 +133,7 @@ pip install "numpy<2" --force-reinstall
 # Install additional dependencies for Linux
 echo -e "${YELLOW}[SETUP]${NC} Installing Linux-specific dependencies..."
 pip install triton
+pip install flash_attn --no-build-isolation 2>/dev/null || echo -e "${YELLOW}[WARN]${NC} FlashAttention build skipped (Wan native will retry at runtime)"
 pip install sageattention --no-build-isolation 2>/dev/null || echo -e "${YELLOW}[WARN]${NC} SageAttention build skipped (will retry at runtime)"
 
 echo ""
