@@ -1331,9 +1331,10 @@ function addMessageVideo(videoBase64, generationTime = null, sourceImage = null,
     const videoFormat = metadata?.format || 'mp4';
     const metadataSessionId = metadata?.videoSessionId || metadata?.video_session_id || null;
     const cacheTag = Date.now();
-    const serverVideoUrl = metadataSessionId
-        ? `/videos/session/${metadataSessionId}?t=${cacheTag}`
+    const stableVideoUrl = metadataSessionId
+        ? `/videos/session/${metadataSessionId}`
         : '';
+    const serverVideoUrl = stableVideoUrl ? `${stableVideoUrl}?t=${cacheTag}` : '';
     const payloadVideo = videoBase64 || metadata?.video || metadata?.videoBase64 || metadata?.video_base64 || '';
     const blobVideoUrl = typeof createPlayableVideoUrl === 'function'
         ? createPlayableVideoUrl(payloadVideo, videoFormat)
@@ -1375,7 +1376,7 @@ function addMessageVideo(videoBase64, generationTime = null, sourceImage = null,
                     ${sourceHtml}
                     <div class="result-image-container video-container video-result-container">
                         <div class="video-player-shell">
-                            <video controls autoplay loop muted playsinline preload="auto" class="result-video" data-fallback-src="${fallbackVideoUrl}">
+                            <video controls autoplay loop muted playsinline preload="auto" class="result-video" data-primary-src="${stableVideoUrl || playableVideoUrl || ''}" data-fallback-src="${fallbackVideoUrl}" data-download-src="${downloadUrl || ''}" data-video-session-id="${context.videoSessionId || metadataSessionId || ''}" data-chat-id="${chatId || ''}">
                                 <source src="${playableVideoUrl}" type="${sourceType}">
                             </video>
                             <div class="video-actions">

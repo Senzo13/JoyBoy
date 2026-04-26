@@ -592,6 +592,7 @@ async function loadChat(chatId) {
     renderChatList();
     setTimeout(() => {
         if (typeof lucide !== 'undefined') lucide.createIcons();
+        if (typeof hydratePersistedVideos === 'function') hydratePersistedVideos(messagesDiv);
         if (typeof updateChatPadding === 'function') updateChatPadding();
         if (typeof scrollToBottom === 'function') scrollToBottom(true);
     }, 0);

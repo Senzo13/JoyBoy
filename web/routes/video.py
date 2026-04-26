@@ -739,27 +739,26 @@ def serve_video(chat_id):
 
     videos_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'output', 'videos')
 
+    def _serve_video_file(filename):
+        response = make_response(send_from_directory(videos_dir, filename, conditional=True))
+        response.headers['Accept-Ranges'] = 'bytes'
+        response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
+        return response
+
     # Chercher le fichier video (avec ou sans timestamp dans le nom)
     for ext in ['mp4', 'webm', 'gif']:
         # D'abord: format avec timestamp (video_{timestamp}_{chat_id}.ext)
         pattern = os.path.join(videos_dir, f"video_*_{chat_id}.{ext}")
         matches = sorted(glob.glob(pattern), key=os.path.getmtime, reverse=True)
         if matches:
-            response = make_response(send_from_directory(videos_dir, os.path.basename(matches[0])))
-            # Anti-cache headers
-            response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-            response.headers['Pragma'] = 'no-cache'
-            response.headers['Expires'] = '0'
-            return response
+            return _serve_video_file(os.path.basename(matches[0]))
         # Fallback: ancien format sans timestamp (video_{chat_id}.ext)
         filename = f"video_{chat_id}.{ext}"
         filepath = os.path.join(videos_dir, filename)
         if os.path.exists(filepath):
-            response = make_response(send_from_directory(videos_dir, filename))
-            response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-            response.headers['Pragma'] = 'no-cache'
-            response.headers['Expires'] = '0'
-            return response
+            return _serve_video_file(filename)
 
     # Fallback: derniere video generee (pour T2V sans chat_id)
     all_videos = []
@@ -767,11 +766,7 @@ def serve_video(chat_id):
         all_videos.extend(glob.glob(os.path.join(videos_dir, f"*.{ext}")))
     if all_videos:
         latest = max(all_videos, key=os.path.getmtime)
-        response = make_response(send_from_directory(videos_dir, os.path.basename(latest)))
-        response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-        response.headers['Pragma'] = 'no-cache'
-        response.headers['Expires'] = '0'
-        return response
+        return _serve_video_file(os.path.basename(latest))
 
     return jsonify({'error': 'Video not found'}), 404
 

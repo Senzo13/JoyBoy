@@ -1540,6 +1540,59 @@ function wirePlayableVideo(video, primaryUrl, fallbackUrl = '') {
     setVideoSource(primary || fallback);
 }
 
+function getStoredVideoSource(video) {
+    if (!video) return '';
+    return (
+        video.dataset?.primarySrc
+        || video.getAttribute('src')
+        || video.querySelector('source')?.getAttribute('src')
+        || video.currentSrc
+        || ''
+    );
+}
+
+function getVideoSessionIdFromMarkup(video) {
+    const container = video?.closest?.('.video-result-container, .message') || document;
+    const explicit = video?.dataset?.videoSessionId || container?.dataset?.videoSessionId || '';
+    if (explicit) return explicit;
+    const continueButton = container?.querySelector?.('[onclick*="videoSessionId"]');
+    const onclick = continueButton?.getAttribute?.('onclick') || '';
+    const match = onclick.match(/videoSessionId:\s*['"]([^'"]+)['"]/);
+    return match?.[1] || '';
+}
+
+function hydratePersistedVideos(root = document) {
+    const scope = root || document;
+    scope.querySelectorAll?.('video.result-video')?.forEach(video => {
+        const sessionId = getVideoSessionIdFromMarkup(video);
+        const message = video.closest('.message');
+        const chatId = video.dataset?.chatId || message?.dataset?.chatId || (typeof currentChatId !== 'undefined' ? currentChatId : '');
+        const stableSessionUrl = sessionId ? `/videos/session/${sessionId}` : '';
+        const stableChatUrl = chatId ? `/videos/${chatId}` : '';
+
+        let primary = getStoredVideoSource(video);
+        if (!primary || primary.startsWith('blob:')) {
+            primary = stableSessionUrl || stableChatUrl;
+        }
+
+        let fallback = video.dataset?.fallbackSrc || '';
+        if (fallback.startsWith('blob:')) fallback = '';
+        if (!fallback && stableSessionUrl && !primary.startsWith(stableSessionUrl)) {
+            fallback = stableSessionUrl;
+        }
+        if (!fallback && stableChatUrl && !primary.startsWith(stableChatUrl)) {
+            fallback = stableChatUrl;
+        }
+
+        if (sessionId) video.dataset.videoSessionId = sessionId;
+        if (chatId) video.dataset.chatId = chatId;
+        if (primary) video.dataset.primarySrc = primary;
+        if (fallback) video.dataset.fallbackSrc = fallback;
+
+        wirePlayableVideo(video, primary, fallback);
+    });
+}
+
 function replaceVideoSkeletonWithReal(videoSrc, format, genTime, chatId, metadata = {}) {
     // Multiple generations can exist in one chat. Replace the newest active
     // video skeleton for this chat, not the first historical result from
@@ -1572,9 +1625,10 @@ function replaceVideoSkeletonWithReal(videoSrc, format, genTime, chatId, metadat
     const sourceSessionId = metadata?.sourceVideoSessionId || metadata?.source_video_session_id || null;
     const payloadVideo = videoSrc || metadata?.video || metadata?.videoBase64 || metadata?.video_base64 || '';
     const exactVideoUrl = metadataSessionId && metadataSessionId !== sourceSessionId
-        ? `/videos/session/${metadataSessionId}?t=${cacheTag}`
+        ? `/videos/session/${metadataSessionId}`
         : null;
-    const serverVideoUrl = exactVideoUrl || (chatId ? `/videos/${chatId}?t=${cacheTag}` : '');
+    const stableVideoUrl = exactVideoUrl || (chatId ? `/videos/${chatId}` : '');
+    const serverVideoUrl = stableVideoUrl ? `${stableVideoUrl}?t=${cacheTag}` : '';
     const blobVideoUrl = payloadVideo ? createPlayableVideoUrl(payloadVideo, format) : '';
     const videoUrl = serverVideoUrl || blobVideoUrl || payloadVideo;
     const fallbackVideoUrl = serverVideoUrl ? blobVideoUrl : '';
@@ -1622,7 +1676,7 @@ function replaceVideoSkeletonWithReal(videoSrc, format, genTime, chatId, metadat
             <div class="ai-message">
                 <div class="video-container video-result-container">
                     <div class="video-player-shell">
-                        <video class="result-video" controls autoplay loop muted playsinline preload="auto" data-fallback-src="${fallbackVideoUrl || ''}" data-download-src="${downloadUrl || ''}">
+                        <video class="result-video" controls autoplay loop muted playsinline preload="auto" data-primary-src="${stableVideoUrl || videoUrl || ''}" data-fallback-src="${fallbackVideoUrl || ''}" data-download-src="${downloadUrl || ''}" data-video-session-id="${videoSessionId || ''}" data-chat-id="${chatId || ''}">
                             <source src="${videoUrl}" type="${sourceType}">
                         </video>
                         <div class="video-controls">
