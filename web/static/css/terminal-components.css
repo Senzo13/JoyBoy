@@ -1310,3 +1310,138 @@ body.terminal-mode .input-bar.terminal-progress-active > .terminal-permission-pi
   }
 }
 
+/* ===== RUNTIME CONSOLE OVERLAY ===== */
+.runtime-console-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 5000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 28px;
+  background: rgba(0, 0, 0, 0.62);
+  backdrop-filter: blur(6px);
+}
+
+.runtime-console-overlay.runtime-console-hidden {
+  display: none;
+}
+
+.runtime-console-panel {
+  width: min(1040px, calc(100vw - 48px));
+  height: min(760px, calc(100vh - 72px));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #090909;
+  border: 1px solid #2a2a2a;
+  border-radius: 14px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.55);
+}
+
+.runtime-console-header {
+  height: 52px;
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 14px 0 18px;
+  border-bottom: 1px solid #222;
+  background: #111;
+}
+
+.runtime-console-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #f2f2f2;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.runtime-console-title svg {
+  width: 18px;
+  height: 18px;
+  color: #77a7ff;
+}
+
+.runtime-console-title kbd {
+  height: 22px;
+  min-width: 34px;
+  padding: 2px 7px;
+  border: 1px solid #303030;
+  border-bottom-color: #1f1f1f;
+  border-radius: 6px;
+  background: #181818;
+  color: #aaa;
+  font: 600 11px/16px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.runtime-console-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.runtime-console-icon-btn {
+  width: 34px;
+  height: 34px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: #8d8d8d;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: color 0.16s ease, background 0.16s ease, border-color 0.16s ease;
+}
+
+.runtime-console-icon-btn:hover {
+  color: #f0f0f0;
+  background: #1c1c1c;
+  border-color: #303030;
+}
+
+.runtime-console-icon-btn svg {
+  width: 17px;
+  height: 17px;
+}
+
+.runtime-console-output {
+  flex: 1;
+  margin: 0;
+  padding: 16px 18px 24px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #d8d8d8;
+  background: #070707;
+  font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.runtime-console-line {
+  display: block;
+}
+
+.runtime-console-stderr {
+  color: #ffb4b4;
+}
+
+.runtime-console-system {
+  color: #8fb7ff;
+}
+
+@media (max-width: 720px) {
+  .runtime-console-overlay {
+    padding: 12px;
+    align-items: stretch;
+  }
+
+  .runtime-console-panel {
+    width: 100%;
+    height: calc(100vh - 24px);
+  }
+}
+

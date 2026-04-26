@@ -42,6 +42,54 @@
     font-size: 15px;
 }
 
+.user-bubble-wrap {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    max-width: 90%;
+}
+
+.user-bubble-wrap .user-bubble {
+    max-width: 100%;
+}
+
+.prompt-copy-btn {
+    width: 30px;
+    height: 30px;
+    min-width: 30px;
+    border: 1px solid #2a2a2a;
+    border-radius: 8px;
+    background: #161616;
+    color: #888;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.16s ease, color 0.16s ease, border-color 0.16s ease;
+}
+
+.user-message:hover .prompt-copy-btn,
+.prompt-copy-btn:focus-visible {
+    opacity: 1;
+}
+
+.prompt-copy-btn:hover {
+    color: #e5e5e5;
+    border-color: #3a3a3a;
+}
+
+.prompt-copy-btn svg {
+    width: 15px;
+    height: 15px;
+}
+
+@media (hover: none) {
+    .prompt-copy-btn {
+        opacity: 1;
+    }
+}
+
 .user-thumb {
     width: 44px;
     height: 44px;

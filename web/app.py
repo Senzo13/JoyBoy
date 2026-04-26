@@ -21,6 +21,12 @@ from io import BytesIO
 # Add parent to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+try:
+    from core.infra.runtime_console import install_runtime_console
+    install_runtime_console()
+except Exception:
+    pass
+
 from config import AI_NAME, MESSAGES
 from core.models import MODELS
 from core import ollama_service

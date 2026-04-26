@@ -72,6 +72,17 @@ def update_version_from_git():
     return jsonify(result), status_code
 
 
+@system_bp.route('/api/runtime-console')
+def get_runtime_console():
+    """Return recent stdout/stderr lines captured from the running JoyBoy app."""
+    from core.infra.runtime_console import get_runtime_console_entries
+
+    return jsonify(get_runtime_console_entries(
+        after=request.args.get('after', 0),
+        limit=request.args.get('limit', 300),
+    ))
+
+
 # ========== VRAM / RAM MONITORING ==========
 
 @system_bp.route('/api/vram/status')

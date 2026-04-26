@@ -1652,14 +1652,19 @@ function toggleVideoFullscreen(btn) {
 /**
  * Ajoute un message utilisateur simple avec une miniature
  */
-function addUserMessageWithThumb(text, imageSrc) {
+function addUserMessageWithThumb(text, imageSrc, options = {}) {
     const messagesDiv = document.getElementById('chat-messages');
     if (!messagesDiv) return;
 
+    const bubbleHtml = options.renderedHtml === true && typeof buildRenderedUserBubble === 'function'
+        ? buildRenderedUserBubble(text, options.fullPrompt || text)
+        : (typeof buildUserPromptBubble === 'function'
+            ? buildUserPromptBubble(text, options.fullPrompt || text)
+            : `<div class="user-bubble">${text}</div>`);
     const messageHtml = `
         <div class="message">
             <div class="user-message">
-                <div class="user-bubble">${text}</div>
+                ${bubbleHtml}
                 <img src="${imageSrc}" class="user-thumb" onclick="openModalSingle(this.src)">
             </div>
         </div>

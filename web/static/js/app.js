@@ -491,7 +491,8 @@ async function generateVideoFromText(prompt) {
 
     // Add user message with video prompt
     if (typeof addUserMessageToChat === 'function') {
-        addUserMessageToChat(`🎬 T2V: ${prompt.substring(0, 50)}...`);
+        const displayPrompt = prompt.length > 50 ? `🎬 T2V: ${prompt.substring(0, 50)}...` : `🎬 T2V: ${prompt}`;
+        addUserMessageToChat(displayPrompt, { fullPrompt: prompt });
     }
 
     // Add video skeleton (no source image for T2V)
@@ -595,10 +596,11 @@ async function generateVideoFromImageWithPrompt(imgSrc, prompt) {
     resetComposerTextarea('prompt-input');
     resetComposerTextarea('chat-prompt');
 
-    const displayPrompt = prompt ? `🎬 ${modelName}: ${prompt.substring(0, 40)}...` : `🎬 ${modelName}`;
+    const clippedPrompt = prompt && prompt.length > 40 ? `${prompt.substring(0, 40)}...` : prompt;
+    const displayPrompt = prompt ? `🎬 ${modelName}: ${clippedPrompt}` : `🎬 ${modelName}`;
     const usedVideoSkeleton = typeof addUserMessageWithThumb === 'function' && typeof addVideoSkeletonToChat === 'function';
     if (typeof addUserMessageWithThumb === 'function' && typeof addVideoSkeletonToChat === 'function') {
-        addUserMessageWithThumb(displayPrompt, imgSrc);
+        addUserMessageWithThumb(displayPrompt, imgSrc, { fullPrompt: prompt || displayPrompt });
         addVideoSkeletonToChat(imgSrc, requestChatId);
     } else if (typeof addSkeletonMessage === 'function') {
         addSkeletonMessage(displayPrompt, imgSrc, true, null, requestChatId);

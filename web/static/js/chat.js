@@ -255,6 +255,50 @@ function formatUserPromptForChat(prompt) {
     return escapeHtml(text).replace(/\n/g, '<br>');
 }
 
+function buildPromptCopyButton(fullPrompt) {
+    const prompt = String(fullPrompt || '').trim();
+    if (!prompt) return '';
+    return `
+        <button class="prompt-copy-btn" type="button" data-full-prompt="${encodeURIComponent(prompt)}" onclick="copyFullPromptFromButton(this, event)" title="Copier le prompt complet">
+            ${ICON_COPY}
+        </button>
+    `;
+}
+
+function buildUserPromptBubble(prompt, fullPrompt = prompt) {
+    return `
+        <div class="user-bubble-wrap">
+            <div class="user-bubble">${formatUserPromptForChat(prompt)}</div>
+            ${buildPromptCopyButton(fullPrompt)}
+        </div>
+    `;
+}
+
+function buildRenderedUserBubble(renderedHtml, fullPrompt = '') {
+    return `
+        <div class="user-bubble-wrap">
+            <div class="user-bubble">${renderedHtml || ''}</div>
+            ${buildPromptCopyButton(fullPrompt)}
+        </div>
+    `;
+}
+
+async function copyFullPromptFromButton(button, event) {
+    if (event) event.stopPropagation();
+    const encoded = button?.dataset?.fullPrompt || '';
+    if (!encoded) return;
+    const prompt = decodeURIComponent(encoded);
+    try {
+        await navigator.clipboard.writeText(prompt);
+        if (typeof Toast !== 'undefined') Toast.success('Prompt complet copié');
+    } catch (error) {
+        console.warn('[PROMPT] Copy failed:', error);
+        if (typeof copyToClipboard === 'function') {
+            copyToClipboard(prompt);
+        }
+    }
+}
+
 function buildMarkdownCodeBlock(lang, code, incomplete = false) {
     const langLabel = String(lang || 'code').replace(/[^\w#+.-]/g, '').toLowerCase() || 'code';
     const copyButton = incomplete
@@ -338,7 +382,7 @@ function addSkeletonMessage(prompt, userImage, hasImage, maskImage = null, chatI
     const skeletonHtml = `
         <div class="message image-skeleton-message" data-chat-id="${chatId}" data-skeleton-id="${skeletonId}" data-started-at="${startedAt}">
             <div class="user-message">
-                <div class="user-bubble">${formatUserPromptForChat(prompt)}</div>
+                ${buildUserPromptBubble(prompt)}
                 ${hasImage && userImage ? `<img src="${userImage}" class="user-thumb">` : ''}
             </div>
             <div class="ai-response loading">
@@ -489,7 +533,7 @@ function addChatSkeletonMessage(prompt, attachedImage = null) {
     const userMsgHtml = `
         <div class="message user-pending-msg" data-chat-id="${chatId}">
             <div class="user-message">
-                <div class="user-bubble">${formatUserPromptForChat(prompt)}</div>
+                ${buildUserPromptBubble(prompt)}
                 ${attachedImageHtml}
             </div>
         </div>
@@ -585,7 +629,7 @@ function createStreamingMessage(prompt) {
         const messageHtml = `
             <div class="message" id="${msgId}-container">
                 <div class="user-message">
-                    <div class="user-bubble">${formatUserPromptForChat(prompt)}</div>
+                    ${buildUserPromptBubble(prompt)}
                 </div>
                 <div class="ai-response">
                     <div class="chat-bubble streaming" id="${msgId}"><span class="cursor">|</span></div>
@@ -897,7 +941,7 @@ function addImageAnalysisMessage(prompt, attachedImage, response, responseTime =
     const messageHtml = `
         <div class="message" data-chat-id="${chatId || ''}">
             <div class="user-message">
-                <div class="user-bubble">${safePrompt}</div>
+                ${buildRenderedUserBubble(safePrompt, prompt)}
                 ${imageHtml}
             </div>
             <div class="ai-response">
@@ -920,7 +964,7 @@ function addMessage(prompt, userImage, original, modified, generationTime = null
     const messageHtml = `
         <div class="message">
             <div class="user-message">
-                <div class="user-bubble">${formatUserPromptForChat(prompt)}</div>
+                ${buildUserPromptBubble(prompt)}
                 <img src="${userImage}" class="user-thumb">
             </div>
             <div class="ai-response">
@@ -1036,7 +1080,7 @@ function addMessageEdit(prompt, original, modified, mask = null, generationTime 
     const messageHtml = `
         <div class="message">
             <div class="user-message">
-                    <div class="user-bubble">${formatUserPromptForChat(prompt)}</div>
+                ${buildUserPromptBubble(prompt)}
                 <img src="${original}" class="user-thumb">
             </div>
             <div class="ai-response">
@@ -1075,7 +1119,7 @@ function addMessageTxt2Img(prompt, generated, generationTime = null, seed = null
     const messageHtml = `
         <div class="message">
             <div class="user-message">
-                <div class="user-bubble">${formatUserPromptForChat(prompt)}</div>
+                ${buildUserPromptBubble(prompt)}
             </div>
             <div class="ai-response">
                 <div class="result-images">
@@ -1298,7 +1342,7 @@ function addMessageVideo(videoBase64, generationTime = null, sourceImage = null,
     const messageHtml = `
         <div class="message">
             <div class="user-message">
-                <div class="user-bubble">🎬 Génération vidéo</div>
+                ${buildUserPromptBubble('🎬 Génération vidéo')}
             </div>
             <div class="ai-response">
                 <div class="result-images">
@@ -1391,9 +1435,12 @@ async function runVideoContinuation(options = {}) {
 
     const displayPrompt = `🎬 Continuation ${videoDefaults.name} +${continuationDurationSec}s${promptText ? `: ${promptText.substring(0, 80)}` : ''}`;
     if (sourceThumb && typeof addUserMessageWithThumb === 'function') {
-        addUserMessageWithThumb(formatUserPromptForChat(displayPrompt), sourceThumb);
+        addUserMessageWithThumb(formatUserPromptForChat(displayPrompt), sourceThumb, {
+            fullPrompt: promptText || displayPrompt,
+            renderedHtml: true,
+        });
     } else if (typeof addUserMessageToChat === 'function') {
-        addUserMessageToChat(displayPrompt);
+        addUserMessageToChat(displayPrompt, { fullPrompt: promptText || displayPrompt });
     }
     if (typeof addVideoSkeletonToChat === 'function') {
         addVideoSkeletonToChat(sourceThumb, requestChatId, {
@@ -1492,7 +1539,7 @@ function addChatMessageWithGenerated(prompt, response, generated, responseTime =
     const messageHtml = `
         <div class="message">
             <div class="user-message">
-                <div class="user-bubble">${formatUserPromptForChat(prompt)}</div>
+                ${buildUserPromptBubble(prompt)}
             </div>
             <div class="ai-response">
                 <div class="chat-bubble" id="chat-${msgId}">${response}</div>
@@ -1554,7 +1601,7 @@ function addChatMessageWithPendingImage(prompt, response, genPrompt) {
     const messageHtml = `
         <div class="message" id="pending-msg-${msgId}" data-chat-id="${currentChatId}" data-started-at="${Date.now()}">
             <div class="user-message">
-                <div class="user-bubble">${formatUserPromptForChat(prompt)}</div>
+                ${buildUserPromptBubble(prompt)}
             </div>
             <div class="ai-response">
                 <div class="chat-bubble" id="chat-${msgId}">${response}</div>
@@ -2131,7 +2178,7 @@ function addTerminalUserLine(text) {
     messageEl.className = 'message terminal-chat-message';
     messageEl.innerHTML = `
         <div class="user-message">
-            <div class="user-bubble">${formatUserPromptForChat(text)}</div>
+            ${buildUserPromptBubble(text)}
         </div>
     `;
     messagesDiv.appendChild(messageEl);
@@ -2155,12 +2202,12 @@ function addChatSkeletonMessageSmart(prompt) {
 /**
  * Ajoute un message utilisateur simple au chat (pour le mode terminal)
  */
-function addUserMessageToChat(text) {
+function addUserMessageToChat(text, options = {}) {
     const messagesDiv = getChatMessages();
     const msgHtml = `
         <div class="message">
             <div class="user-message">
-                <div class="user-bubble">${formatUserPromptForChat(text)}</div>
+                ${buildUserPromptBubble(text, options.fullPrompt || text)}
             </div>
         </div>
     `;
