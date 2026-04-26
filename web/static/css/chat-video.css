@@ -72,20 +72,40 @@
 }
 
 .video-skeleton .generation-progress-bar {
+    position: relative;
     height: 100%;
     background: linear-gradient(90deg, #7dd3fc 0%, #60a5fa 52%, #dbeafe 100%);
     border-radius: 2px;
     box-shadow: 0 0 18px rgba(96, 165, 250, 0.45);
     transition: width 0.3s ease;
+    overflow: hidden;
+}
+
+.video-skeleton .generation-progress-bar.is-live::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.58), transparent);
+    transform: translateX(-100%);
+    animation: videoProgressSweep 1.2s ease-in-out infinite;
+}
+
+@keyframes videoProgressSweep {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
 }
 
 .video-skeleton .generation-step-text {
     position: absolute;
     bottom: 20px;
     left: 12px;
+    right: 12px;
     font-size: 11px;
     color: rgba(255,255,255,0.6);
     z-index: 2;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .video-container {

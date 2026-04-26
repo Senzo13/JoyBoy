@@ -744,6 +744,29 @@ function reconnectVideoProgress() {
 }
 
 // Met à jour le skeleton avec la progression vidéo
+function formatVideoProgressElapsed(ms) {
+    const totalSeconds = Math.max(0, Math.floor(Number(ms) / 1000));
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    if (minutes > 0) {
+        return `${minutes}m ${String(seconds).padStart(2, '0')}s`;
+    }
+    return `${seconds}s`;
+}
+
+function getVideoProgressPhaseLabel(phase) {
+    const labels = {
+        loading: 'Chargement',
+        generating: 'Rendu',
+        decoding: 'Décodage',
+        face_restore: 'Visages',
+        restoring: 'Visages',
+        encoding: 'Export',
+        audio: 'Audio',
+    };
+    return labels[phase] || 'Préparation';
+}
+
 function updateVideoSkeletonProgress(progress) {
     // Important: a chat can contain several old video results. Always update the
     // newest still-active skeleton; using querySelector() would target the first
@@ -758,6 +781,13 @@ function updateVideoSkeletonProgress(progress) {
     const stepText = skeleton.querySelector('.generation-step-text');
 
     if (!progressBar || !stepText) return;
+
+    const now = Date.now();
+    if (!skeleton.dataset.videoProgressStartedAt) {
+        skeleton.dataset.videoProgressStartedAt = String(now);
+    }
+    const startedAt = Number(skeleton.dataset.videoProgressStartedAt) || now;
+    const elapsedText = formatVideoProgressElapsed(now - startedAt);
 
     const safeStep = Number(progress.step) || 0;
     const safeTotal = Math.max(Number(progress.total_steps) || 0, 1);
@@ -775,7 +805,11 @@ function updateVideoSkeletonProgress(progress) {
         const passProgress = (safePass - 1) / safeTotalPasses;
         const stepProgress = safeStep / safeTotal / safeTotalPasses;
         percent = Math.round((passProgress + stepProgress) * 80) + 10; // 10-90%
-        text = text || `Passe ${safePass}/${safeTotalPasses}`;
+        const stepLabel = safeTotal > 1 ? `Step ${Math.min(safeStep, safeTotal)}/${safeTotal}` : `Passe ${safePass}/${safeTotalPasses}`;
+        text = text || `${stepLabel} · rendu en cours`;
+        if (safeStep >= safeTotal && safeTotal <= 4) {
+            text = `${stepLabel} · finalisation du rendu`;
+        }
     } else if (progress.phase === 'decoding') {
         const decodeProgress = safeStep / safeTotal;
         percent = Math.round(90 + decodeProgress * 6); // 90-96%
@@ -795,7 +829,32 @@ function updateVideoSkeletonProgress(progress) {
         text = text || 'Préparation...';
     }
 
-    progressBar.style.width = Math.max(0, Math.min(percent, 99)) + '%';
+    if (progress.active !== false) {
+        const phaseLabel = getVideoProgressPhaseLabel(progress.phase);
+        const hasElapsed = !/\b\d+[ms]\b/.test(text);
+        text = hasElapsed ? `${phaseLabel} · ${text} · ${elapsedText}` : `${phaseLabel} · ${text}`;
+        progressBar.classList.add('is-live');
+    } else {
+        progressBar.classList.remove('is-live');
+    }
+
+    const lastPercent = Number(skeleton.dataset.videoProgressPercent) || 0;
+    let visiblePercent = Math.max(0, Math.min(percent, 99));
+    if (progress.phase === 'generating' && safeStep > 0) {
+        // Fast video models can spend a long time inside one denoise step. Keep a
+        // tiny live creep within the current step so the UI does not look frozen.
+        const sameStepKey = `${progress.phase}:${safePass}:${safeStep}:${safeTotal}`;
+        if (skeleton.dataset.videoProgressStepKey !== sameStepKey) {
+            skeleton.dataset.videoProgressStepKey = sameStepKey;
+            skeleton.dataset.videoProgressStepStartedAt = String(now);
+        }
+        const stepStartedAt = Number(skeleton.dataset.videoProgressStepStartedAt) || now;
+        const microCreep = Math.min(4, Math.floor((now - stepStartedAt) / 2500));
+        visiblePercent = Math.max(lastPercent, Math.min(94, visiblePercent + microCreep));
+    }
+    skeleton.dataset.videoProgressPercent = String(visiblePercent);
+
+    progressBar.style.width = visiblePercent + '%';
     stepText.textContent = text;
 }
 
