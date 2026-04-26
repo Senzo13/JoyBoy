@@ -342,38 +342,58 @@ def generate_video_endpoint():
             return False
 
         from core.processing import generate_video, GenerationCancelledException
+        from core.generation.video_optimizations import is_cuda_oom_error, temporary_env
 
         with generation_pipeline('video', generation_id, model_name=video_model) as mgr:
             if is_cancelled():
                 job_manager.cancel(generation_id)
                 return cancelled_response()
 
-            img = continuation_context.get("anchor_image") or (base64_to_pil(image_b64) if image_b64 else None)
-            pipe = mgr.get_pipeline('video')
-            upscale_pipe = mgr.get_pipeline('video_upscale')
+            def run_video_generation():
+                img = continuation_context.get("anchor_image") or (base64_to_pil(image_b64) if image_b64 else None)
+                pipe = mgr.get_pipeline('video')
+                upscale_pipe = mgr.get_pipeline('video_upscale')
+                return generate_video(
+                    img,
+                    prompt=prompt,
+                    target_frames=target_frames,
+                    num_steps=num_steps,
+                    fps=fps,
+                    video_model=video_model,
+                    continue_from_last=continue_from_last,
+                    unload_after=False,  # generation_pipeline handles cleanup
+                    chat_id=chat_id,
+                    pipe=pipe,
+                    upscale_pipe=upscale_pipe,
+                    cancel_check=is_cancelled,
+                    add_audio=add_audio,
+                    quality=quality,
+                    face_restore=face_restore,
+                    refine_passes=refine_passes,
+                    continuation_context=continuation_context,
+                    audio_engine=audio_engine,
+                    audio_prompt=audio_prompt,
+                    release_pipe_before_export=mgr._unload_video if video_model in ("framepack", "framepack-fast") else None,
+                )
+
             job_manager.update(generation_id, phase="generating", progress=12, message="Génération vidéo en cours")
-            video_base64, last_frame, video_format = generate_video(
-                img,
-                prompt=prompt,
-                target_frames=target_frames,
-                num_steps=num_steps,
-                fps=fps,
-                video_model=video_model,
-                continue_from_last=continue_from_last,
-                unload_after=False,  # generation_pipeline handles cleanup
-                chat_id=chat_id,
-                pipe=pipe,
-                upscale_pipe=upscale_pipe,
-                cancel_check=is_cancelled,
-                add_audio=add_audio,
-                quality=quality,
-                face_restore=face_restore,
-                refine_passes=refine_passes,
-                continuation_context=continuation_context,
-                audio_engine=audio_engine,
-                audio_prompt=audio_prompt,
-                release_pipe_before_export=mgr._unload_video if video_model in ("framepack", "framepack-fast") else None,
-            )
+            try:
+                video_base64, last_frame, video_format = run_video_generation()
+            except RuntimeError as exc:
+                if not is_cuda_oom_error(exc):
+                    raise
+                print(f"[VIDEO] CUDA OOM pendant génération ({video_model}); unload + retry en offload...")
+                job_manager.update(
+                    generation_id,
+                    phase="loading",
+                    progress=8,
+                    message="VRAM saturée, retry en offload",
+                )
+                mgr._unload_video()
+                mgr._clear_memory(aggressive=True)
+                with temporary_env(mgr._video_oom_fallback_env(video_model)):
+                    mgr._load_video(video_model)
+                    video_base64, last_frame, video_format = run_video_generation()
 
             generation_time = time.time() - start_time
 

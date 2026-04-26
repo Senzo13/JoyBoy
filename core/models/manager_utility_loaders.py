@@ -6,12 +6,58 @@ import torch
 
 
 class ModelManagerUtilityLoaderMixin:
+    def _video_oom_fallback_env(self, model_name):
+        env = {
+            "JOYBOY_VIDEO_FORCE_CPU_OFFLOAD": "1",
+            "JOYBOY_FASTWAN_FORCE_OFFLOAD": "1",
+        }
+        if model_name in {"framepack", "framepack-fast"}:
+            env["JOYBOY_FRAMEPACK_FORCE_MODEL_CPU_OFFLOAD"] = "1"
+            env["JOYBOY_FRAMEPACK_GPU_DIRECT"] = "0"
+        if str(model_name or "").startswith("wan-native-"):
+            env["JOYBOY_WAN_NATIVE_FORCE_OFFLOAD"] = "1"
+        return env
+
+    def _load_video_once(self, model_name, custom_cache):
+        from core import video_loader
+
+        if model_name == "svd":
+            return video_loader.load_svd(custom_cache)
+        if model_name == "cogvideox":
+            return video_loader.load_cogvideox(custom_cache)
+        if model_name == "cogvideox-q4":
+            return video_loader.load_cogvideox_q4(custom_cache)
+        if model_name == "cogvideox-2b":
+            return video_loader.load_cogvideox_2b(custom_cache)
+        if model_name == "wan":
+            return video_loader.load_wan_21_14b(custom_cache)
+        if model_name == "wan22":
+            return video_loader.load_wan22_a14b(custom_cache)
+        if model_name == "hunyuan":
+            return video_loader.load_hunyuan(custom_cache)
+        if model_name in ("wan22-5b", "fastwan"):
+            return video_loader.load_wan22_5b(model_name, custom_cache)
+        if model_name == "wan22-t2v-14b":
+            return video_loader.load_wan22_t2v_14b(custom_cache)
+        if model_name == "ltx":
+            return video_loader.load_ltx(custom_cache)
+        if model_name in ("framepack", "framepack-fast"):
+            return video_loader.load_framepack(custom_cache)
+        if model_name == "ltx2":
+            return video_loader.load_ltx2(custom_cache)
+        if model_name == "ltx2_fp8":
+            return video_loader.load_ltx2_fp8(custom_cache)
+        if model_name in ("wan-native-5b", "wan-native-14b"):
+            return video_loader.load_wan_native(model_name, custom_cache)
+        raise ValueError(f"Modele video inconnu: {model_name}")
+
     def _load_video(self, model_name=None):
         """Charge un modele video.
 
         Delegue le chargement aux fonctions specialisees dans core/video_loader.py.
         """
         from core.models import custom_cache
+        from core.generation.video_optimizations import is_cuda_oom_error, temporary_env
 
         if not model_name:
             model_name = "svd"
@@ -48,39 +94,16 @@ class ModelManagerUtilityLoaderMixin:
         # Reset native flag (sera mis a True si backend natif)
         self._video_pipe_native = False
 
-        # Dispatch to per-model loader in video_loader.py
-        from core import video_loader
-
-        if model_name == "svd":
-            result = video_loader.load_svd(custom_cache)
-        elif model_name == "cogvideox":
-            result = video_loader.load_cogvideox(custom_cache)
-        elif model_name == "cogvideox-q4":
-            result = video_loader.load_cogvideox_q4(custom_cache)
-        elif model_name == "cogvideox-2b":
-            result = video_loader.load_cogvideox_2b(custom_cache)
-        elif model_name == "wan":
-            result = video_loader.load_wan_21_14b(custom_cache)
-        elif model_name == "wan22":
-            result = video_loader.load_wan22_a14b(custom_cache)
-        elif model_name == "hunyuan":
-            result = video_loader.load_hunyuan(custom_cache)
-        elif model_name in ("wan22-5b", "fastwan"):
-            result = video_loader.load_wan22_5b(model_name, custom_cache)
-        elif model_name == "wan22-t2v-14b":
-            result = video_loader.load_wan22_t2v_14b(custom_cache)
-        elif model_name == "ltx":
-            result = video_loader.load_ltx(custom_cache)
-        elif model_name in ("framepack", "framepack-fast"):
-            result = video_loader.load_framepack(custom_cache)
-        elif model_name == "ltx2":
-            result = video_loader.load_ltx2(custom_cache)
-        elif model_name == "ltx2_fp8":
-            result = video_loader.load_ltx2_fp8(custom_cache)
-        elif model_name in ("wan-native-5b", "wan-native-14b"):
-            result = video_loader.load_wan_native(model_name, custom_cache)
-        else:
-            raise ValueError(f"Modele video inconnu: {model_name}")
+        try:
+            result = self._load_video_once(model_name, custom_cache)
+        except RuntimeError as exc:
+            if not is_cuda_oom_error(exc):
+                raise
+            print(f"[MM] CUDA OOM pendant le chargement video ({model_name}); retry en offload...")
+            self._unload_video()
+            self._clear_memory(aggressive=True)
+            with temporary_env(self._video_oom_fallback_env(model_name)):
+                result = self._load_video_once(model_name, custom_cache)
 
         # Unpack result from loader
         self._video_pipe = result["pipe"]
@@ -131,5 +154,4 @@ class ModelManagerUtilityLoaderMixin:
         model, processor = load_florence()
         self._caption_model = model
         self._caption_processor = processor
-
 

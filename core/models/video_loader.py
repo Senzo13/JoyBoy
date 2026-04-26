@@ -1041,9 +1041,13 @@ def load_framepack(custom_cache):
         pass
 
     if torch.cuda.is_available():
+        force_framepack_offload = os.environ.get("JOYBOY_FRAMEPACK_FORCE_MODEL_CPU_OFFLOAD", "").strip().lower() in {"1", "true", "yes", "on"}
         force_framepack_direct = os.environ.get("JOYBOY_FRAMEPACK_GPU_DIRECT", "").strip().lower() in {"1", "true", "yes", "on"}
         framepack_gpu_direct = IS_HIGH_END_GPU and (float(VRAM_GB or 0) >= 48 or force_framepack_direct)
-        if not framepack_gpu_direct:
+        if force_framepack_offload:
+            pipe.enable_model_cpu_offload()
+            print(f"[MM]   -> FramePack model_cpu_offload forcé ({VRAM_GB:.1f}GB VRAM)")
+        elif not framepack_gpu_direct:
             try:
                 from diffusers.hooks import apply_group_offloading
 

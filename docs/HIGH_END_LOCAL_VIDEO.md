@@ -21,16 +21,20 @@ before Python starts so PyTorch can reduce allocator fragmentation during large
 video jobs. Video generation also enables cuDNN benchmarking and TF32 matmul
 for faster inference without changing model choice, resolution, steps, or
 prompts. High-VRAM Wan 5B/FastWan pipelines prefer GPU-direct placement when
-they fit. Large MoE/14B pipelines keep CPU offload when needed, and FramePack
-uses group offload on 40GB-class cards unless explicitly forced to GPU-direct.
+they fit. If a video load or first generation pass still hits CUDA OOM after a
+model switch, JoyBoy unloads, clears CUDA, reloads that model in offload mode,
+and retries once. Large MoE/14B pipelines keep CPU offload when needed, and
+FramePack uses group offload on 40GB-class cards unless explicitly forced to
+GPU-direct.
 
 Set `JOYBOY_VIDEO_FORCE_CPU_OFFLOAD=1` to force Diffusers video pipelines back
 to CPU offload, or `JOYBOY_WAN_NATIVE_FORCE_OFFLOAD=1` to force native Wan 5B
 offload if a specific machine is too tight on VRAM. Set
 `JOYBOY_VIDEO_DISABLE_OOM_RETRY=1` to disable the automatic Wan/FastWan retry
 from GPU-direct to CPU offload. Set `JOYBOY_FASTWAN_FORCE_OFFLOAD=1` to keep
-FastWan offloaded, or `JOYBOY_FRAMEPACK_GPU_DIRECT=1` to test FramePack
-GPU-direct on cards with more spare VRAM.
+FastWan offloaded, `JOYBOY_FRAMEPACK_FORCE_MODEL_CPU_OFFLOAD=1` to keep
+FramePack on classic model offload, or `JOYBOY_FRAMEPACK_GPU_DIRECT=1` to test
+FramePack GPU-direct on cards with more spare VRAM.
 
 ## Video continuation
 

@@ -1,7 +1,11 @@
 import unittest
 from unittest.mock import patch
 
-from core.generation.video_optimizations import apply_optimized_offload
+from core.generation.video_optimizations import (
+    apply_optimized_offload,
+    is_cuda_oom_error,
+    temporary_env,
+)
 
 
 class WanImageToVideoPipeline:
@@ -74,6 +78,21 @@ class VideoOptimizationTests(unittest.TestCase):
 
         self.assertEqual(strategy, "gpu_direct")
         self.assertEqual(pipe.device, "cuda")
+
+    def test_cuda_oom_detection_matches_pytorch_message(self):
+        exc = RuntimeError("CUDA out of memory. Tried to allocate 18.00 MiB.")
+
+        self.assertTrue(is_cuda_oom_error(exc))
+        self.assertFalse(is_cuda_oom_error(RuntimeError("regular failure")))
+
+    def test_temporary_env_restores_values(self):
+        with patch.dict("os.environ", {"JOYBOY_TEST_ENV": "old"}):
+            with temporary_env({"JOYBOY_TEST_ENV": "new", "JOYBOY_TEMP_ENV": "1"}):
+                import os
+                self.assertEqual(os.environ["JOYBOY_TEST_ENV"], "new")
+                self.assertEqual(os.environ["JOYBOY_TEMP_ENV"], "1")
+            self.assertEqual(os.environ["JOYBOY_TEST_ENV"], "old")
+            self.assertNotIn("JOYBOY_TEMP_ENV", os.environ)
 
 
 if __name__ == "__main__":

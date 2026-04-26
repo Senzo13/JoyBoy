@@ -9,12 +9,46 @@ import torch
 import os
 import subprocess
 import sys
+from contextlib import contextmanager
 from functools import lru_cache
 
 # Platform detection
 IS_WINDOWS = sys.platform == 'win32'
 IS_LINUX = sys.platform == 'linux'
 IS_MAC = sys.platform == 'darwin'
+
+
+def is_cuda_oom_error(exc):
+    """Return True for CUDA OOM exceptions emitted by PyTorch/Diffusers."""
+    text = str(exc).lower()
+    return (
+        isinstance(exc, RuntimeError)
+        and (
+            "cuda out of memory" in text
+            or "cuda oom" in text
+            or "out of memory" in text and "cuda" in text
+        )
+    )
+
+
+@contextmanager
+def temporary_env(overrides):
+    """Temporarily set environment variables for a fallback load/generation."""
+    old_values = {}
+    for key, value in (overrides or {}).items():
+        old_values[key] = os.environ.get(key)
+        if value is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = str(value)
+    try:
+        yield
+    finally:
+        for key, value in old_values.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
 
 
 @lru_cache(maxsize=1)
