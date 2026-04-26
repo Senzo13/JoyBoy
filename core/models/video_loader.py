@@ -1349,10 +1349,11 @@ def load_wan_native(model_name, custom_cache):
 
     # 3. Charger la config appropriee
     if model_name == "wan-native-5b":
-        # TI2V 5B config
+        # TI2V 5B config: the official backend uses WanTI2V for this checkpoint.
+        # WanI2V expects MoE I2V fields such as "boundary" which do not exist on ti2v-5B.
         from wan.configs import WAN_CONFIGS
         cfg = WAN_CONFIGS["ti2v-5B"]
-        task_class = wan.WanI2V  # Meme classe pour I2V
+        task_class = wan.WanTI2V
     else:
         # I2V A14B config (MoE)
         from wan.configs import WAN_CONFIGS
