@@ -15,6 +15,21 @@ import shutil
 # Ajouter le dossier parent au path pour importer config
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+try:
+    from core.infra.paths import get_huggingface_cache_dir, get_models_dir
+
+    _models_dir = get_models_dir()
+    _hf_cache_dir = get_huggingface_cache_dir()
+    _models_dir.mkdir(parents=True, exist_ok=True)
+    _hf_cache_dir.mkdir(parents=True, exist_ok=True)
+    os.environ.setdefault("JOYBOY_MODELS_DIR", str(_models_dir))
+    os.environ.setdefault("JOYBOY_HF_CACHE_DIR", str(_hf_cache_dir))
+    os.environ["HF_HOME"] = str(_hf_cache_dir)
+    os.environ["HF_HUB_CACHE"] = str(_hf_cache_dir)
+    os.environ.setdefault("HF_ASSETS_CACHE", str(_hf_cache_dir / "assets"))
+except Exception:
+    pass
+
 # Import config
 try:
     from config import AI_NAME, UTILITY_MODEL, MODEL_RECOMMENDATIONS, VRAM_THRESHOLDS

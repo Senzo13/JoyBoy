@@ -28,6 +28,10 @@ def get_models_dir() -> Path:
     return _env_path("JOYBOY_MODELS_DIR") or (PROJECT_DIR / "models")
 
 
+def get_huggingface_cache_dir() -> Path:
+    return _env_path("JOYBOY_HF_CACHE_DIR") or (get_models_dir() / "huggingface")
+
+
 def get_packs_dir() -> Path:
     return _env_path("JOYBOY_PACKS_DIR") or (get_joyboy_home() / "packs")
 

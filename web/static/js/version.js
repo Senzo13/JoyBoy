@@ -2,6 +2,7 @@
 
 let appVersionStatus = null;
 let appVersionStatusLoading = false;
+let appVersionUpdating = false;
 
 function versionText(key, fallback = '', params = {}) {
     if (window.JoyBoyI18n?.t) return window.JoyBoyI18n.t(key, params, fallback);
@@ -121,6 +122,23 @@ function renderVersionSettings(status = appVersionStatus) {
         releaseLink.href = releaseUrl || '#';
         releaseLink.classList.toggle('hidden', !releaseUrl);
     }
+
+    const updateButton = document.getElementById('app-version-update-btn');
+    const updateLabel = document.getElementById('app-version-update-label');
+    const checkButton = document.getElementById('app-version-check-btn');
+    const isGitCheckout = Boolean(status?.git?.is_git_checkout);
+    if (updateButton) {
+        updateButton.classList.toggle('hidden', !isGitCheckout);
+        updateButton.disabled = appVersionUpdating || appVersionStatusLoading;
+    }
+    if (checkButton) {
+        checkButton.disabled = appVersionUpdating || appVersionStatusLoading;
+    }
+    if (updateLabel) {
+        updateLabel.textContent = appVersionUpdating
+            ? versionText('settings.version.updatingButton', 'Mise à jour...')
+            : versionText('settings.version.updateButton', 'Mettre à jour');
+    }
 }
 
 function renderAppVersionStatus(status = appVersionStatus) {
@@ -131,7 +149,7 @@ function renderAppVersionStatus(status = appVersionStatus) {
 
 async function loadAppVersionStatus(options = {}) {
     const refresh = options.refresh === true;
-    if (appVersionStatusLoading) return appVersionStatus;
+    if (appVersionStatusLoading || appVersionUpdating) return appVersionStatus;
 
     appVersionStatusLoading = true;
     renderAppVersionStatus(appVersionStatus);
@@ -164,6 +182,75 @@ async function loadAppVersionStatus(options = {}) {
 
 function refreshAppVersionStatus() {
     return loadAppVersionStatus({ refresh: true });
+}
+
+function sleepVersion(ms) {
+    return new Promise(resolve => window.setTimeout(resolve, ms));
+}
+
+async function reloadWhenBackendReturns(timeoutMs = 90000) {
+    const deadline = Date.now() + timeoutMs;
+    await sleepVersion(4500);
+
+    while (Date.now() < deadline) {
+        try {
+            const response = await fetch(`/api/version/status?refresh=1&t=${Date.now()}`, {
+                cache: 'no-store',
+            });
+            if (response.ok) {
+                window.location.reload();
+                return;
+            }
+        } catch {
+            // Backend is expected to disappear briefly during restart.
+        }
+        await sleepVersion(2000);
+    }
+
+    window.location.reload();
+}
+
+async function updateJoyBoyFromSettings() {
+    if (appVersionUpdating) return;
+
+    appVersionUpdating = true;
+    renderAppVersionStatus(appVersionStatus);
+
+    try {
+        const response = await apiApp.updateAndRestart();
+        if (!response.ok || response.data?.success === false) {
+            const dirtyFiles = response.data?.dirty_files || [];
+            const dirtyText = dirtyFiles.slice(0, 5).join(', ');
+            const errorMessage = dirtyFiles.length
+                ? versionText(
+                    'settings.version.updateDirtyBody',
+                    'Des fichiers locaux bloquent git pull : {files}',
+                    { files: dirtyText }
+                )
+                : (response.data?.error || response.error || versionText('settings.version.updateFailedTitle', 'Mise à jour impossible'));
+            throw new Error(errorMessage);
+        }
+
+        if (typeof Toast !== 'undefined') {
+            Toast.info(
+                versionText('settings.version.updateStartedTitle', 'Mise à jour'),
+                versionText('settings.version.updateStartedBody', 'git pull terminé. JoyBoy redémarre...'),
+                5000
+            );
+        }
+        reloadWhenBackendReturns();
+    } catch (error) {
+        appVersionUpdating = false;
+        renderAppVersionStatus(appVersionStatus);
+        if (typeof Toast !== 'undefined') {
+            Toast.error(
+                versionText('settings.version.updateFailedTitle', 'Mise à jour impossible'),
+                error.message || String(error)
+            );
+        } else {
+            console.error('[VERSION] Update failed:', error);
+        }
+    }
 }
 
 function openVersionSettings() {

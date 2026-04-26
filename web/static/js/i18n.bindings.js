@@ -52,6 +52,7 @@ BINDINGS.push(
         { selector: '#app-version-title', key: 'settings.version.title' },
         { selector: '#app-version-current-label', key: 'settings.version.localLabel' },
         { selector: '#app-version-check-label', key: 'settings.version.checkButton' },
+        { selector: '#app-version-update-label', key: 'settings.version.updateButton' },
         { selector: '#app-version-release-label', key: 'settings.version.releaseButton' },
         { selector: '#general-interface-title', key: 'settings.general.interfaceTitle' },
         { selector: '#general-action-bar-label', key: 'settings.general.actionBarLabel' },

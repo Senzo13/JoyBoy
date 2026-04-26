@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -23,6 +24,20 @@ if str(PROJECT_DIR) not in sys.path:
     sys.path.insert(0, str(PROJECT_DIR))
 
 
+def configure_download_cache_env() -> None:
+    from core.infra.paths import get_huggingface_cache_dir, get_models_dir
+
+    models_dir = get_models_dir()
+    hf_cache = get_huggingface_cache_dir()
+    models_dir.mkdir(parents=True, exist_ok=True)
+    hf_cache.mkdir(parents=True, exist_ok=True)
+    os.environ.setdefault("JOYBOY_MODELS_DIR", str(models_dir))
+    os.environ.setdefault("JOYBOY_HF_CACHE_DIR", str(hf_cache))
+    os.environ["HF_HOME"] = str(hf_cache)
+    os.environ["HF_HUB_CACHE"] = str(hf_cache)
+    os.environ.setdefault("HF_ASSETS_CACHE", str(hf_cache / "assets"))
+
+
 def _run(command: list[str], title: str) -> int:
     print(f"\n[BOOTSTRAP] {title}")
     print(f"[BOOTSTRAP] > {' '.join(command)}")
@@ -31,6 +46,8 @@ def _run(command: list[str], title: str) -> int:
 
 
 def run_setup() -> int:
+    configure_download_cache_env()
+
     exit_code = _run([sys.executable, "-m", "pip", "install", "--upgrade", "pip"], "Upgrade pip")
     if exit_code != 0:
         return exit_code

@@ -33,6 +33,8 @@ def configure_huggingface_env(
     """Configure Hugging Face runtime env vars for the current platform."""
     env = environ if environ is not None else os.environ
     env["HF_HOME"] = cache_dir
+    env["HF_HUB_CACHE"] = cache_dir
+    env.setdefault("HF_ASSETS_CACHE", os.path.join(cache_dir, "assets"))
     env["HF_HUB_DOWNLOAD_TIMEOUT"] = "600"
     env["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
     env["HF_HUB_DISABLE_SYMLINKS"] = "1"

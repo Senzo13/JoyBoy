@@ -17,7 +17,7 @@ import subprocess
 import torch
 import gc
 import torch._dynamo
-from core.infra.paths import get_models_dir
+from core.infra.paths import get_huggingface_cache_dir, get_models_dir
 from core.models.runtime_env import configure_huggingface_env
 
 # Supprimer les FutureWarning de diffusers et autres
@@ -34,7 +34,7 @@ try:
 except ImportError:
     AI_NAME = "JoyBoy"
 MODELS_DIR = str(get_models_dir())
-custom_cache = os.path.join(MODELS_DIR, "huggingface")
+custom_cache = str(get_huggingface_cache_dir())
 os.makedirs(custom_cache, exist_ok=True)
 from config import HF_TOKEN
 

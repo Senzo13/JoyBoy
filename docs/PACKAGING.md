@@ -45,6 +45,13 @@ data/output/
 data/logs/
 ```
 
+Packaged launchers also pin Hugging Face downloads to the JoyBoy model cache:
+
+```text
+HF_HOME=data/models/huggingface
+HF_HUB_CACHE=data/models/huggingface
+```
+
 Model weights, generated outputs, local secrets, and private local pack sources
 are not copied from the repository. Users install or import models and packs
 from inside JoyBoy after launch.

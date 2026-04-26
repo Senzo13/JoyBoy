@@ -1,6 +1,17 @@
 #!/bin/bash
 cd "$(dirname "$0")"
 
+JOYBOY_QUICK_START=0
+if [ "${1:-}" = "--restart" ] || [ "${1:-}" = "--quick" ]; then
+    JOYBOY_QUICK_START=1
+fi
+
+export JOYBOY_MODELS_DIR="${JOYBOY_MODELS_DIR:-$PWD/models}"
+export JOYBOY_HF_CACHE_DIR="${JOYBOY_HF_CACHE_DIR:-$JOYBOY_MODELS_DIR/huggingface}"
+export HF_HOME="$JOYBOY_HF_CACHE_DIR"
+export HF_HUB_CACHE="$JOYBOY_HF_CACHE_DIR"
+export HF_ASSETS_CACHE="${HF_ASSETS_CACHE:-$JOYBOY_HF_CACHE_DIR/assets}"
+
 MIN_PY_MAJOR=3
 MIN_PY_MINOR=10
 
@@ -249,9 +260,15 @@ start_app() {
     echo "                   Server stopped"
     echo "   ================================================================"
     echo ""
+    if [ "$JOYBOY_QUICK_START" = "1" ]; then
+        exit 0
+    fi
     read -p "   Press Enter..."
     show_menu
 }
 
-# Start the menu
-show_menu
+if [ "$JOYBOY_QUICK_START" = "1" ]; then
+    start_app
+else
+    show_menu
+fi

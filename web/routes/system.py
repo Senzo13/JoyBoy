@@ -4,7 +4,6 @@ benchmark, hardware info, tunnel Cloudflare).
 """
 from flask import Blueprint, request, jsonify, render_template_string, send_file
 import os
-import threading
 
 system_bp = Blueprint('system', __name__)
 
@@ -56,6 +55,21 @@ def get_version_status():
 
     force_refresh = str(request.args.get('refresh', '')).lower() in {'1', 'true', 'yes'}
     return jsonify(get_app_version_status(force_refresh=force_refresh))
+
+
+@system_bp.route('/api/version/update', methods=['POST'])
+def update_version_from_git():
+    """Pull the current git branch and restart JoyBoy when the pull succeeds."""
+    from core.infra.app_control import pull_git_updates
+
+    payload = request.get_json(silent=True) or {}
+    restart = payload.get('restart', True) is not False
+    result = pull_git_updates(restart=restart)
+    if result.get('success'):
+        return jsonify(result)
+
+    status_code = 409 if result.get('code') == 'local_changes' else 400
+    return jsonify(result), status_code
 
 
 # ========== VRAM / RAM MONITORING ==========
@@ -473,37 +487,15 @@ def hard_reset():
 @system_bp.route('/system/restart', methods=['POST'])
 def restart_server():
     """
-    Redémarre le serveur Flask dans une nouvelle fenêtre.
-    Ferme la fenêtre actuelle et en ouvre une nouvelle.
+    Redémarre le serveur Flask avec le launcher adapté à l'OS.
     """
+    from core.infra.app_control import schedule_restart
+
     print("\n" + "="*60)
     print("[RESTART] ====== REDÉMARRAGE DU SERVEUR ======")
     print("="*60)
 
-    def do_restart():
-        import time
-        import subprocess
-        time.sleep(0.5)  # Laisser le temps de répondre
-
-        # Trouver le répertoire racine du projet
-        project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        batch_file = os.path.join(project_dir, 'start_windows.bat')
-
-        print(f"[RESTART] Lancement nouvelle fenêtre: {batch_file}")
-
-        # Lancer une nouvelle fenêtre cmd avec le batch en mode restart
-        subprocess.Popen(
-            f'start "JoyBoy" cmd /c "{batch_file}" --restart',
-            shell=True,
-            cwd=project_dir
-        )
-
-        print("[RESTART] Fermeture de cette instance...")
-        time.sleep(0.3)
-        os._exit(42)  # Code 42 = restart, le batch fermera la fenêtre
-
-    # Lancer le restart dans un thread séparé
-    threading.Thread(target=do_restart, daemon=True).start()
+    schedule_restart()
 
     return jsonify({'success': True, 'message': 'Server restarting...'})
 

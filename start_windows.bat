@@ -2,6 +2,12 @@
 chcp 65001 >nul
 cd /d "%~dp0"
 
+if not defined JOYBOY_MODELS_DIR set "JOYBOY_MODELS_DIR=%CD%\models"
+if not defined JOYBOY_HF_CACHE_DIR set "JOYBOY_HF_CACHE_DIR=%JOYBOY_MODELS_DIR%\huggingface"
+set "HF_HOME=%JOYBOY_HF_CACHE_DIR%"
+set "HF_HUB_CACHE=%JOYBOY_HF_CACHE_DIR%"
+if not defined HF_ASSETS_CACHE set "HF_ASSETS_CACHE=%JOYBOY_HF_CACHE_DIR%\assets"
+
 REM Auto restart mode used by backend. Do not stop on interactive repair prompts.
 if /i "%1"=="--restart" (
     set "JOYBOY_SKIP_CUDA_REPAIR_PROMPT=1"

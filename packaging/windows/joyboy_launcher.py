@@ -42,12 +42,16 @@ def _configure_env(root: Path) -> dict[str, str]:
         data_dir.mkdir(parents=True, exist_ok=True)
         for child in ("models", "packs", "cache", "output", "logs"):
             (data_dir / child).mkdir(parents=True, exist_ok=True)
+        hf_cache = data_dir / "models" / "huggingface"
+        hf_cache.mkdir(parents=True, exist_ok=True)
         env.setdefault("JOYBOY_HOME", str(data_dir))
-        env.setdefault("HF_HOME", str(data_dir / "cache" / "huggingface"))
-        env.setdefault("HF_HUB_CACHE", str(data_dir / "models" / "huggingface" / "hub"))
         env.setdefault("JOYBOY_MODELS_DIR", str(data_dir / "models"))
+        env.setdefault("JOYBOY_HF_CACHE_DIR", str(hf_cache))
         env.setdefault("JOYBOY_PACKS_DIR", str(data_dir / "packs"))
         env.setdefault("JOYBOY_OUTPUT_DIR", str(data_dir / "output"))
+        env["HF_HOME"] = str(hf_cache)
+        env["HF_HUB_CACHE"] = str(hf_cache)
+        env.setdefault("HF_ASSETS_CACHE", str(hf_cache / "assets"))
 
     return env
 

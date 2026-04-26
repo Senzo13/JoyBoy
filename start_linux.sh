@@ -13,6 +13,12 @@ NC='\033[0m'
 
 cd "$(dirname "$0")"
 
+export JOYBOY_MODELS_DIR="${JOYBOY_MODELS_DIR:-$PWD/models}"
+export JOYBOY_HF_CACHE_DIR="${JOYBOY_HF_CACHE_DIR:-$JOYBOY_MODELS_DIR/huggingface}"
+export HF_HOME="$JOYBOY_HF_CACHE_DIR"
+export HF_HUB_CACHE="$JOYBOY_HF_CACHE_DIR"
+export HF_ASSETS_CACHE="${HF_ASSETS_CACHE:-$JOYBOY_HF_CACHE_DIR/assets}"
+
 ensure_ubuntu_python_bootstrap() {
     if python3 -c "import ensurepip, venv" >/dev/null 2>&1; then
         return 0

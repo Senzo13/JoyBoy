@@ -415,6 +415,10 @@ const apiApp = {
     async getVersionStatus(refresh = false) {
         const suffix = refresh ? '?refresh=1' : '';
         return apiGet(`/api/version/status${suffix}`);
+    },
+
+    async updateAndRestart() {
+        return apiPost('/api/version/update', { restart: true });
     }
 };
 
