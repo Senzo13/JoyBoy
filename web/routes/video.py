@@ -3,6 +3,7 @@ Blueprint pour les routes video (generate-video, video-progress, video-models, r
 """
 from flask import Blueprint, request, jsonify
 import os
+import shutil
 import threading
 import uuid
 
@@ -458,6 +459,32 @@ def _folder_size(path):
     return total
 
 
+def _format_gb(size_bytes):
+    return f"{size_bytes / (1024 ** 3):.1f} GB"
+
+
+def _download_space_error(repo_id, cache_dir, total_size):
+    """Return a user-facing error when a video download cannot fit on disk."""
+    if not total_size:
+        return None
+    local_dir = os.path.join(cache_dir, repo_id.replace("/", "--"))
+    parent = os.path.dirname(local_dir) or cache_dir
+    os.makedirs(parent, exist_ok=True)
+    downloaded = _folder_size(local_dir)
+    remaining = max(total_size - downloaded, 0)
+    # HF may keep temporary blobs while reconstructing files; keep a small buffer.
+    required = int(remaining + min(max(total_size * 0.10, 2 * 1024 ** 3), 20 * 1024 ** 3))
+    free = shutil.disk_usage(parent).free
+    if free >= required:
+        return None
+    return (
+        "Espace disque insuffisant pour télécharger ce modèle vidéo. "
+        f"Libre: {_format_gb(free)} · requis environ: {_format_gb(required)} · "
+        f"modèle: {_format_gb(total_size)}. Libère de l'espace ou définis JOYBOY_MODELS_DIR "
+        "vers un volume plus grand."
+    )
+
+
 def _video_model_status_payload(include_advanced=False, allow_experimental=False):
     from core.models import VIDEO_MODELS, VRAM_GB, custom_cache
     from core.models.video_policy import build_video_model_catalog
@@ -520,11 +547,22 @@ def download_video_model():
     if video_download_status.get(model_id, {}).get("downloading"):
         return jsonify({"success": True, "message": "downloading"})
 
+    total_size = _video_repo_size(repo_id)
+    space_error = _download_space_error(repo_id, custom_cache, total_size)
+    if space_error:
+        video_download_status[model_id] = {
+            "downloading": False,
+            "progress": 0,
+            "downloaded_size": _folder_size(os.path.join(custom_cache, repo_id.replace("/", "--"))),
+            "total_size": total_size,
+            "error": space_error,
+        }
+        return jsonify({"success": False, "error": space_error}), 400
+
     def download_thread():
         import time
         from huggingface_hub import snapshot_download
 
-        total_size = _video_repo_size(repo_id)
         local_dir = os.path.join(custom_cache, repo_id.replace("/", "--"))
         video_download_status[model_id] = {
             "downloading": True,
