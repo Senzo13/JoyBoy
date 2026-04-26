@@ -114,6 +114,8 @@
   padding: 6px 10px;
   background: rgba(255, 255, 255, 0.05);
   border-radius: 20px;
+  flex: 0 0 auto;
+  min-width: max-content;
   transition: all 0.2s;
 }
 
@@ -129,6 +131,7 @@
 }
 
 .disk-bar {
+  flex: 0 0 48px;
   width: 48px;
   height: 8px;
   background: rgba(255, 255, 255, 0.1);
@@ -160,7 +163,10 @@
   font-size: 11px;
   color: #8bcef0;
   font-family: 'SF Mono', monospace;
-  min-width: 58px;
+  flex: 0 0 auto;
+  min-width: 74px;
+  white-space: nowrap;
+  text-align: left;
 }
 
 /* ===== RAM PANEL (Popup) ===== */

@@ -1740,6 +1740,10 @@ Object.assign(MESSAGES.en, {
             noModel: 'No model',
             unloadModelTooltip: 'Unload this model',
             totalMb: '{mb} MB total',
+            diskCalculating: 'Model disk: calculating',
+            diskUnavailable: 'Model disk: unavailable',
+            diskFreeShort: '{free} free',
+            diskTooltip: 'Model disk: {free} free / {total}{path}',
         },
     });
 

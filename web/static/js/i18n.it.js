@@ -1484,6 +1484,10 @@ Object.assign(MESSAGES.it, {
             noModel: 'Nessun modello',
             unloadModelTooltip: 'Scarica questo modello',
             totalMb: '{mb} MB totali',
+            diskCalculating: 'Disco modelli: calcolo in corso',
+            diskUnavailable: 'Disco modelli: non disponibile',
+            diskFreeShort: '{free} liberi',
+            diskTooltip: 'Disco modelli: {free} liberi / {total}{path}',
         },
     });
 

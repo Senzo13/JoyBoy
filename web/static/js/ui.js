@@ -181,7 +181,12 @@ function updateDiskDisplay(disk) {
             fill.style.width = '0%';
             fill.className = 'disk-fill';
             text.textContent = '--';
-            if (display) display.title = 'Disque modèles: indisponible';
+            if (display) {
+                const tooltip = uiT('ui.diskUnavailable', 'Disque modèles: indisponible');
+                display.title = tooltip;
+                display.dataset.tooltip = tooltip;
+                display.setAttribute('aria-label', tooltip);
+            }
             return;
         }
 
@@ -196,9 +201,16 @@ function updateDiskDisplay(disk) {
         else if (percent > 85) fill.classList.add('high');
         else if (percent > 70) fill.classList.add('medium');
 
-        text.textContent = `${free} libres`;
+        text.textContent = uiT('ui.diskFreeShort', '{free} libres', { free });
         if (display) {
-            display.title = `Disque modèles: ${free} libres / ${total}${path ? `\n${path}` : ''}`;
+            const tooltip = uiT('ui.diskTooltip', 'Disque modèles: {free} libres / {total}{path}', {
+                free,
+                total,
+                path: path ? `\n${path}` : '',
+            });
+            display.title = tooltip;
+            display.dataset.tooltip = tooltip;
+            display.setAttribute('aria-label', tooltip);
         }
     };
 
