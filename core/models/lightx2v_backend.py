@@ -62,10 +62,6 @@ LIGHTX2V_IMPORT_CHECKS = {
     "prometheus_client": "prometheus-client",
     "pydantic": "pydantic",
     "scipy": "scipy",
-    # LightX2V imports all runners at CLI startup; its LTX-2 runner imports
-    # torchaudio. JoyBoy setup owns the Torch stack, so we report this instead
-    # of installing torchaudio from the LightX2V adapter.
-    "torchaudio": "torchaudio",
 }
 
 
@@ -447,6 +443,86 @@ def build_lightx2v_command(
     return cmd
 
 
+def _lightx2v_task_requires_audio(meta: dict[str, Any]) -> bool:
+    task = str(meta.get("lightx2v_task") or "").strip().lower()
+    if bool(meta.get("lightx2v_requires_audio")):
+        return True
+    return task in {"audio", "a2v", "s2v", "speech2video", "t2v_audio", "i2v_audio"}
+
+
+def _torchaudio_stub_bootstrap() -> str:
+    return r'''
+import runpy
+import sys
+import types
+
+module = sys.argv[1]
+sys.argv = [module, *sys.argv[2:]]
+
+def _torchaudio_disabled(*args, **kwargs):
+    raise RuntimeError("torchaudio is disabled for this LightX2V Wan run; audio models need a torch-matched torchaudio install.")
+
+class _UnavailableAudioOp:
+    def __init__(self, *args, **kwargs):
+        _torchaudio_disabled()
+    def __call__(self, *args, **kwargs):
+        _torchaudio_disabled()
+
+def _install_torchaudio_stub():
+    torchaudio = types.ModuleType("torchaudio")
+    torchaudio.__file__ = "<joyboy-lightx2v-torchaudio-stub>"
+    torchaudio.__path__ = []
+    torchaudio.load = _torchaudio_disabled
+    torchaudio.save = _torchaudio_disabled
+    torchaudio.info = _torchaudio_disabled
+
+    functional = types.ModuleType("torchaudio.functional")
+    functional.resample = _torchaudio_disabled
+
+    transforms = types.ModuleType("torchaudio.transforms")
+    transforms.Resample = _UnavailableAudioOp
+    transforms.MelSpectrogram = _UnavailableAudioOp
+    transforms.Spectrogram = _UnavailableAudioOp
+    transforms.AmplitudeToDB = _UnavailableAudioOp
+
+    io = types.ModuleType("torchaudio.io")
+    compliance = types.ModuleType("torchaudio.compliance")
+    kaldi = types.ModuleType("torchaudio.compliance.kaldi")
+
+    torchaudio.functional = functional
+    torchaudio.transforms = transforms
+    torchaudio.io = io
+    torchaudio.compliance = compliance
+    compliance.kaldi = kaldi
+
+    sys.modules["torchaudio"] = torchaudio
+    sys.modules["torchaudio.functional"] = functional
+    sys.modules["torchaudio.transforms"] = transforms
+    sys.modules["torchaudio.io"] = io
+    sys.modules["torchaudio.compliance"] = compliance
+    sys.modules["torchaudio.compliance.kaldi"] = kaldi
+
+_install_torchaudio_stub()
+runpy.run_module(module, run_name="__main__", alter_sys=True)
+'''.strip()
+
+
+def _lightx2v_subprocess_command(cmd: list[str], meta: dict[str, Any]) -> list[str]:
+    """Wrap `python -m lightx2v.infer` so Wan tasks avoid broken torchaudio imports."""
+    if len(cmd) < 3 or cmd[1] != "-m":
+        return cmd
+    allow_real_torchaudio = os.environ.get("JOYBOY_LIGHTX2V_ALLOW_TORCHAUDIO", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    if allow_real_torchaudio or _lightx2v_task_requires_audio(meta):
+        return cmd
+    module = cmd[2]
+    return [cmd[0], "-c", _torchaudio_stub_bootstrap(), module, *cmd[3:]]
+
+
 def _lightx2v_env(repo_dir: Path) -> dict[str, str]:
     env = os.environ.copy()
     current_pythonpath = env.get("PYTHONPATH", "")
@@ -558,7 +634,7 @@ def run_lightx2v_generation(
         progress_callback(0, steps, "LightX2V: initialisation")
 
     process = subprocess.Popen(
-        cmd,
+        _lightx2v_subprocess_command(cmd, meta),
         cwd=str(repo_dir),
         env=_lightx2v_env(repo_dir),
         stdout=subprocess.PIPE,

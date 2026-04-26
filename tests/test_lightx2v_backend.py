@@ -123,6 +123,23 @@ class LightX2VBackendTests(unittest.TestCase):
         self.assertIn("81", cmd)
         self.assertNotIn("requirements.txt", cmd)
 
+    def test_lightx2v_subprocess_stubs_torchaudio_for_wan_tasks(self):
+        base_cmd = [
+            sys.executable,
+            "-m",
+            "lightx2v.infer",
+            "--save_result_path",
+            "C:/out.mp4",
+        ]
+
+        wrapped = backend._lightx2v_subprocess_command(base_cmd, self._meta())
+
+        self.assertEqual(wrapped[0], sys.executable)
+        self.assertEqual(wrapped[1], "-c")
+        self.assertIn("torchaudio", wrapped[2])
+        self.assertEqual(wrapped[3], "lightx2v.infer")
+        self.assertIn("--save_result_path", wrapped)
+
     def test_video_download_helpers_support_multi_repo_packs(self):
         with tempfile.TemporaryDirectory() as tmp:
             cache_dir = Path(tmp)
