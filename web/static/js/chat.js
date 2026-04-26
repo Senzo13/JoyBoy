@@ -1173,6 +1173,10 @@ function ensureVideoContinuationPanel() {
                 <button class="video-continuation-close" type="button" onclick="closeVideoContinuationPanel()" aria-label="Fermer">×</button>
             </div>
             <textarea id="video-continuation-prompt" class="video-continuation-prompt" rows="3" placeholder="Décris ce qui doit se passer ensuite..."></textarea>
+            <div class="video-continuation-duration" role="group" aria-label="Durée ajoutée">
+                <button class="video-continuation-duration-btn is-active" type="button" data-duration-sec="5" onclick="setVideoContinuationDuration(5)">+5s</button>
+                <button class="video-continuation-duration-btn" type="button" data-duration-sec="10" onclick="setVideoContinuationDuration(10)">+10s</button>
+            </div>
             <div class="video-continuation-options">
                 <label class="video-continuation-check">
                     <input id="video-continuation-analyze" type="checkbox" checked>
@@ -1188,6 +1192,16 @@ function ensureVideoContinuationPanel() {
     `;
     document.body.appendChild(panel);
     return panel;
+}
+
+function setVideoContinuationDuration(durationSec = 5) {
+    const panel = document.getElementById('video-continuation-panel');
+    if (!panel) return;
+    const normalizedDuration = durationSec === 10 ? 10 : 5;
+    panel.dataset.durationSec = String(normalizedDuration);
+    panel.querySelectorAll('.video-continuation-duration-btn').forEach((button) => {
+        button.classList.toggle('is-active', button.dataset.durationSec === String(normalizedDuration));
+    });
 }
 
 function openVideoContinuationPanel(options = {}) {
@@ -1219,6 +1233,7 @@ function openVideoContinuationPanel(options = {}) {
     }
     if (promptInput && options.prefillPrompt) promptInput.value = options.prefillPrompt;
     if (analyzeInput) analyzeInput.checked = userSettings.videoContinuationAnalyze !== false;
+    setVideoContinuationDuration(options.durationSec === 10 ? 10 : 5);
     panel.classList.add('is-open');
     panel.setAttribute('aria-hidden', 'false');
     setTimeout(() => promptInput?.focus(), 0);
@@ -1306,9 +1321,11 @@ async function submitVideoContinuation() {
     const prompt = (panel.querySelector('#video-continuation-prompt')?.value || '').trim();
     const anchorValue = panel.querySelector('#video-continuation-anchor')?.value;
     const analyzeVideo = panel.querySelector('#video-continuation-analyze')?.checked !== false;
+    const durationSec = Number(panel.dataset.durationSec || 5) === 10 ? 10 : 5;
     closeVideoContinuationPanel();
     await runVideoContinuation({
         prompt,
+        durationSec,
         anchorFrameIndex: anchorValue === '' || anchorValue == null ? null : Number(anchorValue),
         analyzeVideo,
         videoSessionId: panel.dataset.videoSessionId || _lastVideoContext.videoSessionId,
@@ -1320,6 +1337,8 @@ async function runVideoContinuation(options = {}) {
 
     const videoModel = userSettings.videoModel || 'svd';
     const videoDefaults = getVideoModelDefaults(videoModel);
+    const continuationDurationSec = options.durationSec === 10 ? 10 : 5;
+    const continuationFrames = Math.max(1, Math.round(continuationDurationSec * videoDefaults.fps));
 
     isGenerating = true;
     currentGenerationMode = 'video';
@@ -1331,7 +1350,7 @@ async function runVideoContinuation(options = {}) {
         updateSendButtonState('chat');
     }
 
-    addSkeletonMessage(`🎬 Continuation ${videoDefaults.name}...`, null, true);
+    addSkeletonMessage(`🎬 Continuation ${videoDefaults.name} +${continuationDurationSec}s...`, null, true);
     scrollToBottom();
 
     startVideoProgressPolling();
@@ -1349,7 +1368,7 @@ async function runVideoContinuation(options = {}) {
             analyze_video: options.analyzeVideo !== false,
             video_analysis_model: userSettings.videoAnalysisModel || undefined,
             audio_engine: userSettings.videoAudioEngine || 'auto',
-            target_frames: videoDefaults.frames,
+            target_frames: continuationFrames,
             num_steps: videoDefaults.steps,
             fps: videoDefaults.fps,
             add_audio: userSettings.videoAudio === true,
