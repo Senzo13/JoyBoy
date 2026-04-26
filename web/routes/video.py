@@ -544,6 +544,14 @@ def _video_repo_size(repo_id):
         return 0
 
 
+def _video_model_repos(meta):
+    repos = (meta or {}).get("hf_repos")
+    if isinstance(repos, (list, tuple)):
+        return [str(repo).strip() for repo in repos if str(repo).strip()]
+    repo_id = str((meta or {}).get("id") or "").strip()
+    return [repo_id] if repo_id else []
+
+
 def _folder_size(path):
     total = 0
     if not path or not os.path.exists(path):
@@ -555,6 +563,28 @@ def _folder_size(path):
             except OSError:
                 pass
     return total
+
+
+def _video_model_downloaded(meta, cache_dir):
+    if (meta or {}).get("backend") == "lightx2v":
+        try:
+            from core.models.lightx2v_backend import is_lightx2v_model_downloaded
+            return is_lightx2v_model_downloaded(meta, cache_dir)
+        except Exception:
+            return False
+    repos = _video_model_repos(meta)
+    return bool(repos) and all(_video_repo_downloaded(repo_id, cache_dir) for repo_id in repos)
+
+
+def _video_model_downloaded_size(meta, cache_dir):
+    total = 0
+    for repo_id in _video_model_repos(meta):
+        total += _folder_size(os.path.join(cache_dir, repo_id.replace("/", "--")))
+    return total
+
+
+def _video_model_total_size(meta):
+    return sum(_video_repo_size(repo_id) for repo_id in _video_model_repos(meta))
 
 
 def _format_gb(size_bytes):
@@ -583,6 +613,26 @@ def _download_space_error(repo_id, cache_dir, total_size):
     )
 
 
+def _download_model_space_error(meta, cache_dir, total_size):
+    repos = _video_model_repos(meta)
+    if len(repos) <= 1:
+        return _download_space_error(repos[0], cache_dir, total_size) if repos else None
+    if not total_size:
+        return None
+    os.makedirs(cache_dir, exist_ok=True)
+    downloaded = _video_model_downloaded_size(meta, cache_dir)
+    remaining = max(total_size - downloaded, 0)
+    required = int(remaining + min(max(total_size * 0.10, 2 * 1024 ** 3), 20 * 1024 ** 3))
+    free = shutil.disk_usage(cache_dir).free
+    if free >= required:
+        return None
+    return (
+        "Espace disque insuffisant pour télécharger ce pack vidéo. "
+        f"Libre: {_format_gb(free)} · requis environ: {_format_gb(required)} · "
+        f"pack: {_format_gb(total_size)}. Définis JOYBOY_MODELS_DIR vers un volume plus grand."
+    )
+
+
 def _video_model_status_payload(include_advanced=False, allow_experimental=False):
     from core.models import VIDEO_MODELS, VRAM_GB, custom_cache
     from core.models.video_policy import build_video_model_catalog
@@ -600,17 +650,38 @@ def _video_model_status_payload(include_advanced=False, allow_experimental=False
         repo_id = model.get("repo_id") or model.get("hf_repo") or meta.get("id")
         status = video_download_status.get(model_id, {})
         downloading = bool(status.get("downloading"))
-        downloaded = _video_repo_downloaded(repo_id, custom_cache) if repo_id and not downloading else False
+        downloaded = _video_model_downloaded(meta, custom_cache) if repo_id and not downloading else False
+        backend_ready = True
+        backend_status = meta.get("backend_status", "ready")
+        launch_status = model.get("launch_status", "ready")
+        if meta.get("backend") == "lightx2v":
+            try:
+                from core.models.lightx2v_backend import get_lightx2v_backend_status
+                lightx2v_status = get_lightx2v_backend_status()
+                backend_ready = bool(lightx2v_status.get("ready"))
+                if not backend_ready:
+                    backend_status = "adapter_required"
+                    launch_status = "missing_backend"
+            except Exception:
+                backend_ready = False
+                backend_status = "adapter_required"
+                launch_status = "missing_backend"
         item = {
             **model,
             "key": model_id,
             "repo": repo_id,
+            "repos": _video_model_repos(meta),
             "native_backend": bool(meta.get("native_backend")),
+            "external_backend": meta.get("backend") or "",
+            "backend_ready": backend_ready,
+            "backend_status": backend_status,
+            "launch_status": launch_status,
             "downloaded": downloaded,
             "downloading": downloading,
             "progress": status.get("progress", 0),
             "downloaded_bytes": status.get("downloaded_size", 0),
             "total_bytes": status.get("total_size", 0),
+            "stage": status.get("stage"),
             "error": status.get("error"),
         }
         models.append(item)
@@ -636,22 +707,24 @@ def download_video_model():
     if model_id not in VIDEO_MODELS:
         return jsonify({"success": False, "error": "Modèle vidéo inconnu"}), 400
 
-    repo_id = VIDEO_MODELS[model_id].get("id")
-    if not repo_id:
+    meta = VIDEO_MODELS[model_id]
+    repos = _video_model_repos(meta)
+    repo_id = repos[0] if repos else ""
+    if not repos:
         return jsonify({"success": False, "error": "Repo Hugging Face manquant"}), 400
 
-    if _video_repo_downloaded(repo_id, custom_cache):
+    if _video_model_downloaded(meta, custom_cache):
         return jsonify({"success": True, "message": "already_cached"})
     if video_download_status.get(model_id, {}).get("downloading"):
         return jsonify({"success": True, "message": "downloading"})
 
-    total_size = _video_repo_size(repo_id)
-    space_error = _download_space_error(repo_id, custom_cache, total_size)
+    total_size = _video_model_total_size(meta)
+    space_error = _download_model_space_error(meta, custom_cache, total_size)
     if space_error:
         video_download_status[model_id] = {
             "downloading": False,
             "progress": 0,
-            "downloaded_size": _folder_size(os.path.join(custom_cache, repo_id.replace("/", "--"))),
+            "downloaded_size": _video_model_downloaded_size(meta, custom_cache),
             "total_size": total_size,
             "error": space_error,
         }
@@ -661,18 +734,18 @@ def download_video_model():
         import time
         from huggingface_hub import snapshot_download
 
-        local_dir = os.path.join(custom_cache, repo_id.replace("/", "--"))
         video_download_status[model_id] = {
             "downloading": True,
             "progress": 0,
             "downloaded_size": 0,
             "total_size": total_size,
+            "stage": "backend" if meta.get("backend") == "lightx2v" else "models",
         }
         stop_monitoring = threading.Event()
 
         def monitor():
             while not stop_monitoring.is_set():
-                downloaded = _folder_size(local_dir)
+                downloaded = _video_model_downloaded_size(meta, custom_cache)
                 progress = min(99, int(downloaded * 100 / total_size)) if total_size else 0
                 video_download_status[model_id].update({
                     "progress": progress,
@@ -683,22 +756,32 @@ def download_video_model():
         monitor_thread = threading.Thread(target=monitor, daemon=True)
         monitor_thread.start()
         try:
-            snapshot_download(repo_id=repo_id, cache_dir=custom_cache, local_dir=local_dir)
+            if meta.get("backend") == "lightx2v":
+                video_download_status[model_id].update({"stage": "backend", "progress": 1})
+                from core.models.lightx2v_backend import install_lightx2v_backend
+                install_lightx2v_backend()
+
+            video_download_status[model_id].update({"stage": "models"})
+            for current_repo in repos:
+                local_dir = os.path.join(custom_cache, current_repo.replace("/", "--"))
+                snapshot_download(repo_id=current_repo, cache_dir=custom_cache, local_dir=local_dir)
             stop_monitoring.set()
             video_download_status[model_id] = {
                 "downloading": False,
                 "progress": 100,
-                "downloaded_size": _folder_size(local_dir),
+                "downloaded_size": _video_model_downloaded_size(meta, custom_cache),
                 "total_size": total_size,
+                "stage": "complete",
             }
         except Exception as exc:
             stop_monitoring.set()
             video_download_status[model_id] = {
                 "downloading": False,
                 "progress": 0,
-                "downloaded_size": _folder_size(local_dir),
+                "downloaded_size": _video_model_downloaded_size(meta, custom_cache),
                 "total_size": total_size,
                 "error": str(exc),
+                "stage": "error",
             }
             print(f"[VIDEO_MODELS] Download failed for {model_id}: {exc}")
 

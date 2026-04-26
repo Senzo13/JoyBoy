@@ -800,6 +800,31 @@ def load_wan22_t2v_14b(custom_cache):
     return {"pipe": pipe}
 
 
+def load_lightx2v(model_name, custom_cache):
+    """Load a lightweight LightX2V backend descriptor.
+
+    The actual LightX2V model is launched in a subprocess during generation.
+    This keeps optional kernels and third-party globals out of JoyBoy's long
+    running Flask process.
+    """
+    from core.models import VIDEO_MODELS
+    from core.models.lightx2v_backend import LightX2VBackend, get_lightx2v_backend_status
+
+    meta = VIDEO_MODELS.get(model_name)
+    if not meta:
+        raise ValueError(f"Modele LightX2V inconnu: {model_name}")
+
+    status = get_lightx2v_backend_status()
+    if not status.get("ready"):
+        print("[MM] LightX2V backend manquant: installe-le depuis Modèles > Vidéo")
+    else:
+        print(f"[MM] LightX2V backend prêt: {status.get('repo_dir')}")
+    return {
+        "pipe": LightX2VBackend(model_name, meta, custom_cache),
+        "extras": {"external_backend": "lightx2v"},
+    }
+
+
 def load_ltx(custom_cache):
     """Load LTX-Video 2B (distilled 0.9.8 with fallback to base 0.9.0).
 

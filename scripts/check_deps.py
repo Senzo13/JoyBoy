@@ -1538,6 +1538,20 @@ def main():
         print(f"  [SKIP] nunchaku (optional - required for Flux Fill INT4)")
         print(f"         Install from: https://huggingface.co/nunchaku-tech/nunchaku/tree/main/wheels")
 
+    # LightX2V optional video backend. Do not auto-install here: the pack is
+    # large and must stay outside the public repo.
+    print("\n  Optional video backend (LightX2V):")
+    try:
+        from core.models.lightx2v_backend import get_lightx2v_backend_status
+        lightx2v_status = get_lightx2v_backend_status()
+        if lightx2v_status.get("ready"):
+            print(f"  [OK] LightX2V backend ({lightx2v_status.get('repo_dir')})")
+        else:
+            print("  [SKIP] LightX2V backend not installed")
+            print("         Install from Video Models or run: python scripts/install_lightx2v_backend.py")
+    except Exception as exc:
+        print(f"  [WARN] LightX2V status unavailable: {exc}")
+
     # ==========================================
     # REPARATIONS
     # ==========================================

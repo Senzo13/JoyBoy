@@ -16,6 +16,8 @@ class ModelManagerUtilityLoaderMixin:
             env["JOYBOY_FRAMEPACK_GPU_DIRECT"] = "0"
         if str(model_name or "").startswith("wan-native-"):
             env["JOYBOY_WAN_NATIVE_FORCE_OFFLOAD"] = "1"
+        if str(model_name or "").startswith("lightx2v-"):
+            env["JOYBOY_LIGHTX2V_FORCE_OFFLOAD"] = "1"
         return env
 
     def _load_video_once(self, model_name, custom_cache):
@@ -49,6 +51,8 @@ class ModelManagerUtilityLoaderMixin:
             return video_loader.load_ltx2_fp8(custom_cache)
         if model_name in ("wan-native-5b", "wan-native-14b"):
             return video_loader.load_wan_native(model_name, custom_cache)
+        if str(model_name or "").startswith("lightx2v-"):
+            return video_loader.load_lightx2v(model_name, custom_cache)
         raise ValueError(f"Modele video inconnu: {model_name}")
 
     def _load_video(self, model_name=None):

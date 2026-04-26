@@ -236,6 +236,62 @@ class VideoPolicyTests(unittest.TestCase):
         self.assertTrue(by_id["ltx2"]["supports_t2v"])
         self.assertTrue(by_id["ltx2"]["supports_audio_native"])
 
+    def test_lightx2v_is_optional_and_does_not_take_over_default(self):
+        catalog = build_video_model_catalog(
+            {
+                "wan-native-14b": {
+                    "name": "Wan Native 14B",
+                    "supports_image": True,
+                    "supports_prompt": True,
+                    "supports_continue": True,
+                    "recommended_for": ["high_end_video"],
+                    "min_vram_gb": 24,
+                },
+                "lightx2v-wan22-i2v-4step": {
+                    "name": "LightX2V Wan 2.2 I2V 4-step",
+                    "supports_image": True,
+                    "supports_prompt": True,
+                    "supports_continue": True,
+                    "backend": "lightx2v",
+                    "backend_status": "optional",
+                    "recommended_for": ["high_end_video", "fast_quality_i2v"],
+                    "min_vram_gb": 14,
+                },
+            },
+            vram_gb=HIGH_END_VIDEO_LIMIT_GB,
+        )
+
+        by_id = {model["id"]: model for model in catalog["models"]}
+        self.assertEqual(catalog["default_model"], "wan-native-14b")
+        self.assertEqual(by_id["lightx2v-wan22-i2v-4step"]["launch_status"], "ready")
+        self.assertEqual(by_id["lightx2v-wan22-i2v-4step"]["backend_status"], "optional")
+        self.assertEqual(by_id["lightx2v-wan22-i2v-4step"]["category"], "recommended")
+
+    def test_lightx2v_low_vram_profile_stays_manual_test_until_opt_in(self):
+        with patch.dict(os.environ, {}, clear=True):
+            catalog = build_video_model_catalog(
+                {
+                    "svd": {"name": "SVD", "low_vram_tier": "recommended", "supports_image": True},
+                    "lightx2v-wan22-i2v-8gb": {
+                        "name": "LightX2V 8GB",
+                        "supports_image": True,
+                        "supports_prompt": True,
+                        "supports_continue": True,
+                        "backend": "lightx2v",
+                        "backend_status": "optional",
+                        "experimental_low_vram": True,
+                        "low_vram_tier": "advanced",
+                    },
+                },
+                vram_gb=8,
+                include_advanced=True,
+            )
+
+        by_id = {model["id"]: model for model in catalog["models"]}
+        self.assertEqual(by_id["lightx2v-wan22-i2v-8gb"]["category"], "try")
+        self.assertEqual(by_id["lightx2v-wan22-i2v-8gb"]["launch_status"], "manual_test")
+        self.assertTrue(by_id["lightx2v-wan22-i2v-8gb"]["override_required"])
+
 
 if __name__ == "__main__":
     unittest.main()

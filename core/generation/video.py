@@ -26,6 +26,7 @@ from core.infra.gallery_metadata import save_gallery_metadata
 from core.generation.video_sessions import (
     concat_video_segments,
     create_video_session,
+    extract_video_frames,
 )
 
 
@@ -298,10 +299,11 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
     is_ltx2 = video_model == "ltx2"
     is_ltx2_fp8 = video_model == "ltx2_fp8"
     is_native_wan = video_model.startswith("wan-native-")  # Backend natif Wan
+    is_lightx2v = video_model.startswith("lightx2v-")
     low_vram_framepack = is_framepack and 0 < float(VRAM_GB or 0) <= 10
     low_vram_ltx = is_ltx and 0 < float(VRAM_GB or 0) <= 10
     low_vram_svd = (
-        not any((is_cogvideo, is_wan, is_wan22, is_wan5b, is_hunyuan, is_framepack, is_ltx, is_ltx2, is_ltx2_fp8, is_native_wan))
+        not any((is_cogvideo, is_wan, is_wan22, is_wan5b, is_hunyuan, is_framepack, is_ltx, is_ltx2, is_ltx2_fp8, is_native_wan, is_lightx2v))
         and 0 < float(VRAM_GB or 0) <= 10
     )
 
@@ -338,7 +340,10 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
         max_area = max_480 if quality_value == "480p" else max_720
         return _aspect_locked_size(base_w, base_h, max_area=max_area, mod_value=mod_value)
 
-    if is_native_wan:
+    if is_lightx2v:
+        target_w, target_h = _source_aspect_size(quality_value=quality, mod_value=16)
+        print(f"[VIDEO] LightX2V ratio source ({quality}): {target_w}x{target_h}")
+    elif is_native_wan:
         # Backend NATIF Wan — résolutions fixes comme Wan 2.2 5B
         is_portrait = h > w
         if video_model == "wan-native-14b":
@@ -573,7 +578,9 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
     # Override steps pour les modèles à params fixes (avant progress bar)
     # Modèles configurables (respectent le slider): wan22-5b, svd
     # Modèles fixes (hardcodé): fastwan, wan22, cogvideo, ltx, hunyuan
-    if is_native_wan:
+    if is_lightx2v:
+        num_steps = max(1, min(8, int(num_steps or model_info.get("default_steps") or 4)))
+    elif is_native_wan:
         # Backend natif: 50 pour 5B, 40 pour 14B (configs officielles)
         num_steps = 40 if video_model == "wan-native-14b" else 50
     elif is_wan5b and video_model == "fastwan":
@@ -605,7 +612,54 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
     update_video_progress(phase='generating', total_steps=num_steps, total_passes=1, pass_num=1, message='Génération...')
 
     # === GÉNÉRATION SELON LE MODÈLE ===
-    if is_native_wan:
+    if is_lightx2v:
+        video_prompt = _source_fidelity_prompt(DEFAULT_VISUAL_SOURCE_VIDEO_PROMPT if has_visual_source else DEFAULT_SCENE_VIDEO_PROMPT)
+        negative_prompt = _source_fidelity_negative(
+            "overexposed, oversaturated, hyper contrast, beautified, relit, cinematic color grade, "
+            "identity drift, face drift, body shape drift, distorted anatomy, bad hands, low quality"
+        )
+        print(f"[VIDEO] Prompt LightX2V: {video_prompt}")
+
+        lightx2v_frames = target_frames
+        if (lightx2v_frames - 1) % 4 != 0:
+            lightx2v_frames = ((lightx2v_frames - 1) // 4) * 4 + 1
+            print(f"[VIDEO] Frames ajusté: {target_frames} → {lightx2v_frames} (formule 4k+1)")
+        fps = int(model_info.get("default_fps") or fps or 16)
+
+        def _lightx2v_progress(step, total, message):
+            if cancel_check and cancel_check():
+                raise GenerationCancelledException("Video generation cancelled")
+            if step is not None:
+                update_video_progress(step=int(step), total_steps=int(total or num_steps), message=message)
+                pct = max(0.0, min(1.0, int(step) / max(1, int(total or num_steps))))
+                bar_len = 30
+                filled = int(bar_len * pct)
+                bar = '█' * filled + '░' * (bar_len - filled)
+                print(f"\r   [{bar}] {pct*100:5.1f}% | {message}", end='', flush=True)
+                if int(step) >= int(total or num_steps):
+                    print()
+            else:
+                update_video_progress(message=message)
+
+        result = pipe.generate(
+            image=image_resized,
+            prompt=video_prompt,
+            negative_prompt=negative_prompt,
+            width=target_w,
+            height=target_h,
+            frames=lightx2v_frames,
+            steps=num_steps,
+            fps=fps,
+            quality=quality,
+            cancel_check=cancel_check,
+            progress_callback=_lightx2v_progress,
+        )
+        preencoded_video_path = Path(result.video_path)
+        generated_frames = extract_video_frames(preencoded_video_path)
+        if not generated_frames:
+            raise RuntimeError(f"LightX2V a produit un MP4 illisible: {preencoded_video_path}")
+
+    elif is_native_wan:
         # Backend NATIF Wan — code officiel sans diffusers
         video_prompt = _source_fidelity_prompt(DEFAULT_VISUAL_SOURCE_VIDEO_PROMPT)
         negative_prompt = _source_fidelity_negative("")  # Backend natif gère différemment
@@ -1659,82 +1713,94 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
         arr = np.array(first)
         h_out, w_out = arr.shape[:2]
 
+    preencoded_path = locals().get("preencoded_video_path")
+    use_preencoded_mp4 = bool(preencoded_path and not persisted_continuation and not continue_from_last and not fr_method)
+    native_audio_muxed = False
+
     try:
-        try:
-            import imageio_ffmpeg
-        except ImportError:
-            print("[VIDEO] Installation imageio-ffmpeg...")
+        if use_preencoded_mp4:
+            video_path = Path(preencoded_path)
+            video_format = "mp4"
+            update_video_progress(phase='encoding', step=1, total_steps=1, message='MP4 LightX2V prêt')
+            print(f"[VIDEO] Export MP4 ignoré: LightX2V a déjà écrit {video_path}")
+            if not video_path.exists() or video_path.stat().st_size <= 0:
+                raise RuntimeError(f"MP4 LightX2V invalide: {video_path}")
+        else:
+            try:
+                import imageio_ffmpeg
+            except ImportError:
+                print("[VIDEO] Installation imageio-ffmpeg...")
+                import subprocess
+                import sys
+                subprocess.check_call([sys.executable, "-m", "pip", "install", "imageio-ffmpeg", "-q"])
+                import imageio_ffmpeg
+
             import subprocess
-            import sys
-            subprocess.check_call([sys.executable, "-m", "pip", "install", "imageio-ffmpeg", "-q"])
-            import imageio_ffmpeg
 
-        import subprocess
+            ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()
 
-        ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()
+            cmd = [
+                ffmpeg_path, '-y',
+                '-f', 'rawvideo', '-vcodec', 'rawvideo',
+                '-s', f'{w_out}x{h_out}',
+                '-pix_fmt', 'rgb24',
+                '-r', str(fps),
+                '-i', '-',
+                '-c:v', 'libx264',
+                '-preset', 'ultrafast',
+                '-pix_fmt', 'yuv420p',
+                '-crf', '23',
+                '-vf', 'scale=in_range=pc:out_range=tv',
+                '-color_range', 'tv',
+                '-colorspace', 'bt709',
+                '-color_trc', 'bt709',
+                '-color_primaries', 'bt709',
+                str(mp4_path),
+            ]
 
-        cmd = [
-            ffmpeg_path, '-y',
-            '-f', 'rawvideo', '-vcodec', 'rawvideo',
-            '-s', f'{w_out}x{h_out}',
-            '-pix_fmt', 'rgb24',
-            '-r', str(fps),
-            '-i', '-',
-            '-c:v', 'libx264',
-            '-preset', 'ultrafast',
-            '-pix_fmt', 'yuv420p',
-            '-crf', '23',
-            '-vf', 'scale=in_range=pc:out_range=tv',
-            '-color_range', 'tv',
-            '-colorspace', 'bt709',
-            '-color_trc', 'bt709',
-            '-color_primaries', 'bt709',
-            str(mp4_path),
-        ]
+            import threading
+            process = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
 
-        import threading
-        process = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+            # Thread pour drainer stderr en parallèle (évite deadlock si ffmpeg écrit >64KB)
+            stderr_chunks = []
+            def _drain_stderr():
+                for line in process.stderr:
+                    stderr_chunks.append(line)
+            stderr_thread = threading.Thread(target=_drain_stderr, daemon=True)
+            stderr_thread.start()
 
-        # Thread pour drainer stderr en parallèle (évite deadlock si ffmpeg écrit >64KB)
-        stderr_chunks = []
-        def _drain_stderr():
-            for line in process.stderr:
-                stderr_chunks.append(line)
-        stderr_thread = threading.Thread(target=_drain_stderr, daemon=True)
-        stderr_thread.start()
-
-        total_enc = len(_state.all_video_frames)
-        update_video_progress(
-            phase='encoding',
-            step=0,
-            total_steps=total_enc,
-            message=f'Export MP4 0/{total_enc}...'
-        )
-        for fi, frame in enumerate(_state.all_video_frames):
-            process.stdin.write(_frame_to_rgb_bytes(frame))
-            pct = (fi + 1) / total_enc
+            total_enc = len(_state.all_video_frames)
             update_video_progress(
                 phase='encoding',
-                step=fi + 1,
+                step=0,
                 total_steps=total_enc,
-                message=f'Export MP4 {fi + 1}/{total_enc}...'
+                message=f'Export MP4 0/{total_enc}...'
             )
-            bar_len = 30
-            filled = int(bar_len * pct)
-            bar = '█' * filled + '░' * (bar_len - filled)
-            print(f"\r   [{bar}] {pct*100:5.1f}% | Frame {fi+1}/{total_enc}", end='', flush=True)
-        print()
+            for fi, frame in enumerate(_state.all_video_frames):
+                process.stdin.write(_frame_to_rgb_bytes(frame))
+                pct = (fi + 1) / total_enc
+                update_video_progress(
+                    phase='encoding',
+                    step=fi + 1,
+                    total_steps=total_enc,
+                    message=f'Export MP4 {fi + 1}/{total_enc}...'
+                )
+                bar_len = 30
+                filled = int(bar_len * pct)
+                bar = '█' * filled + '░' * (bar_len - filled)
+                print(f"\r   [{bar}] {pct*100:5.1f}% | Frame {fi+1}/{total_enc}", end='', flush=True)
+            print()
 
-        process.stdin.close()
-        stderr_thread.join(timeout=30)
-        process.wait()
-        if process.returncode != 0:
-            stderr_output = b''.join(stderr_chunks).decode(errors='replace')
-            raise RuntimeError(f"ffmpeg error: {stderr_output[-500:]}")
+            process.stdin.close()
+            stderr_thread.join(timeout=30)
+            process.wait()
+            if process.returncode != 0:
+                stderr_output = b''.join(stderr_chunks).decode(errors='replace')
+                raise RuntimeError(f"ffmpeg error: {stderr_output[-500:]}")
 
-        video_path = mp4_path
-        video_format = "mp4"
-        print(f"[VIDEO] Export MP4 réussi (streaming direct, bt709 standard range)")
+            video_path = mp4_path
+            video_format = "mp4"
+            print(f"[VIDEO] Export MP4 réussi (streaming direct, bt709 standard range)")
 
         # Muxer l'audio LTX-2 si disponible. For persisted continuations,
         # audio is generated after the final concatenated clip so the sound bed
@@ -1744,6 +1810,9 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
             try:
                 import torch as _t
                 import tempfile, wave
+                if "ffmpeg_path" not in locals():
+                    import imageio_ffmpeg
+                    ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()
                 audio_sr = getattr(_state, 'ltx2_audio_sr', 24000)
                 # audio_data: tensor [batch, samples] ou [samples]
                 audio_tensor = ltx2_audio[0] if ltx2_audio.dim() >= 2 else ltx2_audio

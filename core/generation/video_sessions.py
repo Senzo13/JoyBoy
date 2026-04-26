@@ -313,6 +313,31 @@ def _probe_video_frame_stats(video_path: str | Path) -> tuple[int | None, float 
         return None, None
 
 
+def extract_video_frames(video_path: str | Path, *, max_frames: int | None = None) -> list[Image.Image]:
+    """Decode a video file into RGB PIL frames for session/keyframe reuse."""
+    frames: list[Image.Image] = []
+    try:
+        import cv2
+
+        cap = cv2.VideoCapture(str(video_path))
+        if not cap.isOpened():
+            return frames
+        try:
+            while True:
+                ok, frame = cap.read()
+                if not ok or frame is None:
+                    break
+                rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                frames.append(Image.fromarray(rgb).convert("RGB"))
+                if max_frames and len(frames) >= int(max_frames):
+                    break
+        finally:
+            cap.release()
+    except Exception as exc:
+        print(f"[VIDEO_SESSION] frame decode skipped: {exc}")
+    return frames
+
+
 def _concat_output_is_valid(
     source_path: str | Path,
     segment_path: str | Path,
