@@ -127,9 +127,11 @@ def _install_wan_native_backend():
             "pip",
             "install",
             "dashscope",
+            "decord",
             "easydict",
             "ftfy",
             "imageio-ffmpeg",
+            "peft",
         ],
         [
             sys.executable,
