@@ -249,7 +249,7 @@ function renderQueueForCurrentChat() {
     container.innerHTML = `
         <div class="queue-items" role="list" aria-label="${escapeHtml(queueT('composer.queueLabel', 'File d’attente'))}">
             ${visibleItems.map((item, index) => {
-                const imageSrc = normalizeQueueImageSrc(item.options?.image || '');
+                const imageSrc = normalizeQueueImageSrc(item.options?.image || item.options?.videoSource?.thumbnail || '');
                 const text = String(item.prompt || '').trim();
                 const orientAction = canOrientQueueItem(item)
                     ? `<button class="queue-btn queue-orient" type="button" onclick="orientQueueItem('${item.id}')" title="${escapeHtml(queueT('composer.queueOrientTitle', 'Envoyer comme orientation au travail en cours'))}">
@@ -311,9 +311,9 @@ async function orientQueueItem(id) {
 function addToQueue(prompt, mode = 'chat', options = {}) {
     const id = 'q_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
     const normalizedMode = String(mode || 'chat').toLowerCase();
-    const type = options.image || currentImage
-        ? 'image'
-        : (normalizedMode === 'terminal' ? 'terminal' : 'text');
+    const type = normalizedMode === 'video' || options.videoSource
+        ? 'video'
+        : ((options.image || currentImage) ? 'image' : (normalizedMode === 'terminal' ? 'terminal' : 'text'));
     globalQueue.push({
         id, prompt, type, mode: normalizedMode,
         options: { ...options, image: options.image || currentImage },
@@ -347,7 +347,21 @@ async function processNextInQueue() {
     console.log(`[QUEUE] Traitement: ${next.type} - "${next.prompt.substring(0, 30)}..."`);
 
     try {
-        if ((next.type === 'image' || next.type === 'inpainting') && typeof generate === 'function') {
+        if (next.type === 'video' && typeof generateVideoFromImageWithPrompt === 'function') {
+            executingFromQueue = true;
+            if (next.options?.image) {
+                await generateVideoFromImageWithPrompt(next.options.image, next.prompt || '');
+            } else if (next.options?.videoSource?.videoSessionId && typeof runVideoContinuation === 'function') {
+                currentVideoSource = { ...next.options.videoSource };
+                if (typeof updateVideoSourcePreviews === 'function') updateVideoSourcePreviews();
+                await runVideoContinuation({
+                    prompt: next.prompt || '',
+                    videoSessionId: currentVideoSource.videoSessionId,
+                });
+            } else if (typeof generateVideoFromText === 'function') {
+                await generateVideoFromText(next.prompt || '');
+            }
+        } else if ((next.type === 'image' || next.type === 'inpainting') && typeof generate === 'function') {
             // Image: mettre l'image + prompt dans le home input, appeler generate()
             executingFromQueue = true;
             if (next.options?.image) {

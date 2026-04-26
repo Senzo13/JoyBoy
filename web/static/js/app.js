@@ -398,8 +398,6 @@ window.addEventListener('resize', function() {
 
 // Handle video button click - T2V (text to video) or I2V (image to video)
 async function handleVideoClick() {
-    if (isGenerating) return;
-
     // Get prompt from the appropriate input
     const homePrompt = document.getElementById('prompt-input');
     const chatPrompt = document.getElementById('chat-prompt');
@@ -407,14 +405,6 @@ async function handleVideoClick() {
         ? (chatPrompt?.value || homePrompt?.value || '')
         : (homePrompt?.value || chatPrompt?.value || '')
     ).trim();
-
-    if (currentVideoSource?.videoSessionId) {
-        openVideoContinuationPanel({
-            videoSessionId: currentVideoSource.videoSessionId,
-            prefillPrompt: prompt,
-        });
-        return;
-    }
 
     // Check if there's an image in the input
     const homePreview = document.getElementById('image-preview');
@@ -425,6 +415,29 @@ async function handleVideoClick() {
         imgSrc = homePreview.src;
     } else if (chatPreview && chatPreview.style.display !== 'none' && chatPreview.src) {
         imgSrc = chatPreview.src;
+    }
+
+    if (isGenerating) {
+        if (!currentVideoSource?.videoSessionId && !imgSrc && !prompt) {
+            await JoyDialog.alert(appT('app.videoPromptRequired', 'Écris un prompt pour la vidéo (T2V mode)'));
+            return;
+        }
+        await addToQueue(prompt || 'Vidéo', 'video', {
+            image: imgSrc,
+            videoSource: currentVideoSource ? { ...currentVideoSource } : null,
+        });
+        resetComposerTextarea('prompt-input');
+        resetComposerTextarea('chat-prompt');
+        console.log(`[VIDEO] Prompt ajouté à la queue: ${(prompt || 'Vidéo').substring(0, 30)}...`);
+        return;
+    }
+
+    if (currentVideoSource?.videoSessionId) {
+        openVideoContinuationPanel({
+            videoSessionId: currentVideoSource.videoSessionId,
+            prefillPrompt: prompt,
+        });
+        return;
     }
 
     // T2V mode: no image, just prompt
@@ -537,6 +550,9 @@ async function generateVideoFromText(prompt) {
             updateSendButtonState('home');
             updateSendButtonState('chat');
         }
+        setTimeout(() => {
+            if (typeof processNextInQueue === 'function') processNextInQueue();
+        }, 100);
     }
 }
 
@@ -655,6 +671,9 @@ async function generateVideoFromImageWithPrompt(imgSrc, prompt) {
             updateSendButtonState('home');
             updateSendButtonState('chat');
         }
+        setTimeout(() => {
+            if (typeof processNextInQueue === 'function') processNextInQueue();
+        }, 100);
     }
 }
 

@@ -1451,6 +1451,9 @@ async function runVideoContinuation(options = {}) {
             updateSendButtonState('home');
             updateSendButtonState('chat');
         }
+        setTimeout(() => {
+            if (typeof processNextInQueue === 'function') processNextInQueue();
+        }, 100);
     }
 }
 
