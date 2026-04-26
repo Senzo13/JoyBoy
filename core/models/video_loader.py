@@ -105,19 +105,23 @@ def _install_wan_native_backend():
     can fail even when torch is present in JoyBoy's venv.
     """
     print("[MM] Installation du backend natif Wan...")
-    command = [
-        sys.executable,
-        "-m",
-        "pip",
-        "install",
-        "--no-build-isolation",
-        "git+https://github.com/Wan-Video/Wan2.2.git",
-    ]
-    try:
-        subprocess.run(command, check=True)
-        return
-    except subprocess.CalledProcessError as exc:
-        print(f"[MM] Installation Wan standard échouée: {exc}")
+    cuda_toolkit_available = bool(os.environ.get("CUDA_HOME") or os.environ.get("CUDA_PATH") or shutil.which("nvcc"))
+    if cuda_toolkit_available:
+        command = [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "--no-build-isolation",
+            "git+https://github.com/Wan-Video/Wan2.2.git",
+        ]
+        try:
+            subprocess.run(command, check=True)
+            return
+        except subprocess.CalledProcessError as exc:
+            print(f"[MM] Installation Wan standard échouée: {exc}")
+    else:
+        print("[MM] CUDA toolkit absent (nvcc/CUDA_HOME). Installation Wan sans flash_attn.")
 
     print("[MM] Fallback: installation Wan sans dépendance flash_attn obligatoire...")
     fallback_commands = [
@@ -129,8 +133,10 @@ def _install_wan_native_backend():
             "dashscope",
             "decord",
             "easydict",
+            "einops",
             "ftfy",
             "imageio-ffmpeg",
+            "librosa",
             "peft",
         ],
         [
@@ -142,7 +148,6 @@ def _install_wan_native_backend():
             "git+https://github.com/Wan-Video/Wan2.2.git",
         ],
     ]
-    cuda_toolkit_available = bool(os.environ.get("CUDA_HOME") or os.environ.get("CUDA_PATH") or shutil.which("nvcc"))
     if cuda_toolkit_available:
         fallback_commands.insert(0, [
             sys.executable,
