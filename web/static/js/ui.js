@@ -163,6 +163,49 @@ function updateRamDisplay(data) {
     }
 }
 
+function formatDiskGb(value) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return '--';
+    const decimals = number >= 100 ? 0 : 1;
+    return `${number.toFixed(decimals)}G`;
+}
+
+function updateDiskDisplay(disk) {
+    const updateBar = (fillId, textId) => {
+        const fill = document.getElementById(fillId);
+        const text = document.getElementById(textId);
+        const display = (fill && fill.closest('.disk-display')) || (text && text.closest('.disk-display'));
+        if (!fill || !text) return;
+
+        if (!disk || disk.error) {
+            fill.style.width = '0%';
+            fill.className = 'disk-fill';
+            text.textContent = '--';
+            if (display) display.title = 'Disque modèles: indisponible';
+            return;
+        }
+
+        const percent = Math.max(0, Math.min(100, Number(disk.percent) || 0));
+        const free = formatDiskGb(disk.free_gb);
+        const total = formatDiskGb(disk.total_gb);
+        const path = disk.path || disk.volume_path || '';
+
+        fill.style.width = `${percent}%`;
+        fill.className = 'disk-fill';
+        if (percent > 95) fill.classList.add('critical');
+        else if (percent > 85) fill.classList.add('high');
+        else if (percent > 70) fill.classList.add('medium');
+
+        text.textContent = `${free} libres`;
+        if (display) {
+            display.title = `Disque modèles: ${free} libres / ${total}${path ? `\n${path}` : ''}`;
+        }
+    };
+
+    updateBar('disk-fill', 'disk-text');
+    updateBar('home-disk-fill', 'home-disk-text');
+}
+
 function showRamPanel() {
     // Fermer le panel VRAM si ouvert
     hideVramPanel();
@@ -296,6 +339,7 @@ function updateVramDisplay(data) {
         if (window.lucide) lucide.createIcons();
     }
 
+    updateDiskDisplay(resources && resources.disk);
     updateRuntimeResourceDisplay(resources);
 }
 

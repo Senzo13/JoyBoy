@@ -1138,12 +1138,14 @@ body.cursor-active .chat-messages::-webkit-scrollbar-thumb:hover {
 
     /* Compact VRAM/RAM: hide text, keep bar */
     .vram-text,
-    .ram-text {
+    .ram-text,
+    .disk-text {
         display: none;
     }
 
     .vram-display,
-    .ram-display {
+    .ram-display,
+    .disk-display {
         padding: 4px 8px;
     }
 

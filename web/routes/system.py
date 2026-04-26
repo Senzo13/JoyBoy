@@ -4,8 +4,50 @@ benchmark, hardware info, tunnel Cloudflare).
 """
 from flask import Blueprint, request, jsonify, render_template_string, send_file
 import os
+import shutil
+from pathlib import Path
 
 system_bp = Blueprint('system', __name__)
+
+
+def _existing_path_for_usage(path: Path) -> Path:
+    """Return the nearest existing parent so disk_usage works for new caches."""
+    current = path.expanduser()
+    while not current.exists() and current != current.parent:
+        current = current.parent
+    return current
+
+
+def _get_disk_status():
+    """Return real disk usage for the storage volume used by model downloads."""
+    try:
+        from core.infra.paths import get_huggingface_cache_dir, get_models_dir
+
+        target_path = get_huggingface_cache_dir()
+        fallback_path = get_models_dir()
+    except Exception:
+        target_path = Path(os.getcwd())
+        fallback_path = target_path
+
+    usage_path = _existing_path_for_usage(target_path)
+    if not usage_path.exists():
+        usage_path = _existing_path_for_usage(fallback_path)
+
+    usage = shutil.disk_usage(usage_path)
+    total_gb = usage.total / (1024 ** 3)
+    used_gb = usage.used / (1024 ** 3)
+    free_gb = usage.free / (1024 ** 3)
+    percent = round((used_gb / total_gb * 100) if total_gb > 0 else 0, 1)
+
+    return {
+        'path': str(target_path),
+        'volume_path': str(usage_path),
+        'total_gb': round(total_gb, 1),
+        'used_gb': round(used_gb, 1),
+        'free_gb': round(free_gb, 1),
+        'percent': percent,
+        'free_percent': round(100 - percent, 1),
+    }
 
 
 @system_bp.route('/docs/<path:doc_name>')
@@ -101,6 +143,12 @@ def get_vram_status():
         resources = get_resource_scheduler().state(_status)
     except Exception as exc:
         resources = {"error": str(exc)}
+
+    try:
+        resources['disk'] = _get_disk_status()
+    except Exception as exc:
+        resources['disk_error'] = str(exc)
+
     # Create a simple namespace for compatibility
     class _S:
         total_gb = _status['total_gb']
@@ -326,6 +374,12 @@ def get_vram_status():
         'tips': tips,
         'resources': resources,
     })
+
+
+@system_bp.route('/api/disk/status')
+def get_disk_status():
+    """Retourne l'espace disque réel du volume utilisé par les modèles."""
+    return jsonify({'disk': _get_disk_status()})
 
 
 @system_bp.route('/api/ram/status')
