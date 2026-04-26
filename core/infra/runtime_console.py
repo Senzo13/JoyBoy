@@ -59,12 +59,26 @@ class _StreamTee:
         self._accumulator = _LineAccumulator(stream_name)
 
     def write(self, text):
-        written = self._wrapped.write(text)
-        self._accumulator.feed(str(text))
+        if isinstance(text, (bytes, bytearray)):
+            encoding = getattr(self._wrapped, "encoding", None) or "utf-8"
+            value = bytes(text).decode(encoding, errors="replace")
+        else:
+            value = str(text)
+        try:
+            written = self._wrapped.write(value)
+        except (OSError, ValueError):
+            # Windows consoles can invalidate stdio handles while the process is
+            # shutting down. Keep Python from emitting "lost sys.stderr" and
+            # still retain the line for the in-app console.
+            written = len(value)
+        self._accumulator.feed(value)
         return written
 
     def flush(self):
-        self._wrapped.flush()
+        try:
+            self._wrapped.flush()
+        except (OSError, ValueError):
+            pass
         self._accumulator.flush()
 
     def __getattr__(self, name):
@@ -146,10 +160,17 @@ def install_runtime_console(max_lines: int = 1200) -> None:
         _entries = deque(_entries, maxlen=_MAX_LINES)
         _installed = True
 
-    stdout_ok = _install_fd_capture(1, "stdout")
-    stderr_ok = _install_fd_capture(2, "stderr")
-    if not (stdout_ok and stderr_ok):
+    if os.name == "nt":
+        # fd-level capture works well on Linux cloud hosts, where subprocesses
+        # write directly to stdout/stderr. On Windows, replacing console fds
+        # with pipes can leave Python with a broken stderr at shutdown
+        # (OSError 22 / "lost sys.stderr"). Use the safer stream tee there.
         _install_stream_fallback()
+    else:
+        stdout_ok = _install_fd_capture(1, "stdout")
+        stderr_ok = _install_fd_capture(2, "stderr")
+        if not (stdout_ok and stderr_ok):
+            _install_stream_fallback()
 
     _append_entry("system", "Console runtime JoyBoy active (F10 dans l'interface).")
 

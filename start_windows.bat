@@ -8,6 +8,8 @@ set "HF_HOME=%JOYBOY_HF_CACHE_DIR%"
 set "HF_HUB_CACHE=%JOYBOY_HF_CACHE_DIR%"
 if not defined HF_ASSETS_CACHE set "HF_ASSETS_CACHE=%JOYBOY_HF_CACHE_DIR%\assets"
 if not defined PYTORCH_CUDA_ALLOC_CONF set "PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True"
+if not defined PYTHONUTF8 set "PYTHONUTF8=1"
+if not defined PYTHONIOENCODING set "PYTHONIOENCODING=utf-8"
 
 REM Auto restart mode used by backend. Do not stop on interactive repair prompts.
 if /i "%1"=="--restart" (
@@ -265,6 +267,7 @@ cls
 REM Normal app start must use the venv; portable Python only bootstraps setup.
 if exist "venv\Scripts\python.exe" (
     set "PY=venv\Scripts\python.exe"
+    set "PYW=venv\Scripts\pythonw.exe"
 ) else (
     echo.
     echo    [!] JoyBoy venv not found.
@@ -300,8 +303,12 @@ echo    [OK] Ollama installed
 echo.
 :skip_ollama_install
 
-start "" /b "%PY%" scripts\open_browser.py --url http://127.0.0.1:7860 --timeout 120 >nul 2>nul
-"%PY%" web/app.py
+if exist "%PYW%" (
+    start "" /b "%PYW%" scripts\open_browser.py --url http://127.0.0.1:7860 --timeout 120
+) else (
+    start "" /b "%PY%" scripts\open_browser.py --url http://127.0.0.1:7860 --timeout 120 >nul 2>nul
+)
+"%PY%" -u web/app.py
 set EXIT_CODE=%errorlevel%
 
 REM Code 42 means backend requested restart; close this window
