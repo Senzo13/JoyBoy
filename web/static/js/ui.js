@@ -1524,7 +1524,7 @@ async function loadTextModelsForPicker() {
                 return {
                     id: m.name,
                     name: displayName,
-                    desc: [m.desc, m.size].filter(Boolean).join(' · ') || 'Modèle Ollama à télécharger',
+                    desc: [m.desc, m.size].filter(Boolean).join(' · ') || uiT('modelPicker.ollamaDownloadDesc', 'Modèle Ollama à télécharger'),
                     badge,
                     icon,
                     toolCapable,
@@ -1552,7 +1552,15 @@ async function loadTextModelsForPicker() {
         } else {
             // Fallback si aucun modèle
             CHAT_MODELS = [
-                { id: 'none', name: 'Aucun modèle', desc: 'Installez un modèle Ollama', badge: 'balanced', icon: 'brain', downloaded: false, downloadable: false }
+                {
+                    id: 'none',
+                    name: uiT('modelPicker.noModelName', 'Aucun modèle'),
+                    desc: uiT('modelPicker.installOllamaHint', 'Installez un modèle Ollama'),
+                    badge: 'balanced',
+                    icon: 'brain',
+                    downloaded: false,
+                    downloadable: false
+                }
             ];
             TEXT_MODELS = CHAT_MODELS;
         }
@@ -1847,9 +1855,9 @@ async function refreshModelPickerInstallStateForTab(tab, pickerId = 'home', forc
 }
 
 function getInstallDialogTypeLabel(kind) {
-    if (kind === 'image') return 'Image';
-    if (kind === 'video') return 'Vidéo';
-    return 'LLM local';
+    if (kind === 'image') return uiT('modelPicker.installDialog.kindImage', 'Image');
+    if (kind === 'video') return uiT('modelPicker.installDialog.kindVideo', 'Vidéo');
+    return uiT('modelPicker.installDialog.kindOllama', 'LLM local');
 }
 
 function showModelInstallDialog(model, installInfo) {
@@ -1857,13 +1865,13 @@ function showModelInstallDialog(model, installInfo) {
         const existing = document.querySelector('.model-install-overlay');
         if (existing) existing.remove();
         const kindLabel = getInstallDialogTypeLabel(installInfo.kind);
-        const modelName = model?.name || model?.id || installInfo.downloadKey || 'Modèle';
+        const modelName = model?.name || model?.id || installInfo.downloadKey || uiT('modelPicker.installDialog.modelFallback', 'Modèle');
         const modelDesc = model?.desc || installInfo.meta?.description || installInfo.meta?.desc || '';
         const overlay = document.createElement('div');
         overlay.className = 'model-install-overlay';
         overlay.innerHTML = `
             <div class="model-install-dialog" role="dialog" aria-modal="true">
-                <button type="button" class="model-install-close" aria-label="Fermer">
+                <button type="button" class="model-install-close" aria-label="${pickerEscapeHtml(uiT('common.close', 'Fermer'))}">
                     <i data-lucide="x"></i>
                 </button>
                 <div class="model-install-icon">
@@ -1871,16 +1879,16 @@ function showModelInstallDialog(model, installInfo) {
                 </div>
                 <div class="model-install-kicker">${pickerEscapeHtml(kindLabel)} · ${pickerEscapeHtml(installInfo.label)}</div>
                 <h3>${pickerEscapeHtml(modelName)}</h3>
-                <p>${pickerEscapeHtml(modelDesc || `Ce modèle n'est pas encore installé sur cette machine.`)}</p>
+                <p>${pickerEscapeHtml(modelDesc || uiT('modelPicker.installDialog.defaultBody', "Ce modèle n'est pas encore installé sur cette machine."))}</p>
                 <div class="model-install-note">
                     <i data-lucide="hard-drive-download"></i>
-                    <span>Pour l'utiliser, JoyBoy doit d'abord ouvrir la page Modèles et lancer le téléchargement.</span>
+                    <span>${pickerEscapeHtml(uiT('modelPicker.installDialog.note', "Pour l'utiliser, JoyBoy doit d'abord ouvrir la page Modèles et lancer le téléchargement."))}</span>
                 </div>
                 <div class="model-install-actions">
-                    <button type="button" class="model-install-btn ghost" data-action="cancel">Annuler</button>
+                    <button type="button" class="model-install-btn ghost" data-action="cancel">${pickerEscapeHtml(uiT('common.cancel', 'Annuler'))}</button>
                     <button type="button" class="model-install-btn primary" data-action="download">
                         <i data-lucide="download"></i>
-                        Télécharger
+                        ${pickerEscapeHtml(uiT('modelPicker.installDialog.download', 'Télécharger'))}
                     </button>
                 </div>
             </div>
@@ -1936,7 +1944,12 @@ function openModelInstallDestination(installInfo, model, tab) {
 async function startPickerModelDownload(installInfo, model, tab) {
     const downloadKey = installInfo.downloadKey || model?.downloadKey || model?.key || model?.id;
     if (!downloadKey) {
-        if (typeof Toast !== 'undefined') Toast.error('Téléchargement impossible', 'Modèle introuvable dans le catalogue local.');
+        if (typeof Toast !== 'undefined') {
+            Toast.error(
+                uiT('modelPicker.installDialog.impossibleTitle', 'Téléchargement impossible'),
+                uiT('modelPicker.installDialog.impossibleBody', 'Modèle introuvable dans le catalogue local.')
+            );
+        }
         return;
     }
     setTimeout(async () => {
@@ -1958,7 +1971,7 @@ async function startPickerModelDownload(installInfo, model, tab) {
                 await pullOllamaModel(downloadKey, button || null);
             }
         } catch (error) {
-            if (typeof Toast !== 'undefined') Toast.error('Erreur', error.message || String(error));
+            if (typeof Toast !== 'undefined') Toast.error(uiT('common.error', 'Erreur'), error.message || String(error));
         } finally {
             refreshModelPickerInstallStateForTab(tab, activePickerId || 'home', true);
         }
@@ -1973,7 +1986,14 @@ async function handleMissingPickerModel(model, tab, pickerId = 'home') {
 
     if (installInfo.status === 'downloading') {
         openModelInstallDestination(installInfo, model, tab);
-        if (typeof Toast !== 'undefined') Toast.info('Téléchargement déjà en cours', `${model?.name || model?.id || 'Ce modèle'} est déjà en téléchargement.`);
+        if (typeof Toast !== 'undefined') {
+            Toast.info(
+                uiT('modelPicker.installDialog.alreadyDownloadingTitle', 'Téléchargement déjà en cours'),
+                uiT('modelPicker.installDialog.alreadyDownloadingBody', '{model} est déjà en téléchargement.', {
+                    model: model?.name || model?.id || uiT('modelPicker.installDialog.thisModel', 'Ce modèle'),
+                })
+            );
+        }
         return false;
     }
 
@@ -2007,7 +2027,13 @@ let selectedVisionModel = Settings.get('selectedVisionModel');
 
 // CHAT_MODELS - chargé dynamiquement depuis Ollama
 let CHAT_MODELS = [
-    { id: 'loading', name: 'Chargement...', desc: 'Récupération des modèles', badge: 'balanced', icon: 'brain' }
+    {
+        id: 'loading',
+        name: uiT('modelPicker.loadingName', 'Chargement...'),
+        desc: uiT('modelPicker.loadingDesc', 'Récupération des modèles'),
+        badge: 'balanced',
+        icon: 'brain'
+    }
 ];
 
 // VISION_MODELS - filtré dynamiquement depuis CHAT_MODELS
@@ -2221,8 +2247,8 @@ function filterVisionModels() {
     if (VISION_MODELS_LIST.length === 0) {
         VISION_MODELS_LIST = [{
             id: 'download-vision',
-            name: 'Télécharger moondream',
-            desc: 'Modèle vision léger (~1.7GB)',
+            name: uiT('modelPicker.downloadVisionName', 'Télécharger moondream'),
+            desc: uiT('modelPicker.downloadVisionDesc', 'Modèle vision léger (~1.7GB)'),
             badge: 'download',
             icon: 'download'
         }];

@@ -2682,6 +2682,38 @@ Object.assign(MESSAGES.en.modelPicker.useCase, {
         cloudRuntime: 'Cloud LLM',
     });
 
+Object.assign(MESSAGES.en.modelPicker, {
+        noModelName: 'No model',
+        loadingName: 'Loading...',
+        loadingDesc: 'Fetching models',
+        installOllamaHint: 'Install an Ollama model',
+        ollamaDownloadDesc: 'Ollama model to download',
+        downloadVisionName: 'Download moondream',
+        downloadVisionDesc: 'Light vision model (~1.7GB)',
+        install: {
+            checking: 'Check...',
+            cloud: 'Cloud',
+            local: 'Local',
+            downloading: 'Downloading',
+            installed: 'Installed',
+            missing: 'Download',
+        },
+        installDialog: {
+            kindImage: 'Image',
+            kindVideo: 'Video',
+            kindOllama: 'Local LLM',
+            modelFallback: 'Model',
+            defaultBody: 'This model is not installed on this machine yet.',
+            note: 'To use it, JoyBoy first needs to open the Models page and start the download.',
+            download: 'Download',
+            impossibleTitle: 'Download unavailable',
+            impossibleBody: 'Model not found in the local catalog.',
+            alreadyDownloadingTitle: 'Download already running',
+            alreadyDownloadingBody: '{model} is already downloading.',
+            thisModel: 'This model',
+        },
+    });
+
 Object.assign(MESSAGES.en.modules, {
         capability_ai_remediation: 'AI remediation',
         capability_core_web_vitals: 'Core Web Vitals',

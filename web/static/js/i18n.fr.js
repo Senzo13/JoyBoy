@@ -2850,6 +2850,38 @@ Object.assign(MESSAGES.fr.modelPicker.useCase, {
         cloudRuntime: 'LLM cloud',
     });
 
+Object.assign(MESSAGES.fr.modelPicker, {
+        noModelName: 'Aucun modèle',
+        loadingName: 'Chargement...',
+        loadingDesc: 'Récupération des modèles',
+        installOllamaHint: 'Installez un modèle Ollama',
+        ollamaDownloadDesc: 'Modèle Ollama à télécharger',
+        downloadVisionName: 'Télécharger moondream',
+        downloadVisionDesc: 'Modèle vision léger (~1.7GB)',
+        install: {
+            checking: 'Vérif...',
+            cloud: 'Cloud',
+            local: 'Local',
+            downloading: 'Téléchargement',
+            installed: 'Installé',
+            missing: 'À télécharger',
+        },
+        installDialog: {
+            kindImage: 'Image',
+            kindVideo: 'Vidéo',
+            kindOllama: 'LLM local',
+            modelFallback: 'Modèle',
+            defaultBody: "Ce modèle n'est pas encore installé sur cette machine.",
+            note: "Pour l'utiliser, JoyBoy doit d'abord ouvrir la page Modèles et lancer le téléchargement.",
+            download: 'Télécharger',
+            impossibleTitle: 'Téléchargement impossible',
+            impossibleBody: 'Modèle introuvable dans le catalogue local.',
+            alreadyDownloadingTitle: 'Téléchargement déjà en cours',
+            alreadyDownloadingBody: '{model} est déjà en téléchargement.',
+            thisModel: 'Ce modèle',
+        },
+    });
+
 Object.assign(MESSAGES.fr.modules, {
         restartRequired: 'Redémarre JoyBoy pour activer ce module dans l’app en cours.',
         restartRequiredShort: 'Redémarrage requis',

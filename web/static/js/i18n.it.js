@@ -2404,6 +2404,38 @@ Object.assign(MESSAGES.it.modelPicker.useCase, {
         cloudRuntime: 'LLM cloud',
     });
 
+Object.assign(MESSAGES.it.modelPicker, {
+        noModelName: 'Nessun modello',
+        loadingName: 'Caricamento...',
+        loadingDesc: 'Recupero modelli',
+        installOllamaHint: 'Installa un modello Ollama',
+        ollamaDownloadDesc: 'Modello Ollama da scaricare',
+        downloadVisionName: 'Scarica moondream',
+        downloadVisionDesc: 'Modello vision leggero (~1.7GB)',
+        install: {
+            checking: 'Verifica...',
+            cloud: 'Cloud',
+            local: 'Locale',
+            downloading: 'Download',
+            installed: 'Installato',
+            missing: 'Scarica',
+        },
+        installDialog: {
+            kindImage: 'Immagine',
+            kindVideo: 'Video',
+            kindOllama: 'LLM locale',
+            modelFallback: 'Modello',
+            defaultBody: 'Questo modello non è ancora installato su questa macchina.',
+            note: 'Per usarlo, JoyBoy deve prima aprire la pagina Modelli e avviare il download.',
+            download: 'Scarica',
+            impossibleTitle: 'Download non disponibile',
+            impossibleBody: 'Modello non trovato nel catalogo locale.',
+            alreadyDownloadingTitle: 'Download già in corso',
+            alreadyDownloadingBody: '{model} è già in download.',
+            thisModel: 'Questo modello',
+        },
+    });
+
 Object.assign(MESSAGES.it.modules, {
         capability_ai_remediation: 'remediation IA',
         capability_core_web_vitals: 'Core Web Vitals',
