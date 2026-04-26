@@ -7,6 +7,7 @@ if not defined JOYBOY_HF_CACHE_DIR set "JOYBOY_HF_CACHE_DIR=%JOYBOY_MODELS_DIR%\
 set "HF_HOME=%JOYBOY_HF_CACHE_DIR%"
 set "HF_HUB_CACHE=%JOYBOY_HF_CACHE_DIR%"
 if not defined HF_ASSETS_CACHE set "HF_ASSETS_CACHE=%JOYBOY_HF_CACHE_DIR%\assets"
+if not defined PYTORCH_CUDA_ALLOC_CONF set "PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True"
 
 REM Auto restart mode used by backend. Do not stop on interactive repair prompts.
 if /i "%1"=="--restart" (

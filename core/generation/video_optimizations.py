@@ -477,14 +477,15 @@ def apply_optimized_offload(pipe, vram_gb, model_type="auto"):
             print(f"[OPT] sequential_cpu_offload forcé fallback ({vram_gb:.1f}GB VRAM)")
             return "sequential_cpu_offload"
 
+    force_fastwan_offload = os.environ.get("JOYBOY_FASTWAN_FORCE_OFFLOAD", "").strip().lower() in {"1", "true", "yes", "on"}
     force_fastwan_direct = os.environ.get("JOYBOY_FASTWAN_GPU_DIRECT", "").strip().lower() in {"1", "true", "yes", "on"}
-    if model_type == "fastwan" and vram_gb < 42 and not force_fastwan_direct:
-        # FastWan FullAttn can sit at ~39.5GB on A100 40GB and OOM on tiny
-        # transient allocations. Keep the dense Wan 5B GPU-direct path, but
-        # leave FastWan on model offload unless the user explicitly overrides it.
+    if model_type == "fastwan" and (force_fastwan_offload or (vram_gb < 39 and not force_fastwan_direct)):
+        # A100 40GB reports ~39.5GiB, so treat >=39GiB as the 40GB class.
+        # Below that, FastWan FullAttn has too little headroom unless explicitly forced.
+        reason = "forced" if force_fastwan_offload else "VRAM < 40GB class"
         try:
             pipe.enable_model_cpu_offload()
-            print(f"[OPT] model_cpu_offload (FastWan FullAttn margin) ({vram_gb:.1f}GB VRAM)")
+            print(f"[OPT] model_cpu_offload (FastWan {reason}) ({vram_gb:.1f}GB VRAM)")
             return "model_cpu_offload"
         except Exception:
             pipe.enable_sequential_cpu_offload()

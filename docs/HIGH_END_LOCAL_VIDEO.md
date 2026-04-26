@@ -16,19 +16,21 @@ Ollama when the machine has enough VRAM/RAM.
 
 ## Runtime optimization
 
-On CUDA GPUs, video generation enables cuDNN benchmarking and TF32 matmul for
-faster inference without changing model choice, resolution, steps, or prompts.
-High-VRAM Wan 5B dense pipelines prefer GPU-direct placement when they fit.
-FastWan FullAttn keeps model CPU offload on 40GB-class cards because it can
-fill an A100 40GB to the last few MiB during generation. Large MoE/14B
-pipelines also keep CPU offload when needed.
+On CUDA GPUs, launchers set `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`
+before Python starts so PyTorch can reduce allocator fragmentation during large
+video jobs. Video generation also enables cuDNN benchmarking and TF32 matmul
+for faster inference without changing model choice, resolution, steps, or
+prompts. High-VRAM Wan 5B/FastWan pipelines prefer GPU-direct placement when
+they fit. Large MoE/14B pipelines keep CPU offload when needed, and FramePack
+uses group offload on 40GB-class cards unless explicitly forced to GPU-direct.
 
 Set `JOYBOY_VIDEO_FORCE_CPU_OFFLOAD=1` to force Diffusers video pipelines back
 to CPU offload, or `JOYBOY_WAN_NATIVE_FORCE_OFFLOAD=1` to force native Wan 5B
 offload if a specific machine is too tight on VRAM. Set
 `JOYBOY_VIDEO_DISABLE_OOM_RETRY=1` to disable the automatic Wan/FastWan retry
-from GPU-direct to CPU offload. Set `JOYBOY_FASTWAN_GPU_DIRECT=1` only when
-testing FastWan GPU-direct on cards with enough spare VRAM.
+from GPU-direct to CPU offload. Set `JOYBOY_FASTWAN_FORCE_OFFLOAD=1` to keep
+FastWan offloaded, or `JOYBOY_FRAMEPACK_GPU_DIRECT=1` to test FramePack
+GPU-direct on cards with more spare VRAM.
 
 ## Video continuation
 

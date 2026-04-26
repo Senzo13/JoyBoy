@@ -35,6 +35,7 @@ def _configure_env(root: Path) -> dict[str, str]:
     env.setdefault("PYTHONUTF8", "1")
     env.setdefault("PYTHONIOENCODING", "utf-8")
     env.setdefault("JOYBOY_DESKTOP", "1")
+    env.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
     data_dir = root / "data"
     portable = env.get("JOYBOY_PORTABLE", "").strip().lower()

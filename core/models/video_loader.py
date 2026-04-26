@@ -1041,20 +1041,25 @@ def load_framepack(custom_cache):
         pass
 
     if torch.cuda.is_available():
-        if 0 < float(VRAM_GB or 0) <= 10:
+        force_framepack_direct = os.environ.get("JOYBOY_FRAMEPACK_GPU_DIRECT", "").strip().lower() in {"1", "true", "yes", "on"}
+        framepack_gpu_direct = IS_HIGH_END_GPU and (float(VRAM_GB or 0) >= 48 or force_framepack_direct)
+        if not framepack_gpu_direct:
             try:
                 from diffusers.hooks import apply_group_offloading
 
                 onload_device = torch.device("cuda")
                 offload_device = torch.device("cpu")
+                low_cpu_mem_usage = 0 < float(VRAM_GB or 0) <= 10
                 for component in (pipe.text_encoder, pipe.text_encoder_2, pipe.transformer):
+                    if component is None:
+                        continue
                     apply_group_offloading(
                         component,
                         onload_device,
                         offload_device,
                         offload_type="leaf_level",
                         use_stream=True,
-                        low_cpu_mem_usage=True,
+                        low_cpu_mem_usage=low_cpu_mem_usage,
                     )
                 pipe.image_encoder.to(onload_device)
                 pipe.vae.to(onload_device)
