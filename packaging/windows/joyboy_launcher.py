@@ -1,4 +1,4 @@
-"""Windows desktop launcher for packaged JoyBoy builds.
+"""Desktop launcher for packaged JoyBoy builds.
 
 The launcher is intentionally small: the packaged executable owns the desktop
 icon and process UX, while the app code and Python runtime stay as regular
@@ -9,6 +9,7 @@ itself and makes model/packs storage easy to reason about.
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import sys
 import threading
@@ -58,15 +59,32 @@ def _configure_env(root: Path) -> dict[str, str]:
 
 
 def _venv_python(root: Path) -> Path:
-    return root / "venv" / "Scripts" / "python.exe"
+    if os.name == "nt":
+        return root / "venv" / "Scripts" / "python.exe"
+    return root / "venv" / "bin" / "python"
+
+
+def _system_python() -> Path | None:
+    names = ("python.exe", "python") if os.name == "nt" else ("python3", "python")
+    for name in names:
+        found = shutil.which(name)
+        if found:
+            return Path(found)
+    return None
 
 
 def _candidate_pythons(root: Path) -> list[Path]:
-    return [
+    candidates = [
         _venv_python(root),
         root / "runtime" / "python.exe",
+        root / "runtime" / "bin" / "python",
         root / "python312" / "python.exe",
+        root / "python312" / "bin" / "python",
     ]
+    system_python = _system_python()
+    if system_python:
+        candidates.append(system_python)
+    return candidates
 
 
 def _bootstrap_venv_if_possible(root: Path, env: dict[str, str]) -> Path | None:
@@ -74,16 +92,29 @@ def _bootstrap_venv_if_possible(root: Path, env: dict[str, str]) -> Path | None:
     if venv_python.exists():
         return venv_python
 
-    base_python = root / "python312" / "python.exe"
-    venv_helper = root / "scripts" / "windows_venv.py"
     bootstrap = root / "scripts" / "bootstrap.py"
-    if not base_python.exists() or not venv_helper.exists() or not bootstrap.exists():
+    if not bootstrap.exists():
         return None
 
-    print("[JOYBOY] Bundled venv missing; preparing it from bundled Python...")
-    first = subprocess.run([str(base_python), str(venv_helper), "ensure"], cwd=str(root), env=env)
-    if first.returncode != 0 or not venv_python.exists():
-        return None
+    if os.name == "nt":
+        base_python = root / "python312" / "python.exe"
+        venv_helper = root / "scripts" / "windows_venv.py"
+        if not base_python.exists() or not venv_helper.exists():
+            return None
+
+        print("[JOYBOY] Bundled venv missing; preparing it from bundled Python...")
+        first = subprocess.run([str(base_python), str(venv_helper), "ensure"], cwd=str(root), env=env)
+        if first.returncode != 0 or not venv_python.exists():
+            return None
+    else:
+        base_python = _system_python()
+        if not base_python:
+            return None
+
+        print("[JOYBOY] Bundled venv missing; preparing it from system Python...")
+        first = subprocess.run([str(base_python), "-m", "venv", "venv"], cwd=str(root), env=env)
+        if first.returncode != 0 or not venv_python.exists():
+            return None
 
     second = subprocess.run([str(venv_python), str(bootstrap), "setup"], cwd=str(root), env=env)
     if second.returncode != 0:
@@ -140,7 +171,7 @@ def main() -> int:
     python = _find_python(root, env)
     if not python:
         print("[JOYBOY] No bundled Python runtime was found.")
-        print("[JOYBOY] Expected venv\\Scripts\\python.exe or python312\\python.exe beside JoyBoy.exe.")
+        print("[JOYBOY] Expected a packaged venv/runtime, or a system python3 that can create one.")
         _pause_on_error()
         return 1
 

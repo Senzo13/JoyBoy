@@ -62,8 +62,27 @@ launcher or avoid shipping the `data/` folder.
 
 ## macOS and Linux
 
-The same split should be kept for future packages:
+Build macOS/Linux packages on their native platforms:
 
-- app bundle or launcher contains the public JoyBoy core and runtime;
-- models, packs, cache, output, and secrets stay in a user data directory;
-- model packs remain optional downloads/imports.
+```bash
+python scripts/package_unix.py --platform macos --package-name JoyBoy-macos --install-build-deps
+python scripts/package_unix.py --platform linux --package-name JoyBoy-linux-x64 --install-build-deps
+```
+
+These packages include a small `JoyBoy` executable launcher plus the public
+core. They do not include model weights or private local packs.
+
+## Release Assets
+
+Build release archives with:
+
+```powershell
+venv\Scripts\python.exe scripts\package_windows.py --no-runtime --install-build-deps
+python scripts\package_unix.py --platform macos --package-name JoyBoy-macos --skip-launcher
+python scripts\package_unix.py --platform linux --package-name JoyBoy-linux-x64 --skip-launcher
+```
+
+The first public assets are lightweight launchers plus the public core. Full
+runtime installers, signed macOS `.dmg` files, Linux `.AppImage`/`.deb`
+packages, and automated GitHub release uploads can build on this packaging
+base once the GitHub token used for releases has workflow permissions.
