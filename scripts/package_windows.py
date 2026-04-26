@@ -61,6 +61,9 @@ EXCLUDED_DIR_NAMES = {
     ".vscode",
     ".joyboy",
     "__pycache__",
+}
+
+ROOT_EXCLUDED_DIR_NAMES = {
     "build",
     "checkpoints",
     "dist",
@@ -110,12 +113,16 @@ def _remove_package_dir() -> None:
     PACKAGE_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def _ignore_names(_src: str, names: Iterable[str]) -> set[str]:
+def _ignore_names(src: str, names: Iterable[str]) -> set[str]:
     ignored: set[str] = set()
+    src_path = Path(src).resolve()
+    is_project_root = src_path == PROJECT_DIR.resolve()
     for name in names:
         path = Path(name)
         suffixes = "".join(path.suffixes)
         if name in EXCLUDED_DIR_NAMES or name in EXCLUDED_FILE_NAMES:
+            ignored.add(name)
+        elif is_project_root and name in ROOT_EXCLUDED_DIR_NAMES:
             ignored.add(name)
         elif path.suffix in EXCLUDED_SUFFIXES or suffixes in EXCLUDED_SUFFIXES:
             ignored.add(name)
