@@ -1354,7 +1354,7 @@ async function runVideoContinuation(options = {}) {
     const videoDefaults = getVideoModelDefaults(videoModel);
     const continuationDurationSec = options.durationSec === 10 ? 10 : 5;
     const continuationFrames = Math.max(1, Math.round(continuationDurationSec * videoDefaults.fps));
-    const requestChatId = (typeof currentChatId !== 'undefined' && currentChatId)
+    let requestChatId = (typeof currentChatId !== 'undefined' && currentChatId)
         ? currentChatId
         : (_lastVideoContext.chatId || null);
     const sourceThumb = (
@@ -1364,6 +1364,19 @@ async function runVideoContinuation(options = {}) {
         || null
     );
     const promptText = options.prompt || _lastVideoContext.prompt || '';
+
+    if (!requestChatId) {
+        requestChatId = typeof ensureVisibleChatForRequest === 'function'
+            ? await ensureVisibleChatForRequest({ title: promptText || 'Vidéo' })
+            : (typeof ensureActiveChatForRequest === 'function'
+                ? await ensureActiveChatForRequest({ title: promptText || 'Vidéo' })
+                : null);
+    } else if (typeof currentChatId !== 'undefined' && currentChatId !== requestChatId && typeof loadChat === 'function') {
+        await loadChat(requestChatId);
+    }
+    if (typeof showChat === 'function') {
+        showChat();
+    }
 
     isGenerating = true;
     currentGenerationMode = 'video';

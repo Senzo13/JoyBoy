@@ -490,6 +490,22 @@ async function ensureActiveChatForRequest(options = {}) {
     return currentChatId;
 }
 
+async function ensureVisibleChatForRequest(options = {}) {
+    const chatId = typeof ensureActiveChatForRequest === 'function'
+        ? await ensureActiveChatForRequest(options)
+        : currentChatId;
+
+    if (typeof showChat === 'function') {
+        showChat();
+    }
+    const messagesDiv = getMessagesDiv();
+    if (messagesDiv && chatId && typeof persistCurrentChat === 'function') {
+        persistCurrentChat({ chatId, html: messagesDiv.innerHTML || '' })
+            .catch(e => console.warn('[CHAT] Visible chat persist failed:', e));
+    }
+    return chatId;
+}
+
 async function waitForNewChat() { return Promise.resolve(); }
 
 function saveCurrentChat(userMessage, aiResponse, html, chatId = currentChatId) {

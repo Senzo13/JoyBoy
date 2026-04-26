@@ -459,9 +459,14 @@ async function handleVideoClick() {
 async function generateVideoFromText(prompt) {
     if (isGenerating) return;
 
-    const requestChatId = typeof ensureActiveChatForRequest === 'function'
-        ? await ensureActiveChatForRequest({ title: prompt })
-        : currentChatId;
+    const requestChatId = typeof ensureVisibleChatForRequest === 'function'
+        ? await ensureVisibleChatForRequest({ title: prompt })
+        : typeof ensureActiveChatForRequest === 'function'
+            ? await ensureActiveChatForRequest({ title: prompt })
+            : currentChatId;
+    if (typeof showChat === 'function') {
+        showChat();
+    }
 
     isGenerating = true;
     currentGenerationMode = 'video';
@@ -560,9 +565,14 @@ async function generateVideoFromText(prompt) {
 async function generateVideoFromImageWithPrompt(imgSrc, prompt) {
     if (isGenerating) return;
 
-    const requestChatId = typeof ensureActiveChatForRequest === 'function'
-        ? await ensureActiveChatForRequest({ title: prompt || 'Vidéo' })
-        : currentChatId;
+    const requestChatId = typeof ensureVisibleChatForRequest === 'function'
+        ? await ensureVisibleChatForRequest({ title: prompt || 'Vidéo' })
+        : typeof ensureActiveChatForRequest === 'function'
+            ? await ensureActiveChatForRequest({ title: prompt || 'Vidéo' })
+            : currentChatId;
+    if (typeof showChat === 'function') {
+        showChat();
+    }
 
     isGenerating = true;
     currentGenerationMode = 'video';

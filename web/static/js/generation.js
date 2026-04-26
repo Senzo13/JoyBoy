@@ -989,7 +989,12 @@ async function generate() {
         }
     }
 
-    await ensureActiveChatForRequest({ title: prompt });
+    if (typeof ensureVisibleChatForRequest === 'function') {
+        await ensureVisibleChatForRequest({ title: prompt });
+    } else {
+        await ensureActiveChatForRequest({ title: prompt });
+        if (typeof showChat === 'function') showChat();
+    }
     currentGenerationChatId = currentChatId;
 
     // Gestion du modèle texte selon le mode
