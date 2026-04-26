@@ -1318,6 +1318,11 @@ function addMessageVideo(videoBase64, generationTime = null, sourceImage = null,
     const videoUrl = metadataSessionId
         ? `/videos/session/${metadataSessionId}?t=${cacheTag}`
         : `data:video/${videoFormat};base64,${videoBase64}`;
+    const playableVideoUrl = typeof createPlayableVideoUrl === 'function'
+        ? createPlayableVideoUrl(videoBase64 || videoUrl, videoFormat)
+        : videoUrl;
+    const fallbackVideoUrl = metadataSessionId ? videoUrl : '';
+    const downloadUrl = metadataSessionId ? videoUrl : playableVideoUrl;
     const sourceType = videoFormat === 'webm' ? 'video/webm' : 'video/mp4';
 
     const sourceHtml = sourceImage ? `
@@ -1352,9 +1357,11 @@ function addMessageVideo(videoBase64, generationTime = null, sourceImage = null,
                     ${sourceHtml}
                     <div class="result-image-container video-container video-result-container">
                         <div class="video-player-shell">
-                            <video controls autoplay loop muted playsinline preload="auto" class="result-video" src="${videoUrl}" type="${sourceType}"></video>
+                            <video controls autoplay loop muted playsinline preload="auto" class="result-video" data-fallback-src="${fallbackVideoUrl}">
+                                <source src="${playableVideoUrl}" type="${sourceType}">
+                            </video>
                             <div class="video-actions">
-                                <a href="${videoUrl}" download="video.${videoFormat}" class="edit-btn" title="Télécharger">${downloadIcon}</a>
+                                <a href="${downloadUrl}" download="video.${videoFormat}" class="edit-btn" title="Télécharger">${downloadIcon}</a>
                             </div>
                         </div>
                         <div class="image-label">${label} ${timeDisplay}</div>
@@ -1366,6 +1373,10 @@ function addMessageVideo(videoBase64, generationTime = null, sourceImage = null,
     `;
 
     messagesDiv.insertAdjacentHTML('beforeend', messageHtml);
+    const renderedVideo = messagesDiv.querySelector('.message:last-child video.result-video');
+    if (renderedVideo && typeof wirePlayableVideo === 'function') {
+        wirePlayableVideo(renderedVideo, playableVideoUrl, fallbackVideoUrl);
+    }
     scrollToBottom();
 
     saveCurrentChat('🎬 Génération vidéo', '[Vidéo générée]', messageHtml, chatId);

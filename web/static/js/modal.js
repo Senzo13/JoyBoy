@@ -1472,6 +1472,57 @@ function addVideoSkeletonToChat(imageSrc, chatId = (typeof currentChatId !== 'un
  * Remplace le skeleton vidéo par la vraie vidéo
  * Utilise l'URL serveur pour la persistance (pas le base64)
  */
+function createPlayableVideoUrl(videoSrc, format = 'mp4') {
+    const source = String(videoSrc || '').trim();
+    if (!source) return '';
+    if (source.startsWith('blob:') || source.startsWith('http') || source.startsWith('/')) {
+        return source;
+    }
+
+    try {
+        const mime = format === 'webm' ? 'video/webm' : 'video/mp4';
+        const base64 = source.startsWith('data:')
+            ? source.split(',', 2)[1]
+            : source;
+        if (!base64) return source;
+        const binary = atob(base64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i += 1) {
+            bytes[i] = binary.charCodeAt(i);
+        }
+        return URL.createObjectURL(new Blob([bytes], { type: mime }));
+    } catch (error) {
+        console.warn('[VIDEO] Blob URL fallback failed:', error);
+        return source.startsWith('data:') ? source : `data:video/${format};base64,${source}`;
+    }
+}
+
+function wirePlayableVideo(video, primaryUrl, fallbackUrl = '') {
+    if (!video) return;
+    const fallback = String(fallbackUrl || '').trim();
+    let triedFallback = false;
+
+    video.addEventListener('error', () => {
+        if (!triedFallback && fallback && video.src !== fallback) {
+            triedFallback = true;
+            console.warn('[VIDEO] Lecteur: fallback URL serveur');
+            video.src = fallback;
+            video.load();
+        }
+    }, { once: false });
+
+    video.addEventListener('loadeddata', () => {
+        video.classList.add('is-ready');
+        video.play?.().catch(() => {});
+    }, { once: true });
+
+    if (primaryUrl && video.src !== primaryUrl) {
+        video.src = primaryUrl;
+    }
+    video.load();
+    video.play?.().catch(() => {});
+}
+
 function replaceVideoSkeletonWithReal(videoSrc, format, genTime, chatId, metadata = {}) {
     // Multiple generations can exist in one chat. Replace the newest active
     // video skeleton for this chat, not the first historical result from
@@ -1505,8 +1556,10 @@ function replaceVideoSkeletonWithReal(videoSrc, format, genTime, chatId, metadat
     const exactVideoUrl = metadataSessionId && metadataSessionId !== sourceSessionId
         ? `/videos/session/${metadataSessionId}?t=${cacheTag}`
         : null;
-    const videoUrl = exactVideoUrl || (chatId ? `/videos/${chatId}?t=${cacheTag}` : videoSrc);
-    const downloadUrl = videoUrl;
+    const serverVideoUrl = exactVideoUrl || (chatId ? `/videos/${chatId}?t=${cacheTag}` : '');
+    const playableVideoUrl = videoSrc ? createPlayableVideoUrl(videoSrc, format) : serverVideoUrl;
+    const videoUrl = playableVideoUrl || serverVideoUrl || videoSrc;
+    const downloadUrl = serverVideoUrl || videoUrl;
     const sourceType = format === 'webm' ? 'video/webm' : 'video/mp4';
 
     // Bouton Continuer si la continuation est dispo
@@ -1550,7 +1603,9 @@ function replaceVideoSkeletonWithReal(videoSrc, format, genTime, chatId, metadat
             <div class="ai-message">
                 <div class="video-container video-result-container">
                     <div class="video-player-shell">
-                        <video class="result-video" controls autoplay loop muted playsinline preload="auto" src="${videoUrl}" type="${sourceType}"></video>
+                        <video class="result-video" controls autoplay loop muted playsinline preload="auto" data-fallback-src="${serverVideoUrl || ''}" data-download-src="${downloadUrl || ''}">
+                            <source src="${videoUrl}" type="${sourceType}">
+                        </video>
                         <div class="video-controls">
                             <button class="video-control-btn" onclick="toggleVideoPlay(this)" data-playing="true"><i data-lucide="pause"></i></button>
                             <button class="video-control-btn" onclick="toggleVideoMute(this)" data-muted="true"><i data-lucide="volume-x"></i></button>
@@ -1567,8 +1622,7 @@ function replaceVideoSkeletonWithReal(videoSrc, format, genTime, chatId, metadat
     if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [messageDiv] });
     const renderedVideo = messageDiv.querySelector('video.result-video');
     if (renderedVideo) {
-        renderedVideo.load();
-        renderedVideo.play?.().catch(() => {});
+        wirePlayableVideo(renderedVideo, videoUrl, serverVideoUrl);
     }
     if (typeof saveCurrentChatHtml === 'function') {
         const messagesDiv = document.getElementById('chat-messages');
@@ -1615,7 +1669,7 @@ function replaceVideoSkeletonWithError(errorMsg, chatId = (typeof currentChatId 
 function toggleVideoPlay(btn) {
     const video = btn.closest('.video-container').querySelector('video');
     if (video.paused) {
-        video.play();
+        video.play?.().catch(() => {});
         btn.innerHTML = '<i data-lucide="pause"></i>';
         btn.dataset.playing = 'true';
     } else {

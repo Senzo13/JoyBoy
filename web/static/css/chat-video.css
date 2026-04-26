@@ -129,6 +129,7 @@
     background: linear-gradient(transparent, rgba(0,0,0,0.8));
     opacity: 0;
     transition: opacity 0.3s ease;
+    pointer-events: none;
 }
 
 .video-player-shell > .video-actions {
@@ -145,6 +146,7 @@
 .video-player-shell:hover .video-controls,
 .video-container:hover .video-controls {
     opacity: 1;
+    pointer-events: auto;
 }
 
 .video-control-btn {
