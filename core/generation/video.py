@@ -283,13 +283,29 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
         and 0 < float(VRAM_GB or 0) <= 10
     )
 
-    def _aspect_locked_size(base_w: int, base_h: int, *, max_area: int, mod_value: int = 16, min_side: int = 256):
-        """Keep source aspect ratio while snapping to model-friendly multiples."""
+    def _aspect_locked_size(
+        base_w: int,
+        base_h: int,
+        *,
+        max_area: int,
+        mod_value: int = 16,
+        min_side: int = 256,
+        min_area: int | None = None,
+    ):
+        """Keep source format while snapping to model-friendly multiples.
+
+        If the source is usable, keep its pixel area. If it is tiny, upscale to
+        the requested model quality while preserving the exact aspect ratio.
+        If it is too large, downscale to the model cap.
+        """
         base_w = max(1, int(base_w or w or 1))
         base_h = max(1, int(base_h or h or 1))
+        base_area = base_w * base_h
+        floor_area = min_area or min(max_area, 480 * 832)
+        target_area = max_area if base_area < floor_area else min(base_area, max_area)
         aspect_ratio = base_h / base_w
-        target_h_local = round(np.sqrt(max_area * aspect_ratio)) // mod_value * mod_value
-        target_w_local = round(np.sqrt(max_area / aspect_ratio)) // mod_value * mod_value
+        target_h_local = round(np.sqrt(target_area * aspect_ratio)) // mod_value * mod_value
+        target_w_local = round(np.sqrt(target_area / aspect_ratio)) // mod_value * mod_value
         target_w_local = max(min_side, target_w_local)
         target_h_local = max(min_side, target_h_local)
         return int(target_w_local), int(target_h_local)
@@ -333,44 +349,24 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
         print(f"[VIDEO] Wan 14B en 480p ratio source: {target_w}x{target_h}")
     elif is_hunyuan:
         # HunyuanVideo 1.5: 480p, résolution doit être multiple de 16
-        max_area = 480 * 832
-        aspect_ratio = h / w
-        mod_value = 16
-        target_h = round(np.sqrt(max_area * aspect_ratio)) // mod_value * mod_value
-        target_w = round(np.sqrt(max_area / aspect_ratio)) // mod_value * mod_value
-        target_w = max(256, target_w)
-        target_h = max(256, target_h)
+        target_w, target_h = _source_aspect_size(quality_value="480p", mod_value=16)
+        print(f"[VIDEO] HunyuanVideo 1.5 en 480p ratio source: {target_w}x{target_h}")
     elif is_framepack:
         # FramePack F1 is Hunyuan-based. Keep <=10GB runs compact because the
         # model is large and relies on CPU/group offload.
         max_area = (288 * 384) if is_framepack_fast else ((320 * 448) if low_vram_framepack else (480 * 832))
-        aspect_ratio = h / w
-        mod_value = 16
-        target_h = round(np.sqrt(max_area * aspect_ratio)) // mod_value * mod_value
-        target_w = round(np.sqrt(max_area / aspect_ratio)) // mod_value * mod_value
-        target_w = max(256, target_w)
-        target_h = max(256, target_h)
+        target_w, target_h = _aspect_locked_size(source_width or w, source_height or h, max_area=max_area, mod_value=16)
         low_vram_label = " low-VRAM" if low_vram_framepack else ""
         fast_label = " rapide" if is_framepack_fast else ""
-        print(f"[VIDEO] FramePack{fast_label}{low_vram_label}: résolution {target_w}x{target_h}")
+        print(f"[VIDEO] FramePack{fast_label}{low_vram_label}: résolution ratio source {target_w}x{target_h}")
     elif is_ltx2_fp8:
         # LTX-2 19B FP8 (ltx_pipelines): two-stage pipeline, multiples de 64
-        max_area = 512 * 768  # 393216
-        aspect_ratio = h / w
-        mod_value = 64
-        target_h = round(np.sqrt(max_area * aspect_ratio)) // mod_value * mod_value
-        target_w = round(np.sqrt(max_area / aspect_ratio)) // mod_value * mod_value
-        target_w = max(256, target_w)
-        target_h = max(256, target_h)
+        target_w, target_h = _aspect_locked_size(source_width or w, source_height or h, max_area=512 * 768, mod_value=64)
+        print(f"[VIDEO] LTX-2 FP8 ratio source: {target_w}x{target_h}")
     elif is_ltx2:
         # LTX-2 19B (diffusers): 512p, dimensions multiples de 32
-        max_area = 512 * 768  # 393216
-        aspect_ratio = h / w
-        mod_value = 32
-        target_h = round(np.sqrt(max_area * aspect_ratio)) // mod_value * mod_value
-        target_w = round(np.sqrt(max_area / aspect_ratio)) // mod_value * mod_value
-        target_w = max(256, target_w)
-        target_h = max(256, target_h)
+        target_w, target_h = _aspect_locked_size(source_width or w, source_height or h, max_area=512 * 768, mod_value=32)
+        print(f"[VIDEO] LTX-2 ratio source: {target_w}x{target_h}")
     elif is_ltx:
         # LTX-Video 2B: dimensions multiples de 32.
         # Sur 8GB, le backend Diffusers de JoyBoy reste expérimental: on force
@@ -378,12 +374,8 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
         max_area = (352 * 512) if low_vram_ltx else (480 * 704)
         if low_vram_ltx:
             print("[VIDEO] LTX low-VRAM forcé: résolution conservative, single-pass")
-        aspect_ratio = h / w
-        mod_value = 32
-        target_h = round(np.sqrt(max_area * aspect_ratio)) // mod_value * mod_value
-        target_w = round(np.sqrt(max_area / aspect_ratio)) // mod_value * mod_value
-        target_w = max(256, target_w)
-        target_h = max(256, target_h)
+        target_w, target_h = _aspect_locked_size(source_width or w, source_height or h, max_area=max_area, mod_value=32)
+        print(f"[VIDEO] LTX-Video ratio source: {target_w}x{target_h}")
     elif is_cogvideo:
         # CogVideoX-5B: résolution fixe 720x480 (w x h) uniquement
         target_w = 720
@@ -397,17 +389,15 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
         if low_vram_svd:
             mode_label = "turbo" if fast_svd_8gb else "équilibrée"
             print(f"[VIDEO] SVD low-VRAM: résolution {mode_label} GPU direct")
-        if w >= h:
-            target_w = MAX_SIZE
-            target_h = int(h * MAX_SIZE / w)
-        else:
-            target_h = MAX_SIZE
-            target_w = int(w * MAX_SIZE / h)
-        align = 64
-        target_w = (target_w // align) * align
-        target_h = (target_h // align) * align
-        target_w = max(MIN_SIZE, target_w)
-        target_h = max(MIN_SIZE, target_h)
+        target_w, target_h = _aspect_locked_size(
+            source_width or w,
+            source_height or h,
+            max_area=MAX_SIZE * MAX_SIZE,
+            mod_value=64,
+            min_side=MIN_SIZE,
+            min_area=MIN_SIZE * MIN_SIZE,
+        )
+        print(f"[VIDEO] SVD ratio source: {target_w}x{target_h}")
 
     # En mode T2V, pas d'image à resizer
     if is_t2v_mode:
