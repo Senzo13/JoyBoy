@@ -821,7 +821,9 @@ function updateChatPadding() {
     const lastChild = messagesDiv.lastElementChild;
     if (!lastChild) return;
     const firstChild = messagesDiv.firstElementChild;
-    const naturalTop = firstChild ? firstChild.offsetTop : 40;
+    const requestedTop = firstChild ? firstChild.offsetTop : 40;
+    const minRequestTop = window.matchMedia?.('(max-width: 768px)').matches ? 68 : 96;
+    const naturalTop = Math.max(requestedTop, minRequestTop);
 
     // Le skeleton est temporaire — le "vrai" dernier message détermine le scroll max
     const realMsgs = messagesDiv.querySelectorAll('.message:not(.skeleton-message)');
