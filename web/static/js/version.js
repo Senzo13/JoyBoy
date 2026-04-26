@@ -90,15 +90,18 @@ function setVersionElementText(id, text) {
 }
 
 function renderVersionPills(status = appVersionStatus) {
-    const shouldShow = Boolean(status?.update?.available);
+    const shouldShow = Boolean(status?.update?.available && status?.git?.is_git_checkout);
     const kind = versionStatusKind(status);
-    const label = versionText('settings.version.pillUpdate', 'Update');
+    const label = appVersionUpdating
+        ? versionText('settings.version.updatingButton', 'Mise à jour...')
+        : versionText('settings.version.pillUpdate', 'Update');
     const title = versionDetail(status);
 
     document.querySelectorAll('.app-update-pill').forEach(pill => {
         pill.classList.toggle('hidden', !shouldShow);
         pill.classList.toggle('is-commit', kind === 'commit');
         pill.classList.toggle('is-release', kind === 'release');
+        pill.disabled = appVersionUpdating || appVersionStatusLoading;
         pill.title = title;
         pill.setAttribute('aria-label', title);
         const labelEl = pill.querySelector('.app-update-pill-label');
@@ -264,7 +267,11 @@ function openVersionSettings() {
 
 function initAppVersionStatus() {
     renderAppVersionStatus(appVersionStatus);
-    loadAppVersionStatus({ refresh: false });
+    loadAppVersionStatus({ refresh: true });
+    window.clearInterval(window.__joyboyVersionRefreshTimer);
+    window.__joyboyVersionRefreshTimer = window.setInterval(() => {
+        if (!document.hidden) loadAppVersionStatus({ refresh: true });
+    }, 5 * 60 * 1000);
 }
 
 window.addEventListener('joyboy:locale-changed', () => {

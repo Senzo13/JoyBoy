@@ -205,6 +205,11 @@
   color: #ffe69a;
 }
 
+.app-update-pill:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}
+
 .app-update-pill.is-commit {
   border-color: rgba(250, 204, 21, 0.34);
   background: rgba(250, 204, 21, 0.08);
