@@ -292,6 +292,25 @@ def _probe_video_size(video_path: str | Path) -> tuple[int, int] | None:
         return None
 
 
+def _probe_video_frame_stats(video_path: str | Path) -> tuple[int | None, float | None]:
+    """Return exact-ish frame count and FPS using OpenCV when available."""
+    try:
+        import cv2
+
+        cap = cv2.VideoCapture(str(video_path))
+        if not cap.isOpened():
+            return None, None
+        try:
+            frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0) or None
+            fps = float(cap.get(cv2.CAP_PROP_FPS) or 0.0) or None
+            return frame_count, fps
+        finally:
+            cap.release()
+    except Exception as exc:
+        print(f"[VIDEO_SESSION] frame stats probe skipped: {exc}")
+        return None, None
+
+
 def _concat_output_is_valid(
     source_path: str | Path,
     segment_path: str | Path,
@@ -320,6 +339,46 @@ def _concat_output_is_valid(
     return False
 
 
+def _extract_last_video_frame_precise(video_path: str | Path, output_path: Path) -> bool:
+    """Extract the real decoded final frame, not a timestamp near the end."""
+    try:
+        import cv2
+
+        cap = cv2.VideoCapture(str(video_path))
+        if not cap.isOpened():
+            return False
+        try:
+            frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+            frame = None
+
+            if frame_count > 0:
+                for frame_index in range(frame_count - 1, max(-1, frame_count - 30), -1):
+                    cap.set(cv2.CAP_PROP_POS_FRAMES, frame_index)
+                    ok, candidate = cap.read()
+                    if ok and candidate is not None:
+                        frame = candidate
+                        break
+            else:
+                while True:
+                    ok, candidate = cap.read()
+                    if not ok:
+                        break
+                    frame = candidate
+
+            if frame is None:
+                return False
+
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            Image.fromarray(rgb).convert("RGB").save(output_path, "PNG")
+            return output_path.exists()
+        finally:
+            cap.release()
+    except Exception as exc:
+        print(f"[VIDEO_SESSION] precise last frame extract skipped: {exc}")
+        return False
+
+
 def _extract_video_frame(video_path: str | Path, output_path: Path, *, at_time: float | None = None, last: bool = False) -> bool:
     try:
         import imageio_ffmpeg
@@ -327,15 +386,19 @@ def _extract_video_frame(video_path: str | Path, output_path: Path, *, at_time: 
         ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()
         output_path.parent.mkdir(parents=True, exist_ok=True)
         if last:
+            if _extract_last_video_frame_precise(video_path, output_path):
+                return True
             cmd = [
                 ffmpeg_path,
                 "-y",
                 "-sseof",
-                "-1",
+                "-2",
                 "-i",
                 str(video_path),
-                "-frames:v",
+                "-update",
                 "1",
+                "-q:v",
+                "2",
                 str(output_path),
             ]
         else:
@@ -377,15 +440,18 @@ def create_video_source_session(
 
     duration = _probe_video_duration(imported_path) or 0.0
     source_size = _probe_video_size(imported_path)
-    frame_count = max(1, int(round(duration * max(1, int(fps or 24))))) if duration else 0
+    probed_frame_count, probed_fps = _probe_video_frame_stats(imported_path)
+    effective_fps = int(round(probed_fps or fps or 24)) or 24
+    frame_count = probed_frame_count or (max(1, int(round(duration * effective_fps))) if duration else 0)
+    last_frame_index = max(0, int(frame_count or 1) - 1)
     session_keyframe_dir = VIDEO_KEYFRAME_DIR / session_id
 
     keyframes: list[dict[str, Any]] = []
     if duration > 0:
         sample_count = min(5, max(1, int(duration)))
         for idx in range(sample_count):
-            time_sec = 0.0 if sample_count == 1 else (duration * idx / (sample_count - 1))
-            frame_index = int(round(time_sec * max(1, int(fps or 24))))
+            time_sec = 0.0 if sample_count == 1 else (duration * idx / sample_count)
+            frame_index = min(last_frame_index, int(round(time_sec * effective_fps)))
             image_path = session_keyframe_dir / f"frame_{frame_index:05d}.png"
             if _extract_video_frame(imported_path, image_path, at_time=time_sec):
                 keyframes.append({
@@ -396,11 +462,16 @@ def create_video_source_session(
 
     last_frame_path = session_keyframe_dir / "last_frame.png"
     saved_last = _extract_video_frame(imported_path, last_frame_path, last=True)
-    if saved_last and not keyframes:
+    if saved_last:
+        keyframes = [
+            frame for frame in keyframes
+            if int(frame.get("index", -1) or -1) != last_frame_index
+        ]
         keyframes.append({
-            "index": max(0, frame_count - 1),
-            "time_sec": round(duration, 3) if duration else None,
+            "index": last_frame_index,
+            "time_sec": round(max(0.0, duration - (1 / effective_fps)), 3) if duration else None,
             "path": str(last_frame_path),
+            "is_last": True,
         })
 
     session = {
@@ -413,7 +484,7 @@ def create_video_source_session(
         "model_name": model_name,
         "prompt": prompt,
         "final_prompt": prompt,
-        "fps": int(fps or 24),
+        "fps": effective_fps,
         "frames": frame_count or len(keyframes),
         "duration_sec": round(duration, 3) if duration else None,
         "width": source_size[0] if source_size else None,
@@ -435,16 +506,34 @@ def public_video_session(session: dict[str, Any] | None) -> dict[str, Any]:
     if not session:
         return {}
     anchors = []
+    frame_count = int(session.get("frames") or 0)
+    fps = int(session.get("fps") or 0)
+    last_index = max(0, frame_count - 1) if frame_count else None
+    last_frame_path = session.get("last_frame_path")
     for frame in session.get("keyframes") or []:
+        try:
+            index = int(frame.get("index", 0) or 0)
+        except (TypeError, ValueError):
+            index = 0
+        if last_frame_path and last_index is not None and index >= last_index:
+            continue
         anchors.append({
-            "index": frame.get("index"),
+            "index": index,
             "timeSec": frame.get("time_sec"),
             "thumbnail": _image_data_url(frame.get("path")),
+            "isLast": bool(frame.get("is_last")),
+        })
+    if last_frame_path:
+        anchors.append({
+            "index": last_index if last_index is not None else None,
+            "timeSec": round(last_index / fps, 3) if last_index is not None and fps else session.get("duration_sec"),
+            "thumbnail": _image_data_url(last_frame_path),
+            "isLast": True,
         })
     return {
         "videoSessionId": session.get("id"),
         "sourceVideoSessionId": session.get("source_session_id"),
-        "canContinue": bool(session.get("last_frame_path") or anchors),
+        "canContinue": bool(last_frame_path or anchors),
         "continuationAnchors": anchors,
         "analysisSummary": session.get("analysis_summary") or {},
     }
@@ -454,11 +543,21 @@ def get_anchor_image(session: dict[str, Any] | None, anchor_frame_index: int | N
     if not session:
         return None
     candidates = list(session.get("keyframes") or [])
+    frame_count = int(session.get("frames") or 0)
+    last_index = max(0, frame_count - 1) if frame_count else None
+    last_frame_path = session.get("last_frame_path")
+    if last_frame_path and (
+        anchor_frame_index is None
+        or (last_index is not None and int(anchor_frame_index) >= last_index)
+    ):
+        try:
+            return frame_to_pil(Image.open(last_frame_path))
+        except Exception:
+            pass
     if anchor_frame_index is not None:
         for frame in candidates:
             if int(frame.get("index", -1)) == int(anchor_frame_index):
                 return frame_to_pil(Image.open(frame["path"]))
-    last_frame_path = session.get("last_frame_path")
     if last_frame_path:
         try:
             return frame_to_pil(Image.open(last_frame_path))

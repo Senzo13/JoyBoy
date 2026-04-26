@@ -1268,21 +1268,24 @@ function openVideoContinuationPanel(options = {}) {
     const analyzeInput = panel.querySelector('#video-continuation-analyze');
     panel.dataset.videoSessionId = sessionId || '';
     select.innerHTML = '';
-    const fallbackIndex = options.anchorFrameIndex ?? anchors.at(-1)?.index ?? '';
+    const exactLastOption = document.createElement('option');
+    exactLastOption.value = '';
+    exactLastOption.textContent = 'Dernière frame exacte';
+    select.appendChild(exactLastOption);
+    const fallbackIndex = options.anchorFrameIndex ?? '';
     if (anchors.length) {
         for (const anchor of anchors) {
             const option = document.createElement('option');
             option.value = anchor.index;
-            option.textContent = `Frame ${anchor.index} · ${Number(anchor.timeSec || 0).toFixed(1)}s`;
+            option.textContent = anchor.isLast
+                ? `Dernière frame · ${Number(anchor.timeSec || 0).toFixed(1)}s`
+                : `Frame ${anchor.index} · ${Number(anchor.timeSec || 0).toFixed(1)}s`;
             select.appendChild(option);
         }
         select.value = String(fallbackIndex);
         select.disabled = false;
     } else {
-        const option = document.createElement('option');
-        option.value = '';
-        option.textContent = 'Dernière frame';
-        select.appendChild(option);
+        select.value = '';
         select.disabled = true;
     }
     if (promptInput && options.prefillPrompt) promptInput.value = options.prefillPrompt;
