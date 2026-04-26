@@ -16,6 +16,8 @@ from core.generation.state import (
     update_video_progress, clear_video_progress,
 )
 from core.generation.video_prompts import (
+    DEFAULT_SCENE_VIDEO_PROMPT,
+    DEFAULT_VISUAL_SOURCE_VIDEO_PROMPT,
     _build_framepack_prompt,
     _build_video_negative_prompt,
     _build_video_prompt,
@@ -601,9 +603,7 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
     # === GÉNÉRATION SELON LE MODÈLE ===
     if is_native_wan:
         # Backend NATIF Wan — code officiel sans diffusers
-        video_prompt = _source_fidelity_prompt(
-            "The person in the image moves slowly and naturally with subtle, realistic motion."
-        )
+        video_prompt = _source_fidelity_prompt(DEFAULT_VISUAL_SOURCE_VIDEO_PROMPT)
         negative_prompt = _source_fidelity_negative("")  # Backend natif gère différemment
         print(f"[VIDEO] (Natif) Prompt: {video_prompt}")
 
@@ -656,9 +656,7 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
 
     elif is_wan5b:
         # Wan 2.2 TI2V 5B / FastWan 2.2 5B — I2V avec qualité variable
-        video_prompt = _source_fidelity_prompt(
-            "The person in the image moves slowly and naturally with subtle, realistic motion."
-        )
+        video_prompt = _source_fidelity_prompt(DEFAULT_VISUAL_SOURCE_VIDEO_PROMPT)
         negative_prompt = _source_fidelity_negative(
             "Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, "
             "static, overall gray, worst quality, low quality, JPEG compression residue, ugly, incomplete, "
@@ -779,9 +777,7 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
         generated_frames = video_output.frames[0]  # Liste de PIL Images
 
     elif is_wan:
-        video_prompt = _source_fidelity_prompt(
-            "The person in the image moves slowly and naturally with subtle, realistic motion."
-        )
+        video_prompt = _source_fidelity_prompt(DEFAULT_VISUAL_SOURCE_VIDEO_PROMPT)
         negative_prompt = _source_fidelity_negative(
             "Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, "
             "static, overall gray, worst quality, low quality, JPEG compression residue, ugly, incomplete, "
@@ -843,7 +839,7 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
 
     elif is_hunyuan:
         # HunyuanVideo 1.5 I2V (step-distilled) — suit exactement la doc officielle
-        video_prompt = _source_fidelity_prompt("The person in the image moves naturally with subtle, realistic motion.")
+        video_prompt = _source_fidelity_prompt(DEFAULT_VISUAL_SOURCE_VIDEO_PROMPT)
         print(f"[VIDEO] Prompt: {video_prompt}")
 
         import torch
@@ -965,7 +961,7 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
 
     elif is_ltx2:
         # === LTX-2 19B (distillé, 8 steps) ===
-        video_prompt = _source_fidelity_prompt("The scene comes alive with natural, smooth motion.")
+        video_prompt = _source_fidelity_prompt(DEFAULT_SCENE_VIDEO_PROMPT)
         negative_prompt = (
             "shaky, glitchy, low quality, worst quality, deformed, distorted, "
             "disfigured, motion smear, motion artifacts, fused fingers, "
@@ -1045,7 +1041,7 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
 
     elif is_ltx2_fp8:
         # === LTX-2 19B FP8 (ltx_pipelines natif, 2-stage distillé) ===
-        video_prompt = _source_fidelity_prompt("The scene comes alive with natural, smooth motion.")
+        video_prompt = _source_fidelity_prompt(DEFAULT_SCENE_VIDEO_PROMPT)
         print(f"[VIDEO] Prompt: {video_prompt}")
 
         fps = 24
@@ -1135,7 +1131,7 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
             _state.ltx2_audio = None
 
     elif is_ltx:
-        video_prompt = _source_fidelity_prompt("The scene comes alive with natural, smooth motion.")
+        video_prompt = _source_fidelity_prompt(DEFAULT_SCENE_VIDEO_PROMPT)
         negative_prompt = (
             "worst quality, inconsistent motion, blurry, jittery, distorted, "
             "distorted face, deformed face, disfigured, asymmetric eyes, strange mouth, "
@@ -1376,7 +1372,7 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
         COG_GUIDANCE = 6  # Recommandé officiel
         COG_FPS = 8  # Natif du modèle
 
-        video_prompt = _source_fidelity_prompt("The person in the image moves naturally with subtle, realistic motion.")
+        video_prompt = _source_fidelity_prompt(DEFAULT_VISUAL_SOURCE_VIDEO_PROMPT)
         negative_prompt_cog = (
             "Distorted, discontinuous, Ugly, blurry, low resolution, motionless, static, "
             "disfigured, disconnected limbs, Ugly faces, incomplete arms, "

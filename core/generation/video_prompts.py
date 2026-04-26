@@ -28,15 +28,21 @@ def _clip_safe_words(text: str, max_words: int) -> tuple[str, bool]:
     return " ".join(words[:max_words]).rstrip(" ,;:"), True
 
 
-FRAMEPACK_MOTION_DEFAULT = "Natural visible movement with subtle camera parallax and clear subject action."
+DEFAULT_VISUAL_SOURCE_VIDEO_PROMPT = (
+    "Animate only the visible source crop with slow, subtle, natural motion. "
+    "Preserve the original framing, composition, visible shapes, textures, and details."
+)
+DEFAULT_SCENE_VIDEO_PROMPT = "The visible source content comes alive with natural, smooth motion."
+FRAMEPACK_MOTION_DEFAULT = "Natural visible movement of the visible source content with subtle camera parallax."
 FRAMEPACK_QUALITY_SUFFIX = (
-    "Preserve identity, outfit, scene, lighting, anatomy. "
+    "Preserve the visible subject/object, outfit/materials, scene, lighting, structure, and framing. "
     "Coherent movement, stable details, clear full-speed progression."
 )
 VISUAL_SOURCE_FIDELITY_SUFFIX = (
     "Match the source image/video look and quality as closely as possible: preserve the original exposure, contrast, "
     "color grade, sharpness, grain/noise, compression artifacts, skin texture, lens/camera feel, and detail level. "
     "Use restrained, slow, natural motion by default; preserve the source motion speed unless faster movement is explicitly requested. "
+    "Preserve the original crop, framing, composition, and visible content only. "
     "Do not beautify, upscale, denoise, over-sharpen, relight, color-correct, make more cinematic, or improve the source unless explicitly requested."
 )
 VISUAL_SOURCE_FIDELITY_NEGATIVE = (
