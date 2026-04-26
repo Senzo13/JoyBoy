@@ -1437,12 +1437,15 @@ async function generateVideoFromImage() {
 /**
  * Ajoute un skeleton loading pour une vidéo
  */
-function addVideoSkeletonToChat(imageSrc, chatId = (typeof currentChatId !== 'undefined' ? currentChatId : null)) {
+function addVideoSkeletonToChat(imageSrc, chatId = (typeof currentChatId !== 'undefined' ? currentChatId : null), options = {}) {
     const messagesDiv = document.getElementById('chat-messages');
     if (!messagesDiv) return;
 
+    const startedAt = Date.now();
+    const skeletonId = String(options?.skeletonId || `video-skeleton-${startedAt}-${Math.random().toString(36).slice(2, 8)}`);
+    const label = options?.label ? escapeHtml(options.label) : '';
     const skeletonHtml = `
-        <div class="message video-skeleton-message" data-chat-id="${chatId || ''}">
+        <div class="message video-skeleton-message" data-chat-id="${chatId || ''}" data-skeleton-id="${skeletonId}" data-started-at="${startedAt}">
             <div class="ai-message">
                 <div class="video-skeleton">
                     ${imageSrc ? `<img src="${imageSrc}" class="video-skeleton-thumb">` : ''}
@@ -1452,17 +1455,17 @@ function addVideoSkeletonToChat(imageSrc, chatId = (typeof currentChatId !== 'un
                     <div class="generation-progress-bar-container">
                         <div class="generation-progress-bar" style="width: 0%"></div>
                     </div>
-                    <div class="generation-step-text">Préparation...</div>
+                    <div class="generation-step-text">${label || 'Préparation...'}</div>
                 </div>
             </div>
         </div>
     `;
     messagesDiv.insertAdjacentHTML('beforeend', skeletonHtml);
     if (typeof saveCurrentChatHtml === 'function') {
-        const html = typeof getChatHtmlWithoutSkeleton === 'function' ? getChatHtmlWithoutSkeleton() : messagesDiv.innerHTML;
-        saveCurrentChatHtml('', html, chatId);
+        saveCurrentChatHtml('', messagesDiv.innerHTML, chatId);
     }
     scrollToBottom();
+    return skeletonId;
 }
 
 /**
@@ -1473,14 +1476,21 @@ function replaceVideoSkeletonWithReal(videoSrc, format, genTime, chatId, metadat
     // Multiple generations can exist in one chat. Replace the newest active
     // video skeleton for this chat, not the first historical result from
     // another conversation.
-    const scopedMessages = Array.from(document.querySelectorAll('.video-skeleton-message'))
+    let scopedMessages = Array.from(document.querySelectorAll('.video-skeleton-message'))
         .filter(node => !chatId || node.dataset?.chatId === chatId);
-    const skeletonHost = scopedMessages.at(-1) || (!chatId ? document : null);
-    const skeleton = skeletonHost?.querySelector?.('.video-skeleton');
-    if (!skeleton) return;
+    let skeletonHost = scopedMessages.at(-1) || (!chatId ? document : null);
+    let skeleton = skeletonHost?.querySelector?.('.video-skeleton');
+    if (!skeleton) {
+        addVideoSkeletonToChat(metadata?.sourceImage || null, chatId, { label: 'Finalisation vidéo...' });
+        scopedMessages = Array.from(document.querySelectorAll('.video-skeleton-message'))
+            .filter(node => !chatId || node.dataset?.chatId === chatId);
+        skeletonHost = scopedMessages.at(-1) || (!chatId ? document : null);
+        skeleton = skeletonHost?.querySelector?.('.video-skeleton');
+    }
+    if (!skeleton) return false;
 
     const messageDiv = skeleton.closest('.message');
-    if (!messageDiv) return;
+    if (!messageDiv) return false;
     // Once replaced, this message must no longer receive progress updates from
     // the global video-progress poller.
     messageDiv.classList.remove('video-skeleton-message');
@@ -1535,7 +1545,7 @@ function replaceVideoSkeletonWithReal(videoSrc, format, genTime, chatId, metadat
             <div class="ai-message">
                 <div class="video-container video-result-container">
                     <div class="video-player-shell">
-                        <video class="result-video" autoplay loop muted playsinline>
+                        <video class="result-video" controls autoplay loop muted playsinline preload="metadata">
                             <source src="${videoUrl}" type="video/mp4">
                         </video>
                         <div class="video-controls">
@@ -1552,12 +1562,18 @@ function replaceVideoSkeletonWithReal(videoSrc, format, genTime, chatId, metadat
         `;
     }
     if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [messageDiv] });
+    const renderedVideo = messageDiv.querySelector('video.result-video');
+    if (renderedVideo) {
+        renderedVideo.load();
+        renderedVideo.play?.().catch(() => {});
+    }
     if (typeof saveCurrentChatHtml === 'function') {
         const messagesDiv = document.getElementById('chat-messages');
         const html = typeof getChatHtmlWithoutSkeleton === 'function' ? getChatHtmlWithoutSkeleton() : (messagesDiv?.innerHTML || '');
         saveCurrentChatHtml('', html, chatId);
     }
     scrollToBottom();
+    return true;
 }
 
 /**

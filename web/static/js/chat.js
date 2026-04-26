@@ -1255,6 +1255,11 @@ function addMessageVideo(videoBase64, generationTime = null, sourceImage = null,
 
     const timeDisplay = generationTime ? `<div class="generation-time">${formatGenTimeDisplay(generationTime)}</div>` : '';
     const label = modelName || imageLabelT('video', 'Vidéo');
+    const videoFormat = metadata?.format || 'mp4';
+    const metadataSessionId = metadata?.videoSessionId || metadata?.video_session_id || null;
+    const videoUrl = metadataSessionId
+        ? `/videos/session/${metadataSessionId}`
+        : `data:video/${videoFormat};base64,${videoBase64}`;
 
     const sourceHtml = sourceImage ? `
         <div class="result-image-container">
@@ -1289,10 +1294,10 @@ function addMessageVideo(videoBase64, generationTime = null, sourceImage = null,
                     <div class="result-image-container video-container video-result-container">
                         <div class="video-player-shell">
                             <video controls autoplay loop muted playsinline class="result-video">
-                                <source src="data:video/mp4;base64,${videoBase64}" type="video/mp4">
+                                <source src="${videoUrl}" type="video/${videoFormat}">
                             </video>
                             <div class="video-actions">
-                                <a href="data:video/mp4;base64,${videoBase64}" download="video.mp4" class="edit-btn" title="Télécharger">${downloadIcon}</a>
+                                <a href="${videoUrl}" download="video.${videoFormat}" class="edit-btn" title="Télécharger">${downloadIcon}</a>
                             </div>
                         </div>
                         <div class="image-label">${label} ${timeDisplay}</div>
@@ -1339,9 +1344,20 @@ async function runVideoContinuation(options = {}) {
     const videoDefaults = getVideoModelDefaults(videoModel);
     const continuationDurationSec = options.durationSec === 10 ? 10 : 5;
     const continuationFrames = Math.max(1, Math.round(continuationDurationSec * videoDefaults.fps));
+    const requestChatId = (typeof currentChatId !== 'undefined' && currentChatId)
+        ? currentChatId
+        : (_lastVideoContext.chatId || null);
+    const sourceThumb = (
+        currentVideoSource?.thumbnail
+        || _lastVideoContext.anchors?.at?.(-1)?.thumbnail
+        || _lastVideoContext.anchors?.[0]?.thumbnail
+        || null
+    );
+    const promptText = options.prompt || _lastVideoContext.prompt || '';
 
     isGenerating = true;
     currentGenerationMode = 'video';
+    currentGenerationChatId = requestChatId;
     currentGenerationId = typeof generateUUID === 'function' ? generateUUID() : Date.now().toString();
     if (typeof setSendButtonsMode === 'function') {
         setSendButtonsMode(true);
@@ -1350,7 +1366,19 @@ async function runVideoContinuation(options = {}) {
         updateSendButtonState('chat');
     }
 
-    addSkeletonMessage(`🎬 Continuation ${videoDefaults.name} +${continuationDurationSec}s...`, null, true);
+    const displayPrompt = `🎬 Continuation ${videoDefaults.name} +${continuationDurationSec}s${promptText ? `: ${promptText.substring(0, 80)}` : ''}`;
+    if (sourceThumb && typeof addUserMessageWithThumb === 'function') {
+        addUserMessageWithThumb(formatUserPromptForChat(displayPrompt), sourceThumb);
+    } else if (typeof addUserMessageToChat === 'function') {
+        addUserMessageToChat(displayPrompt);
+    }
+    if (typeof addVideoSkeletonToChat === 'function') {
+        addVideoSkeletonToChat(sourceThumb, requestChatId, {
+            label: `Continuation ${videoDefaults.name} +${continuationDurationSec}s...`,
+        });
+    } else {
+        addSkeletonMessage(displayPrompt, sourceThumb, Boolean(sourceThumb), null, requestChatId);
+    }
     scrollToBottom();
 
     startVideoProgressPolling();
@@ -1374,7 +1402,7 @@ async function runVideoContinuation(options = {}) {
             add_audio: userSettings.videoAudio === true,
             audio_prompt: options.prompt || '',
             face_restore: userSettings.faceRestore || 'off',
-            chatId: typeof currentChatId !== 'undefined' ? currentChatId : null,
+            chatId: requestChatId,
             quality: userSettings.videoQuality || '720p',
             refine_passes: parseInt(userSettings.videoRefine) || 0,
             allow_experimental_video: userSettings.showAdvancedVideoModels === true
@@ -1385,21 +1413,38 @@ async function runVideoContinuation(options = {}) {
         const generationTime = (Date.now() - startTime) / 1000;
 
         if (data?.success && data.video) {
-            updateLastVideoContextFromResult(data, options.prompt || _lastVideoContext.prompt, null, _lastVideoContext.chatId);
+            updateLastVideoContextFromResult(data, promptText, null, requestChatId);
             currentVideoSource = null;
             if (typeof updateVideoSourcePreviews === 'function') updateVideoSourcePreviews();
-            addMessageVideo(data.video, generationTime, null, data.canContinue, videoDefaults.name, _lastVideoContext.chatId, data);
+            if (typeof replaceVideoSkeletonWithReal === 'function') {
+                replaceVideoSkeletonWithReal(data.video, data.format || 'mp4', generationTime * 1000, requestChatId, {
+                    ...data,
+                    prompt: promptText,
+                    sourceImage: sourceThumb,
+                });
+            } else {
+                addMessageVideo(data.video, generationTime, null, data.canContinue, videoDefaults.name, requestChatId, data);
+            }
         } else {
-            removeSkeletonMessage();
+            if (typeof replaceVideoSkeletonWithError === 'function') {
+                replaceVideoSkeletonWithError(data?.error || 'Génération échouée', requestChatId);
+            } else {
+                removeSkeletonMessage(requestChatId);
+            }
         }
     } catch (e) {
         stopVideoProgressPolling();
-        removeSkeletonMessage();
+        if (typeof replaceVideoSkeletonWithError === 'function') {
+            replaceVideoSkeletonWithError(e.message || 'Génération échouée', requestChatId);
+        } else {
+            removeSkeletonMessage(requestChatId);
+        }
         console.error('[VIDEO] Continue error:', e);
     } finally {
         isGenerating = false;
         currentGenerationId = null;
         currentGenerationMode = null;
+        currentGenerationChatId = null;
         if (typeof setSendButtonsMode === 'function') {
             setSendButtonsMode(false);
         } else if (typeof updateSendButtonState === 'function') {
