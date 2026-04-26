@@ -781,6 +781,12 @@ function updateVideoSkeletonProgress(progress) {
     const stepText = skeleton.querySelector('.generation-step-text');
 
     if (!progressBar || !stepText) return;
+    let percentText = skeleton.querySelector('.generation-progress-percent');
+    if (!percentText) {
+        percentText = document.createElement('div');
+        percentText.className = 'generation-progress-percent';
+        stepText.insertAdjacentElement('afterend', percentText);
+    }
 
     const now = Date.now();
     if (!skeleton.dataset.videoProgressStartedAt) {
@@ -834,8 +840,10 @@ function updateVideoSkeletonProgress(progress) {
         const hasElapsed = !/\b\d+[ms]\b/.test(text);
         text = hasElapsed ? `${phaseLabel} · ${text} · ${elapsedText}` : `${phaseLabel} · ${text}`;
         progressBar.classList.add('is-live');
+        stepText.classList.add('is-live');
     } else {
         progressBar.classList.remove('is-live');
+        stepText.classList.remove('is-live');
     }
 
     const lastPercent = Number(skeleton.dataset.videoProgressPercent) || 0;
@@ -855,6 +863,7 @@ function updateVideoSkeletonProgress(progress) {
     skeleton.dataset.videoProgressPercent = String(visiblePercent);
 
     progressBar.style.width = visiblePercent + '%';
+    percentText.textContent = `${Math.round(visiblePercent)}%`;
     stepText.textContent = text;
 }
 
