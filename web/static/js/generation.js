@@ -977,6 +977,18 @@ async function generate() {
     const isImageGeneration = (hasImage && !imageAnalysisRequest) || directTextToImage;
     pendingImage = isImageGeneration && hasImage ? currentImage : null;
 
+    if (isImageGeneration && typeof window.ensureJoyboyModelInstalledForUse === 'function') {
+        const ok = await window.ensureJoyboyModelInstalledForUse('image', model, {
+            tab: hasImage ? 'inpaint' : 'text2img',
+            hasImage,
+            pickerId: 'home',
+        });
+        if (!ok) {
+            _genSubmitLock = false;
+            return;
+        }
+    }
+
     if (!isImageGeneration) {
         // Vérifier si un modèle Ollama est disponible uniquement pour le chat.
         // Text2Img/Inpaint ne doivent pas rester bloqués sur le home à cause d'un
@@ -1314,6 +1326,15 @@ async function continueChat() {
     if (hasImage && !imageAnalysisRequest) {
         // Mode image dans le chat -> utiliser le flux d'image
         console.log('[CHAT] Image détectée, passage en mode inpainting');
+        const inpaintModel = getCurrentImageModel();
+        if (typeof window.ensureJoyboyModelInstalledForUse === 'function') {
+            const ok = await window.ensureJoyboyModelInstalledForUse('image', inpaintModel, {
+                tab: 'inpaint',
+                hasImage: true,
+                pickerId: 'chat',
+            });
+            if (!ok) return;
+        }
         await unloadTextModel();
 
         // Réutiliser la logique de génération d'image
@@ -1333,7 +1354,6 @@ async function continueChat() {
         addSkeletonMessage(prompt, pendingImage, true, null, currentGenerationChatId);
 
         // Backend loads the model on-demand, no need to wait for preloading
-        const inpaintModel = getCurrentImageModel();
         const imageRequestStartTime = Date.now();
 
         try {
@@ -1430,6 +1450,15 @@ async function continueChat() {
     }
 
     // Mode texte normal
+    if (typeof window.ensureJoyboyModelInstalledForUse === 'function') {
+        const chatModel = userSettings.chatModel || selectedChatModel;
+        const ok = await window.ensureJoyboyModelInstalledForUse('ollama', chatModel, {
+            tab: 'chat',
+            pickerId: 'chat',
+        });
+        if (!ok) return;
+    }
+
     // Vérifier si un modèle Ollama est disponible
     const modelCheck = await checkOllamaModelAvailable();
     if (!modelCheck.available) {

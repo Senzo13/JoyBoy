@@ -4,6 +4,8 @@
 // ===== VIDEO QUALITY VISIBILITY =====
 
 let videoModelRuntimeDefaults = null;
+let videoModelRuntimeCatalog = null;
+let previousRuntimeVideoModel = null;
 
 function normalizeRuntimeVideoModelId(modelId, models = []) {
     const value = String(modelId || '').trim();
@@ -40,6 +42,7 @@ function getVideoModelGroupLabel(category) {
 }
 
 function isRuntimeVideoModelDisabled(model) {
+    if (model.downloaded === false) return false;
     return model.launch_status === 'missing_backend'
         || (model.requires_experimental_env && !model.experimental_enabled);
 }
@@ -62,6 +65,13 @@ function formatRuntimeVideoModelOption(model) {
             : t('settings.generation.videoManualTestDisabled', 'mode test à activer'));
     } else if (model.experimental_low_vram) {
         details.push(t('settings.generation.videoNonRecommended', 'non recommandé'));
+    }
+    if (model.downloading) {
+        details.push('en cours');
+    } else if (model.downloaded === true) {
+        details.push('installé');
+    } else if (model.downloaded === false) {
+        details.push('à télécharger');
     }
     if (details.length) parts.push(`- ${details.join(', ')}`);
     return parts.join(' ');
@@ -94,6 +104,11 @@ function renderRuntimeVideoModels(catalog) {
     const select = document.getElementById('settings-video-model');
     if (!select || !catalog || !Array.isArray(catalog.models) || catalog.models.length === 0) return;
 
+    videoModelRuntimeCatalog = catalog;
+    window.videoModelRuntimeCatalog = catalog;
+    if (typeof allVideoModels !== 'undefined' && Array.isArray(catalog.models)) {
+        allVideoModels = catalog.models;
+    }
     videoModelRuntimeDefaults = Object.fromEntries(
         catalog.models.map(model => [model.id, {
             name: model.name,
@@ -125,6 +140,8 @@ function renderRuntimeVideoModels(catalog) {
         option.title = model.description || option.textContent;
         option.disabled = isRuntimeVideoModelDisabled(model);
         option.dataset.launchStatus = model.launch_status || 'ready';
+        option.dataset.downloaded = model.downloaded === true ? 'true' : 'false';
+        option.dataset.downloading = model.downloading === true ? 'true' : 'false';
         if (!option.disabled) {
             selectableModels.push(model);
         }
@@ -142,6 +159,7 @@ function renderRuntimeVideoModels(catalog) {
         saveSetting('videoModel', nextModel);
     }
     select.value = nextModel;
+    previousRuntimeVideoModel = nextModel;
 
     const desc = document.getElementById('gen-video-model-desc');
     if (desc && catalog.low_vram) {
@@ -168,13 +186,36 @@ function renderRuntimeVideoModels(catalog) {
 async function loadVideoModelsForRuntime() {
     try {
         const includeAdvanced = userSettings.showAdvancedVideoModels === true;
-        const query = includeAdvanced ? '?advanced=1&allow_experimental=1' : '';
-        const response = await fetch(`/api/video-models${query}`);
+        const query = includeAdvanced ? '?advanced=1&allow_experimental=1' : '?advanced=0&allow_experimental=0';
+        const response = await fetch(`/api/video-models/status${query}`);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         renderRuntimeVideoModels(await response.json());
     } catch (error) {
         console.warn('[VIDEO] Impossible de charger le catalogue runtime:', error);
     }
+}
+
+async function handleVideoModelSelectChange(selectEl) {
+    if (!selectEl) return;
+    const modelId = selectEl.value;
+    const model = videoModelRuntimeCatalog?.models?.find(item => item.id === modelId || item.key === modelId);
+    const previous = previousRuntimeVideoModel || userSettings.videoModel || 'svd';
+
+    if (model && model.downloaded === false) {
+        selectEl.value = previous;
+        if (typeof window.ensureJoyboyModelInstalledForUse === 'function') {
+            await window.ensureJoyboyModelInstalledForUse('video', modelId, { model, tab: 'video' });
+        } else {
+            if (typeof openModelsHub === 'function') openModelsHub();
+            if (typeof downloadVideoModel === 'function') downloadVideoModel(modelId);
+        }
+        return;
+    }
+
+    previousRuntimeVideoModel = modelId;
+    saveSetting('videoModel', modelId);
+    if (typeof updateVideoQualityVisibility === 'function') updateVideoQualityVisibility();
+    if (typeof updateEditVideoPromptVisibility === 'function') updateEditVideoPromptVisibility();
 }
 
 function updateVideoQualityVisibility() {

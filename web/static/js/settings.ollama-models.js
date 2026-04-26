@@ -229,8 +229,8 @@ async function searchOllamaModels() {
     }
 }
 
-async function pullOllamaModel(modelName) {
-    const btn = event?.target;
+async function pullOllamaModel(modelName, sourceButton = null) {
+    const btn = sourceButton || (typeof event !== 'undefined' ? event?.target : null);
     const modelItem = btn?.closest('.ollama-model-item');
 
     // Track download
@@ -258,11 +258,13 @@ async function pullOllamaModel(modelName) {
     }
 
     try {
-        const response = await fetch('/ollama/pull-stream', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ model: modelName })
-        });
+        const response = typeof apiOllama !== 'undefined' && apiOllama?.pullStream
+            ? await apiOllama.pullStream(modelName)
+            : await fetch('/ollama/pull-stream', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ model: modelName })
+            });
 
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
@@ -310,6 +312,9 @@ async function pullOllamaModel(modelName) {
 
                             if (btn) btn.textContent = t('settings.models.installedAction', 'Prêt');
                             loadOllamaModels();
+                            if (typeof loadTextModelsForPicker === 'function') {
+                                loadTextModelsForPicker();
+                            }
                         }
                     } catch (e) {
                         console.error('Parse error:', e);

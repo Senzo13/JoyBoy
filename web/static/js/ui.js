@@ -1415,46 +1415,90 @@ function _buildModelDesc(modelData, toolCapable) {
 // Charge les modèles Ollama installés pour le picker
 async function loadTextModelsForPicker() {
     try {
-        const response = await fetch('/ollama/models');
-        const data = await response.json();
+        const [installedResponse, availableResponse] = await Promise.all([
+            fetch('/ollama/models'),
+            fetch('/ollama/search?q=').catch(() => null),
+        ]);
+        const data = await installedResponse.json();
         const models = data.models || [];
+        let availableModels = [];
+        if (availableResponse?.ok) {
+            const availableData = await availableResponse.json();
+            availableModels = Array.isArray(availableData.models) ? availableData.models : [];
+        }
+        const installedNames = new Set(models.map(model => model.name));
 
-        if (models.length > 0) {
-            CHAT_MODELS = models.map(m => {
+        const installedChatModels = models.map(m => {
+            const toolCapable = isToolCapable(m.name);
+            const parts = m.name.split(':');
+            const baseName = parts[0];           // qwen2.5
+            const tag = parts[1] || 'latest';    // 7b, latest, etc.
+
+            // Display name: "qwen2.5 7b" instead of just "qwen2.5"
+            const displayName = tag === 'latest' ? baseName : `${baseName} ${tag}`;
+
+            // Build a useful description from backend data
+            const desc = _buildModelDesc(m, toolCapable);
+
+            let badge = 'balanced';
+            if (toolCapable) badge = 'tools';
+            else if (m.name.includes('dolphin')) badge = 'powerful';
+            else if (m.name.includes('coder')) badge = 'fast';
+
+            // Icon: vision models get eye, tool-capable get wrench, coders get zap
+            let icon = 'brain';
+            if (m.vision) icon = 'eye';
+            else if (toolCapable) icon = 'wrench';
+            else if (m.name.includes('coder')) icon = 'zap';
+
+            return {
+                id: m.name,
+                name: displayName,
+                desc: desc,
+                badge: badge,
+                icon: icon,
+                toolCapable: toolCapable,
+                downloaded: true,
+                downloadable: false,
+                downloadType: 'ollama',
+                downloadKey: m.name,
+            };
+        });
+        const availableChatModels = availableModels
+            .filter(m => m?.name && !installedNames.has(m.name))
+            .map(m => {
                 const toolCapable = isToolCapable(m.name);
-                const parts = m.name.split(':');
-                const baseName = parts[0];           // qwen2.5
-                const tag = parts[1] || 'latest';    // 7b, latest, etc.
-
-                // Display name: "qwen2.5 7b" instead of just "qwen2.5"
-                const displayName = tag === 'latest' ? baseName : `${baseName} ${tag}`;
-
-                // Build a useful description from backend data
-                const desc = _buildModelDesc(m, toolCapable);
-
-                let badge = 'balanced';
-                if (toolCapable) badge = 'tools';
-                else if (m.name.includes('dolphin')) badge = 'powerful';
-                else if (m.name.includes('coder')) badge = 'fast';
-
-                // Icon: vision models get eye, tool-capable get wrench, coders get zap
-                let icon = 'brain';
+                const displayName = typeof _formatModelName === 'function' ? _formatModelName(m.name) : m.name;
+                let badge = 'download';
+                if (m.vision) badge = 'vision';
+                else if (m.powerful) badge = 'powerful';
+                else if (m.fast) badge = 'fast';
+                let icon = 'download';
                 if (m.vision) icon = 'eye';
                 else if (toolCapable) icon = 'wrench';
-                else if (m.name.includes('coder')) icon = 'zap';
-
+                else if (m.fast) icon = 'zap';
                 return {
                     id: m.name,
                     name: displayName,
-                    desc: desc,
-                    badge: badge,
-                    icon: icon,
-                    toolCapable: toolCapable
+                    desc: [m.desc, m.size].filter(Boolean).join(' · ') || 'Modèle Ollama à télécharger',
+                    badge,
+                    icon,
+                    toolCapable,
+                    vision: m.vision === true,
+                    downloaded: false,
+                    downloadable: true,
+                    downloadType: 'ollama',
+                    downloadKey: m.name,
                 };
             });
 
-            // Trier: tool-capable en premier
+        if (installedChatModels.length > 0 || availableChatModels.length > 0) {
+            CHAT_MODELS = [...installedChatModels, ...availableChatModels];
+
+            // Trier: installés en premier, puis tool-capable.
             CHAT_MODELS.sort((a, b) => {
+                if (a.downloaded && !b.downloaded) return -1;
+                if (!a.downloaded && b.downloaded) return 1;
                 if (a.toolCapable && !b.toolCapable) return -1;
                 if (!a.toolCapable && b.toolCapable) return 1;
                 return 0;
@@ -1464,7 +1508,7 @@ async function loadTextModelsForPicker() {
         } else {
             // Fallback si aucun modèle
             CHAT_MODELS = [
-                { id: 'none', name: 'Aucun modèle', desc: 'Installez un modèle Ollama', badge: 'balanced', icon: 'brain' }
+                { id: 'none', name: 'Aucun modèle', desc: 'Installez un modèle Ollama', badge: 'balanced', icon: 'brain', downloaded: false, downloadable: false }
             ];
             TEXT_MODELS = CHAT_MODELS;
         }
@@ -1477,9 +1521,12 @@ async function loadTextModelsForPicker() {
         if (userSettings.chatModel) {
             selectedChatModel = userSettings.chatModel;
             selectedTextModel = selectedChatModel;  // Alias
-        } else if (CHAT_MODELS.length > 0 && CHAT_MODELS[0].id !== 'none') {
-            selectedChatModel = CHAT_MODELS[0].id;
-            selectedTextModel = selectedChatModel;
+        } else {
+            const firstInstalled = CHAT_MODELS.find(model => model.downloaded && model.id !== 'none');
+            if (firstInstalled) {
+                selectedChatModel = firstInstalled.id;
+                selectedTextModel = selectedChatModel;
+            }
         }
 
         // Re-render les pickers pour afficher les modèles
@@ -1601,6 +1648,312 @@ function modelPickerBadgeLabel(model) {
     if (model?.imported) return uiT('modelPicker.badges.local', 'Local');
     return uiT('modelPicker.badges.balanced', 'Équilibré');
 }
+
+const modelPickerInstallRefreshInFlight = new Map();
+
+function pickerEscapeHtml(value) {
+    if (typeof escapeHtml === 'function') return escapeHtml(String(value ?? ''));
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function getModelInstallKindForTab(tab) {
+    if (tab === 'inpaint' || tab === 'text2img') return 'image';
+    if (tab === 'video') return 'video';
+    return 'ollama';
+}
+
+function hasPickerInstallStatusForTab(tab) {
+    const kind = getModelInstallKindForTab(tab);
+    if (kind === 'image') {
+        return typeof allImageModels !== 'undefined' && Array.isArray(allImageModels) && allImageModels.length > 0;
+    }
+    if (kind === 'video') {
+        const runtimeModels = window.videoModelRuntimeCatalog?.models;
+        return (typeof allVideoModels !== 'undefined' && Array.isArray(allVideoModels) && allVideoModels.length > 0)
+            || (Array.isArray(runtimeModels) && runtimeModels.length > 0);
+    }
+    return Array.isArray(CHAT_MODELS) && CHAT_MODELS.some(model => model.downloaded === true || model.downloaded === false || model.cloud === true);
+}
+
+function findImageModelStatusForPicker(model) {
+    if (typeof allImageModels === 'undefined' || !Array.isArray(allImageModels)) return null;
+    const id = String(model?.id || model?.name || '').trim();
+    const key = String(model?.downloadKey || model?.key || '').trim();
+    return allImageModels.find(item =>
+        item?.name === id
+        || item?.key === id
+        || (key && item?.key === key)
+        || (key && item?.name === key)
+    ) || null;
+}
+
+function findVideoModelStatusForPicker(modelOrId) {
+    const id = String(modelOrId?.id || modelOrId?.key || modelOrId || '').trim();
+    const runtimeModels = Array.isArray(window.videoModelRuntimeCatalog?.models) ? window.videoModelRuntimeCatalog.models : [];
+    const statusModels = (typeof allVideoModels !== 'undefined' && Array.isArray(allVideoModels)) ? allVideoModels : [];
+    return [...statusModels, ...runtimeModels].find(item =>
+        item?.id === id || item?.key === id || item?.repo === id || item?.repo_id === id
+    ) || null;
+}
+
+function getPickerModelInstallInfo(model, tab) {
+    const kind = getModelInstallKindForTab(tab);
+    const modelId = String(model?.id || model?.key || model?.name || '').trim();
+    if (!modelId || modelId === 'loading') {
+        return { kind, installed: false, downloadable: false, status: 'unknown', label: uiT('modelPicker.install.checking', 'Vérif...') };
+    }
+    if (isCloudPickerModel(model)) {
+        return { kind, installed: true, downloadable: false, status: 'cloud', label: uiT('modelPicker.install.cloud', 'Cloud') };
+    }
+
+    if (kind === 'image') {
+        const meta = findImageModelStatusForPicker(model);
+        if (!meta) {
+            return { kind, installed: true, downloadable: false, status: 'external', label: uiT('modelPicker.install.local', 'Local') };
+        }
+        if (meta.downloading) {
+            return { kind, installed: false, downloadable: false, status: 'downloading', label: uiT('modelPicker.install.downloading', 'Téléchargement'), downloadKey: meta.key, meta };
+        }
+        return {
+            kind,
+            installed: meta.downloaded === true,
+            downloadable: meta.downloaded !== true,
+            status: meta.downloaded === true ? 'installed' : 'missing',
+            label: meta.downloaded === true ? uiT('modelPicker.install.installed', 'Installé') : uiT('modelPicker.install.missing', 'À télécharger'),
+            downloadKey: meta.key,
+            meta,
+        };
+    }
+
+    if (kind === 'video') {
+        const meta = findVideoModelStatusForPicker(model);
+        if (!meta) {
+            return { kind, installed: true, downloadable: false, status: 'unknown', label: uiT('modelPicker.install.local', 'Local') };
+        }
+        if (meta.downloading) {
+            return { kind, installed: false, downloadable: false, status: 'downloading', label: uiT('modelPicker.install.downloading', 'Téléchargement'), downloadKey: meta.key || meta.id, meta };
+        }
+        return {
+            kind,
+            installed: meta.downloaded === true,
+            downloadable: meta.downloaded !== true,
+            status: meta.downloaded === true ? 'installed' : 'missing',
+            label: meta.downloaded === true ? uiT('modelPicker.install.installed', 'Installé') : uiT('modelPicker.install.missing', 'À télécharger'),
+            downloadKey: meta.key || meta.id,
+            meta,
+        };
+    }
+
+    if (modelId === 'download-vision') {
+        return { kind, installed: false, downloadable: true, status: 'missing', label: uiT('modelPicker.install.missing', 'À télécharger'), downloadKey: 'moondream:1.8b' };
+    }
+    if (model.downloaded === false || model.downloadable === true) {
+        return { kind, installed: false, downloadable: true, status: 'missing', label: uiT('modelPicker.install.missing', 'À télécharger'), downloadKey: model.downloadKey || modelId, meta: model };
+    }
+    if (model.downloaded === true) {
+        return { kind, installed: true, downloadable: false, status: 'installed', label: uiT('modelPicker.install.installed', 'Installé'), downloadKey: model.downloadKey || modelId, meta: model };
+    }
+    return { kind, installed: true, downloadable: false, status: 'installed', label: uiT('modelPicker.install.installed', 'Installé'), downloadKey: modelId, meta: model };
+}
+
+function renderPickerInstallBadge(installInfo) {
+    if (!installInfo) return '';
+    return `<span class="model-picker-install ${installInfo.status}">${pickerEscapeHtml(installInfo.label)}</span>`;
+}
+
+async function refreshModelPickerInstallStateForTab(tab, pickerId = 'home', force = false) {
+    const kind = getModelInstallKindForTab(tab);
+    if (!force && hasPickerInstallStatusForTab(tab)) return;
+    if (modelPickerInstallRefreshInFlight.has(kind)) {
+        await modelPickerInstallRefreshInFlight.get(kind);
+        return;
+    }
+    const refreshPromise = (async () => {
+        try {
+            if (kind === 'image' && typeof apiModels !== 'undefined' && apiModels?.checkModels) {
+                const result = await apiModels.checkModels();
+                if (result.ok && result.data?.success && Array.isArray(result.data.models) && typeof allImageModels !== 'undefined') {
+                    allImageModels = result.data.models;
+                }
+            } else if (kind === 'video') {
+                const response = await fetch('/api/video-models/status?advanced=1&allow_experimental=1');
+                const data = await response.json();
+                if (response.ok && data?.success && Array.isArray(data.models)) {
+                    if (typeof allVideoModels !== 'undefined') allVideoModels = data.models;
+                    window.videoModelRuntimeCatalog = { ...(window.videoModelRuntimeCatalog || {}), ...data, models: data.models };
+                }
+            } else if (kind === 'ollama' && typeof loadTextModelsForPicker === 'function') {
+                await loadTextModelsForPicker();
+                return;
+            }
+        } catch (error) {
+            console.warn('[PICKER] Statut modèles indisponible:', error);
+        } finally {
+            modelPickerInstallRefreshInFlight.delete(kind);
+        }
+        renderModelPickerList(pickerId);
+    })();
+    modelPickerInstallRefreshInFlight.set(kind, refreshPromise);
+    await refreshPromise;
+}
+
+function getInstallDialogTypeLabel(kind) {
+    if (kind === 'image') return 'Image';
+    if (kind === 'video') return 'Vidéo';
+    return 'LLM local';
+}
+
+function showModelInstallDialog(model, installInfo) {
+    return new Promise(resolve => {
+        const existing = document.querySelector('.model-install-overlay');
+        if (existing) existing.remove();
+        const kindLabel = getInstallDialogTypeLabel(installInfo.kind);
+        const modelName = model?.name || model?.id || installInfo.downloadKey || 'Modèle';
+        const modelDesc = model?.desc || installInfo.meta?.description || installInfo.meta?.desc || '';
+        const overlay = document.createElement('div');
+        overlay.className = 'model-install-overlay';
+        overlay.innerHTML = `
+            <div class="model-install-dialog" role="dialog" aria-modal="true">
+                <button type="button" class="model-install-close" aria-label="Fermer">
+                    <i data-lucide="x"></i>
+                </button>
+                <div class="model-install-icon">
+                    <i data-lucide="${installInfo.kind === 'video' ? 'clapperboard' : installInfo.kind === 'image' ? 'image' : 'download'}"></i>
+                </div>
+                <div class="model-install-kicker">${pickerEscapeHtml(kindLabel)} · ${pickerEscapeHtml(installInfo.label)}</div>
+                <h3>${pickerEscapeHtml(modelName)}</h3>
+                <p>${pickerEscapeHtml(modelDesc || `Ce modèle n'est pas encore installé sur cette machine.`)}</p>
+                <div class="model-install-note">
+                    <i data-lucide="hard-drive-download"></i>
+                    <span>Pour l'utiliser, JoyBoy doit d'abord ouvrir la page Modèles et lancer le téléchargement.</span>
+                </div>
+                <div class="model-install-actions">
+                    <button type="button" class="model-install-btn ghost" data-action="cancel">Annuler</button>
+                    <button type="button" class="model-install-btn primary" data-action="download">
+                        <i data-lucide="download"></i>
+                        Télécharger
+                    </button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+        if (window.lucide) lucide.createIcons();
+
+        const close = (value) => {
+            overlay.classList.remove('open');
+            setTimeout(() => overlay.remove(), 120);
+            resolve(value);
+        };
+        overlay.addEventListener('click', (event) => {
+            if (event.target === overlay || event.target.closest('[data-action="cancel"]') || event.target.closest('.model-install-close')) {
+                close(false);
+            }
+            if (event.target.closest('[data-action="download"]')) {
+                close(true);
+            }
+        });
+        requestAnimationFrame(() => overlay.classList.add('open'));
+    });
+}
+
+function openModelInstallDestination(installInfo, model, tab) {
+    if (typeof openModelsHub === 'function') openModelsHub();
+    setTimeout(() => {
+        if (installInfo.kind === 'image') {
+            const subtab = document.getElementById('models-subtab-image');
+            if (typeof switchModelsSubtab === 'function') switchModelsSubtab('image', subtab);
+            const inner = document.getElementById('models-image-tab-catalog');
+            if (typeof switchModelsInnerTab === 'function') switchModelsInnerTab('models-image-panel', 'catalog', inner);
+            if (typeof toggleImageModelFilter === 'function') {
+                toggleImageModelFilter(tab === 'text2img' ? 'txt2img' : 'inpaint');
+            }
+        } else if (installInfo.kind === 'video') {
+            const subtab = document.getElementById('models-subtab-video');
+            if (typeof switchModelsSubtab === 'function') switchModelsSubtab('video', subtab);
+            const inner = document.getElementById('models-video-tab-catalog');
+            if (typeof switchModelsInnerTab === 'function') switchModelsInnerTab('models-video-panel', 'catalog', inner);
+        } else {
+            const subtab = document.getElementById('models-subtab-text');
+            if (typeof switchModelsSubtab === 'function') switchModelsSubtab('text', subtab);
+            const inner = document.getElementById('models-text-tab-available');
+            if (typeof switchModelsInnerTab === 'function') switchModelsInnerTab('models-text-panel', 'install', inner);
+            const input = document.getElementById('ollama-search-input');
+            if (input && installInfo.downloadKey) input.value = installInfo.downloadKey;
+            if (typeof searchOllamaModels === 'function') searchOllamaModels();
+        }
+    }, 80);
+}
+
+async function startPickerModelDownload(installInfo, model, tab) {
+    const downloadKey = installInfo.downloadKey || model?.downloadKey || model?.key || model?.id;
+    if (!downloadKey) {
+        if (typeof Toast !== 'undefined') Toast.error('Téléchargement impossible', 'Modèle introuvable dans le catalogue local.');
+        return;
+    }
+    setTimeout(async () => {
+        try {
+            if (installInfo.kind === 'image' && typeof downloadImageModel === 'function') {
+                if (typeof checkModelsStatus === 'function') await checkModelsStatus();
+                const button = [...document.querySelectorAll('#models-image-panel .btn-install-model')]
+                    .find(btn => btn.dataset?.modelKey === downloadKey);
+                await downloadImageModel(downloadKey, button || null);
+            } else if (installInfo.kind === 'video' && typeof downloadVideoModel === 'function') {
+                if (typeof checkVideoModelsStatus === 'function') await checkVideoModelsStatus();
+                const button = [...document.querySelectorAll('#models-video-panel .btn-install-model')]
+                    .find(btn => btn.dataset?.modelId === downloadKey);
+                await downloadVideoModel(downloadKey, button || null);
+            } else if (installInfo.kind === 'ollama' && typeof pullOllamaModel === 'function') {
+                if (typeof searchOllamaModels === 'function') await searchOllamaModels();
+                const button = [...document.querySelectorAll('#ollama-search-results .btn-install-model')]
+                    .find(btn => btn.getAttribute('onclick')?.includes(downloadKey));
+                await pullOllamaModel(downloadKey, button || null);
+            }
+        } catch (error) {
+            if (typeof Toast !== 'undefined') Toast.error('Erreur', error.message || String(error));
+        } finally {
+            refreshModelPickerInstallStateForTab(tab, activePickerId || 'home', true);
+        }
+    }, 220);
+}
+
+async function handleMissingPickerModel(model, tab, pickerId = 'home') {
+    const installInfo = getPickerModelInstallInfo(model, tab);
+    document.querySelectorAll('.model-picker').forEach(p => p.classList.remove('open'));
+    activePickerId = null;
+    document.removeEventListener('click', closeModelPickerOnClickOutside);
+
+    if (installInfo.status === 'downloading') {
+        openModelInstallDestination(installInfo, model, tab);
+        if (typeof Toast !== 'undefined') Toast.info('Téléchargement déjà en cours', `${model?.name || model?.id || 'Ce modèle'} est déjà en téléchargement.`);
+        return false;
+    }
+
+    const confirmed = await showModelInstallDialog(model, installInfo);
+    if (!confirmed) return false;
+    openModelInstallDestination(installInfo, model, tab);
+    await startPickerModelDownload(installInfo, model, tab);
+    return false;
+}
+
+window.ensureJoyboyModelInstalledForUse = async function ensureJoyboyModelInstalledForUse(kind, modelId, options = {}) {
+    const tab = options.tab || (kind === 'image' ? (options.hasImage ? 'inpaint' : 'text2img') : kind === 'video' ? 'video' : 'chat');
+    if (!hasPickerInstallStatusForTab(tab)) {
+        await refreshModelPickerInstallStateForTab(tab, options.pickerId || 'home', true);
+    }
+    let model = options.model || null;
+    if (!model && tab === 'video') model = findVideoModelStatusForPicker(modelId);
+    if (!model && tab !== 'video') model = getModelsForTab(tab).find(item => item.id === modelId || item.name === modelId);
+    model = model || { id: modelId, name: modelId };
+    const installInfo = getPickerModelInstallInfo(model, tab);
+    if (installInfo.installed) return true;
+    await handleMissingPickerModel(model, tab, options.pickerId || 'home');
+    return false;
+};
 
 // Compat: selectedImageModel pointe vers inpaint par défaut
 let selectedImageModel = selectedInpaintModel;
@@ -1971,6 +2324,7 @@ function toggleModelPicker(pickerId = 'home') {
         }
 
         renderModelPickerList(pickerId);
+        refreshModelPickerInstallStateForTab(getPickerEffectiveTab(pickerId), pickerId);
         setTimeout(() => {
             document.addEventListener('click', closeModelPickerOnClickOutside);
         }, 10);
@@ -2277,9 +2631,11 @@ function renderModelPickerList(pickerId = 'home') {
         const badgeText = modelPickerBadgeLabel(model);
         const useCase = getModelPickerUseCase(model, tab, pickerId);
         const modelDesc = translateModelPickerDesc(model);
+        const installInfo = getPickerModelInstallInfo(model, tab);
+        const installClass = installInfo.installed ? 'installed' : installInfo.status;
 
         return `
-        <div class="model-picker-item ${model.id === selectedModel ? 'active' : ''}"
+        <div class="model-picker-item ${model.id === selectedModel ? 'active' : ''} install-${installClass}"
              onclick="selectPickerModel('${model.id}', '${pickerId}')">
             <div class="model-picker-icon">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -2291,7 +2647,10 @@ function renderModelPickerList(pickerId = 'home') {
                 <div class="model-picker-desc">${modelDesc}</div>
                 ${useCase ? `<div class="model-picker-meta">${useCase}</div>` : ''}
             </div>
-            <span class="model-picker-badge ${badgeClass}">${badgeText}</span>
+            <span class="model-picker-pills">
+                <span class="model-picker-badge ${badgeClass}">${badgeText}</span>
+                ${renderPickerInstallBadge(installInfo)}
+            </span>
         </div>
     `;
     }).join('')}
@@ -2313,9 +2672,18 @@ function unloadPreviousLocalTextModelWhenUsingCloud(previousModel, nextModel) {
     });
 }
 
-function selectPickerModel(modelId, pickerId = 'home') {
+async function selectPickerModel(modelId, pickerId = 'home') {
     // Edit picker = sélection indépendante pour l'éditeur
     if (pickerId === 'edit') {
+        if (!hasPickerInstallStatusForTab('inpaint')) {
+            await refreshModelPickerInstallStateForTab('inpaint', pickerId, true);
+        }
+        const editModel = getInpaintModels().find(model => model.id === modelId) || { id: modelId, name: modelId };
+        const editInstallInfo = getPickerModelInstallInfo(editModel, 'inpaint');
+        if (!editInstallInfo.installed) {
+            await handleMissingPickerModel(editModel, 'inpaint', pickerId);
+            return;
+        }
         selectedEditModel = modelId;
         Settings.set('editSelectedModel', modelId);
         const textSpan = document.getElementById('edit-selected-model-text');
@@ -2327,6 +2695,15 @@ function selectPickerModel(modelId, pickerId = 'home') {
     }
 
     const modelType = getPickerEffectiveTab(pickerId);
+    if (!hasPickerInstallStatusForTab(modelType)) {
+        await refreshModelPickerInstallStateForTab(modelType, pickerId, true);
+    }
+    const pickedModel = getModelsForTab(modelType).find(model => model.id === modelId) || { id: modelId, name: modelId };
+    const installInfo = getPickerModelInstallInfo(pickedModel, modelType);
+    if (!installInfo.installed) {
+        await handleMissingPickerModel(pickedModel, modelType, pickerId);
+        return;
+    }
     const previousModel = getSelectedModelForTab(modelType);
 
     if (modelType === 'inpaint') {

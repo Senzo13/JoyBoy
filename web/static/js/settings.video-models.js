@@ -87,6 +87,11 @@ async function checkVideoModelsStatus() {
         }
 
         allVideoModels = Array.isArray(data.models) ? data.models : [];
+        window.videoModelRuntimeCatalog = { ...(window.videoModelRuntimeCatalog || {}), ...data, models: allVideoModels };
+        if (typeof renderModelPickerList === 'function') {
+            renderModelPickerList('home');
+            renderModelPickerList('chat');
+        }
         renderCachedVideoModelLists();
     } catch (error) {
         const html = `<div class="settings-info">${escapeHtml(t('settings.models.genericError', 'Erreur : {error}', { error: error.message || String(error) }))}</div>`;

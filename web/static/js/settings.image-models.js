@@ -22,6 +22,11 @@ async function checkModelsStatus() {
     const data = result.data;
     if (data.success && data.models && data.models.length > 0) {
         allImageModels = data.models;
+        if (typeof renderModelPickerList === 'function') {
+            renderModelPickerList('home');
+            renderModelPickerList('chat');
+            renderModelPickerList('edit');
+        }
 
         // Séparer installés et non installés
         const installed = data.models.filter(m => m.downloaded && (isAdultSurfaceEnabled() || !isAdultImageSurfaceModel(m)));
@@ -342,7 +347,7 @@ function downloadImageModelFromButton(button) {
 }
 
 async function downloadImageModel(modelKey, sourceButton = null) {
-    const btn = sourceButton || event?.target;
+    const btn = sourceButton || (typeof event !== 'undefined' ? event?.target : null);
     const modelItem = btn?.closest('.ollama-model-item');
 
     if (btn) {
@@ -477,7 +482,7 @@ async function deleteImageModel(modelKey, modelName, sourceButton = null) {
     const confirmed = await JoyDialog.confirm(t('settings.models.deleteImageConfirm', 'Supprimer le modèle "{model}" ?\n\nCela libérera l’espace disque.', { model: modelName }), { variant: 'danger' });
     if (!confirmed) return;
 
-    const btn = sourceButton || event?.target;
+    const btn = sourceButton || (typeof event !== 'undefined' ? event?.target : null);
     if (btn) {
         btn.disabled = true;
         btn.innerHTML = `<i data-lucide="loader-circle"></i><span>${escapeHtml(t('settings.models.deleting', 'Suppression...'))}</span>`;

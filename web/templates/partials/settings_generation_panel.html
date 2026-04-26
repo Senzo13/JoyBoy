@@ -145,7 +145,7 @@
                                 <div class="settings-label" id="gen-video-model-label">Modèle vidéo</div>
                                 <div class="settings-label-desc" id="gen-video-model-desc">Sur 8GB, JoyBoy recommande SVD. Les autres modèles vidéo sont séparés entre test manuel et non disponible.</div>
                             </div>
-                            <select class="settings-select" id="settings-video-model" onchange="saveSetting('videoModel', this.value); if(typeof updateVideoQualityVisibility==='function') updateVideoQualityVisibility(); if(typeof updateEditVideoPromptVisibility==='function') updateEditVideoPromptVisibility()">
+                            <select class="settings-select" id="settings-video-model" onchange="handleVideoModelSelectChange(this)">
                                 <option value="ltx">⚡ LTX-Video 2B FP8/offload - recommandé 8GB, I2V + prompt (~3GB)</option>
                                 <option value="svd">SVD 1.1 - Image→Vidéo rapide, mouvement subtil (~8GB)</option>
                             </select>

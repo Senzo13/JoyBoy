@@ -417,6 +417,12 @@ async function handleVideoClick() {
         imgSrc = chatPreview.src;
     }
 
+    const selectedVideoModel = userSettings.videoModel || 'svd';
+    if (typeof window.ensureJoyboyModelInstalledForUse === 'function') {
+        const ok = await window.ensureJoyboyModelInstalledForUse('video', selectedVideoModel, { tab: 'video' });
+        if (!ok) return;
+    }
+
     if (isGenerating) {
         if (!currentVideoSource?.videoSessionId && !imgSrc && !prompt) {
             await JoyDialog.alert(appT('app.videoPromptRequired', 'Écris un prompt pour la vidéo (T2V mode)'));
