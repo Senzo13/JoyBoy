@@ -1504,10 +1504,22 @@ function replaceVideoSkeletonWithReal(videoSrc, format, genTime, chatId, metadat
         ? buildVideoKeyframeRail(_lastVideoContext.anchors || [], videoSessionId)
         : '';
     const continueBtn = canContinue ? `
-        <button class="video-control-btn video-control-btn-wide" onclick="openVideoContinuationPanel({ videoSessionId: '${videoSessionId || ''}' })" title="Continuer la vidéo" style="display:flex;align-items:center;gap:4px;">
+        <button class="video-control-btn video-control-btn-wide video-continue-btn" onclick="openVideoContinuationPanel({ videoSessionId: '${videoSessionId || ''}' })" title="Continuer la vidéo">
             <i data-lucide="play"></i> Continuer
         </button>
     ` : '';
+    const continuationTools = typeof buildVideoContinuationTools === 'function'
+        ? buildVideoContinuationTools(
+            typeof _lastVideoContext !== 'undefined' ? (_lastVideoContext.anchors || []) : [],
+            videoSessionId,
+            continueBtn
+        )
+        : `
+            <div class="video-continuation-tools">
+                ${keyframeRail}
+                ${continueBtn}
+            </div>
+        `;
 
     if (isGif) {
         // GIF - afficher comme image
@@ -1521,18 +1533,19 @@ function replaceVideoSkeletonWithReal(videoSrc, format, genTime, chatId, metadat
         // MP4 - player vidéo avec contrôles
         messageDiv.innerHTML = `
             <div class="ai-message">
-                <div class="video-container">
-                    <video class="result-video" autoplay loop muted playsinline>
-                        <source src="${videoUrl}" type="video/mp4">
-                    </video>
-                    <div class="video-controls">
-                        <button class="video-control-btn" onclick="toggleVideoPlay(this)" data-playing="true"><i data-lucide="pause"></i></button>
-                        <button class="video-control-btn" onclick="toggleVideoMute(this)" data-muted="true"><i data-lucide="volume-x"></i></button>
-                        <button class="video-control-btn" onclick="toggleVideoFullscreen(this)"><i data-lucide="maximize"></i></button>
-                        <a class="video-control-btn" href="${downloadUrl}" download="animation.mp4"><i data-lucide="download"></i></a>
-                        ${continueBtn}
+                <div class="video-container video-result-container">
+                    <div class="video-player-shell">
+                        <video class="result-video" autoplay loop muted playsinline>
+                            <source src="${videoUrl}" type="video/mp4">
+                        </video>
+                        <div class="video-controls">
+                            <button class="video-control-btn" onclick="toggleVideoPlay(this)" data-playing="true"><i data-lucide="pause"></i></button>
+                            <button class="video-control-btn" onclick="toggleVideoMute(this)" data-muted="true"><i data-lucide="volume-x"></i></button>
+                            <button class="video-control-btn" onclick="toggleVideoFullscreen(this)"><i data-lucide="maximize"></i></button>
+                            <a class="video-control-btn" href="${downloadUrl}" download="animation.mp4"><i data-lucide="download"></i></a>
+                        </div>
                     </div>
-                    ${keyframeRail}
+                    ${continuationTools}
                 </div>
                 <div class="generation-time">${timeText}</div>
             </div>

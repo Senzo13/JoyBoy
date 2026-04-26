@@ -1148,6 +1148,17 @@ function buildVideoKeyframeRail(anchors = [], sessionId = null) {
     `;
 }
 
+function buildVideoContinuationTools(anchors = [], sessionId = null, continueButtonHtml = '') {
+    const keyframeRail = buildVideoKeyframeRail(anchors, sessionId);
+    if (!keyframeRail && !continueButtonHtml) return '';
+    return `
+        <div class="video-continuation-tools">
+            ${keyframeRail}
+            ${continueButtonHtml || ''}
+        </div>
+    `;
+}
+
 function ensureVideoContinuationPanel() {
     let panel = document.getElementById('video-continuation-panel');
     if (panel) return panel;
@@ -1245,12 +1256,12 @@ function addMessageVideo(videoBase64, generationTime = null, sourceImage = null,
         sourceImage,
         chatId
     );
-    const keyframeRail = buildVideoKeyframeRail(context.anchors, context.videoSessionId);
     const continueBtn = context.canContinue ? `
-        <button class="edit-btn video-continue-btn" onclick="openVideoContinuationPanel({ videoSessionId: '${context.videoSessionId || ''}' })" title="Continuer la vidéo" style="display:flex;align-items:center;gap:4px;padding:6px 12px;margin-top:6px;background:rgba(139,92,246,0.15);border:1px solid rgba(139,92,246,0.3);border-radius:8px;cursor:pointer;color:#a78bfa;">
+        <button class="edit-btn video-continue-btn" onclick="openVideoContinuationPanel({ videoSessionId: '${context.videoSessionId || ''}' })" title="Continuer la vidéo">
             ${playIcon} Continuer
         </button>
     ` : '';
+    const continuationTools = buildVideoContinuationTools(context.anchors, context.videoSessionId, continueBtn);
 
     const messageHtml = `
         <div class="message">
@@ -1260,16 +1271,17 @@ function addMessageVideo(videoBase64, generationTime = null, sourceImage = null,
             <div class="ai-response">
                 <div class="result-images">
                     ${sourceHtml}
-                    <div class="result-image-container video-container">
-                        <video controls autoplay loop muted class="result-video" style="max-width:100%;border-radius:8px;">
-                            <source src="data:video/mp4;base64,${videoBase64}" type="video/mp4">
-                        </video>
-                        <div class="video-actions" style="position:absolute;top:8px;right:8px;display:flex;gap:4px;">
-                            <a href="data:video/mp4;base64,${videoBase64}" download="video.mp4" class="edit-btn" title="Télécharger">${downloadIcon}</a>
+                    <div class="result-image-container video-container video-result-container">
+                        <div class="video-player-shell">
+                            <video controls autoplay loop muted playsinline class="result-video">
+                                <source src="data:video/mp4;base64,${videoBase64}" type="video/mp4">
+                            </video>
+                            <div class="video-actions">
+                                <a href="data:video/mp4;base64,${videoBase64}" download="video.mp4" class="edit-btn" title="Télécharger">${downloadIcon}</a>
+                            </div>
                         </div>
                         <div class="image-label">${label} ${timeDisplay}</div>
-                        ${keyframeRail}
-                        ${continueBtn}
+                        ${continuationTools}
                     </div>
                 </div>
             </div>

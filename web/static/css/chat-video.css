@@ -92,6 +92,14 @@
     position: relative;
     width: 280px;
     border-radius: 12px;
+    overflow: visible;
+    background: transparent;
+}
+
+.video-player-shell {
+    position: relative;
+    width: 100%;
+    border-radius: 12px;
     overflow: hidden;
     background: #0d0d0d;
 }
@@ -100,6 +108,8 @@
     width: 100%;
     display: block;
     border-radius: 12px;
+    background: #0d0d0d;
+    object-fit: contain;
 }
 
 .result-video-gif {
@@ -121,6 +131,18 @@
     transition: opacity 0.3s ease;
 }
 
+.video-player-shell > .video-actions {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    display: flex;
+    gap: 4px;
+    margin-top: 0;
+    justify-content: flex-end;
+    z-index: 2;
+}
+
+.video-player-shell:hover .video-controls,
 .video-container:hover .video-controls {
     opacity: 1;
 }
@@ -159,6 +181,10 @@
     padding: 8px;
     overflow-x: auto;
     background: rgba(0, 0, 0, 0.38);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    max-width: 100%;
+    box-sizing: border-box;
 }
 
 .video-keyframe-btn {
@@ -182,6 +208,33 @@
     height: 100%;
     object-fit: cover;
     display: block;
+}
+
+.video-continuation-tools {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 8px;
+    width: 100%;
+}
+
+.video-continue-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    align-self: flex-start;
+    padding: 6px 12px;
+    background: rgba(139, 92, 246, 0.15);
+    border: 1px solid rgba(139, 92, 246, 0.3);
+    border-radius: 8px;
+    cursor: pointer;
+    color: #a78bfa;
+    text-decoration: none;
+}
+
+.video-continue-btn:hover {
+    background: rgba(139, 92, 246, 0.24);
 }
 
 .video-continuation-panel {
