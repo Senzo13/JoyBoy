@@ -100,6 +100,7 @@ function renderVideoModelItem(model, isInstalled) {
     const isEquipped = model.key === activeModel || model.id === activeModel;
     const modelKey = escapeHtml(String(model.key || model.id || ''));
     const modelName = escapeHtml(String(model.name || model.key || ''));
+    const modelNameAttr = escapeHtml(String(model.name || model.key || model.id || ''));
     const repo = escapeHtml(String(model.repo || model.id || ''));
     const caps = videoModelCapabilities(model).join(' · ');
     const size = model.total_bytes ? `${(model.total_bytes / (1024 ** 3)).toFixed(1)} GB` : (model.vram || '');
@@ -120,6 +121,10 @@ function renderVideoModelItem(model, isInstalled) {
         ? `
             <button class="btn-equip ${isEquipped ? 'equipped' : ''}" data-model-id="${modelKey}" onclick="equipVideoModelFromButton(this)">
                 ${isEquipped ? `<i data-lucide="check"></i> ${escapeHtml(t('settings.models.equipped', 'Équipé'))}` : escapeHtml(t('settings.models.equip', 'Équiper'))}
+            </button>
+            <button class="btn-delete-model" data-model-id="${modelKey}" data-model-name="${modelNameAttr}" onclick="deleteVideoModelFromButton(this)">
+                <i data-lucide="trash-2"></i>
+                <span>${escapeHtml(t('common.delete', 'Supprimer'))}</span>
             </button>
         `
         : `
@@ -200,6 +205,56 @@ function downloadVideoModelFromButton(button) {
     const modelId = button?.dataset?.modelId || '';
     if (!modelId) return;
     downloadVideoModel(modelId, button);
+}
+
+function deleteVideoModelFromButton(button) {
+    const modelId = button?.dataset?.modelId || '';
+    const modelName = button?.dataset?.modelName || modelId;
+    if (!modelId) return;
+    deleteVideoModel(modelId, modelName, button);
+}
+
+async function deleteVideoModel(modelId, modelName, sourceButton = null) {
+    const confirmed = await JoyDialog.confirm(
+        t('settings.models.deleteImageConfirm', 'Supprimer le modèle "{model}" ?\n\nCela libérera l’espace disque.', { model: modelName }),
+        { variant: 'danger' }
+    );
+    if (!confirmed) return;
+
+    const btn = sourceButton || (typeof event !== 'undefined' ? event?.target : null);
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<i data-lucide="loader-circle"></i><span>${escapeHtml(t('settings.models.deleting', 'Suppression...'))}</span>`;
+        if (window.lucide) lucide.createIcons();
+    }
+
+    try {
+        const response = await fetch('/api/video-models/delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model_id: modelId }),
+        });
+        const data = await response.json();
+        if (!response.ok || !data.success) {
+            throw new Error(data.error || `HTTP ${response.status}`);
+        }
+
+        if ((userSettings.videoModel || 'svd') === modelId) {
+            saveSetting('videoModel', 'svd');
+            if (typeof updateVideoQualityVisibility === 'function') updateVideoQualityVisibility();
+            if (typeof loadVideoModelsForRuntime === 'function') loadVideoModelsForRuntime();
+        }
+
+        Toast.success(t('settings.models.deletedTitle', 'Supprimé'), t('settings.models.deletedBody', '{model} a été supprimé', { model: modelName }));
+        checkVideoModelsStatus();
+    } catch (error) {
+        Toast.error(t('common.error', 'Erreur'), error.message || String(error));
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = `<i data-lucide="trash-2"></i><span>${escapeHtml(t('common.delete', 'Supprimer'))}</span>`;
+            if (window.lucide) lucide.createIcons();
+        }
+    }
 }
 
 async function downloadVideoModel(modelId, sourceButton = null) {

@@ -621,6 +621,39 @@ def _video_model_downloaded_size(meta, cache_dir):
     return total
 
 
+def _safe_rmtree_under(path, parent):
+    if not path or not parent:
+        return False
+    target = os.path.abspath(path)
+    root = os.path.abspath(parent)
+    try:
+        if os.path.commonpath([target, root]) != root:
+            print(f"[VIDEO_MODELS] Refus suppression hors cache: {target}")
+            return False
+    except ValueError:
+        return False
+    if not os.path.exists(target):
+        return False
+    shutil.rmtree(target)
+    return True
+
+
+def _delete_video_repo_artifacts(repo_id, cache_dir):
+    deleted = False
+    local_dir = os.path.join(cache_dir, str(repo_id).replace("/", "--"))
+    if _safe_rmtree_under(local_dir, cache_dir):
+        print(f"[VIDEO_MODELS] Cache local supprimé: {local_dir}")
+        deleted = True
+
+    try:
+        from core.models import delete_model_from_cache
+        deleted = bool(delete_model_from_cache(repo_id)) or deleted
+    except Exception as exc:
+        print(f"[VIDEO_MODELS] Suppression cache HF ignorée pour {repo_id}: {exc}")
+
+    return deleted
+
+
 def _video_model_total_size(meta):
     return sum(_video_repo_size(repo_id, _video_repo_allow_patterns(meta, repo_id)) for repo_id in _video_model_repos(meta))
 
@@ -861,6 +894,51 @@ def download_video_model():
 
     threading.Thread(target=download_thread, daemon=True).start()
     return jsonify({"success": True, "message": "downloading"})
+
+
+@video_bp.route('/api/video-models/delete', methods=['POST'])
+def delete_video_model():
+    data = request.json or {}
+    model_id = str(data.get("model_id") or data.get("model") or "").strip()
+    if not model_id:
+        return jsonify({"success": False, "error": "model_id requis"}), 400
+
+    from core.models import VIDEO_MODELS, custom_cache
+
+    if model_id not in VIDEO_MODELS:
+        return jsonify({"success": False, "error": "Modèle vidéo inconnu"}), 400
+
+    if video_download_status.get(model_id, {}).get("downloading"):
+        return jsonify({"success": False, "error": "Téléchargement en cours, impossible de supprimer maintenant"}), 409
+
+    meta = VIDEO_MODELS[model_id]
+    repos = _video_model_repos(meta)
+    if not repos:
+        return jsonify({"success": False, "error": "Repo Hugging Face manquant"}), 400
+
+    try:
+        from core.model_manager import ModelManager
+        mgr = ModelManager.get()
+        if getattr(mgr, "_current_video_model", None) == model_id:
+            mgr._unload_video()
+            mgr._clear_memory(aggressive=True)
+    except Exception as exc:
+        print(f"[VIDEO_MODELS] Unload avant suppression ignoré: {exc}")
+
+    deleted_repos = []
+    for repo_id in repos:
+        if _delete_video_repo_artifacts(repo_id, custom_cache):
+            deleted_repos.append(repo_id)
+
+    video_download_status.pop(model_id, None)
+
+    if deleted_repos:
+        return jsonify({
+            "success": True,
+            "message": "Modèle vidéo supprimé",
+            "deleted_repos": deleted_repos,
+        })
+    return jsonify({"success": False, "error": "Modèle non trouvé dans le cache"})
 
 
 @video_bp.route('/reset-video', methods=['POST'])

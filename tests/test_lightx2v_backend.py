@@ -182,6 +182,32 @@ class LightX2VBackendTests(unittest.TestCase):
         self.assertTrue(fake_api.kwargs["files_metadata"])
         self.assertEqual(size, 10)
 
+    def test_delete_video_repo_artifacts_removes_local_dir(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cache_dir = Path(tmp)
+            local_dir = cache_dir / "owner--repo"
+            local_dir.mkdir()
+            (local_dir / "weights.bin").write_bytes(b"123")
+
+            with patch("core.models.delete_model_from_cache", return_value=False):
+                deleted = video_routes._delete_video_repo_artifacts("owner/repo", str(cache_dir))
+
+            self.assertTrue(deleted)
+            self.assertFalse(local_dir.exists())
+
+    def test_delete_video_repo_artifacts_refuses_outside_cache(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cache_dir = Path(tmp) / "cache"
+            cache_dir.mkdir()
+            outside = Path(tmp) / "outside"
+            outside.mkdir()
+            (outside / "weights.bin").write_bytes(b"123")
+
+            deleted = video_routes._safe_rmtree_under(str(outside), str(cache_dir))
+
+            self.assertFalse(deleted)
+            self.assertTrue(outside.exists())
+
     def test_video_download_space_error_mentions_pack_for_multi_repo(self):
         with tempfile.TemporaryDirectory() as tmp:
             disk_usage = type("Usage", (), {"free": 512 * 1024 ** 2})()

@@ -810,7 +810,8 @@
     font-variant-numeric: tabular-nums;
 }
 
-.btn-install-model.is-downloading svg {
+.btn-install-model.is-downloading svg,
+.btn-delete-model:disabled svg {
     animation: joyboy-progress-spin 1.1s linear infinite;
 }
 

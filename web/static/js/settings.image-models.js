@@ -73,13 +73,19 @@ function renderImageModelItem(model, isInstalled) {
             <button class="btn-equip ${txt2imgEquipped ? 'equipped' : ''}" data-model-name="${modelNameAttr}" data-model-mode="txt2img" onclick="equipImageModelFromButton(this)">
                 ${txt2imgEquipped ? `<i data-lucide="check"></i> ${escapeHtml(t('settings.models.equippedText2Img', 'Text2Img actif'))}` : escapeHtml(t('settings.models.equipText2Img', 'Équiper Text2Img'))}
             </button>
-            <button class="btn-delete-model" data-model-key="${modelKeyAttr}" data-model-name="${modelNameAttr}" onclick="deleteImageModelFromButton(this)">${escapeHtml(t('common.delete', 'Supprimer'))}</button>
+            <button class="btn-delete-model" data-model-key="${modelKeyAttr}" data-model-name="${modelNameAttr}" onclick="deleteImageModelFromButton(this)">
+                <i data-lucide="trash-2"></i>
+                <span>${escapeHtml(t('common.delete', 'Supprimer'))}</span>
+            </button>
         `
         : `
             <button class="btn-equip ${isEquipped ? 'equipped' : ''}" data-model-name="${modelNameAttr}" onclick="equipImageModelFromButton(this)">
                 ${isEquipped ? `<i data-lucide="check"></i> ${escapeHtml(t('settings.models.equipped', 'Équipé'))}` : escapeHtml(t('settings.models.equip', 'Équiper'))}
             </button>
-            <button class="btn-delete-model" data-model-key="${modelKeyAttr}" data-model-name="${modelNameAttr}" onclick="deleteImageModelFromButton(this)">${escapeHtml(t('common.delete', 'Supprimer'))}</button>
+            <button class="btn-delete-model" data-model-key="${modelKeyAttr}" data-model-name="${modelNameAttr}" onclick="deleteImageModelFromButton(this)">
+                <i data-lucide="trash-2"></i>
+                <span>${escapeHtml(t('common.delete', 'Supprimer'))}</span>
+            </button>
         `;
 
     return `
@@ -474,7 +480,8 @@ async function deleteImageModel(modelKey, modelName, sourceButton = null) {
     const btn = sourceButton || event?.target;
     if (btn) {
         btn.disabled = true;
-        btn.textContent = t('settings.models.deleting', 'Suppression...');
+        btn.innerHTML = `<i data-lucide="loader-circle"></i><span>${escapeHtml(t('settings.models.deleting', 'Suppression...'))}</span>`;
+        if (window.lucide) lucide.createIcons();
     }
 
     const result = await apiModels.delete(modelKey);
@@ -486,7 +493,8 @@ async function deleteImageModel(modelKey, modelName, sourceButton = null) {
         Toast.error(t('common.error', 'Erreur'), result.data?.error || result.error || t('settings.models.deleteFailed', 'Échec de la suppression'));
         if (btn) {
             btn.disabled = false;
-            btn.textContent = t('common.delete', 'Supprimer');
+            btn.innerHTML = `<i data-lucide="trash-2"></i><span>${escapeHtml(t('common.delete', 'Supprimer'))}</span>`;
+            if (window.lucide) lucide.createIcons();
         }
     }
 }

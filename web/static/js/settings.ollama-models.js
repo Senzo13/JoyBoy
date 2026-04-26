@@ -62,20 +62,24 @@ async function loadOllamaModels() {
             listEl.innerHTML = data.models.map(model => {
                 const isEquipped = !activeChatIsCloud && model.name === activeChatModel;
                 const displayName = typeof _formatModelName === 'function' ? _formatModelName(model.name) : model.name;
+                const modelNameAttr = escapeHtml(String(model.name || ''));
                 return `
                 <div class="ollama-model-item ${isEquipped ? 'equipped' : ''}">
                     <div class="model-info">
                         <div class="model-name-row">
-                            <span class="model-name">${displayName}</span>
+                            <span class="model-name">${escapeHtml(displayName)}</span>
                             ${isEquipped ? `<span class="uncensored-badge" style="background: rgba(59,130,246,0.15); color: #3b82f6;">${escapeHtml(t('settings.models.activeBadge', 'ACTIF'))}</span>` : ''}
                         </div>
-                        <span class="model-size">${model.size}</span>
+                        <span class="model-size">${escapeHtml(model.size || '')}</span>
                     </div>
                     <div class="model-actions">
-                        <button class="btn-equip ${isEquipped ? 'equipped' : ''}" onclick="equipModel('${model.name}')">
+                        <button class="btn-equip ${isEquipped ? 'equipped' : ''}" data-model-name="${modelNameAttr}" onclick="equipModelFromButton(this)">
                             ${isEquipped ? `<i data-lucide="check"></i> ${escapeHtml(t('settings.models.equipped', 'Équipé'))}` : escapeHtml(t('settings.models.equip', 'Équiper'))}
                         </button>
-                        <button class="btn-delete-model" onclick="deleteOllamaModel('${model.name}')">${escapeHtml(t('common.delete', 'Supprimer'))}</button>
+                        <button class="btn-delete-model" data-model-name="${modelNameAttr}" onclick="deleteOllamaModelFromButton(this)">
+                            <i data-lucide="trash-2"></i>
+                            <span>${escapeHtml(t('common.delete', 'Supprimer'))}</span>
+                        </button>
                     </div>
                 </div>
             `}).join('');
@@ -386,15 +390,40 @@ async function equipModel(modelName) {
     }
 }
 
-async function deleteOllamaModel(modelName) {
+function equipModelFromButton(button) {
+    const modelName = button?.dataset?.modelName || '';
+    if (!modelName) return;
+    equipModel(modelName);
+}
+
+function deleteOllamaModelFromButton(button) {
+    const modelName = button?.dataset?.modelName || '';
+    if (!modelName) return;
+    deleteOllamaModel(modelName, button);
+}
+
+async function deleteOllamaModel(modelName, sourceButton = null) {
     const confirmed = await JoyDialog.confirm(t('settings.models.deleteConfirm', 'Supprimer le modèle {model} ?', { model: modelName }), { variant: 'danger' });
     if (!confirmed) return;
 
+    const btn = sourceButton || (typeof event !== 'undefined' ? event?.target : null);
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<i data-lucide="loader-circle"></i><span>${escapeHtml(t('settings.models.deleting', 'Suppression...'))}</span>`;
+        if (window.lucide) lucide.createIcons();
+    }
+
     const result = await apiOllama.delete(modelName);
     if (result.ok && result.data?.success) {
+        Toast.success(t('settings.models.deletedTitle', 'Supprimé'), t('settings.models.deletedBody', '{model} a été supprimé', { model: modelName }));
         loadOllamaModels();
     } else {
         await JoyDialog.alert(t('settings.models.deleteError', 'Erreur de suppression'), { variant: 'danger' });
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = `<i data-lucide="trash-2"></i><span>${escapeHtml(t('common.delete', 'Supprimer'))}</span>`;
+            if (window.lucide) lucide.createIcons();
+        }
     }
 }
 
