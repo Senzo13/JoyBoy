@@ -264,7 +264,7 @@ echo -e "${GREEN}============================================================${N
 echo ""
 echo "To start the app:"
 echo ""
-echo "  cd ~/JoyBoy && python3 web/app.py"
+echo "  cd ~/JoyBoy && ./start_linux.sh"
 echo ""
 echo "Then use SSH tunnel from your PC:"
 echo "  ssh -L 7860:localhost:7860 ubuntu@YOUR_IP"

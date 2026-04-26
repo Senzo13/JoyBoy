@@ -72,17 +72,49 @@
     <div class="loading-screen" id="loading-screen">
         <div class="stars" id="loading-stars"></div>
         <div class="loading-content">
-            <img src="/static/images/logo.png" alt="Logo" class="loading-logo" draggable="false">
-            <div class="loading-subtitle">Préparation des modèles IA...</div>
-            <div class="loading-progress">
-                <div class="loading-progress-bar" id="loading-progress-bar"></div>
+            <div class="loading-header">
+                <img src="/static/images/logo.png" alt="Logo" class="loading-logo" draggable="false">
+                <div class="loading-heading">
+                    <div class="loading-subtitle" id="loading-subtitle">Préparation des modèles IA...</div>
+                    <div class="loading-status" id="loading-status">Connexion au serveur...</div>
+                </div>
             </div>
-            <div class="loading-progress-meta">
-                <div class="loading-progress-label" id="loading-progress-label">Vérification du cache local</div>
-                <div class="loading-progress-value" id="loading-progress-value">0%</div>
+
+            <div class="loading-stage-rail" id="loading-stage-rail" aria-label="Étapes du lancement">
+                <div class="loading-stage active" data-loading-stage="core">
+                    <span class="loading-stage-dot"></span>
+                    <span class="loading-stage-label" id="loading-stage-core">Core</span>
+                </div>
+                <div class="loading-stage" data-loading-stage="cache">
+                    <span class="loading-stage-dot"></span>
+                    <span class="loading-stage-label" id="loading-stage-cache">Cache</span>
+                </div>
+                <div class="loading-stage" data-loading-stage="models">
+                    <span class="loading-stage-dot"></span>
+                    <span class="loading-stage-label" id="loading-stage-models">Modèles</span>
+                </div>
+                <div class="loading-stage" data-loading-stage="ready">
+                    <span class="loading-stage-dot"></span>
+                    <span class="loading-stage-label" id="loading-stage-ready">Prêt</span>
+                </div>
             </div>
-            <div class="loading-status" id="loading-status">Connexion au serveur...</div>
-            <div class="loading-details" id="loading-details">Préparation du lancement local…</div>
+
+            <div class="loading-progress-card">
+                <div class="loading-progress-meta">
+                    <div class="loading-progress-label" id="loading-progress-label">Vérification du cache local</div>
+                    <div class="loading-progress-value" id="loading-progress-value">0%</div>
+                </div>
+                <div class="loading-progress">
+                    <div class="loading-progress-bar" id="loading-progress-bar"></div>
+                </div>
+                <div class="loading-details" id="loading-details">Préparation du lancement local…</div>
+            </div>
+
+            <div class="loading-tip-card" id="loading-tip-card">
+                <div class="loading-tip-kicker" id="loading-tip-kicker">Découverte</div>
+                <div class="loading-tip-title" id="loading-tip-title">Créer sans quitter le cockpit</div>
+                <div class="loading-tip-body" id="loading-tip-body">Chat, images, retouche et vidéo restent dans la même conversation.</div>
+            </div>
         </div>
     </div>
 

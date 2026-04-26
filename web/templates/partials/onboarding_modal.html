@@ -113,6 +113,35 @@
 
                         <div class="setup-status" id="setup-status">Détection du matériel...</div>
 
+                        <div class="onboarding-setup-progress" id="onboarding-setup-progress">
+                            <div class="onboarding-setup-progress-meta">
+                                <span id="onboarding-setup-progress-label">Initialisation locale</span>
+                                <span id="onboarding-setup-progress-value">0%</span>
+                            </div>
+                            <div class="onboarding-setup-progress-track">
+                                <div class="onboarding-setup-progress-fill" id="onboarding-setup-progress-fill"></div>
+                            </div>
+                        </div>
+
+                        <div class="onboarding-setup-steps" id="onboarding-setup-steps">
+                            <div class="onboarding-setup-step active" data-setup-stage="runtime">
+                                <span class="onboarding-setup-step-dot"></span>
+                                <span id="onboarding-setup-stage-runtime">Runtime</span>
+                            </div>
+                            <div class="onboarding-setup-step" data-setup-stage="hardware">
+                                <span class="onboarding-setup-step-dot"></span>
+                                <span id="onboarding-setup-stage-hardware">Matériel</span>
+                            </div>
+                            <div class="onboarding-setup-step" data-setup-stage="models">
+                                <span class="onboarding-setup-step-dot"></span>
+                                <span id="onboarding-setup-stage-models">Modèles</span>
+                            </div>
+                            <div class="onboarding-setup-step" data-setup-stage="ready">
+                                <span class="onboarding-setup-step-dot"></span>
+                                <span id="onboarding-setup-stage-ready">Prêt</span>
+                            </div>
+                        </div>
+
                         <div class="hardware-grid hidden" id="hardware-info">
                             <div class="hw-cell">
                                 <span class="hw-key" id="onboarding-hw-gpu-key">GPU</span>

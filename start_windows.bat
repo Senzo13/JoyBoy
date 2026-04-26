@@ -19,10 +19,18 @@ REM Relaunch in Windows Terminal when available
 if not defined WT_SESSION (
     where wt >nul 2>&1
     if not errorlevel 1 (
-        wt new-tab -p "Command Prompt" cmd /k "cd /d %~dp0 && %~nx0"
+        wt new-tab -p "Command Prompt" cmd /k "cd /d ""%~dp0"" && ""%~f0"" %*"
         exit /b
     )
 )
+
+if /i "%1"=="--menu" goto menu
+if /i "%1"=="--setup" (
+    set "SETUP_RETRIES=0"
+    goto setup
+)
+
+goto start
 
 :menu
 cls
@@ -260,10 +268,11 @@ if exist "venv\Scripts\python.exe" (
 ) else (
     echo.
     echo    [!] JoyBoy venv not found.
-    echo    [!] Run "Full setup" once to create the venv.
+    echo    [!] First launch setup will create the local environment.
     echo.
-    pause
-    goto menu
+    timeout /t 2 >nul
+    set "SETUP_RETRIES=0"
+    goto setup
 )
 
 REM If NVIDIA exists but PyTorch is CPU-only, image/video acceleration is limited.
@@ -291,6 +300,7 @@ echo    [OK] Ollama installed
 echo.
 :skip_ollama_install
 
+start "" /b "%PY%" scripts\open_browser.py --url http://127.0.0.1:7860 --timeout 120 >nul 2>nul
 "%PY%" web/app.py
 set EXIT_CODE=%errorlevel%
 

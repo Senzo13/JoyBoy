@@ -98,4 +98,8 @@ echo ""
 echo -e "${GREEN}Starting JoyBoy...${NC}"
 echo ""
 
+if [ "${JOYBOY_OPEN_BROWSER:-}" = "1" ] || [ -n "${DISPLAY:-}" ] || [ -n "${WAYLAND_DISPLAY:-}" ]; then
+    python scripts/open_browser.py --url http://127.0.0.1:7860 --timeout 120 >/dev/null 2>&1 &
+fi
+
 python3 web/app.py

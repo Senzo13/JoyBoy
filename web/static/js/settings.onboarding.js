@@ -5,6 +5,54 @@ let currentOnboardingStep = 1;
 let selectedProfileType = null;
 let onboardingDoctor = null;
 
+const ONBOARDING_SETUP_STAGES = [
+    { id: 'runtime', threshold: 0, key: 'onboarding.setupStageRuntime', fallback: 'Initialisation locale' },
+    { id: 'hardware', threshold: 25, key: 'onboarding.setupStageHardware', fallback: 'Détection matériel' },
+    { id: 'models', threshold: 48, key: 'onboarding.setupStageModels', fallback: 'Préparation modèles' },
+    { id: 'ready', threshold: 96, key: 'onboarding.setupStageReady', fallback: 'Prêt à démarrer' },
+];
+
+function setOnboardingSetupCopy() {
+    const stageLabels = {
+        runtime: ['onboarding.setupStageRuntimeShort', 'Runtime'],
+        hardware: ['onboarding.setupStageHardwareShort', 'Matériel'],
+        models: ['onboarding.setupStageModelsShort', 'Modèles'],
+        ready: ['onboarding.setupStageReadyShort', 'Prêt'],
+    };
+
+    Object.entries(stageLabels).forEach(([id, [key, fallback]]) => {
+        setRuntimeText(`onboarding-setup-stage-${id}`, key, fallback);
+    });
+}
+
+function setSetupProgressLabel(key, fallback, params = {}) {
+    const label = document.getElementById('onboarding-setup-progress-label');
+    if (label) {
+        setRuntimeText(label, key, fallback, params);
+    }
+}
+
+function setSetupProgressPlainLabel(value) {
+    const label = document.getElementById('onboarding-setup-progress-label');
+    if (label) {
+        setPlainText(label, value);
+    }
+}
+
+function updateOnboardingSetupStage(percent) {
+    const clamped = Math.max(0, Math.min(100, Number(percent) || 0));
+    const activeIndex = ONBOARDING_SETUP_STAGES.reduce((selected, stage, index) => {
+        return clamped >= stage.threshold ? index : selected;
+    }, 0);
+
+    ONBOARDING_SETUP_STAGES.forEach((stage, index) => {
+        const el = document.querySelector(`[data-setup-stage="${stage.id}"]`);
+        if (!el) return;
+        el.classList.toggle('done', index < activeIndex || clamped >= 100);
+        el.classList.toggle('active', clamped < 100 && index === activeIndex);
+    });
+}
+
 function syncOnboardingProfileFromBackend(onboarding) {
     if (!onboarding) return;
 
@@ -212,7 +260,9 @@ function openOnboarding() {
     // Reset step 3 UI
     const circularProgress = document.getElementById('setup-progress');
     circularProgress.classList.remove('analyzing', 'complete', 'error');
+    setOnboardingSetupCopy();
     setProgress(0);
+    setSetupProgressLabel('onboarding.setupStageRuntime', 'Initialisation locale');
     setRuntimeText('setup-label', 'onboarding.analysing', 'Analyse...');
     document.getElementById('hardware-info').classList.add('hidden');
     document.getElementById('setup-eta').classList.add('hidden');
@@ -616,6 +666,7 @@ async function startBenchmark() {
     // Start analyzing animation
     circularProgress.classList.add('analyzing');
     setProgress(10);
+    setSetupProgressLabel('onboarding.setupStageRuntime', 'Initialisation locale');
     setRuntimeText(progressLabel, 'onboarding.analysing', 'Analyse...');
     renderOnboardingReadiness(onboardingDoctor);
 
@@ -631,6 +682,7 @@ async function startBenchmark() {
 
         // Step 1: Get hardware info and profile-based recommendations
         setRuntimeText(setupStatus, 'onboarding.detectHardware', 'Détection du matériel...');
+        setSetupProgressLabel('onboarding.setupStageHardware', 'Détection matériel');
         const hwResult = await apiGet('/api/hardware/info');
         if (!hwResult.ok) throw new Error(hwResult.error || 'Hardware info failed');
         hardwareInfo = hwResult.data;
@@ -686,6 +738,7 @@ async function startBenchmark() {
 
         // Step 2: Check if models already installed
         setRuntimeText(setupStatus, 'onboarding.checkingModels', 'Vérification des modèles...');
+        setSetupProgressLabel('onboarding.setupStageModels', 'Préparation modèles');
         const modelsResult = await apiOllama.getModels();
         const modelsData = modelsResult.ok ? modelsResult.data : { models: [] };
 
@@ -701,6 +754,7 @@ async function startBenchmark() {
         if (utilityInstalled && chatInstalled) {
             // Both models already installed
             setProgress(100);
+            setSetupProgressLabel('onboarding.setupStageReady', 'Prêt à démarrer');
             circularProgress.classList.add('complete');
             setRuntimeText(progressLabel, 'common.ready', 'PRÊT');
             setRuntimeText(setupStatus, 'onboarding.modelsAlreadyInstalled', 'Modèles déjà installés!');
@@ -728,6 +782,7 @@ async function startBenchmark() {
         } else {
             // Need to download models
             setProgress(50);
+            setSetupProgressLabel('onboarding.setupStageDownloading', 'Téléchargement des modèles');
 
             if (!utilityInstalled && !chatInstalled) {
                 setRuntimeText(setupStatus, 'onboarding.downloadTwoModels', 'Téléchargement de 2 modèles...');
@@ -772,6 +827,7 @@ async function startBenchmark() {
         circularProgress.classList.remove('analyzing');
         circularProgress.classList.add('error');
         setRuntimeText(progressLabel, 'onboarding.errorShort', 'Erreur');
+        setSetupProgressLabel('onboarding.errorShort', 'Erreur');
         setPlainText(setupStatus, 'Erreur: ' + error.message);
 
         // Allow skip
@@ -795,23 +851,27 @@ async function checkSetupProgress() {
             // 0-40% pour utility model
             const visualProgress = Math.min(40, data.progress * 0.4);
             setProgress(50 + visualProgress * 0.5); // 50-70%
+            setSetupProgressPlainLabel(data.message || t('onboarding.downloadUtility', 'Téléchargement du modèle utility...'));
             progressLabel.textContent = data.progress + '%';
             setRuntimeText(setupStatus, 'onboarding.utilityProgress', 'Modèle utility : {message}', { message: data.message });
         } else if (data.status === 'downloading_chat') {
             // 40-100% pour chat model
             const visualProgress = 70 + (data.progress - 40) * 0.5; // 70-100%
             setProgress(Math.min(95, visualProgress));
+            setSetupProgressPlainLabel(data.message || t('onboarding.downloadChat', 'Téléchargement du modèle chat...'));
             progressLabel.textContent = data.progress + '%';
             setRuntimeText(setupStatus, 'onboarding.chatProgress', 'Modèle chat : {message}', { message: data.message });
         } else if (data.status === 'downloading_text') {
             // Legacy: Map 0-100 download progress to 50-95 visual progress
             const visualProgress = 50 + (data.progress * 0.45);
             setProgress(visualProgress);
+            setSetupProgressPlainLabel(data.message || t('onboarding.installInProgress', 'Installation en cours...'));
             progressLabel.textContent = data.progress + '%';
             setPlainText(setupStatus, data.message);
         } else if (data.status === 'complete') {
             clearInterval(setupCheckInterval);
             setProgress(100);
+            setSetupProgressLabel('onboarding.setupStageReady', 'Prêt à démarrer');
             circularProgress.classList.add('complete');
             setRuntimeText(progressLabel, 'common.ready', 'PRÊT');
             setRuntimeText(setupStatus, 'onboarding.completed', 'Installation terminée!');
@@ -849,6 +909,7 @@ async function checkSetupProgress() {
             clearInterval(setupCheckInterval);
             circularProgress.classList.add('error');
             setRuntimeText(progressLabel, 'onboarding.errorShort', 'Erreur');
+            setSetupProgressLabel('onboarding.errorShort', 'Erreur');
             setPlainText(setupStatus, data.error || t('onboarding.downloadError', 'Erreur de téléchargement'));
             document.getElementById('setup-eta').classList.add('hidden');
 
@@ -865,13 +926,27 @@ async function checkSetupProgress() {
 function setProgress(percent) {
     const circle = document.getElementById('progress-circle');
     const percentEl = document.getElementById('setup-percent');
+    const progressFill = document.getElementById('onboarding-setup-progress-fill');
+    const progressValue = document.getElementById('onboarding-setup-progress-value');
+    const clamped = Math.max(0, Math.min(100, Number(percent) || 0));
 
     // Circumference = 2 * PI * r = 2 * 3.14159 * 52 = 326.73
     const circumference = 326.73;
-    const offset = circumference - (percent / 100) * circumference;
+    const offset = circumference - (clamped / 100) * circumference;
 
-    circle.style.strokeDashoffset = offset;
-    percentEl.textContent = Math.round(percent) + '%';
+    if (circle) {
+        circle.style.strokeDashoffset = offset;
+    }
+    if (percentEl) {
+        percentEl.textContent = Math.round(clamped) + '%';
+    }
+    if (progressFill) {
+        progressFill.style.width = `${clamped}%`;
+    }
+    if (progressValue) {
+        progressValue.textContent = `${Math.round(clamped)}%`;
+    }
+    updateOnboardingSetupStage(clamped);
 }
 
 /**

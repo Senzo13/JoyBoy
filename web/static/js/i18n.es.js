@@ -3364,4 +3364,46 @@ Object.assign(MESSAGES.es.cyberatlas, {
         value_transport: "Transport",
     });
 
+Object.assign(MESSAGES.es.loading, {
+        stages: {
+            core: 'Core',
+            cache: 'Caché',
+            models: 'Modelos',
+            ready: 'Listo',
+        },
+        tips: {
+            create: {
+                kicker: 'Imagen',
+                title: 'Crea una imagen desde una idea simple',
+                body: 'Describe el visual y JoyBoy elige el modo adecuado manteniendo el resultado en la conversación.',
+            },
+            edit: {
+                kicker: 'Retoque',
+                title: 'Modifica solo la zona útil',
+                body: 'Añade una imagen, enmascara una región y pide un cambio preciso sin romper el resto.',
+            },
+            video: {
+                kicker: 'Vídeo',
+                title: 'Anima una imagen o continúa un vídeo',
+                body: 'Los modelos de vídeo se usan desde el mismo prompt con cola y vista de progreso.',
+            },
+            models: {
+                kicker: 'Modelos',
+                title: 'Instala solo lo que necesitas',
+                body: 'El catálogo muestra modelos locales, descargas y espacio de disco restante.',
+            },
+        },
+    });
+
+Object.assign(MESSAGES.es.onboarding, {
+        setupStageRuntime: 'Inicialización local',
+        setupStageHardware: 'Detección de hardware',
+        setupStageModels: 'Preparación de modelos',
+        setupStageDownloading: 'Descargando modelos',
+        setupStageReady: 'Listo para empezar',
+        setupStageRuntimeShort: 'Runtime',
+        setupStageHardwareShort: 'Hardware',
+        setupStageModelsShort: 'Modelos',
+        setupStageReadyShort: 'Listo',
+    });
 })();

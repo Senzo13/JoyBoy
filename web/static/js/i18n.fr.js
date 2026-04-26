@@ -3680,4 +3680,47 @@ Object.assign(MESSAGES.fr.signalatlas, {
         presetExpert: 'Expert',
         presetLocalPrivate: 'Local privé',
     });
+
+Object.assign(MESSAGES.fr.loading, {
+        stages: {
+            core: 'Core',
+            cache: 'Cache',
+            models: 'Modèles',
+            ready: 'Prêt',
+        },
+        tips: {
+            create: {
+                kicker: 'Image',
+                title: 'Créer une image depuis une idée simple',
+                body: 'Décris ton visuel, JoyBoy choisit le mode adapté et garde la génération dans la conversation.',
+            },
+            edit: {
+                kicker: 'Retouche',
+                title: 'Modifier seulement la zone utile',
+                body: 'Ajoute une image, masque une partie et demande un changement précis sans casser le reste.',
+            },
+            video: {
+                kicker: 'Vidéo',
+                title: 'Animer une image ou continuer une vidéo',
+                body: 'Les modèles vidéo se pilotent depuis le même prompt, avec file d’attente et aperçu de progression.',
+            },
+            models: {
+                kicker: 'Modèles',
+                title: 'Installer seulement ce dont tu as besoin',
+                body: 'Le catalogue affiche les modèles locaux, les téléchargements et l’espace disque restant.',
+            },
+        },
+    });
+
+Object.assign(MESSAGES.fr.onboarding, {
+        setupStageRuntime: 'Initialisation locale',
+        setupStageHardware: 'Détection matériel',
+        setupStageModels: 'Préparation modèles',
+        setupStageDownloading: 'Téléchargement des modèles',
+        setupStageReady: 'Prêt à démarrer',
+        setupStageRuntimeShort: 'Runtime',
+        setupStageHardwareShort: 'Matériel',
+        setupStageModelsShort: 'Modèles',
+        setupStageReadyShort: 'Prêt',
+    });
 })();

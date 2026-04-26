@@ -1,10 +1,22 @@
 #!/bin/bash
 cd "$(dirname "$0")"
 
-JOYBOY_QUICK_START=0
-if [ "${1:-}" = "--restart" ] || [ "${1:-}" = "--quick" ]; then
-    JOYBOY_QUICK_START=1
-fi
+JOYBOY_QUICK_START=1
+JOYBOY_SHOW_MENU=0
+JOYBOY_RUN_SETUP=0
+
+case "${1:-}" in
+    --menu)
+        JOYBOY_QUICK_START=0
+        JOYBOY_SHOW_MENU=1
+        ;;
+    --setup)
+        JOYBOY_RUN_SETUP=1
+        ;;
+    --restart|--quick|"")
+        JOYBOY_QUICK_START=1
+        ;;
+esac
 
 export JOYBOY_MODELS_DIR="${JOYBOY_MODELS_DIR:-$PWD/models}"
 export JOYBOY_HF_CACHE_DIR="${JOYBOY_HF_CACHE_DIR:-$JOYBOY_MODELS_DIR/huggingface}"
@@ -229,18 +241,18 @@ start_app() {
         source venv/bin/activate
     else
         echo "   [!] Virtual environment not found."
-        echo "       Run Setup first (option 1)"
-        read -p "   Press Enter..."
-        show_menu
+        echo "       First launch setup will create it now."
+        sleep 1
+        setup
         return
     fi
 
     if ! venv_python_ok; then
         echo "   [ERROR] Virtual environment uses Python $(python_version_label "venv/bin/python")."
         echo "           JoyBoy needs Python ${MIN_PY_MAJOR}.${MIN_PY_MINOR}+."
-        echo "           Run Full setup (option 1) to recreate the venv."
-        read -p "   Press Enter..."
-        show_menu
+        echo "           Setup will recreate the venv now."
+        sleep 1
+        setup
         return
     fi
 
@@ -254,6 +266,7 @@ start_app() {
     echo ""
     echo "   (Ctrl+C to stop)"
     echo ""
+    python scripts/open_browser.py --url http://127.0.0.1:7860 --timeout 120 >/dev/null 2>&1 &
     python web/app.py
 
     echo ""
@@ -268,8 +281,10 @@ start_app() {
     show_menu
 }
 
-if [ "$JOYBOY_QUICK_START" = "1" ]; then
-    start_app
-else
+if [ "$JOYBOY_SHOW_MENU" = "1" ]; then
     show_menu
+elif [ "$JOYBOY_RUN_SETUP" = "1" ]; then
+    setup
+else
+    start_app
 fi

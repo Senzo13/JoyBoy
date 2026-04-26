@@ -3,6 +3,50 @@
  */
 
 let preloadComplete = false;
+let loadingTipIndex = 0;
+let loadingTipTimer = null;
+
+const LOADING_STAGES = [
+    { id: 'core', threshold: 0, labelKey: 'loading.stages.core', labelFallback: 'Core' },
+    { id: 'cache', threshold: 22, labelKey: 'loading.stages.cache', labelFallback: 'Cache' },
+    { id: 'models', threshold: 55, labelKey: 'loading.stages.models', labelFallback: 'Modèles' },
+    { id: 'ready', threshold: 90, labelKey: 'loading.stages.ready', labelFallback: 'Prêt' },
+];
+
+const LOADING_TIPS = [
+    {
+        kickerKey: 'loading.tips.create.kicker',
+        kickerFallback: 'Image',
+        titleKey: 'loading.tips.create.title',
+        titleFallback: 'Créer une image depuis une idée simple',
+        bodyKey: 'loading.tips.create.body',
+        bodyFallback: 'Décris ton visuel, JoyBoy choisit le mode adapté et garde la génération dans la conversation.',
+    },
+    {
+        kickerKey: 'loading.tips.edit.kicker',
+        kickerFallback: 'Retouche',
+        titleKey: 'loading.tips.edit.title',
+        titleFallback: 'Modifier seulement la zone utile',
+        bodyKey: 'loading.tips.edit.body',
+        bodyFallback: 'Ajoute une image, masque une partie et demande un changement précis sans casser le reste.',
+    },
+    {
+        kickerKey: 'loading.tips.video.kicker',
+        kickerFallback: 'Vidéo',
+        titleKey: 'loading.tips.video.title',
+        titleFallback: 'Animer une image ou continuer une vidéo',
+        bodyKey: 'loading.tips.video.body',
+        bodyFallback: 'Les modèles vidéo se pilotent depuis le même prompt, avec file d’attente et aperçu de progression.',
+    },
+    {
+        kickerKey: 'loading.tips.models.kicker',
+        kickerFallback: 'Modèles',
+        titleKey: 'loading.tips.models.title',
+        titleFallback: 'Installer seulement ce dont tu as besoin',
+        bodyKey: 'loading.tips.models.body',
+        bodyFallback: 'Le catalogue affiche les modèles locaux, les downloads et l’espace disque restant.',
+    },
+];
 
 function preloadT(key, fallback, params = {}) {
     return window.JoyBoyI18n?.t?.(key, params, fallback) || fallback;
@@ -42,6 +86,68 @@ function buildProgressDetail(progress, data) {
         'Étape {current}/{total} • {progress}% terminé',
         { current, total, progress }
     );
+}
+
+function localizeLoadingShell() {
+    const subtitle = document.getElementById('loading-subtitle');
+    if (subtitle) {
+        subtitle.textContent = preloadT('loading.subtitle', 'Préparation des modèles IA...');
+    }
+
+    LOADING_STAGES.forEach(stage => {
+        const label = document.getElementById(`loading-stage-${stage.id}`);
+        if (label) {
+            label.textContent = preloadT(stage.labelKey, stage.labelFallback);
+        }
+    });
+}
+
+function getLocalizedLoadingTip(index) {
+    const tip = LOADING_TIPS[index % LOADING_TIPS.length];
+    return {
+        kicker: preloadT(tip.kickerKey, tip.kickerFallback),
+        title: preloadT(tip.titleKey, tip.titleFallback),
+        body: preloadT(tip.bodyKey, tip.bodyFallback),
+    };
+}
+
+function renderLoadingTip(index) {
+    const card = document.getElementById('loading-tip-card');
+    const kicker = document.getElementById('loading-tip-kicker');
+    const title = document.getElementById('loading-tip-title');
+    const body = document.getElementById('loading-tip-body');
+    if (!card || !kicker || !title || !body) return;
+
+    const nextTip = getLocalizedLoadingTip(index);
+    card.classList.remove('is-changing');
+    void card.offsetWidth;
+    kicker.textContent = nextTip.kicker;
+    title.textContent = nextTip.title;
+    body.textContent = nextTip.body;
+    card.classList.add('is-changing');
+}
+
+function startLoadingTips() {
+    if (loadingTipTimer) return;
+    renderLoadingTip(0);
+    loadingTipTimer = setInterval(() => {
+        loadingTipIndex = (loadingTipIndex + 1) % LOADING_TIPS.length;
+        renderLoadingTip(loadingTipIndex);
+    }, 3200);
+}
+
+function updateLoadingStage(progress) {
+    if (typeof progress !== 'number') return;
+    const activeIndex = LOADING_STAGES.reduce((selected, stage, index) => {
+        return progress >= stage.threshold ? index : selected;
+    }, 0);
+
+    LOADING_STAGES.forEach((stage, index) => {
+        const el = document.querySelector(`[data-loading-stage="${stage.id}"]`);
+        if (!el) return;
+        el.classList.toggle('done', index < activeIndex || progress >= 100);
+        el.classList.toggle('active', progress < 100 && index === activeIndex);
+    });
 }
 
 /**
@@ -182,6 +288,8 @@ function updateLoadingStatus(status, progress, details = '', progressLabel = '')
     if (progressLabelEl && progressLabel) {
         progressLabelEl.textContent = progressLabel;
     }
+
+    updateLoadingStage(progress);
 }
 
 /**
@@ -192,6 +300,10 @@ function hideLoadingScreen() {
     if (loadingScreen) {
         loadingScreen.classList.add('loaded');
         preloadComplete = true;
+        if (loadingTipTimer) {
+            clearInterval(loadingTipTimer);
+            loadingTipTimer = null;
+        }
 
         // Supprimer du DOM après l'animation blackhole
         setTimeout(() => {
@@ -203,5 +315,7 @@ function hideLoadingScreen() {
 // Lancer au chargement de la page
 document.addEventListener('DOMContentLoaded', function() {
     // Petit délai pour que le CSS soit chargé
+    localizeLoadingShell();
+    startLoadingTips();
     setTimeout(initPreload, 100);
 });
