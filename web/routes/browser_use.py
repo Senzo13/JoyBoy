@@ -39,3 +39,31 @@ def browser_use_action():
     payload = data.get("payload") if isinstance(data.get("payload"), dict) else data
     result = run_browser_use_action(action, payload)
     return jsonify(result), (200 if result.get("success") else 500)
+
+
+@browser_use_bp.route("/api/computer-use/status", methods=["GET"])
+def computer_use_status():
+    from core.infra.computer_use_runtime import get_computer_use_status
+
+    return jsonify(get_computer_use_status())
+
+
+@browser_use_bp.route("/api/computer-use/install", methods=["POST"])
+def computer_use_install():
+    from core.infra.computer_use_runtime import install_computer_use_runtime
+
+    data = request.get_json(silent=True) or {}
+    background = bool(data.get("background") or data.get("async_install") or data.get("async"))
+    result = install_computer_use_runtime(background=background)
+    return jsonify(result), (200 if result.get("success") else 500)
+
+
+@browser_use_bp.route("/api/computer-use/action", methods=["POST"])
+def computer_use_action():
+    from core.infra.computer_use_runtime import run_computer_use_action
+
+    data = request.get_json(silent=True) or {}
+    action = str(data.get("action") or "screenshot").strip().lower()
+    payload = data.get("payload") if isinstance(data.get("payload"), dict) else data
+    result = run_computer_use_action(action, payload)
+    return jsonify(result), (200 if result.get("success") else 500)

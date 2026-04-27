@@ -12,6 +12,24 @@ function apiT(key, fallback = '', params = {}) {
 
 // ===== BASE FUNCTIONS =====
 
+async function parseApiResponse(response, endpoint) {
+    const text = await response.text();
+    if (!text) return null;
+    try {
+        return JSON.parse(text);
+    } catch (error) {
+        const snippet = text.trim().slice(0, 240);
+        const isHtml = snippet.startsWith('<');
+        return {
+            success: false,
+            error: isHtml
+                ? `Route API indisponible pour ${endpoint} (${response.status}). Relance JoyBoy si tu viens de mettre à jour le code.`
+                : `Réponse API invalide pour ${endpoint}: ${error.message}`,
+            raw: snippet,
+        };
+    }
+}
+
 /**
  * Generic POST request
  * @param {string} endpoint - API endpoint
@@ -27,7 +45,7 @@ async function apiPost(endpoint, data = {}, options = {}) {
             body: JSON.stringify(data),
             ...options
         });
-        const result = await response.json();
+        const result = await parseApiResponse(response, endpoint);
         return { data: result, ok: response.ok, status: response.status };
     } catch (error) {
         console.error(`[API] POST ${endpoint} failed:`, error);
@@ -50,7 +68,7 @@ async function apiPut(endpoint, data = {}, options = {}) {
             body: JSON.stringify(data),
             ...options
         });
-        const result = await response.json();
+        const result = await parseApiResponse(response, endpoint);
         return { data: result, ok: response.ok, status: response.status };
     } catch (error) {
         console.error(`[API] PUT ${endpoint} failed:`, error);
@@ -70,7 +88,7 @@ async function apiGet(endpoint, options = {}) {
             method: 'GET',
             ...options
         });
-        const result = await response.json();
+        const result = await parseApiResponse(response, endpoint);
         return { data: result, ok: response.ok, status: response.status };
     } catch (error) {
         console.error(`[API] GET ${endpoint} failed:`, error);
@@ -90,7 +108,7 @@ async function apiDelete(endpoint, options = {}) {
             method: 'DELETE',
             ...options
         });
-        const result = await response.json();
+        const result = await parseApiResponse(response, endpoint);
         return { data: result, ok: response.ok, status: response.status };
     } catch (error) {
         console.error(`[API] DELETE ${endpoint} failed:`, error);
@@ -357,6 +375,18 @@ const apiSettings = {
 
     async browserUseAction(action, payload = {}) {
         return apiPost('/api/browser-use/action', { action, payload });
+    },
+
+    async getComputerUseStatus() {
+        return apiGet('/api/computer-use/status');
+    },
+
+    async installComputerUse(options = {}) {
+        return apiPost('/api/computer-use/install', options);
+    },
+
+    async computerUseAction(action, payload = {}) {
+        return apiPost('/api/computer-use/action', { action, payload });
     },
 
     async clearProviderSecret(key) {

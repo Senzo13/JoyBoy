@@ -1,6 +1,13 @@
 @echo off
+setlocal EnableExtensions
 chcp 65001 >nul
 cd /d "%~dp0"
+
+set "JOYBOY_LOG_DIR=.joyboy\logs"
+if not exist "%JOYBOY_LOG_DIR%" mkdir "%JOYBOY_LOG_DIR%" >nul 2>nul
+set "JOYBOY_START_LOG=%JOYBOY_LOG_DIR%\windows_start_last.log"
+> "%JOYBOY_START_LOG%" echo JoyBoy Windows launcher started: %DATE% %TIME%
+>> "%JOYBOY_START_LOG%" echo Working directory: %CD%
 
 if not defined JOYBOY_MODELS_DIR set "JOYBOY_MODELS_DIR=%CD%\models"
 if not defined JOYBOY_HF_CACHE_DIR set "JOYBOY_HF_CACHE_DIR=%JOYBOY_MODELS_DIR%\huggingface"
@@ -19,12 +26,18 @@ if /i "%1"=="--restart" (
     goto start
 )
 
-REM Relaunch in Windows Terminal when available
-if not defined WT_SESSION (
-    where wt >nul 2>&1
-    if not errorlevel 1 (
-        wt new-tab -p "Command Prompt" cmd /k "cd /d ""%~dp0"" && ""%~f0"" %*"
-        exit /b
+REM Optional Windows Terminal relaunch. Disabled by default because profile/name
+REM mismatches can make double-clicked launches disappear before users see errors.
+REM Power users can opt in with: set JOYBOY_USE_WINDOWS_TERMINAL=1
+if /i "%JOYBOY_USE_WINDOWS_TERMINAL%"=="1" (
+    if not defined WT_SESSION (
+        where wt >nul 2>&1
+        if not errorlevel 1 (
+            wt new-tab cmd /k "cd /d ""%~dp0"" && ""%~f0"" %*"
+            if not errorlevel 1 exit /b
+            echo    [!] Windows Terminal launch failed, continuing in this window.
+            >> "%JOYBOY_START_LOG%" echo Windows Terminal launch failed; continuing in current console.
+        )
     )
 )
 
@@ -312,6 +325,7 @@ if exist "%PYW%" (
 )
 "%PY%" -u scripts\windows_run_server.py
 set EXIT_CODE=%errorlevel%
+>> "%JOYBOY_START_LOG%" echo Server exit code: %EXIT_CODE%
 
 REM Code 42 means backend requested restart; close this window
 if %EXIT_CODE%==42 (

@@ -127,9 +127,9 @@ const JOYBOY_EXTENSION_CATALOG = [
         name: 'Computer Use',
         icon: 'monitor',
         category: 'featured',
-        source: 'pack',
-        action: 'local-pack-required',
-        developer: 'JoyBoy local pack',
+        source: 'native',
+        action: 'native-computer-use',
+        developer: 'JoyBoy local runtime',
         capabilities: ['desktop_control', 'screenshots', 'click_type', 'local_preview'],
     },
     {
@@ -667,6 +667,38 @@ function getExtensionState(item) {
             icon: 'download',
             className: 'is-available',
             primaryLabel: extensionT('extensions.actions.installBrowserUse', 'Installer le runtime'),
+            primaryDisabled: false,
+        };
+    }
+
+    if (item.action === 'native-computer-use') {
+        const status = window.joyboyComputerUseStatus || null;
+        if (status?.success === false && status?.error) {
+            return {
+                id: 'error',
+                label: extensionT('extensions.status.runtimeError', 'Runtime indisponible'),
+                icon: 'alert-triangle',
+                className: 'is-warning',
+                primaryLabel: extensionT('extensions.actions.openComputerUse', 'Préparer Computer Use'),
+                primaryDisabled: false,
+            };
+        }
+        if (status?.usable) {
+            return {
+                id: 'installed',
+                label: extensionT('extensions.status.browserUseReady', 'Runtime prêt'),
+                icon: 'check',
+                className: 'is-installed',
+                primaryLabel: extensionT('extensions.actions.openComputerUse', 'Préparer Computer Use'),
+                primaryDisabled: false,
+            };
+        }
+        return {
+            id: 'available',
+            label: extensionT('extensions.status.browserUseMissing', 'Runtime à installer'),
+            icon: 'download',
+            className: 'is-available',
+            primaryLabel: extensionT('extensions.actions.openComputerUse', 'Préparer Computer Use'),
             primaryDisabled: false,
         };
     }
@@ -1524,6 +1556,24 @@ async function runExtensionPrimaryAction(extensionId) {
         return;
     }
 
+    if (item.action === 'native-computer-use') {
+        closeExtensionModal();
+        if (typeof openBrowserUsePanel === 'function') {
+            openBrowserUsePanel({ mode: 'computer' });
+        }
+        const status = apiSettings?.getComputerUseStatus ? await apiSettings.getComputerUseStatus() : null;
+        if (status && ((!status.ok && status.data?.error) || status.data?.success === false)) {
+            Toast.error('Computer Use', status.data?.error || extensionT('extensions.status.runtimeError', 'Runtime indisponible'));
+            await refreshExtensionsCatalog(false);
+            return;
+        }
+        if (!status?.data?.usable && typeof installBrowserUseRuntime === 'function') {
+            await installBrowserUseRuntime(false, { afterCurrent: true });
+        }
+        await refreshExtensionsCatalog(false);
+        return;
+    }
+
     if (item.action === 'mcp-template' && item.template) {
         const servers = getExtensionMcpServers();
         if (servers[item.template]) {
@@ -1619,6 +1669,20 @@ async function refreshExtensionsCatalog(showToast = false) {
                     success: false,
                     usable: false,
                     error: browserError.message || String(browserError),
+                };
+            }
+        }
+        if (apiSettings?.getComputerUseStatus) {
+            try {
+                const computerResult = await apiSettings.getComputerUseStatus();
+                if (computerResult.ok && computerResult.data) {
+                    window.joyboyComputerUseStatus = computerResult.data;
+                }
+            } catch (computerError) {
+                window.joyboyComputerUseStatus = {
+                    success: false,
+                    usable: false,
+                    error: computerError.message || String(computerError),
                 };
             }
         }

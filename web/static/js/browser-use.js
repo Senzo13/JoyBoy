@@ -4,6 +4,7 @@
 const BROWSER_USE_MENTION_RE = /(^|\s)@(browser-use|browser use|browser|iab)\b/i;
 const COMPUTER_USE_MENTION_RE = /(^|\s)@(computer-use|computer use|computer|desktop-use|desktop)\b/i;
 let browserUseStatus = null;
+let browserUseMode = 'browser';
 let browserUseResizeState = null;
 let browserUseMentionPopover = null;
 let browserUseMentionInput = null;
@@ -11,6 +12,10 @@ let browserUseInstallPollAbort = 0;
 let browserUseCursorTimer = null;
 let browserUseActionPollToken = 0;
 const BROWSER_USE_MANUAL_ACTIONS = new Set(['click', 'scroll', 'type', 'press', 'back', 'forward', 'reload', 'open']);
+
+function isComputerUseMode() {
+    return browserUseMode === 'computer';
+}
 
 function browserUseT(key, fallback = '', params = {}) {
     if (window.JoyBoyI18n?.t) return window.JoyBoyI18n.t(key, params, fallback);
@@ -53,6 +58,7 @@ function getBrowserUseViewportSize() {
 }
 
 function getBrowserUseCurrentUrl(defaultLocal = false) {
+    if (isComputerUseMode()) return 'computer://desktop';
     const value = String(document.getElementById('browser-use-url')?.value || '').trim();
     return value || (defaultLocal ? 'localhost:3000' : '');
 }
@@ -146,12 +152,13 @@ function clearBrowserUseActionLog() {
 
 function renderBrowserUseProgressFromStatus(status = browserUseStatus) {
     const install = status?.install || {};
+    const installPrefix = isComputerUseMode() ? 'computerUse' : 'browserUse';
     if (install.active || (install.complete && !install.success)) {
         setBrowserUseProgress({
             visible: true,
             percent: install.progress || 4,
-            label: install.step || browserUseT('browserUse.installing', 'Installation du navigateur local...'),
-            detail: install.detail || browserUseT('browserUse.installDetail', 'Préparation du runtime local...'),
+            label: install.step || browserUseT(`${installPrefix}.installing`, 'Installation du runtime local...'),
+            detail: install.detail || install.error || browserUseT(`${installPrefix}.installDetail`, 'Préparation du runtime local...'),
         });
     } else {
         setBrowserUseProgress({ visible: false });
@@ -211,19 +218,22 @@ function renderBrowserUseInstallState(status = browserUseStatus) {
     const panel = getBrowserUsePanel();
     const install = document.getElementById('browser-use-install');
     const tools = document.getElementById('browser-use-tools');
-    const installed = !!status?.playwright_installed;
+    const installed = isComputerUseMode() ? !!status?.usable : !!status?.playwright_installed;
     const installing = !!status?.install?.active;
     panel?.classList.toggle('is-installed', installed);
     panel?.classList.toggle('is-installing', installing);
     if (install) install.style.display = (installed && !installing) ? 'none' : '';
     if (tools) tools.style.display = installed ? '' : 'none';
+    const error = String(status?.error || '').trim();
     setBrowserUseStatusText(
-        installing
-            ? (status?.install?.step || browserUseT('browserUse.installing', 'Installation du navigateur local...'))
+        error && !installing
+            ? error
+            : installing
+            ? (status?.install?.step || browserUseT(isComputerUseMode() ? 'computerUse.installing' : 'browserUse.installing', 'Installation du runtime local...'))
             : installed
-            ? browserUseT('browserUse.ready', 'Runtime prêt')
-            : browserUseT('browserUse.missing', 'Runtime à installer'),
-        installing ? 'warn' : installed ? 'ok' : 'warn'
+            ? browserUseT(isComputerUseMode() ? 'computerUse.ready' : 'browserUse.ready', 'Runtime prêt')
+            : browserUseT(isComputerUseMode() ? 'computerUse.missing' : 'browserUse.missing', 'Runtime à installer'),
+        error && !installing ? 'error' : installing ? 'warn' : installed ? 'ok' : 'warn'
     );
     renderBrowserUseProgressFromStatus(status);
     setBrowserUseBusy(false);
@@ -231,9 +241,25 @@ function renderBrowserUseInstallState(status = browserUseStatus) {
 
 async function refreshBrowserUseStatus() {
     try {
-        const result = await apiSettings.getBrowserUseStatus();
-        browserUseStatus = result.data || {};
-        window.joyboyBrowserUseStatus = browserUseStatus;
+        const result = isComputerUseMode()
+            ? await apiSettings.getComputerUseStatus()
+            : await apiSettings.getBrowserUseStatus();
+        const data = result.data || {};
+        if (!result.ok || data.success === false) {
+            browserUseStatus = {
+                ...data,
+                success: false,
+                usable: false,
+                error: data.error || result.error || browserUseT(isComputerUseMode() ? 'computerUse.missing' : 'browserUse.missing', 'Runtime indisponible'),
+            };
+            if (isComputerUseMode()) window.joyboyComputerUseStatus = browserUseStatus;
+            else window.joyboyBrowserUseStatus = browserUseStatus;
+            renderBrowserUseInstallState(browserUseStatus);
+            return browserUseStatus;
+        }
+        browserUseStatus = data;
+        if (isComputerUseMode()) window.joyboyComputerUseStatus = browserUseStatus;
+        else window.joyboyBrowserUseStatus = browserUseStatus;
         renderBrowserUseInstallState(browserUseStatus);
         return browserUseStatus;
     } catch (error) {
@@ -243,9 +269,58 @@ async function refreshBrowserUseStatus() {
     }
 }
 
+function setBrowserUseMode(mode = 'browser') {
+    browserUseMode = mode === 'computer' ? 'computer' : 'browser';
+    const panel = getBrowserUsePanel();
+    panel?.classList.toggle('is-computer-use', isComputerUseMode());
+
+    const name = panel?.querySelector('.browser-use-name');
+    const subtitle = document.getElementById('browser-use-title');
+    const logo = panel?.querySelector('.browser-use-logo');
+    const toolbar = panel?.querySelector('.browser-use-toolbar');
+    const installTitle = panel?.querySelector('#browser-use-install h3');
+    const installBody = panel?.querySelector('#browser-use-install p');
+    const installAction = panel?.querySelector('[data-browser-use-action="install"]');
+    const installButton = installAction?.querySelector('span');
+    const emptyTitle = panel?.querySelector('#browser-use-empty strong');
+    const emptyBody = panel?.querySelector('#browser-use-empty span');
+    const emptyIcon = panel?.querySelector('.browser-use-empty-icon');
+    const command = document.getElementById('browser-use-command');
+    const sendAction = panel?.querySelector('[data-browser-use-action="task"]');
+    const hint = panel?.querySelector('.browser-use-hint span');
+    const prefix = isComputerUseMode() ? 'computerUse' : 'browserUse';
+    const textFor = (key, fallback) => browserUseT(`${prefix}.${key}`, fallback);
+    const setTranslatedText = (node, key, fallback) => {
+        if (!node) return;
+        node.setAttribute('data-i18n', `${prefix}.${key}`);
+        node.textContent = textFor(key, fallback);
+    };
+
+    setTranslatedText(name, 'title', isComputerUseMode() ? 'Computer Use' : 'Browser Use');
+    setTranslatedText(subtitle, 'subtitle', isComputerUseMode() ? 'Contrôle local de l’ordinateur' : 'Navigateur local pilotable par JoyBoy');
+    if (logo) logo.innerHTML = `<i data-lucide="${isComputerUseMode() ? 'monitor' : 'mouse-pointer-click'}"></i>`;
+    if (toolbar) toolbar.style.display = isComputerUseMode() ? 'none' : '';
+    if (installAction) installAction.setAttribute('data-i18n-tooltip', `${prefix}.installTooltip`);
+    setTranslatedText(installTitle, 'installTitle', isComputerUseMode() ? 'Installer le runtime desktop' : 'Installer le runtime navigateur');
+    setTranslatedText(installBody, 'installBody', isComputerUseMode() ? 'JoyBoy installe pyautogui, Pillow et mss localement pour capturer l’écran et piloter souris/clavier.' : 'JoyBoy installe Playwright et Chromium localement. Rien n’est committé dans le repo.');
+    setTranslatedText(installButton, 'installButton', 'Installer');
+    setTranslatedText(emptyTitle, 'emptyTitle', isComputerUseMode() ? 'Prêt à capturer le desktop' : 'Prêt à ouvrir une page');
+    setTranslatedText(emptyBody, 'emptyBody', isComputerUseMode() ? 'Tape @computer-use dans le chat, puis clique dans la capture pour piloter l’ordinateur.' : 'Tape @browser-use dans le chat, colle une URL, ou clique sur une capture pour piloter la page.');
+    if (emptyIcon) emptyIcon.innerHTML = `<i data-lucide="${isComputerUseMode() ? 'monitor' : 'mouse-pointer-click'}"></i>`;
+    if (command) {
+        command.setAttribute('data-i18n', `${prefix}.commandPlaceholder`);
+        command.setAttribute('data-i18n-attr', 'placeholder');
+        command.placeholder = textFor('commandPlaceholder', isComputerUseMode() ? 'Ex : clique ici, tape ce texte, appuie sur enter' : 'Ex : ouvre localhost:3000 et vérifie le bouton principal');
+    }
+    if (sendAction) sendAction.setAttribute('data-i18n-tooltip', `${prefix}.sendTooltip`);
+    setTranslatedText(hint, 'hint', isComputerUseMode() ? 'Clique dans la capture pour cliquer l’ordinateur. Molette pour scroller.' : 'Clique dans la capture pour cliquer la page. Molette pour scroller.');
+    if (window.lucide && panel) lucide.createIcons({ nodes: [panel] });
+}
+
 function openBrowserUsePanel(options = {}) {
     const panel = getBrowserUsePanel();
     if (!panel) return;
+    const mode = options.mode || 'browser';
     panel.classList.add('open');
     panel.setAttribute('aria-hidden', 'false');
     document.body.classList.add('browser-use-open');
@@ -253,8 +328,9 @@ function openBrowserUsePanel(options = {}) {
         const input = document.getElementById('browser-use-command');
         if (input) input.value = options.task;
     }
-    refreshBrowserUseStatus();
     window.JoyBoyI18n?.applyTranslations?.(panel);
+    setBrowserUseMode(mode);
+    refreshBrowserUseStatus();
     if (window.lucide) lucide.createIcons({ nodes: [panel] });
     window.JoyTooltip?.rescan?.(panel);
 }
@@ -284,33 +360,34 @@ async function installBrowserUseRuntime(includeAgent = false, options = {}) {
     browserUseInstallPollAbort = token;
     const taskAfterInstall = String(options.afterTask || (options.afterCurrent ? getBrowserUseCurrentTask() : '') || '').trim();
     setBrowserUseBusy(true);
-    setBrowserUseStatusText(browserUseT('browserUse.installing', 'Installation du navigateur local...'), 'warn');
+    setBrowserUseStatusText(browserUseT(isComputerUseMode() ? 'computerUse.installing' : 'browserUse.installing', 'Installation du runtime local...'), 'warn');
     setBrowserUseProgress({
         visible: true,
         percent: 2,
-        label: browserUseT('browserUse.installing', 'Installation du navigateur local...'),
-        detail: browserUseT('browserUse.installDetail', 'Préparation du runtime local...'),
+        label: browserUseT(isComputerUseMode() ? 'computerUse.installing' : 'browserUse.installing', 'Installation du runtime local...'),
+        detail: browserUseT(isComputerUseMode() ? 'computerUse.installDetail' : 'browserUse.installDetail', 'Préparation du runtime local...'),
     });
     try {
-        const result = await apiSettings.installBrowserUse({
-            include_agent: includeAgent,
-            background: true,
-        });
+        const result = isComputerUseMode()
+            ? await apiSettings.installComputerUse({ background: true })
+            : await apiSettings.installBrowserUse({ include_agent: includeAgent, background: true });
         browserUseStatus = result.data || {};
-        window.joyboyBrowserUseStatus = browserUseStatus;
+        if (isComputerUseMode()) window.joyboyComputerUseStatus = browserUseStatus;
+        else window.joyboyBrowserUseStatus = browserUseStatus;
         if (!result.ok || !browserUseStatus.success) throw new Error(browserUseStatus.error || result.error || 'install failed');
         renderBrowserUseInstallState(browserUseStatus);
         browserUseStatus = await pollBrowserUseInstallUntilDone(token);
-        window.joyboyBrowserUseStatus = browserUseStatus;
+        if (isComputerUseMode()) window.joyboyComputerUseStatus = browserUseStatus;
+        else window.joyboyBrowserUseStatus = browserUseStatus;
         const install = browserUseStatus?.install || {};
         if (install.complete && !install.success) {
-            throw new Error(install.error || browserUseT('browserUse.installFailed', 'Installation échouée'));
+            throw new Error(install.error || browserUseT(isComputerUseMode() ? 'computerUse.installFailed' : 'browserUse.installFailed', 'Installation échouée'));
         }
         await refreshBrowserUseStatus();
         renderBrowserUseInstallState(browserUseStatus);
-        Toast.success(browserUseT('browserUse.title', 'Browser Use'), browserUseT('browserUse.installDone', 'Runtime installé.'));
+        Toast.success(browserUseT(isComputerUseMode() ? 'computerUse.title' : 'browserUse.title', 'Browser Use'), browserUseT(isComputerUseMode() ? 'computerUse.installDone' : 'browserUse.installDone', 'Runtime installé.'));
         if (taskAfterInstall) {
-            setBrowserUseStatusText(browserUseT('browserUse.runningQueuedTask', 'Lancement de la demande...'), 'warn');
+            setBrowserUseStatusText(browserUseT(isComputerUseMode() ? 'computerUse.runningQueuedTask' : 'browserUse.runningQueuedTask', 'Lancement de la demande...'), 'warn');
             return await browserUseAction('task', { task: taskAfterInstall, url: getBrowserUseCurrentUrl(false) });
         }
         const currentUrl = getBrowserUseCurrentUrl(true);
@@ -319,8 +396,9 @@ async function installBrowserUseRuntime(includeAgent = false, options = {}) {
         }
         return browserUseStatus;
     } catch (error) {
-        setBrowserUseStatusText(error.message || browserUseT('browserUse.installFailed', 'Installation échouée'), 'error');
-        Toast.error(browserUseT('browserUse.installFailed', 'Installation échouée'), error.message || String(error));
+        const titleKey = isComputerUseMode() ? 'computerUse.title' : 'browserUse.title';
+        setBrowserUseStatusText(error.message || browserUseT(isComputerUseMode() ? 'computerUse.installFailed' : 'browserUse.installFailed', 'Installation échouée'), 'error');
+        Toast.error(browserUseT(titleKey, isComputerUseMode() ? 'Computer Use' : 'Browser Use'), error.message || String(error));
         throw error;
     } finally {
         if (browserUseInstallPollAbort === token) browserUseInstallPollAbort = 0;
@@ -334,7 +412,8 @@ async function browserUseAction(action, payload = {}) {
     const actionName = String(action || '').toLowerCase();
     if (browserUseActionPollToken && BROWSER_USE_MANUAL_ACTIONS.has(actionName)) {
         try {
-            await apiSettings.browserUseAction('cancel', {});
+            if (isComputerUseMode()) await apiSettings.computerUseAction('cancel', {});
+            else await apiSettings.browserUseAction('cancel', {});
         } catch (error) {
             // Best effort: the manual action will still be queued if the agent is finishing.
         }
@@ -342,15 +421,15 @@ async function browserUseAction(action, payload = {}) {
     const token = Date.now();
     browserUseActionPollToken = token;
     setBrowserUseBusy(true);
-    setBrowserUseStatusText(browserUseT('browserUse.running', 'Navigation en cours...'), 'warn');
+    setBrowserUseStatusText(browserUseT(isComputerUseMode() ? 'computerUse.running' : 'browserUse.running', isComputerUseMode() ? 'Contrôle en cours...' : 'Navigation en cours...'), 'warn');
     setBrowserUseProgress({
         visible: true,
         percent: 35,
-        label: browserUseT('browserUse.running', 'Navigation en cours...'),
-        detail: payload.url || payload.task || browserUseT('browserUse.capturing', 'Capture de la page...'),
+        label: browserUseT(isComputerUseMode() ? 'computerUse.running' : 'browserUse.running', isComputerUseMode() ? 'Contrôle en cours...' : 'Navigation en cours...'),
+        detail: payload.url || payload.task || browserUseT(isComputerUseMode() ? 'computerUse.capturing' : 'browserUse.capturing', isComputerUseMode() ? 'Capture de l’écran...' : 'Capture de la page...'),
     });
     renderBrowserUseActionLog({
-        status: browserUseT('browserUse.running', 'Navigation en cours...'),
+        status: browserUseT(isComputerUseMode() ? 'computerUse.running' : 'browserUse.running', isComputerUseMode() ? 'Contrôle en cours...' : 'Navigation en cours...'),
         detail: payload.url || payload.task || '',
         agent_steps: [],
     });
@@ -364,14 +443,17 @@ async function browserUseAction(action, payload = {}) {
             ...size,
             max_steps: Object.prototype.hasOwnProperty.call(payload, 'max_steps') ? payload.max_steps : (actionName === 'task' ? 0 : undefined),
         };
-        const result = await apiSettings.browserUseAction(action, runtimePayload);
+        const result = isComputerUseMode()
+            ? await apiSettings.computerUseAction(action, runtimePayload)
+            : await apiSettings.browserUseAction(action, runtimePayload);
         const data = result.data || {};
         if (data.screenshot) renderBrowserUseShot(data);
         renderBrowserUseActionLog(data);
-        if (!result.ok || !data.success) throw new Error(data.error || result.error || 'Browser Use error');
-        browserUseStatus = { ...(browserUseStatus || {}), running: true, url: data.url, title: data.title, playwright_installed: true, usable: true };
-        window.joyboyBrowserUseStatus = browserUseStatus;
-        setBrowserUseStatusText(data.title || browserUseT('browserUse.ready', 'Runtime prêt'), 'ok');
+        if (!result.ok || !data.success) throw new Error(data.error || result.error || (isComputerUseMode() ? 'Computer Use error' : 'Browser Use error'));
+        browserUseStatus = { ...(browserUseStatus || {}), running: true, url: data.url, title: data.title, playwright_installed: !isComputerUseMode() || browserUseStatus?.playwright_installed, usable: true };
+        if (isComputerUseMode()) window.joyboyComputerUseStatus = browserUseStatus;
+        else window.joyboyBrowserUseStatus = browserUseStatus;
+        setBrowserUseStatusText(data.title || browserUseT(isComputerUseMode() ? 'computerUse.ready' : 'browserUse.ready', 'Runtime prêt'), 'ok');
         setBrowserUseProgress({ visible: false });
         return data;
     } catch (error) {
@@ -386,12 +468,13 @@ async function browserUseAction(action, payload = {}) {
 
 async function cancelBrowserUseAction() {
     browserUseActionPollToken = 0;
-    setBrowserUseStatusText(browserUseT('browserUse.interrupting', 'Interruption...'), 'warn');
+    setBrowserUseStatusText(browserUseT(isComputerUseMode() ? 'computerUse.interrupting' : 'browserUse.interrupting', 'Interruption...'), 'warn');
     try {
-        await apiSettings.browserUseAction('cancel', {});
+        if (isComputerUseMode()) await apiSettings.computerUseAction('cancel', {});
+        else await apiSettings.browserUseAction('cancel', {});
         setBrowserUseProgress({ visible: false });
     } catch (error) {
-        Toast.error(browserUseT('browserUse.title', 'Browser Use'), error.message || String(error));
+        Toast.error(browserUseT(isComputerUseMode() ? 'computerUse.title' : 'browserUse.title', isComputerUseMode() ? 'Computer Use' : 'Browser Use'), error.message || String(error));
     } finally {
         setBrowserUseBusy(false);
     }
@@ -403,23 +486,26 @@ async function pollBrowserUseLiveUntilDone(token) {
         await new Promise(resolve => setTimeout(resolve, 550));
         if (browserUseActionPollToken !== token) break;
         try {
-            const result = await apiSettings.getBrowserUseStatus();
+            const result = isComputerUseMode()
+                ? await apiSettings.getComputerUseStatus()
+                : await apiSettings.getBrowserUseStatus();
             const data = result.data || {};
             if (!result.ok || !data.success) continue;
             browserUseStatus = { ...(browserUseStatus || {}), ...data };
-            window.joyboyBrowserUseStatus = browserUseStatus;
+            if (isComputerUseMode()) window.joyboyComputerUseStatus = browserUseStatus;
+            else window.joyboyBrowserUseStatus = browserUseStatus;
             if (data.screenshot) renderBrowserUseShot(data);
             renderBrowserUseActionLog(data);
             const progress = Number.isFinite(Number(data.progress))
                 ? Math.max(lastProgress, Math.min(98, Number(data.progress)))
                 : Math.min(98, lastProgress + 2);
             lastProgress = progress;
-            setBrowserUseStatusText(data.status || data.title || browserUseT('browserUse.running', 'Navigation en cours...'), data.action_active ? 'warn' : 'ok');
+            setBrowserUseStatusText(data.status || data.title || browserUseT(isComputerUseMode() ? 'computerUse.running' : 'browserUse.running', isComputerUseMode() ? 'Contrôle en cours...' : 'Navigation en cours...'), data.action_active ? 'warn' : 'ok');
             setBrowserUseProgress({
                 visible: true,
                 percent: progress,
-                label: data.status || browserUseT('browserUse.running', 'Navigation en cours...'),
-                detail: data.detail || data.url || data.task || browserUseT('browserUse.capturing', 'Capture de la page...'),
+                label: data.status || browserUseT(isComputerUseMode() ? 'computerUse.running' : 'browserUse.running', isComputerUseMode() ? 'Contrôle en cours...' : 'Navigation en cours...'),
+                detail: data.detail || data.url || data.task || browserUseT(isComputerUseMode() ? 'computerUse.capturing' : 'browserUse.capturing', isComputerUseMode() ? 'Capture de l’écran...' : 'Capture de la page...'),
             });
         } catch (error) {
             // Polling is only for live preview; the main action request owns errors.
@@ -428,7 +514,7 @@ async function pollBrowserUseLiveUntilDone(token) {
 }
 
 async function runBrowserUseTask(task = '') {
-    openBrowserUsePanel({ task });
+    openBrowserUsePanel({ task, mode: 'browser' });
     const status = await refreshBrowserUseStatus();
     if (!status?.playwright_installed) {
         setBrowserUseStatusText(browserUseT('browserUse.needInstallForTask', 'Installe Browser Use pour lancer cette demande.'), 'warn');
@@ -437,14 +523,28 @@ async function runBrowserUseTask(task = '') {
     return await browserUseAction('task', { task, url: getBrowserUseCurrentUrl(false) });
 }
 
+async function runComputerUseTask(task = '') {
+    openBrowserUsePanel({ task, mode: 'computer' });
+    const status = await refreshBrowserUseStatus();
+    if (status?.success === false && status?.error) {
+        throw new Error(status.error);
+    }
+    if (!status?.usable) {
+        setBrowserUseStatusText(browserUseT('computerUse.needInstallForTask', 'Installe Computer Use pour lancer cette demande.'), 'warn');
+        return await installBrowserUseRuntime(false, { afterTask: task });
+    }
+    return await browserUseAction(task ? 'task' : 'screenshot', { task });
+}
+
 async function submitBrowserUseCommand() {
     const input = document.getElementById('browser-use-command');
     const task = String(input?.value || '').trim();
     if (!task) return;
     try {
-        await runBrowserUseTask(task);
+        if (isComputerUseMode()) await runComputerUseTask(task);
+        else await runBrowserUseTask(task);
     } catch (error) {
-        Toast.error(browserUseT('browserUse.title', 'Browser Use'), error.message || String(error));
+        Toast.error(browserUseT(isComputerUseMode() ? 'computerUse.title' : 'browserUse.title', isComputerUseMode() ? 'Computer Use' : 'Browser Use'), error.message || String(error));
     }
 }
 
@@ -474,7 +574,7 @@ function bindBrowserUsePanel() {
         try {
             await browserUseAction('click', { x, y });
         } catch (error) {
-            Toast.error(browserUseT('browserUse.title', 'Browser Use'), error.message || String(error));
+            Toast.error(browserUseT(isComputerUseMode() ? 'computerUse.title' : 'browserUse.title', isComputerUseMode() ? 'Computer Use' : 'Browser Use'), error.message || String(error));
         }
     });
 
@@ -557,9 +657,10 @@ function buildComputerUseUserPromptHtml(task = '') {
 
 function addBrowserUseResultMessage(result = {}, task = '') {
     const ok = !!result.success;
+    const computerResult = String(result.url || '').startsWith('computer://') || isComputerUseMode();
     const text = ok
-        ? (result.answer || browserUseT('browserUse.openedResult', 'Navigateur ouvert : {title}', { title: result.title || result.url || task || 'OK' }))
-        : (result.error || browserUseT('browserUse.installHintResult', 'Browser Use est prêt dans le panneau droit. Installe le runtime si JoyBoy le demande.'));
+        ? (result.answer || browserUseT(computerResult ? 'computerUse.openedResult' : 'browserUse.openedResult', computerResult ? 'Computer Use prêt : {title}' : 'Navigateur ouvert : {title}', { title: result.title || result.url || task || 'OK' }))
+        : (result.error || browserUseT(computerResult ? 'computerUse.installHintResult' : 'browserUse.installHintResult', computerResult ? 'Computer Use est prêt dans le panneau droit. Installe le runtime si JoyBoy le demande.' : 'Browser Use est prêt dans le panneau droit. Installe le runtime si JoyBoy le demande.'));
     if (typeof addAiMessageToChat === 'function') {
         addAiMessageToChat(text);
     }
@@ -585,13 +686,13 @@ async function maybeHandleBrowserUsePromptSubmit(inputOrId) {
             });
         }
         if (typeof resetComposerTextarea === 'function') resetComposerTextarea(input);
-        if (typeof addAiMessageToChat === 'function') {
-            addAiMessageToChat(browserUseT(
-                'computerUse.packRequired',
-                'Computer Use demande un pack local privé avant de pouvoir contrôler ton ordinateur.'
-            ));
+        try {
+            const result = await runComputerUseTask(task);
+            addBrowserUseResultMessage(result, task);
+        } catch (error) {
+            addBrowserUseResultMessage({ success: false, error: error.message }, task);
+            Toast.error(browserUseT('computerUse.title', 'Computer Use'), error.message || String(error));
         }
-        if (typeof openExtensionModal === 'function') openExtensionModal('computer-use');
         if (typeof saveCurrentChatHtml === 'function') {
             saveCurrentChatHtml(task, getChatHtmlWithoutSkeleton?.() || '', currentChatId);
         }
@@ -717,6 +818,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 window.addEventListener('joyboy:locale-changed', () => {
+    setBrowserUseMode(browserUseMode);
     renderBrowserUseInstallState(browserUseStatus);
 });
 
@@ -729,6 +831,7 @@ Object.assign(window, {
     cancelBrowserUseAction,
     clearBrowserUseActionLog,
     runBrowserUseTask,
+    runComputerUseTask,
     submitBrowserUseCommand,
     navigateBrowserUseUrl,
     maybeHandleBrowserUsePromptSubmit,

@@ -12,6 +12,20 @@ Double-click `start_windows.bat` or run:
 start_windows.bat
 ```
 
+If the window opens and closes immediately, launch it from Command Prompt so the
+error stays visible:
+
+```bat
+cd path\to\JoyBoy
+start_windows.bat
+```
+
+JoyBoy also writes Windows launch logs in:
+
+- `.joyboy\logs\windows_start_last.log`
+- `.joyboy\logs\windows_server_last.log`
+- `.joyboy\logs\windows_setup_last.log`
+
 ### macOS
 
 From Terminal:
