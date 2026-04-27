@@ -292,7 +292,14 @@ if __name__ == '__main__':
     print("        Dream. Create. Be Free.")
     print("        100% local · Zero cloud · No limits")
     print("")
-    print(f"        {AI_NAME} is running at: http://127.0.0.1:7860")
+    print("        ==================================================")
+    print(f"        {AI_NAME} is running at:")
+    print("")
+    print("            http://127.0.0.1:7860")
+    print("")
+    print("        If the browser does not open, copy/paste this URL.")
+    print("        Keep this terminal open while you use JoyBoy.")
+    print("        ==================================================")
     print("\n")
 
     # Vérifier Ollama

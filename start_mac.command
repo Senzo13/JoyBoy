@@ -29,6 +29,7 @@ if [ -z "${HUGGINGFACE_HUB_CACHE:-}" ] || [ "$HUGGINGFACE_HUB_CACHE" = "$JOYBOY_
 fi
 export HF_ASSETS_CACHE="${HF_ASSETS_CACHE:-$JOYBOY_HF_CACHE_DIR/assets}"
 export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}"
+JOYBOY_LOCAL_URL="${JOYBOY_LOCAL_URL:-http://127.0.0.1:7860}"
 
 MIN_PY_MAJOR=3
 MIN_PY_MINOR=10
@@ -84,6 +85,19 @@ show_python_venv_help() {
     echo "           Recommended on macOS:"
     echo "             brew install python@3.12"
     echo "             brew link --overwrite python@3.12"
+    echo ""
+}
+
+print_url_hint() {
+    echo ""
+    echo "   ================================================================"
+    echo "     JoyBoy opens in your browser at:"
+    echo ""
+    echo "         $JOYBOY_LOCAL_URL"
+    echo ""
+    echo "     Keep this terminal open while you use JoyBoy."
+    echo "     If the browser does not open, copy/paste the URL above."
+    echo "   ================================================================"
     echo ""
 }
 
@@ -169,6 +183,7 @@ setup() {
     echo "                   SETUP - Installation"
     echo "   ================================================================"
     echo ""
+    print_url_hint
 
     PYTHON_BIN="$(find_compatible_python)"
     if [ -z "$PYTHON_BIN" ]; then
@@ -229,6 +244,7 @@ setup() {
     echo "                   Setup complete!"
     echo "   ================================================================"
     echo ""
+    print_url_hint
     sleep 2
     start_app
 }
@@ -262,16 +278,10 @@ start_app() {
     fi
 
     echo "   Python: $(python --version 2>&1)"
-    echo ""
-    echo "   ----------------------------------------------------------------"
-    echo ""
-    echo "                  http://127.0.0.1:7860"
-    echo ""
-    echo "   ----------------------------------------------------------------"
-    echo ""
+    print_url_hint
     echo "   (Ctrl+C to stop)"
     echo ""
-    python scripts/open_browser.py --url http://127.0.0.1:7860 --timeout 120 >/dev/null 2>&1 &
+    python scripts/open_browser.py --url "$JOYBOY_LOCAL_URL" --timeout 120 >/dev/null 2>&1 &
     python web/app.py
 
     echo ""

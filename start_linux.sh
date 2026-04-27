@@ -24,6 +24,20 @@ if [ -z "${HUGGINGFACE_HUB_CACHE:-}" ] || [ "$HUGGINGFACE_HUB_CACHE" = "$JOYBOY_
 fi
 export HF_ASSETS_CACHE="${HF_ASSETS_CACHE:-$JOYBOY_HF_CACHE_DIR/assets}"
 export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}"
+JOYBOY_LOCAL_URL="${JOYBOY_LOCAL_URL:-http://127.0.0.1:7860}"
+
+print_url_hint() {
+    echo ""
+    echo "=============================================================="
+    echo "  JoyBoy opens in your browser at:"
+    echo ""
+    echo "      $JOYBOY_LOCAL_URL"
+    echo ""
+    echo "  Keep this terminal open while you use JoyBoy."
+    echo "  If the browser does not open, copy/paste the URL above."
+    echo "=============================================================="
+    echo ""
+}
 
 ensure_ubuntu_python_bootstrap() {
     if python3 -c "import ensurepip, venv" >/dev/null 2>&1; then
@@ -67,6 +81,7 @@ create_venv() {
 }
 
 if [ "${1:-}" = "--setup" ]; then
+    print_url_hint
     create_venv
     source venv/bin/activate
     python scripts/bootstrap.py setup
@@ -101,10 +116,10 @@ fi
 # Start the app
 echo ""
 echo -e "${GREEN}Starting JoyBoy...${NC}"
-echo ""
+print_url_hint
 
 if [ "${JOYBOY_OPEN_BROWSER:-}" = "1" ] || [ -n "${DISPLAY:-}" ] || [ -n "${WAYLAND_DISPLAY:-}" ]; then
-    python scripts/open_browser.py --url http://127.0.0.1:7860 --timeout 120 >/dev/null 2>&1 &
+    python scripts/open_browser.py --url "$JOYBOY_LOCAL_URL" --timeout 120 >/dev/null 2>&1 &
 fi
 
 python3 web/app.py

@@ -8,6 +8,7 @@ if not exist "%JOYBOY_LOG_DIR%" mkdir "%JOYBOY_LOG_DIR%" >nul 2>nul
 set "JOYBOY_START_LOG=%JOYBOY_LOG_DIR%\windows_start_last.log"
 > "%JOYBOY_START_LOG%" echo JoyBoy Windows launcher started: %DATE% %TIME%
 >> "%JOYBOY_START_LOG%" echo Working directory: %CD%
+set "JOYBOY_LOCAL_URL=http://127.0.0.1:7860"
 
 if not defined JOYBOY_MODELS_DIR set "JOYBOY_MODELS_DIR=%CD%\models"
 if not defined JOYBOY_HF_CACHE_DIR set "JOYBOY_HF_CACHE_DIR=%JOYBOY_MODELS_DIR%\huggingface"
@@ -144,6 +145,8 @@ echo    ================================================================
 echo                    SETUP - Installation  (attempt %SETUP_RETRIES%/3)
 echo    ================================================================
 echo.
+call :print_url_hint
+echo.
 
 REM ============================================
 REM STEP 0: Check/install portable Python
@@ -273,12 +276,16 @@ echo    ================================================================
 echo                    Setup complete!
 echo    ================================================================
 echo.
+call :print_url_hint
+echo.
 set "SETUP_RETRIES=0"
 timeout /t 2 >nul
 goto start
 
 :start
 cls
+call :print_url_hint
+echo.
 REM Normal app start must use the venv; portable Python only bootstraps setup.
 if exist "venv\Scripts\python.exe" (
     set "PY=venv\Scripts\python.exe"
@@ -313,15 +320,18 @@ where ollama >nul 2>&1
 if not errorlevel 1 goto skip_ollama_install
 echo.
 echo    Ollama not detected, downloading...
+echo    When this finishes, JoyBoy will open automatically here:
+echo      %JOYBOY_LOCAL_URL%
+echo.
 "%PY%" -c "import subprocess,os,urllib.request;p=os.path.join(os.environ.get('TEMP','.'),'OllamaSetup.exe');urllib.request.urlretrieve('https://ollama.com/download/OllamaSetup.exe',p);subprocess.run([p,'/VERYSILENT','/NORESTART'],timeout=120);os.path.exists(p) and os.remove(p)"
 echo    [OK] Ollama installed
 echo.
 :skip_ollama_install
 
 if exist "%PYW%" (
-    start "" /b "%PYW%" scripts\open_browser.py --url http://127.0.0.1:7860 --timeout 120
+    start "" /b "%PYW%" scripts\open_browser.py --url %JOYBOY_LOCAL_URL% --timeout 120
 ) else (
-    start "" /b "%PY%" scripts\open_browser.py --url http://127.0.0.1:7860 --timeout 120 >nul 2>nul
+    start "" /b "%PY%" scripts\open_browser.py --url %JOYBOY_LOCAL_URL% --timeout 120 >nul 2>nul
 )
 "%PY%" -u scripts\windows_run_server.py
 set EXIT_CODE=%errorlevel%
@@ -343,3 +353,14 @@ goto menu
 
 :quit
 exit
+
+:print_url_hint
+echo    ================================================================
+echo      JoyBoy opens in your browser at:
+echo.
+echo          %JOYBOY_LOCAL_URL%
+echo.
+echo      Keep this terminal open while you use JoyBoy.
+echo      If the browser does not open, copy/paste the URL above.
+echo    ================================================================
+exit /b 0

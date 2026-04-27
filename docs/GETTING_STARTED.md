@@ -49,6 +49,10 @@ If macOS says the launcher is not executable, run `chmod +x start_mac.command` o
 http://127.0.0.1:7860
 ```
 
+The launcher prints this URL clearly in the terminal and tries to open it
+automatically. Keep the terminal open while using JoyBoy; if the browser does
+not open, copy/paste `http://127.0.0.1:7860` manually.
+
 ## 3. Finish onboarding
 
 On first launch, JoyBoy will:

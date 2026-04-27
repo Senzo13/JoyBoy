@@ -1683,6 +1683,9 @@ def main():
     print(f"\n" + "-" * 50)
     print("  Ollama (AI chat)")
     print("-" * 50 + "\n")
+    print("  JoyBoy local URL after setup:")
+    print("    http://127.0.0.1:7860")
+    print("  If the browser does not open automatically, copy/paste that URL.\n")
 
     # Afficher info VRAM
     vram = get_vram_gb()
