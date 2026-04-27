@@ -201,8 +201,31 @@ def _register_hook(unet, head):
 def download_fooocus_patch():
     """Download Fooocus inpaint patch files from HuggingFace (cached by hf_hub)."""
     from huggingface_hub import hf_hub_download
+    from core.models.hf_cache import (
+        find_hf_file_in_cache,
+        is_huggingface_reachable,
+        preferred_hf_hub_cache_dir,
+    )
     import os
     os.environ.setdefault("HF_HUB_DOWNLOAD_TIMEOUT", "300")
+
+    cache_dir = preferred_hf_hub_cache_dir()
+    head_cached = find_hf_file_in_cache(FOOOCUS_REPO, HEAD_FILENAME)
+    patch_cached = find_hf_file_in_cache(FOOOCUS_REPO, PATCH_FILENAME)
+    if head_cached and patch_cached:
+        return head_cached, patch_cached
+
+    if not is_huggingface_reachable():
+        missing = []
+        if not head_cached:
+            missing.append(HEAD_FILENAME)
+        if not patch_cached:
+            missing.append(PATCH_FILENAME)
+        raise RuntimeError(
+            "Patch Fooocus absent ou incomplet dans le cache local "
+            f"({', '.join(missing)}), et Hugging Face est indisponible."
+        )
+
     try:
         from core.generation.state import set_progress_phase
 
@@ -210,14 +233,24 @@ def download_fooocus_patch():
     except Exception:
         pass
 
-    head_path = hf_hub_download(repo_id=FOOOCUS_REPO, filename=HEAD_FILENAME, resume_download=True)
+    head_path = head_cached or hf_hub_download(
+        repo_id=FOOOCUS_REPO,
+        filename=HEAD_FILENAME,
+        resume_download=True,
+        cache_dir=cache_dir,
+    )
     try:
         from core.generation.state import set_progress_phase
 
         set_progress_phase("download_fooocus", 70, 100, "Téléchargement poids Fooocus...")
     except Exception:
         pass
-    patch_path = hf_hub_download(repo_id=FOOOCUS_REPO, filename=PATCH_FILENAME, resume_download=True)
+    patch_path = patch_cached or hf_hub_download(
+        repo_id=FOOOCUS_REPO,
+        filename=PATCH_FILENAME,
+        resume_download=True,
+        cache_dir=cache_dir,
+    )
     try:
         from core.generation.state import set_progress_phase
 

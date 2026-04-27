@@ -9,10 +9,17 @@ import os
 import sys
 import torch
 import threading
+import time
 from pathlib import Path
 from typing import Generator, Callable
 
 from core.infra.paths import get_models_dir
+from core.models.hf_cache import (
+    iter_hf_cache_dirs,
+    is_hf_file_cached,
+    is_huggingface_reachable,
+    preferred_hf_hub_cache_dir,
+)
 
 # Cache directory
 QUANTIZED_CACHE_DIR = get_models_dir() / "quantized"
@@ -51,7 +58,6 @@ DEPRECATED_HF_REPOS = [
     "diffusers/stable-diffusion-xl-1.0-inpainting-0.1",  # ancien SDXL inpaint base
     "OzzyGT/RealVisXL_V4.0_inpainting",          # ancien modèle plus utilisé
     "WaterKnight/diffusion-models",               # ancien modèle plus utilisé
-    "stabilityai/stable-diffusion-xl-base-1.0",   # remplacé par krnl repo
     "kandinsky-community/kandinsky-2-2-prior",     # Kandinsky non utilisé
     "kandinsky-community/kandinsky-2-2-decoder-inpaint",  # Kandinsky non utilisé
     "runwayml/stable-diffusion-v1-5",             # SD 1.5 non utilisé
@@ -72,6 +78,8 @@ _preload_status = {
 }
 _preload_lock = threading.Lock()
 _preload_callbacks = []
+_preload_run_lock = threading.Lock()
+_preload_running = False
 
 
 def get_status():
@@ -130,26 +138,21 @@ def _should_preload_image_assets() -> bool:
 
 def _is_hf_file_cached(repo_id: str, filename: str, *, cache_dir: str | Path | None = None) -> bool:
     """Retourne True si un fichier HF ciblé est déjà présent dans le cache local."""
-    try:
-        from huggingface_hub import try_to_load_from_cache
-    except Exception:
-        return False
+    return is_hf_file_cached(repo_id, filename, cache_dir=cache_dir)
 
-    try:
-        kwargs = {"cache_dir": str(cache_dir)} if cache_dir else {}
-        cached = try_to_load_from_cache(repo_id, filename, **kwargs)
-    except Exception:
-        return False
 
-    return isinstance(cached, str) and bool(cached)
+def _get_custom_hf_cache_dir() -> str:
+    """Return JoyBoy's HF cache root without assuming runtime imports succeeded."""
+    try:
+        from core.models import custom_cache
+        return str(custom_cache)
+    except Exception:
+        return str(get_models_dir() / "huggingface")
 
 
 def _is_controlnet_base_cached() -> bool:
     """ControlNet quant cache alone is not enough; Diffusers still needs config + base weights."""
-    try:
-        from core.models import custom_cache
-    except Exception:
-        custom_cache = None
+    custom_cache = _get_custom_hf_cache_dir()
 
     has_config = _is_hf_file_cached(CONTROLNET_DEPTH_REPO, "config.json", cache_dir=custom_cache)
     has_weights = any(
@@ -169,6 +172,7 @@ def get_preload_cache_report() -> dict:
     required = []
     optional = []
     preload_image_assets = _should_preload_image_assets()
+    custom_cache = _get_custom_hf_cache_dir()
 
     if preload_image_assets:
         for target_id, label, model_name, quant_type in REQUIRED_PRELOAD_CACHE_TARGETS:
@@ -189,7 +193,7 @@ def get_preload_cache_report() -> dict:
             optional.append({
                 "id": target_id,
                 "label": label,
-                "cached": _is_hf_file_cached(repo_id, filename),
+                "cached": _is_hf_file_cached(repo_id, filename, cache_dir=custom_cache),
                 "kind": "download",
             })
 
@@ -213,6 +217,22 @@ def get_preload_cache_report() -> dict:
     }
 
 
+def _follow_running_preload() -> Generator[dict, None, None]:
+    """Yield the current preload status while another request owns the work."""
+    print("[PRELOAD] Préchargement déjà en cours, suivi du statut existant")
+    while True:
+        status = get_status()
+        yield status
+        if status.get("done"):
+            return
+        with _preload_run_lock:
+            running = _preload_running
+        if not running:
+            yield get_status()
+            return
+        time.sleep(0.5)
+
+
 def preload_all(force: bool = False) -> Generator[dict, None, None]:
     """
     Générateur qui pré-charge tous les modèles et yield le status.
@@ -223,75 +243,113 @@ def preload_all(force: bool = False) -> Generator[dict, None, None]:
     Yields:
         dict avec current_step, progress, total_steps, done
     """
-    if not _should_preload_image_assets():
-        _update_status("Profil CPU/non-CUDA: préchargement image lourd ignoré", 1, 1, done=True)
-        yield get_status()
+    global _preload_running
+
+    should_follow = False
+    with _preload_run_lock:
+        if _preload_running:
+            should_follow = True
+        else:
+            _preload_running = True
+
+    if should_follow:
+        yield from _follow_running_preload()
         return
 
-    steps = [
-        ("Nettoyage caches obsolètes...", _cleanup_deprecated_hf_repos),
-        ("Analyse du cache local...", _check_cache),
-        ("Préparation du modèle inpainting...", _preload_inpaint_download),
-        ("Préparation du patch Fooocus...", _preload_fooocus_patch),
-        ("Préparation de ControlNet Depth...", lambda: _preload_controlnet(force)),
-        ("Préparation de Depth Anything V2...", lambda: _preload_depth_estimator(force)),
-        ("Préparation de SegFormer (vêtements)...", lambda: _preload_segformer(force)),
-        ("Préparation de Florence-2 (vision)...", lambda: _preload_florence(force)),
-        ("Nettoyage mémoire GPU...", _cleanup_vram),
-    ]
-
-    total = len(steps) * 2  # Chaque étape a 2 phases: démarrage + fin
-    _update_status("Démarrage du préchargement...", 0, total)
-    yield get_status()
-
-    for i, (step_name, step_func) in enumerate(steps):
-        # Phase 1: Démarrage de l'étape
-        _update_status(step_name, i * 2, total)
-        yield get_status()
-
+    if not _should_preload_image_assets():
         try:
-            step_func()
-        except Exception as e:
-            print(f"[PRELOAD] Erreur {step_name}: {e}")
-            # Continue malgré les erreurs
+            _update_status("Profil CPU/non-CUDA: préchargement image lourd ignoré", 1, 1, done=True)
+            yield get_status()
+        finally:
+            with _preload_run_lock:
+                _preload_running = False
+        return
 
-        # Phase 2: Fin de l'étape (progression intermédiaire)
-        _update_status(f"✓ {step_name.replace('...', '')} OK", i * 2 + 1, total)
+    try:
+        steps = [
+            ("Nettoyage caches obsolètes...", _cleanup_deprecated_hf_repos),
+            ("Analyse du cache local...", _check_cache),
+            ("Préparation du modèle inpainting...", _preload_inpaint_download),
+            ("Préparation du patch Fooocus...", _preload_fooocus_patch),
+            ("Préparation de ControlNet Depth...", lambda: _preload_controlnet(force)),
+            ("Préparation de Depth Anything V2...", lambda: _preload_depth_estimator(force)),
+            ("Préparation de SegFormer (vêtements)...", lambda: _preload_segformer(force)),
+            ("Préparation de Florence-2 (vision)...", lambda: _preload_florence(force)),
+            ("Nettoyage mémoire GPU...", _cleanup_vram),
+        ]
+
+        total = len(steps) * 2  # Chaque étape a 2 phases: démarrage + fin
+        _update_status("Démarrage du préchargement...", 0, total, done=False, error=None)
         yield get_status()
 
-    _update_status("Prêt !", total, total, done=True)
-    yield get_status()
+        for i, (step_name, step_func) in enumerate(steps):
+            # Phase 1: Démarrage de l'étape
+            _update_status(step_name, i * 2, total)
+            yield get_status()
+
+            try:
+                step_func()
+            except Exception as e:
+                print(f"[PRELOAD] Erreur {step_name}: {e}")
+                # Continue malgré les erreurs
+
+            # Phase 2: Fin de l'étape (progression intermédiaire)
+            _update_status(f"✓ {step_name.replace('...', '')} OK", i * 2 + 1, total)
+            yield get_status()
+
+        _update_status("Prêt !", total, total, done=True)
+        yield get_status()
+    finally:
+        with _preload_run_lock:
+            _preload_running = False
 
 
 def _cleanup_deprecated_hf_repos():
     """Supprime les repos HF obsolètes du cache local pour libérer de l'espace."""
     try:
         from huggingface_hub import scan_cache_dir
-        cache_info = scan_cache_dir()
 
-        hashes_to_delete = []
-        repos_found = []
+        total_repos = 0
         total_size = 0
+        custom_cache = _get_custom_hf_cache_dir()
 
-        for repo in cache_info.repos:
-            if repo.repo_id in DEPRECATED_HF_REPOS:
-                repos_found.append(repo.repo_id)
-                total_size += repo.size_on_disk
-                for rev in repo.revisions:
-                    hashes_to_delete.append(rev.commit_hash)
+        for cache_dir in iter_hf_cache_dirs(custom_cache):
+            if not cache_dir.exists():
+                continue
 
-        if not hashes_to_delete:
+            try:
+                cache_info = scan_cache_dir(cache_dir=str(cache_dir))
+            except Exception:
+                continue
+
+            hashes_to_delete = []
+            repos_found = []
+            cache_size = 0
+
+            for repo in cache_info.repos:
+                if repo.repo_id in DEPRECATED_HF_REPOS:
+                    repos_found.append(repo.repo_id)
+                    cache_size += repo.size_on_disk
+                    for rev in repo.revisions:
+                        hashes_to_delete.append(rev.commit_hash)
+
+            if not hashes_to_delete:
+                continue
+
+            size_gb = cache_size / 1024**3
+            print(f"[PRELOAD] Suppression de {len(repos_found)} repos obsolètes ({size_gb:.1f} GB) dans {cache_dir}...")
+            for repo_id in repos_found:
+                print(f"[PRELOAD]   - {repo_id}")
+
+            strategy = cache_info.delete_revisions(*hashes_to_delete)
+            strategy.execute()
+            total_repos += len(repos_found)
+            total_size += cache_size
+
+        if total_repos:
+            print(f"[PRELOAD] {total_size / 1024**3:.1f} GB libérés !")
+        else:
             print(f"[PRELOAD] Aucun cache HF obsolète trouvé")
-            return
-
-        size_gb = total_size / 1024**3
-        print(f"[PRELOAD] Suppression de {len(repos_found)} repos obsolètes ({size_gb:.1f} GB)...")
-        for repo_id in repos_found:
-            print(f"[PRELOAD]   - {repo_id}")
-
-        strategy = cache_info.delete_revisions(*hashes_to_delete)
-        strategy.execute()
-        print(f"[PRELOAD] {size_gb:.1f} GB libérés !")
 
     except Exception as e:
         print(f"[PRELOAD] Nettoyage HF cache: {e}")
@@ -328,18 +386,25 @@ def _preload_inpaint_download():
     avec le Fooocus patch appliqué (les deux doivent être ensemble).
     """
     repo_id = "John6666/epicrealism-xl-vxvii-crystal-clear-realism-sdxl"
+    custom_cache = _get_custom_hf_cache_dir()
 
     try:
-        from huggingface_hub import snapshot_download, try_to_load_from_cache
-        # Check if already cached to avoid network hang
-        # try_to_load_from_cache returns path if cached, None/_CACHED_NO_EXIST otherwise
-        _test = try_to_load_from_cache(repo_id, "model_index.json")
-        if _test is not None and isinstance(_test, str):
+        from huggingface_hub import snapshot_download
+
+        if _is_hf_file_cached(repo_id, "model_index.json", cache_dir=custom_cache):
             print(f"[PRELOAD] {repo_id} déjà en cache (skip réseau)")
             return
 
+        if not is_huggingface_reachable():
+            print(f"[PRELOAD] {repo_id} absent du cache local, réseau HF indisponible (skip)")
+            return
+
         print(f"[PRELOAD] Téléchargement {repo_id}...")
-        snapshot_download(repo_id=repo_id, resume_download=True)
+        snapshot_download(
+            repo_id=repo_id,
+            resume_download=True,
+            cache_dir=preferred_hf_hub_cache_dir(custom_cache),
+        )
         print(f"[PRELOAD] {repo_id} prêt dans le cache HF")
 
     except Exception as e:
@@ -349,6 +414,22 @@ def _preload_inpaint_download():
 def _preload_fooocus_patch():
     """Pré-télécharge les fichiers du Fooocus inpaint patch (1.3GB)."""
     try:
+        custom_cache = _get_custom_hf_cache_dir()
+        head_cached = _is_hf_file_cached(FOOOCUS_REPO, FOOOCUS_HEAD_FILENAME, cache_dir=custom_cache)
+        patch_cached = _is_hf_file_cached(FOOOCUS_REPO, FOOOCUS_PATCH_FILENAME, cache_dir=custom_cache)
+        if head_cached and patch_cached:
+            print(f"[PRELOAD] Fooocus patch déjà en cache (skip réseau)")
+            return
+
+        missing = []
+        if not head_cached:
+            missing.append(FOOOCUS_HEAD_FILENAME)
+        if not patch_cached:
+            missing.append(FOOOCUS_PATCH_FILENAME)
+        if not is_huggingface_reachable():
+            print(f"[PRELOAD] Fooocus patch incomplet ({', '.join(missing)}), réseau HF indisponible (skip)")
+            return
+
         from core.generation.fooocus_patch import download_fooocus_patch
         print(f"[PRELOAD] Vérification/téléchargement Fooocus patch...")
         download_fooocus_patch()
@@ -381,6 +462,9 @@ def _preload_controlnet(force: bool = False):
                 CONTROLNET_DEPTH_REPO, torch_dtype=torch.float16, local_files_only=True,
             )
         except OSError:
+            if not is_huggingface_reachable():
+                print("[PRELOAD] ControlNet Depth absent/incomplet, réseau HF indisponible (skip)")
+                return
             _update_status("Téléchargement ControlNet Depth...")
             controlnet = ControlNetModel.from_pretrained(
                 CONTROLNET_DEPTH_REPO, torch_dtype=torch.float16,
@@ -418,6 +502,9 @@ def _preload_depth_estimator(force: bool = False):
             AutoImageProcessor.from_pretrained(model_id, local_files_only=True)
             AutoModelForDepthEstimation.from_pretrained(model_id, torch_dtype=torch.float16, local_files_only=True, low_cpu_mem_usage=False)
         except OSError:
+            if not is_huggingface_reachable():
+                print(f"[PRELOAD] Depth Anything V2 absent/incomplet, réseau HF indisponible (skip)")
+                return
             AutoImageProcessor.from_pretrained(model_id)
             AutoModelForDepthEstimation.from_pretrained(model_id, torch_dtype=torch.float16, low_cpu_mem_usage=False)
 
@@ -439,6 +526,9 @@ def _preload_segformer(force: bool = False):
             SegformerImageProcessor.from_pretrained(_seg_repo, local_files_only=True)
             SegformerForSemanticSegmentation.from_pretrained(_seg_repo, local_files_only=True, low_cpu_mem_usage=False)
         except OSError:
+            if not is_huggingface_reachable():
+                print(f"[PRELOAD] SegFormer absent/incomplet, réseau HF indisponible (skip)")
+                return
             SegformerImageProcessor.from_pretrained(_seg_repo)
             SegformerForSemanticSegmentation.from_pretrained(_seg_repo, low_cpu_mem_usage=False)
 
@@ -460,6 +550,9 @@ def _preload_florence(force: bool = False):
         try:
             AutoProcessor.from_pretrained(model_id, trust_remote_code=True, local_files_only=True)
         except OSError:
+            if not is_huggingface_reachable():
+                print(f"[PRELOAD] Florence-2 absent/incomplet, réseau HF indisponible (skip)")
+                return
             AutoProcessor.from_pretrained(model_id, trust_remote_code=True)
 
         print(f"[PRELOAD] Florence-2 prêt")
