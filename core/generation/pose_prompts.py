@@ -80,7 +80,8 @@ def should_force_safe_human_pose(
     The rule is intentionally semantic at the product boundary:
     - unknown/no pose: no change
     - adult pack unavailable: never let a pose preset imply adult output
-    - adult pack available: still require an explicit adult request
+    - adult pack available: do not force clothed/negative terms; the user's
+      prompt and local pack rules decide the visual boundary
     """
     if normalize_pose_name(pose_name) not in POSE_PROMPTS:
         return False
@@ -95,13 +96,7 @@ def should_force_safe_human_pose(
 
     if not adult_runtime_available:
         return True
-
-    try:
-        from core.ai.edit_directives import is_adult_request_heuristic
-
-        return not is_adult_request_heuristic(prompt or "")
-    except Exception:
-        return True
+    return False
 
 
 def build_human_pose_safety_additions(

@@ -11,6 +11,25 @@ import types
 from typing import MutableMapping
 
 
+def resolve_huggingface_cache_paths(cache_dir: str) -> tuple[str, str]:
+    """Return ``(HF_HOME, HF_HUB_CACHE)`` for JoyBoy's model cache root.
+
+    ``HF_HOME`` is Hugging Face's root directory. The Hub cache that contains
+    ``models--...`` folders normally lives one level below it in ``hub``.
+    Some legacy JoyBoy calls still pass an explicit ``cache_dir`` themselves,
+    but loaders that rely on environment defaults need the real hub path.
+    """
+    cache_root = os.path.abspath(os.path.expanduser(str(cache_dir)))
+    if os.path.basename(cache_root).lower() == "hub":
+        return os.path.dirname(cache_root), cache_root
+    return cache_root, os.path.join(cache_root, "hub")
+
+
+def get_huggingface_hub_cache_dir(cache_dir: str) -> str:
+    """Return the concrete Hugging Face Hub cache path for ``cache_dir``."""
+    return resolve_huggingface_cache_paths(cache_dir)[1]
+
+
 def should_enable_hf_parallel_loading(system_name: str | None = None) -> bool:
     """Return whether Hugging Face/Diffusers parallel loading is safe.
 
@@ -32,9 +51,13 @@ def configure_huggingface_env(
 ) -> None:
     """Configure Hugging Face runtime env vars for the current platform."""
     env = environ if environ is not None else os.environ
-    env["HF_HOME"] = cache_dir
-    env["HF_HUB_CACHE"] = cache_dir
-    env.setdefault("HF_ASSETS_CACHE", os.path.join(cache_dir, "assets"))
+    hf_home, hf_hub_cache = resolve_huggingface_cache_paths(cache_dir)
+    os.makedirs(hf_home, exist_ok=True)
+    os.makedirs(hf_hub_cache, exist_ok=True)
+    env["HF_HOME"] = hf_home
+    env["HF_HUB_CACHE"] = hf_hub_cache
+    env["HUGGINGFACE_HUB_CACHE"] = hf_hub_cache
+    env.setdefault("HF_ASSETS_CACHE", os.path.join(hf_home, "assets"))
     env["HF_HUB_DOWNLOAD_TIMEOUT"] = "600"
     env["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
     env["HF_HUB_DISABLE_SYMLINKS"] = "1"

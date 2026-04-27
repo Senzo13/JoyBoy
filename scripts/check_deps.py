@@ -17,16 +17,20 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 try:
     from core.infra.paths import get_huggingface_cache_dir, get_models_dir
+    from core.models.runtime_env import resolve_huggingface_cache_paths
 
     _models_dir = get_models_dir()
     _hf_cache_dir = get_huggingface_cache_dir()
+    _hf_home, _hf_hub_cache = resolve_huggingface_cache_paths(str(_hf_cache_dir))
     _models_dir.mkdir(parents=True, exist_ok=True)
-    _hf_cache_dir.mkdir(parents=True, exist_ok=True)
+    os.makedirs(_hf_home, exist_ok=True)
+    os.makedirs(_hf_hub_cache, exist_ok=True)
     os.environ.setdefault("JOYBOY_MODELS_DIR", str(_models_dir))
     os.environ.setdefault("JOYBOY_HF_CACHE_DIR", str(_hf_cache_dir))
-    os.environ["HF_HOME"] = str(_hf_cache_dir)
-    os.environ["HF_HUB_CACHE"] = str(_hf_cache_dir)
-    os.environ.setdefault("HF_ASSETS_CACHE", str(_hf_cache_dir / "assets"))
+    os.environ["HF_HOME"] = _hf_home
+    os.environ["HF_HUB_CACHE"] = _hf_hub_cache
+    os.environ["HUGGINGFACE_HUB_CACHE"] = _hf_hub_cache
+    os.environ.setdefault("HF_ASSETS_CACHE", os.path.join(_hf_home, "assets"))
 except Exception:
     pass
 

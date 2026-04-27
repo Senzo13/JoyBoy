@@ -18,7 +18,7 @@ import torch
 import gc
 import torch._dynamo
 from core.infra.paths import get_huggingface_cache_dir, get_models_dir
-from core.models.runtime_env import configure_huggingface_env
+from core.models.runtime_env import configure_huggingface_env, get_huggingface_hub_cache_dir
 
 # Supprimer les FutureWarning de diffusers et autres
 warnings.filterwarnings("ignore", category=FutureWarning)
@@ -1025,6 +1025,27 @@ AUXILIARY_MODELS = {}  # Reserved for future auxiliary model definitions
 download_status = {}
 
 
+def _iter_huggingface_scan_cache_dirs():
+    """Yield known Hub cache locations used across older and current JoyBoy installs."""
+    candidates = [
+        custom_cache,
+        get_huggingface_hub_cache_dir(custom_cache),
+        os.path.expanduser("~/.cache/huggingface"),
+        os.path.expanduser("~/.cache/huggingface/hub"),
+        os.path.join(os.environ.get("USERPROFILE", ""), ".cache", "huggingface"),
+        os.path.join(os.environ.get("USERPROFILE", ""), ".cache", "huggingface", "hub"),
+    ]
+    seen = set()
+    for cache_dir in candidates:
+        if not cache_dir:
+            continue
+        normalized = os.path.abspath(os.path.expanduser(cache_dir))
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        yield normalized
+
+
 def check_model_downloaded(repo_id):
     """Verifie si un modele est telecharge dans le cache"""
     if str(repo_id or "").startswith("local-file:"):
@@ -1032,13 +1053,7 @@ def check_model_downloaded(repo_id):
 
     from huggingface_hub import scan_cache_dir
 
-    cache_dirs = [
-        custom_cache,
-        os.path.expanduser("~/.cache/huggingface"),
-        os.path.join(os.environ.get("USERPROFILE", ""), ".cache", "huggingface"),
-    ]
-
-    for cache_dir in cache_dirs:
+    for cache_dir in _iter_huggingface_scan_cache_dirs():
         if not os.path.exists(cache_dir):
             continue
         try:
@@ -1068,15 +1083,9 @@ def delete_model_from_cache(repo_id):
             print(f"[DELETE] Erreur suppression fichier local: {e}")
         return False
 
-    cache_dirs = [
-        custom_cache,
-        os.path.expanduser("~/.cache/huggingface"),
-        os.path.join(os.environ.get("USERPROFILE", ""), ".cache", "huggingface"),
-    ]
-
     deleted = False
 
-    for cache_dir in cache_dirs:
+    for cache_dir in _iter_huggingface_scan_cache_dirs():
         if not os.path.exists(cache_dir):
             continue
         try:

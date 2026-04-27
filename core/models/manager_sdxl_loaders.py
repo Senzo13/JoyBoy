@@ -12,6 +12,7 @@ from core.backends.sdnq_backend import (
     register_sdnq_for_diffusers,
 )
 from core.models import IS_MAC, TORCH_DTYPE, VRAM_GB
+from core.models.runtime_env import get_huggingface_hub_cache_dir as _single_file_hub_cache_dir
 from core.models.manager_support import (
     DTYPE_NAME,
     _fix_meta_params,
@@ -121,6 +122,7 @@ class ModelManagerSDXLLoaderMixin:
                 self._inpaint_pipe = StableDiffusionXLInpaintPipeline.from_single_file(
                     model_path, torch_dtype=TORCH_DTYPE,
                     low_cpu_memory_usage=False,
+                    cache_dir=_single_file_hub_cache_dir(custom_cache),
                 )
             else:
                 load_kwargs = get_model_loading_kwargs()
@@ -384,6 +386,7 @@ class ModelManagerSDXLLoaderMixin:
             self._inpaint_pipe = StableDiffusionXLPipeline.from_single_file(
                 model_path, torch_dtype=TORCH_DTYPE,
                 low_cpu_memory_usage=False,
+                cache_dir=_single_file_hub_cache_dir(custom_cache),
             )
         else:
             load_kwargs = get_model_loading_kwargs()

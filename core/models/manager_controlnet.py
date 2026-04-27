@@ -10,6 +10,7 @@ from core.backends.sdnq_backend import (
     register_sdnq_for_diffusers,
 )
 from core.models import IS_MAC, TORCH_DTYPE, VRAM_GB
+from core.models.runtime_env import get_huggingface_hub_cache_dir as _single_file_hub_cache_dir
 from core.models.manager_support import (
     DTYPE_NAME,
     _fix_meta_params,
@@ -651,6 +652,7 @@ class ModelManagerControlNetMixin:
                 controlnet=self._controlnet_model,
                 torch_dtype=TORCH_DTYPE,
                 low_cpu_memory_usage=False,
+                cache_dir=_single_file_hub_cache_dir(custom_cache),
             )
             print(f"[MM] Pipeline loaded ({_t_load.time() - _t0_load:.1f}s)")
         else:

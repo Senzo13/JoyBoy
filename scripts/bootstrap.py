@@ -26,16 +26,20 @@ if str(PROJECT_DIR) not in sys.path:
 
 def configure_download_cache_env() -> None:
     from core.infra.paths import get_huggingface_cache_dir, get_models_dir
+    from core.models.runtime_env import resolve_huggingface_cache_paths
 
     models_dir = get_models_dir()
     hf_cache = get_huggingface_cache_dir()
+    hf_home, hf_hub_cache = resolve_huggingface_cache_paths(str(hf_cache))
     models_dir.mkdir(parents=True, exist_ok=True)
-    hf_cache.mkdir(parents=True, exist_ok=True)
+    Path(hf_home).mkdir(parents=True, exist_ok=True)
+    Path(hf_hub_cache).mkdir(parents=True, exist_ok=True)
     os.environ.setdefault("JOYBOY_MODELS_DIR", str(models_dir))
     os.environ.setdefault("JOYBOY_HF_CACHE_DIR", str(hf_cache))
-    os.environ["HF_HOME"] = str(hf_cache)
-    os.environ["HF_HUB_CACHE"] = str(hf_cache)
-    os.environ.setdefault("HF_ASSETS_CACHE", str(hf_cache / "assets"))
+    os.environ["HF_HOME"] = hf_home
+    os.environ["HF_HUB_CACHE"] = hf_hub_cache
+    os.environ["HUGGINGFACE_HUB_CACHE"] = hf_hub_cache
+    os.environ.setdefault("HF_ASSETS_CACHE", str(Path(hf_home) / "assets"))
 
 
 def _run(command: list[str], title: str) -> int:
