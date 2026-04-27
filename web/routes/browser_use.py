@@ -25,7 +25,8 @@ def browser_use_install():
 
     data = request.get_json(silent=True) or {}
     include_agent = bool(data.get("include_agent") or data.get("includeAgent"))
-    result = install_browser_use_runtime(include_agent=include_agent)
+    background = bool(data.get("background") or data.get("async_install") or data.get("async"))
+    result = install_browser_use_runtime(include_agent=include_agent, background=background)
     return jsonify(result), (200 if result.get("success") else 500)
 
 

@@ -49,16 +49,20 @@ def get_browser_use_status() -> dict[str, Any]:
         "running": _WORKER.is_running(),
         "url": _WORKER.current_url,
         "title": _WORKER.current_title,
+        "install": _INSTALLER.status(),
     }
 
 
-def install_browser_use_runtime(include_agent: bool = False) -> dict[str, Any]:
+def install_browser_use_runtime(include_agent: bool = False, background: bool = False) -> dict[str, Any]:
     """Install the optional runtime on demand.
 
     This deliberately does not run during JoyBoy setup/start.  Browser control
     stays an opt-in extension so it cannot surprise users with a Chromium
     download or dependency churn.
     """
+
+    if background:
+        return _INSTALLER.start(include_agent=include_agent)
 
     packages = ["playwright>=1.48,<2"]
     if include_agent:
@@ -92,6 +96,141 @@ def install_browser_use_runtime(include_agent: bool = False) -> dict[str, Any]:
         "success": True,
         "logs": "\n".join(logs)[-8000:],
     }
+
+
+class BrowserUseInstaller:
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._thread: threading.Thread | None = None
+        self._state: dict[str, Any] = self._idle_state()
+
+    def _idle_state(self) -> dict[str, Any]:
+        return {
+            "active": False,
+            "complete": False,
+            "success": False,
+            "progress": 0,
+            "step": "",
+            "detail": "",
+            "error": "",
+            "started_at": 0,
+            "finished_at": 0,
+            "logs": [],
+        }
+
+    def status(self) -> dict[str, Any]:
+        with self._lock:
+            state = dict(self._state)
+            state["logs"] = list(self._state.get("logs") or [])[-40:]
+            return state
+
+    def start(self, include_agent: bool = False) -> dict[str, Any]:
+        should_start = False
+        with self._lock:
+            if self._thread and self._thread.is_alive():
+                pass
+            elif _module_available("playwright"):
+                self._state = {
+                    **self._idle_state(),
+                    "complete": True,
+                    "success": True,
+                    "progress": 100,
+                    "step": "Runtime déjà installé",
+                    "detail": "Playwright est disponible.",
+                    "finished_at": time.time(),
+                }
+            else:
+                self._state = {
+                    **self._idle_state(),
+                    "active": True,
+                    "progress": 2,
+                    "step": "Préparation du runtime navigateur",
+                    "detail": "JoyBoy prépare Playwright et Chromium.",
+                    "started_at": time.time(),
+                }
+                self._thread = threading.Thread(
+                    target=self._run,
+                    args=(include_agent,),
+                    name="joyboy-browser-use-install",
+                    daemon=True,
+                )
+                should_start = True
+        if should_start and self._thread:
+            self._thread.start()
+        return get_browser_use_status()
+
+    def _set(self, **updates: Any) -> None:
+        with self._lock:
+            self._state.update(updates)
+
+    def _append_log(self, line: str) -> None:
+        clean = line.rstrip()
+        if not clean:
+            return
+        with self._lock:
+            logs = list(self._state.get("logs") or [])
+            logs.append(clean[-600:])
+            self._state["logs"] = logs[-80:]
+
+    def _run(self, include_agent: bool) -> None:
+        try:
+            packages = ["playwright>=1.48,<2"]
+            if include_agent:
+                packages.append("browser-use")
+
+            commands: list[tuple[list[str], str, int, int]] = [
+                ([sys.executable, "-m", "pip", "install", *packages], "Installation de Playwright", 5, 46),
+                ([sys.executable, "-m", "playwright", "install", "chromium"], "Téléchargement de Chromium", 46, 96),
+            ]
+
+            for command, step, start, end in commands:
+                self._set(step=step, detail=" ".join(command), progress=start)
+                proc = subprocess.Popen(
+                    command,
+                    text=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    bufsize=1,
+                )
+                assert proc.stdout is not None
+                for line in proc.stdout:
+                    self._append_log(line)
+                    lower = line.lower()
+                    if "downloading" in lower or "download" in lower:
+                        detail = "Téléchargement des fichiers navigateur..."
+                    elif "installing" in lower or "collecting" in lower:
+                        detail = "Installation des dépendances locales..."
+                    elif "already" in lower or "requirement already satisfied" in lower:
+                        detail = "Dépendances déjà présentes, vérification..."
+                    else:
+                        detail = line.strip()[:140] or step
+                    current = int(self.status().get("progress") or start)
+                    self._set(detail=detail, progress=min(end - 1, max(start, current + 1)))
+                return_code = proc.wait()
+                if return_code != 0:
+                    raise RuntimeError(f"Commande échouée ({return_code}): {' '.join(command)}")
+                self._set(progress=end, detail=f"{step} terminé.")
+
+            self._set(
+                active=False,
+                complete=True,
+                success=True,
+                progress=100,
+                step="Runtime Browser Use prêt",
+                detail="Playwright et Chromium sont installés.",
+                error="",
+                finished_at=time.time(),
+            )
+        except Exception as exc:  # pragma: no cover - depends on local package installer
+            self._append_log(str(exc))
+            self._set(
+                active=False,
+                complete=True,
+                success=False,
+                error=str(exc),
+                detail=str(exc),
+                finished_at=time.time(),
+            )
 
 
 @dataclass
@@ -218,7 +357,11 @@ class BrowserUseWorker:
                         )
                     elif action == "task":
                         task = str(payload.get("task") or "").strip()
-                        active_page.goto(normalize_browser_url(_extract_url_or_query(task)), wait_until="domcontentloaded", timeout=35000)
+                        active_page.goto(
+                            normalize_browser_url(_extract_url_or_query(task, str(payload.get("url") or ""))),
+                            wait_until="domcontentloaded",
+                            timeout=35000,
+                        )
                     elif action == "click":
                         active_page.mouse.click(float(payload.get("x") or 0), float(payload.get("y") or 0))
                         _try_load_wait(active_page, 5000)
@@ -255,14 +398,20 @@ def _try_load_wait(page: Any, timeout_ms: int) -> None:
         pass
 
 
-def _extract_url_or_query(task: str) -> str:
+def _extract_url_or_query(task: str, fallback_url: str = "") -> str:
     match = re.search(r"(https?://[^\s]+|localhost:\d+[^\s]*|127\.\d+\.\d+\.\d+:\d+[^\s]*)", task, re.IGNORECASE)
     if match:
         return match.group(1)
+    fallback = str(fallback_url or "").strip()
+    if fallback and fallback != "about:blank":
+        return fallback
+    if re.search(r"\b(localhost|serveur local|local server|projet|project|preview|site)\b", task, re.IGNORECASE):
+        return "http://localhost:3000"
     return task or "about:blank"
 
 
 _WORKER = BrowserUseWorker()
+_INSTALLER = BrowserUseInstaller()
 
 
 def run_browser_use_action(action: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:

@@ -1072,10 +1072,19 @@
                 <div>
                     <h3 data-i18n="browserUse.installTitle">Installer le runtime navigateur</h3>
                     <p data-i18n="browserUse.installBody">JoyBoy installe Playwright et Chromium localement. Rien n'est committé dans le repo.</p>
-                    <button class="browser-use-primary" type="button" data-browser-use-action="install" onclick="installBrowserUseRuntime(false)">
+                    <button class="browser-use-primary" type="button" data-browser-use-action="install" onclick="installBrowserUseRuntime(false, { afterCurrent: true })">
                         <i data-lucide="package-plus"></i>
                         <span data-i18n="browserUse.installButton">Installer</span>
                     </button>
+                    <div class="browser-use-install-progress" id="browser-use-install-progress" hidden>
+                        <div class="browser-use-progress-copy">
+                            <strong id="browser-use-install-progress-label">Préparation...</strong>
+                            <span id="browser-use-install-progress-detail">Initialisation</span>
+                        </div>
+                        <div class="browser-use-progress-track">
+                            <span id="browser-use-install-progress-fill"></span>
+                        </div>
+                    </div>
                 </div>
             </div>
             <div class="browser-use-viewport" id="browser-use-viewport">
@@ -1085,6 +1094,16 @@
                     <span data-i18n="browserUse.emptyBody">Tape @browser-use dans le chat, colle une URL, ou clique sur une capture pour piloter la page.</span>
                 </div>
                 <img class="browser-use-shot" id="browser-use-shot" alt="Browser Use screenshot">
+                <div class="browser-use-live-progress" id="browser-use-progress" hidden>
+                    <div class="browser-use-progress-top">
+                        <span class="browser-use-progress-shine" id="browser-use-progress-label">Préparation...</span>
+                        <span id="browser-use-progress-percent">0%</span>
+                    </div>
+                    <div class="browser-use-progress-track">
+                        <span id="browser-use-progress-fill"></span>
+                    </div>
+                    <div class="browser-use-progress-detail" id="browser-use-progress-detail">Initialisation</div>
+                </div>
             </div>
             <div class="browser-use-commandbar" id="browser-use-tools">
                 <textarea class="browser-use-command" id="browser-use-command" rows="2" data-i18n="browserUse.commandPlaceholder" data-i18n-attr="placeholder" placeholder="Ex: ouvre localhost:3000 et vérifie le bouton principal"></textarea>

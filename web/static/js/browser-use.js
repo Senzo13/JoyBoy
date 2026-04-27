@@ -6,6 +6,7 @@ let browserUseStatus = null;
 let browserUseResizeState = null;
 let browserUseMentionPopover = null;
 let browserUseMentionInput = null;
+let browserUseInstallPollAbort = 0;
 
 function browserUseT(key, fallback = '', params = {}) {
     if (window.JoyBoyI18n?.t) return window.JoyBoyI18n.t(key, params, fallback);
@@ -36,6 +37,15 @@ function getBrowserUseViewportSize() {
     };
 }
 
+function getBrowserUseCurrentUrl(defaultLocal = false) {
+    const value = String(document.getElementById('browser-use-url')?.value || '').trim();
+    return value || (defaultLocal ? 'localhost:3000' : '');
+}
+
+function getBrowserUseCurrentTask() {
+    return String(document.getElementById('browser-use-command')?.value || '').trim();
+}
+
 function setBrowserUseStatusText(text = '', tone = '') {
     const node = document.getElementById('browser-use-status');
     if (!node) return;
@@ -43,11 +53,55 @@ function setBrowserUseStatusText(text = '', tone = '') {
     node.dataset.tone = tone || '';
 }
 
+function setBrowserUseProgress(options = {}) {
+    const visible = !!options.visible;
+    const percent = Math.max(0, Math.min(100, Number(options.percent || 0)));
+    const label = options.label || browserUseT('browserUse.preparing', 'Préparation...');
+    const detail = options.detail || '';
+    const progress = document.getElementById('browser-use-progress');
+    const installProgress = document.getElementById('browser-use-install-progress');
+    const fill = document.getElementById('browser-use-progress-fill');
+    const installFill = document.getElementById('browser-use-install-progress-fill');
+    const labelNode = document.getElementById('browser-use-progress-label');
+    const installLabel = document.getElementById('browser-use-install-progress-label');
+    const detailNode = document.getElementById('browser-use-progress-detail');
+    const installDetail = document.getElementById('browser-use-install-progress-detail');
+    const percentNode = document.getElementById('browser-use-progress-percent');
+
+    [progress, installProgress].forEach(node => {
+        if (!node) return;
+        node.hidden = !visible;
+        node.style.setProperty('--browser-use-progress', `${percent}%`);
+    });
+    [fill, installFill].forEach(node => {
+        if (node) node.style.width = `${percent}%`;
+    });
+    if (labelNode) labelNode.textContent = label;
+    if (installLabel) installLabel.textContent = label;
+    if (detailNode) detailNode.textContent = detail;
+    if (installDetail) installDetail.textContent = detail;
+    if (percentNode) percentNode.textContent = `${Math.round(percent)}%`;
+}
+
+function renderBrowserUseProgressFromStatus(status = browserUseStatus) {
+    const install = status?.install || {};
+    if (install.active || (install.complete && !install.success)) {
+        setBrowserUseProgress({
+            visible: true,
+            percent: install.progress || 4,
+            label: install.step || browserUseT('browserUse.installing', 'Installation du navigateur local...'),
+            detail: install.detail || browserUseT('browserUse.installDetail', 'Préparation du runtime local...'),
+        });
+    } else {
+        setBrowserUseProgress({ visible: false });
+    }
+}
+
 function setBrowserUseBusy(busy = false) {
     const panel = getBrowserUsePanel();
     panel?.classList.toggle('is-busy', !!busy);
     document.querySelectorAll('[data-browser-use-action]').forEach(btn => {
-        if (btn.dataset.browserUseAction !== 'install') btn.disabled = !!busy;
+        btn.disabled = !!busy || !!browserUseStatus?.install?.active;
     });
 }
 
@@ -70,15 +124,21 @@ function renderBrowserUseInstallState(status = browserUseStatus) {
     const install = document.getElementById('browser-use-install');
     const tools = document.getElementById('browser-use-tools');
     const installed = !!status?.playwright_installed;
+    const installing = !!status?.install?.active;
     panel?.classList.toggle('is-installed', installed);
-    if (install) install.style.display = installed ? 'none' : '';
+    panel?.classList.toggle('is-installing', installing);
+    if (install) install.style.display = (installed && !installing) ? 'none' : '';
     if (tools) tools.style.display = installed ? '' : 'none';
     setBrowserUseStatusText(
-        installed
+        installing
+            ? (status?.install?.step || browserUseT('browserUse.installing', 'Installation du navigateur local...'))
+            : installed
             ? browserUseT('browserUse.ready', 'Runtime prêt')
             : browserUseT('browserUse.missing', 'Runtime à installer'),
-        installed ? 'ok' : 'warn'
+        installing ? 'warn' : installed ? 'ok' : 'warn'
     );
+    renderBrowserUseProgressFromStatus(status);
+    setBrowserUseBusy(false);
 }
 
 async function refreshBrowserUseStatus() {
@@ -117,21 +177,65 @@ function closeBrowserUsePanel() {
     document.body.classList.remove('browser-use-open');
 }
 
-async function installBrowserUseRuntime(includeAgent = false) {
+async function pollBrowserUseInstallUntilDone(token) {
+    const started = Date.now();
+    let lastStatus = browserUseStatus;
+    while (browserUseInstallPollAbort === token && Date.now() - started < 20 * 60 * 1000) {
+        await new Promise(resolve => setTimeout(resolve, 1200));
+        lastStatus = await refreshBrowserUseStatus();
+        const install = lastStatus?.install || {};
+        if (!install.active) return lastStatus;
+    }
+    return lastStatus || browserUseStatus;
+}
+
+async function installBrowserUseRuntime(includeAgent = false, options = {}) {
+    const token = Date.now();
+    browserUseInstallPollAbort = token;
+    const taskAfterInstall = String(options.afterTask || (options.afterCurrent ? getBrowserUseCurrentTask() : '') || '').trim();
     setBrowserUseBusy(true);
     setBrowserUseStatusText(browserUseT('browserUse.installing', 'Installation du navigateur local...'), 'warn');
+    setBrowserUseProgress({
+        visible: true,
+        percent: 2,
+        label: browserUseT('browserUse.installing', 'Installation du navigateur local...'),
+        detail: browserUseT('browserUse.installDetail', 'Préparation du runtime local...'),
+    });
     try {
-        const result = await apiSettings.installBrowserUse({ include_agent: includeAgent });
+        const result = await apiSettings.installBrowserUse({
+            include_agent: includeAgent,
+            background: true,
+        });
         browserUseStatus = result.data || {};
         window.joyboyBrowserUseStatus = browserUseStatus;
         if (!result.ok || !browserUseStatus.success) throw new Error(browserUseStatus.error || result.error || 'install failed');
         renderBrowserUseInstallState(browserUseStatus);
+        browserUseStatus = await pollBrowserUseInstallUntilDone(token);
+        window.joyboyBrowserUseStatus = browserUseStatus;
+        const install = browserUseStatus?.install || {};
+        if (install.complete && !install.success) {
+            throw new Error(install.error || browserUseT('browserUse.installFailed', 'Installation échouée'));
+        }
+        await refreshBrowserUseStatus();
+        renderBrowserUseInstallState(browserUseStatus);
         Toast.success(browserUseT('browserUse.title', 'Browser Use'), browserUseT('browserUse.installDone', 'Runtime installé.'));
+        if (taskAfterInstall) {
+            setBrowserUseStatusText(browserUseT('browserUse.runningQueuedTask', 'Lancement de la demande...'), 'warn');
+            return await browserUseAction('task', { task: taskAfterInstall, url: getBrowserUseCurrentUrl(false) });
+        }
+        const currentUrl = getBrowserUseCurrentUrl(true);
+        if (options.afterCurrent && currentUrl) {
+            return await browserUseAction('open', { url: currentUrl });
+        }
+        return browserUseStatus;
     } catch (error) {
         setBrowserUseStatusText(error.message || browserUseT('browserUse.installFailed', 'Installation échouée'), 'error');
         Toast.error(browserUseT('browserUse.installFailed', 'Installation échouée'), error.message || String(error));
+        throw error;
     } finally {
+        if (browserUseInstallPollAbort === token) browserUseInstallPollAbort = 0;
         setBrowserUseBusy(false);
+        renderBrowserUseProgressFromStatus(browserUseStatus);
         if (typeof refreshExtensionsCatalog === 'function') refreshExtensionsCatalog(false);
     }
 }
@@ -139,6 +243,12 @@ async function installBrowserUseRuntime(includeAgent = false) {
 async function browserUseAction(action, payload = {}) {
     setBrowserUseBusy(true);
     setBrowserUseStatusText(browserUseT('browserUse.running', 'Navigation en cours...'), 'warn');
+    setBrowserUseProgress({
+        visible: true,
+        percent: 35,
+        label: browserUseT('browserUse.running', 'Navigation en cours...'),
+        detail: payload.url || payload.task || browserUseT('browserUse.capturing', 'Capture de la page...'),
+    });
     try {
         const size = getBrowserUseViewportSize();
         const result = await apiSettings.browserUseAction(action, { ...payload, ...size });
@@ -148,9 +258,11 @@ async function browserUseAction(action, payload = {}) {
         browserUseStatus = { ...(browserUseStatus || {}), running: true, url: data.url, title: data.title, playwright_installed: true, usable: true };
         window.joyboyBrowserUseStatus = browserUseStatus;
         setBrowserUseStatusText(data.title || browserUseT('browserUse.ready', 'Runtime prêt'), 'ok');
+        setBrowserUseProgress({ visible: false });
         return data;
     } catch (error) {
         setBrowserUseStatusText(error.message || String(error), 'error');
+        setBrowserUseProgress({ visible: false });
         throw error;
     } finally {
         setBrowserUseBusy(false);
@@ -162,9 +274,9 @@ async function runBrowserUseTask(task = '') {
     const status = await refreshBrowserUseStatus();
     if (!status?.playwright_installed) {
         setBrowserUseStatusText(browserUseT('browserUse.needInstallForTask', 'Installe Browser Use pour lancer cette demande.'), 'warn');
-        return { success: false, code: 'runtime_missing' };
+        return await installBrowserUseRuntime(false, { afterTask: task });
     }
-    return await browserUseAction('task', { task });
+    return await browserUseAction('task', { task, url: getBrowserUseCurrentUrl(false) });
 }
 
 async function submitBrowserUseCommand() {
@@ -183,6 +295,11 @@ async function navigateBrowserUseUrl() {
     const url = String(input?.value || '').trim();
     if (!url) return;
     try {
+        const status = await refreshBrowserUseStatus();
+        if (!status?.playwright_installed) {
+            await installBrowserUseRuntime(false, { afterCurrent: true });
+            return;
+        }
         await browserUseAction('open', { url });
     } catch (error) {
         Toast.error(browserUseT('browserUse.title', 'Browser Use'), error.message || String(error));
