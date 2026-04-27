@@ -167,6 +167,15 @@ def is_controlnet_depth_ready() -> bool:
     return is_quantized_cached("controlnet_depth", "int8") and _is_controlnet_base_cached()
 
 
+def _preload_target_blocks_startup(target_id: str, kind: str) -> bool:
+    """Return whether a missing target is something preload can actually fix now."""
+    if target_id == "inpaint_pipe" and kind == "quantized":
+        # This cache is intentionally produced during the first real generation,
+        # after Fooocus is applied. Do not keep reopening the startup preload for it.
+        return False
+    return True
+
+
 def get_preload_cache_report() -> dict:
     """Construit un état de cache lisible pour le preload UI."""
     required = []
@@ -199,10 +208,14 @@ def get_preload_cache_report() -> dict:
 
     cached_required = sum(1 for item in required if item["cached"])
     missing_required = len(required) - cached_required
+    blocking_required = [
+        item for item in required
+        if not item["cached"] and _preload_target_blocks_startup(item["id"], item["kind"])
+    ]
     cached_optional = sum(1 for item in optional if item["cached"])
 
     return {
-        "ready": missing_required == 0,
+        "ready": len(blocking_required) == 0,
         "skipped": not preload_image_assets,
         "skip_reason": None if preload_image_assets else "no_cuda_or_mps",
         "required": required,
@@ -211,6 +224,7 @@ def get_preload_cache_report() -> dict:
             "required_total": len(required),
             "required_cached": cached_required,
             "required_missing": missing_required,
+            "required_blocking_missing": len(blocking_required),
             "optional_total": len(optional),
             "optional_cached": cached_optional,
         },
@@ -496,6 +510,11 @@ def _preload_depth_estimator(force: bool = False):
         from transformers import AutoModelForDepthEstimation, AutoImageProcessor
 
         model_id = "depth-anything/Depth-Anything-V2-Small-hf"
+        custom_cache = _get_custom_hf_cache_dir()
+
+        if _is_hf_file_cached(model_id, "config.json", cache_dir=custom_cache) and not is_huggingface_reachable():
+            print(f"[PRELOAD] Depth Anything V2 en cache, validation modèle ignorée hors-ligne")
+            return
 
         # local_files_only d'abord (skip réseau si déjà en cache)
         try:
@@ -522,6 +541,12 @@ def _preload_segformer(force: bool = False):
         from transformers import SegformerForSemanticSegmentation, SegformerImageProcessor
 
         _seg_repo = "mattmdjaga/segformer_b2_clothes"
+        custom_cache = _get_custom_hf_cache_dir()
+
+        if _is_hf_file_cached(_seg_repo, "config.json", cache_dir=custom_cache) and not is_huggingface_reachable():
+            print(f"[PRELOAD] SegFormer en cache, validation modèle ignorée hors-ligne")
+            return
+
         try:
             SegformerImageProcessor.from_pretrained(_seg_repo, local_files_only=True)
             SegformerForSemanticSegmentation.from_pretrained(_seg_repo, local_files_only=True, low_cpu_mem_usage=False)
@@ -543,9 +568,14 @@ def _preload_florence(force: bool = False):
     print(f"[PRELOAD] Vérification Florence-2 Base (~500MB)...")
 
     try:
-        from transformers import AutoProcessor, AutoModelForCausalLM
+        from transformers import AutoProcessor
 
         model_id = "microsoft/Florence-2-base"
+        custom_cache = _get_custom_hf_cache_dir()
+
+        if _is_hf_file_cached(model_id, "preprocessor_config.json", cache_dir=custom_cache) and not is_huggingface_reachable():
+            print(f"[PRELOAD] Florence-2 en cache, validation processor ignorée hors-ligne")
+            return
 
         try:
             AutoProcessor.from_pretrained(model_id, trust_remote_code=True, local_files_only=True)
