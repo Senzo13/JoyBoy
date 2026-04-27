@@ -1147,6 +1147,10 @@ Object.assign(MESSAGES.fr.settings.generation, {
         exportPoseTitle: 'Pose humaine',
         exportPoseLabel: 'Pose humaine par défaut',
         exportPoseDesc: 'Pour personnages humains. Pour animaux, objets ou caméras, décris la pose dans le prompt ou crée un preset.',
+        exportPoseDistanceLabel: 'Distance caméra',
+        exportPoseDistanceDesc: 'Appliqué avec une pose humaine. Auto laisse le prompt décider.',
+        exportPoseOrientationLabel: 'Orientation',
+        exportPoseOrientationDesc: 'Appliqué avec une pose humaine. De face/de dos force la direction du corps.',
         exportPresetsTitle: 'Presets personnalisés',
         exportPresetsDesc: 'Mot-clé dans le prompt → applique format/vue/pose + extra prompt. Le mot-clé est retiré du prompt final.',
         exportPresetsEmpty: 'Aucun preset. Clique sur Ajouter pour créer une règle.',
@@ -1184,6 +1188,13 @@ Object.assign(MESSAGES.fr.settings.generation, {
         exportPoseSitting: 'Assis',
         exportPoseKneeling: 'Posture basse',
         exportPoseStandingSpread: 'Debout, appui large',
+        exportPoseDistanceAuto: 'Auto',
+        exportPoseDistanceVeryClose: 'Très très proche',
+        exportPoseDistanceClose: 'Proche',
+        exportPoseDistanceFar: 'Loin',
+        exportPoseOrientationAuto: 'Auto',
+        exportPoseOrientationFront: 'De face',
+        exportPoseOrientationBack: 'De dos',
     });
 
 Object.assign(MESSAGES.fr.settings.models, {

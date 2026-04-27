@@ -110,8 +110,47 @@ function updateSelectOptionLabels(selectId, labels = {}) {
     });
 }
 
+function buildHumanPoseDetailRowsMarkup() {
+    return `
+        <div class="settings-row export-human-guide-row" id="export-human-pose-distance-row">
+            <div>
+                <div class="settings-label" id="gen-export-pose-distance-label">${escapeHtml(t('settings.generation.exportPoseDistanceLabel', 'Distance caméra'))}</div>
+                <div class="settings-label-desc" id="gen-export-pose-distance-desc">${escapeHtml(t('settings.generation.exportPoseDistanceDesc', 'Appliqué avec une pose humaine. Auto laisse le prompt décider.'))}</div>
+            </div>
+            <select class="settings-select" id="settings-export-pose-distance" onchange="saveSetting('exportPoseDistance', this.value)">
+                <option value="auto">${escapeHtml(t('settings.generation.exportPoseDistanceAuto', 'Auto'))}</option>
+                <option value="very_close">${escapeHtml(t('settings.generation.exportPoseDistanceVeryClose', 'Très très proche'))}</option>
+                <option value="close">${escapeHtml(t('settings.generation.exportPoseDistanceClose', 'Proche'))}</option>
+                <option value="far">${escapeHtml(t('settings.generation.exportPoseDistanceFar', 'Loin'))}</option>
+            </select>
+        </div>
+        <div class="settings-row export-human-guide-row" id="export-human-pose-orientation-row">
+            <div>
+                <div class="settings-label" id="gen-export-pose-orientation-label">${escapeHtml(t('settings.generation.exportPoseOrientationLabel', 'Orientation'))}</div>
+                <div class="settings-label-desc" id="gen-export-pose-orientation-desc">${escapeHtml(t('settings.generation.exportPoseOrientationDesc', 'Appliqué avec une pose humaine. De face/de dos force la direction du corps.'))}</div>
+            </div>
+            <select class="settings-select" id="settings-export-pose-orientation" onchange="saveSetting('exportPoseOrientation', this.value)">
+                <option value="auto">${escapeHtml(t('settings.generation.exportPoseOrientationAuto', 'Auto'))}</option>
+                <option value="front">${escapeHtml(t('settings.generation.exportPoseOrientationFront', 'De face'))}</option>
+                <option value="back">${escapeHtml(t('settings.generation.exportPoseOrientationBack', 'De dos'))}</option>
+            </select>
+        </div>
+    `;
+}
+
+function ensureHumanPoseDetailRows() {
+    const poseRow = document.getElementById('export-human-pose-row');
+    if (!poseRow) return;
+    poseRow.classList.add('export-human-guide-row');
+    if (document.getElementById('export-human-pose-distance-row')) return;
+    poseRow.insertAdjacentHTML('afterend', buildHumanPoseDetailRowsMarkup());
+}
+
 function hydrateExportGuidanceControls() {
-    if (document.getElementById('settings-export-guidance-type')) return;
+    if (document.getElementById('settings-export-guidance-type')) {
+        ensureHumanPoseDetailRows();
+        return;
+    }
 
     const viewSelect = document.getElementById('settings-export-view');
     const poseSelect = document.getElementById('settings-export-pose');
@@ -145,6 +184,7 @@ function hydrateExportGuidanceControls() {
     viewSection.parentNode.insertBefore(guidanceSection, viewSection);
     guidanceSection.appendChild(viewRow);
     guidanceSection.appendChild(poseRow);
+    ensureHumanPoseDetailRows();
     viewSection.remove();
     poseSection.remove();
 }
@@ -202,6 +242,19 @@ function updateGenerationSelectLabels() {
         kneeling: t('settings.generation.exportPoseKneeling', 'Low stance'),
         standing_spread: t('settings.generation.exportPoseStandingSpread', 'Wide standing stance'),
     });
+
+    updateSelectOptionLabels('settings-export-pose-distance', {
+        auto: t('settings.generation.exportPoseDistanceAuto', 'Auto'),
+        very_close: t('settings.generation.exportPoseDistanceVeryClose', 'Very close'),
+        close: t('settings.generation.exportPoseDistanceClose', 'Close'),
+        far: t('settings.generation.exportPoseDistanceFar', 'Far'),
+    });
+
+    updateSelectOptionLabels('settings-export-pose-orientation', {
+        auto: t('settings.generation.exportPoseOrientationAuto', 'Auto'),
+        front: t('settings.generation.exportPoseOrientationFront', 'Front'),
+        back: t('settings.generation.exportPoseOrientationBack', 'Back'),
+    });
 }
 
 function hydrateExportPresetControls() {
@@ -252,11 +305,13 @@ function updateExportGuidanceVisibility() {
     const type = getExportGuidanceType();
     const select = document.getElementById('settings-export-guidance-type');
     const cameraRow = document.getElementById('export-camera-guide-row');
-    const humanRow = document.getElementById('export-human-pose-row');
+    const humanRows = Array.from(document.querySelectorAll('#export-human-pose-row, .export-human-guide-row'));
 
     if (select) select.value = type;
     if (cameraRow) cameraRow.style.display = type === 'camera' ? '' : 'none';
-    if (humanRow) humanRow.style.display = type === 'human' ? '' : 'none';
+    humanRows.forEach(row => {
+        row.style.display = type === 'human' ? '' : 'none';
+    });
 }
 
 function updateExportGuidanceType(value) {

@@ -388,6 +388,14 @@ function getActiveExportPose() {
     return getExportGuidanceTypeForGeneration() === 'human' ? (userSettings.exportPose || 'none') : 'none';
 }
 
+function getActiveExportPoseDistance() {
+    return getExportGuidanceTypeForGeneration() === 'human' ? (userSettings.exportPoseDistance || 'auto') : 'auto';
+}
+
+function getActiveExportPoseOrientation() {
+    return getExportGuidanceTypeForGeneration() === 'human' ? (userSettings.exportPoseOrientation || 'auto') : 'auto';
+}
+
 // ===== SHARED CHAT STREAMING =====
 
 /**
@@ -1169,6 +1177,8 @@ async function generate() {
             export_height: userSettings.exportHeight || 1344,
             export_view: getActiveExportView(),
             export_pose: getActiveExportPose(),
+            export_pose_distance: getActiveExportPoseDistance(),
+            export_pose_orientation: getActiveExportPoseOrientation(),
             pose_strength: userSettings.poseStrength ?? 0.5,
             export_presets: JSON.stringify(userSettings.exportPresets || {}),
             locale: window.JoyBoyI18n?.getLocale?.() || document.documentElement.lang || 'fr',
@@ -1397,6 +1407,8 @@ async function continueChat() {
                 export_height: userSettings.exportHeight || 1344,
                 export_view: getActiveExportView(),
                 export_pose: getActiveExportPose(),
+                export_pose_distance: getActiveExportPoseDistance(),
+                export_pose_orientation: getActiveExportPoseOrientation(),
                 export_presets: JSON.stringify(userSettings.exportPresets || {}),
                 locale: window.JoyBoyI18n?.getLocale?.() || document.documentElement.lang || 'fr',
                 chatId: currentGenerationChatId,
@@ -1877,6 +1889,8 @@ async function generateImageFromChat(imagePrompt, targetChatId = (typeof current
             export_height: userSettings.exportHeight || 1344,
             export_view: getActiveExportView(),
             export_pose: getActiveExportPose(),
+            export_pose_distance: getActiveExportPoseDistance(),
+            export_pose_orientation: getActiveExportPoseOrientation(),
             pose_strength: userSettings.poseStrength ?? 0.5,
             export_presets: JSON.stringify(userSettings.exportPresets || {}),
             ...adultPayload,

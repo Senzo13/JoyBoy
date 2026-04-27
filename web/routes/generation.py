@@ -166,6 +166,8 @@ def unified_generate():
             'height': int(data.get('export_height', 1344)),
             'view': data.get('export_view', 'auto'),
             'pose': data.get('export_pose', 'none'),
+            'pose_distance': data.get('export_pose_distance', 'auto'),
+            'pose_orientation': data.get('export_pose_orientation', 'auto'),
             'pose_strength': float(data.get('pose_strength', 0.5)),
             'presets': json.loads(data.get('export_presets', '{}')),
         }

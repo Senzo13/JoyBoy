@@ -881,6 +881,10 @@ Object.assign(MESSAGES.it.settings.generation, {
         exportPoseTitle: 'Posa umana',
         exportPoseLabel: 'Posa umana predefinita',
         exportPoseDesc: 'Per personaggi umani. Per animali, oggetti o camera, descrivi la posa nel prompt o crea un preset.',
+        exportPoseDistanceLabel: 'Distanza camera',
+        exportPoseDistanceDesc: 'Applicata con la guida posa umana. Auto lascia decidere il prompt.',
+        exportPoseOrientationLabel: 'Orientamento',
+        exportPoseOrientationDesc: 'Applicato con la guida posa umana. Fronte/retro forza la direzione del corpo.',
         exportPresetsTitle: 'Preset personalizzati',
         exportPresetsDesc: 'Parola chiave nel prompt → applica formato/vista/posa + prompt extra. La parola chiave viene rimossa dal prompt finale.',
         exportPresetsEmpty: 'Nessun preset. Clicca Aggiungi per creare una regola.',
@@ -918,6 +922,13 @@ Object.assign(MESSAGES.it.settings.generation, {
         exportPoseSitting: 'Seduta',
         exportPoseKneeling: 'Postura bassa',
         exportPoseStandingSpread: 'In piedi, appoggio largo',
+        exportPoseDistanceAuto: 'Auto',
+        exportPoseDistanceVeryClose: 'Molto molto vicino',
+        exportPoseDistanceClose: 'Vicino',
+        exportPoseDistanceFar: 'Lontano',
+        exportPoseOrientationAuto: 'Auto',
+        exportPoseOrientationFront: 'Di fronte',
+        exportPoseOrientationBack: 'Di spalle',
     });
 
 Object.assign(MESSAGES.it.settings.models, {

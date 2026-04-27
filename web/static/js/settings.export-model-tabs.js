@@ -137,6 +137,10 @@ function initExportSettings() {
     // Pose select
     const poseSel = document.getElementById('settings-export-pose');
     if (poseSel) poseSel.value = userSettings.exportPose || 'none';
+    const poseDistanceSel = document.getElementById('settings-export-pose-distance');
+    if (poseDistanceSel) poseDistanceSel.value = userSettings.exportPoseDistance || 'auto';
+    const poseOrientationSel = document.getElementById('settings-export-pose-orientation');
+    if (poseOrientationSel) poseOrientationSel.value = userSettings.exportPoseOrientation || 'auto';
 
     updateExportGuidanceVisibility();
 

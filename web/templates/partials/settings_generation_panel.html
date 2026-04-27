@@ -311,7 +311,7 @@
                                 <option value="from_behind">Vue arrière</option>
                             </select>
                         </div>
-                        <div class="settings-row" id="export-human-pose-row">
+                        <div class="settings-row export-human-guide-row" id="export-human-pose-row">
                             <div>
                                 <div class="settings-label" id="gen-export-pose-label">Pose humaine par défaut</div>
                                 <div class="settings-label-desc" id="gen-export-pose-desc">Pour personnages humains. Pour animaux, objets ou caméras, décris la pose dans le prompt ou crée un preset.</div>
@@ -326,6 +326,29 @@
                                 <option value="sitting">Assis</option>
                                 <option value="kneeling">Posture basse</option>
                                 <option value="standing_spread">Debout, appui large</option>
+                            </select>
+                        </div>
+                        <div class="settings-row export-human-guide-row" id="export-human-pose-distance-row">
+                            <div>
+                                <div class="settings-label" id="gen-export-pose-distance-label">Distance caméra</div>
+                                <div class="settings-label-desc" id="gen-export-pose-distance-desc">Appliqué avec une pose humaine. Auto laisse le prompt décider.</div>
+                            </div>
+                            <select class="settings-select" id="settings-export-pose-distance" onchange="saveSetting('exportPoseDistance', this.value)">
+                                <option value="auto">Auto</option>
+                                <option value="very_close">Très très proche</option>
+                                <option value="close">Proche</option>
+                                <option value="far">Loin</option>
+                            </select>
+                        </div>
+                        <div class="settings-row export-human-guide-row" id="export-human-pose-orientation-row">
+                            <div>
+                                <div class="settings-label" id="gen-export-pose-orientation-label">Orientation</div>
+                                <div class="settings-label-desc" id="gen-export-pose-orientation-desc">Appliqué avec une pose humaine. De face/de dos force la direction du corps.</div>
+                            </div>
+                            <select class="settings-select" id="settings-export-pose-orientation" onchange="saveSetting('exportPoseOrientation', this.value)">
+                                <option value="auto">Auto</option>
+                                <option value="front">De face</option>
+                                <option value="back">De dos</option>
                             </select>
                         </div>
                     </div>

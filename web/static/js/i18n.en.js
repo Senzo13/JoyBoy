@@ -1137,6 +1137,10 @@ Object.assign(MESSAGES.en.settings.generation, {
         exportPoseTitle: 'Human pose',
         exportPoseLabel: 'Default human pose',
         exportPoseDesc: 'For human characters. For animals, objects, or camera staging, describe the pose in the prompt or create a preset.',
+        exportPoseDistanceLabel: 'Camera distance',
+        exportPoseDistanceDesc: 'Applied with human pose guidance. Auto lets the prompt decide.',
+        exportPoseOrientationLabel: 'Orientation',
+        exportPoseOrientationDesc: 'Applied with human pose guidance. Front/back forces the body direction.',
         exportPresetsTitle: 'Custom presets',
         exportPresetsDesc: 'Keyword in prompt → applies format/view/pose + extra prompt. The keyword is removed from the final prompt.',
         exportPresetsEmpty: 'No presets yet. Click Add to create a rule.',
@@ -1174,6 +1178,13 @@ Object.assign(MESSAGES.en.settings.generation, {
         exportPoseSitting: 'Sitting',
         exportPoseKneeling: 'Low stance',
         exportPoseStandingSpread: 'Wide standing stance',
+        exportPoseDistanceAuto: 'Auto',
+        exportPoseDistanceVeryClose: 'Very very close',
+        exportPoseDistanceClose: 'Close',
+        exportPoseDistanceFar: 'Far',
+        exportPoseOrientationAuto: 'Auto',
+        exportPoseOrientationFront: 'Front',
+        exportPoseOrientationBack: 'Back',
     });
 
 Object.assign(MESSAGES.en.settings.models, {

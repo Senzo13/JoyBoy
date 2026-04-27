@@ -104,6 +104,8 @@ class SettingsContext {
             exportGuidanceType: 'human',
             exportView: 'auto',
             exportPose: 'none',
+            exportPoseDistance: 'auto',
+            exportPoseOrientation: 'auto',
             exportPresets: {},
         };
 

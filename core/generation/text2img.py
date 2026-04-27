@@ -147,10 +147,72 @@ _VIEW_PROMPTS = {
     'from_behind': 'rear view, back-facing viewpoint',
 }
 
+_POSE_DISTANCE_PROMPTS = {
+    'very_close': (
+        'very close camera distance, subject very near the camera, tight near-camera framing',
+        'distant wide shot, far away subject, tiny subject in frame',
+    ),
+    'close': (
+        'close camera distance, subject near the camera, medium-close framing',
+        'far away subject, distant wide shot',
+    ),
+    'far': (
+        'far camera distance, wide shot, full body visible with surrounding space',
+        'close-up, extreme close-up, tight crop, cropped body',
+    ),
+}
+
+_POSE_ORIENTATION_PROMPTS = {
+    'front': (
+        'front-facing body orientation, facing the camera',
+        'back view, rear view, from behind, facing away',
+    ),
+    'back': (
+        'back-facing body orientation, rear view, facing away from the camera',
+        'front view, facing camera, looking at camera',
+    ),
+}
+
 _CAPTURE_DEVICE_NEGATIVE = "camera, photo camera, camera lens, DSLR, camcorder, smartphone, phone, selfie stick, tripod, photographer"
 _CAPTURE_DEVICE_STYLE_WORDS = (
     "selfie", "phone", "smartphone", "telephone", "téléphone", "webcam", "omegle",
     "snapchat", "snap", "tiktok", "camera", "camcorder", "dslr", "photographer",
+)
+
+_TEXT2IMG_PHOTO_STYLE_NEGATIVE = (
+    "painting, drawing, illustration, cartoon, anime, 3d render, cgi, "
+    "airbrushed, smooth plastic skin, doll, mannequin"
+)
+_TEXT2IMG_QUALITY_NEGATIVE = (
+    "blurry, low quality, distorted, deformed, ugly, bad anatomy, extra fingers, "
+    "missing fingers, extra limbs, bad hands, bad feet, fused toes"
+)
+_TEXT2IMG_STYLIZED_NEGATIVE_TERMS = {
+    "painting",
+    "drawing",
+    "illustration",
+    "cartoon",
+    "anime",
+    "3d render",
+    "cgi",
+    "airbrushed",
+    "smooth plastic skin",
+    "doll",
+    "mannequin",
+}
+_TEXT2IMG_STYLIZED_PROMPT_MARKERS = (
+    "anime", "manga", "hentai", "manhwa", "webtoon", "cartoon", "toon",
+    "illustration", "drawing", "painting", "digital art", "line art",
+    "cel shading", "cel-shading", "cgi", "3d", "3d anime", "render",
+    "game art", "comic", "2d animation", "3d animation",
+)
+_TEXT2IMG_STYLIZED_MODEL_MARKERS = (
+    "illustrious", "pony", "animagine", "anime", "manga", "hentai", "toon",
+    "cartoon", "waifu", "anything-v",
+)
+_TEXT2IMG_PHOTO_INTENT_MARKERS = (
+    "raw photo", "photo", "photorealistic", "realistic photo", "real person",
+    "real-life", "dslr", "35mm", "film grain", "cinematic photo",
 )
 
 
@@ -219,6 +281,58 @@ def _looks_preformatted_text2img_prompt(prompt: str) -> bool:
         "webcam capture",
     )
     return any(marker in text for marker in preformatted_markers)
+
+
+def _contains_text_marker(text: str, markers: tuple[str, ...]) -> bool:
+    for marker in markers:
+        if re.search(r'(?<![\w])' + re.escape(marker) + r'(?![\w])', text):
+            return True
+    return False
+
+
+def _requests_stylized_text2img(prompt: str, model_name: str | None = None) -> bool:
+    """Detect prompts/models that should not receive the default photo wrapper."""
+    prompt_text = (prompt or "").lower()
+    model_text = (model_name or "").lower()
+    has_stylized_prompt = _contains_text_marker(prompt_text, _TEXT2IMG_STYLIZED_PROMPT_MARKERS)
+    has_stylized_model = _contains_text_marker(model_text, _TEXT2IMG_STYLIZED_MODEL_MARKERS)
+    has_photo_intent = _contains_text_marker(prompt_text, _TEXT2IMG_PHOTO_INTENT_MARKERS)
+
+    if has_stylized_prompt:
+        return True
+    return has_stylized_model and not has_photo_intent
+
+
+def _build_text2img_negative_prompt(prompt: str, model_name: str | None = None) -> str:
+    """Build a negative prompt that does not ban the user's requested medium."""
+    if _requests_stylized_text2img(prompt, model_name):
+        return _TEXT2IMG_QUALITY_NEGATIVE
+    return f"{_TEXT2IMG_PHOTO_STYLE_NEGATIVE}, {_TEXT2IMG_QUALITY_NEGATIVE}"
+
+
+def _sanitize_negative_for_requested_style(
+    negative_prompt: str | None,
+    prompt: str,
+    model_name: str | None = None,
+) -> str | None:
+    if not negative_prompt or not _requests_stylized_text2img(prompt, model_name):
+        return negative_prompt
+
+    kept_parts = []
+    removed_parts = []
+    for part in negative_prompt.split(","):
+        cleaned = part.strip()
+        if not cleaned:
+            continue
+        normalized = re.sub(r"\s+", " ", cleaned.lower())
+        if normalized in _TEXT2IMG_STYLIZED_NEGATIVE_TERMS:
+            removed_parts.append(cleaned)
+            continue
+        kept_parts.append(cleaned)
+
+    if removed_parts:
+        print(f"[TEXT2IMG] Negative stylisé nettoyé: {', '.join(removed_parts)}")
+    return ", ".join(kept_parts) if kept_parts else None
 
 
 def generate_from_text(prompt: str, model_name: str = "Automatique", enhance: bool = True, steps: int = 30, cancel_check=None, pipe=None,
@@ -343,6 +457,8 @@ def generate_from_text(prompt: str, model_name: str = "Automatique", enhance: bo
     inject_parts = []
     view = export_settings.get('view', 'auto')
     pose = export_settings.get('pose', 'none')
+    pose_distance = export_settings.get('pose_distance', 'auto')
+    pose_orientation = export_settings.get('pose_orientation', 'auto')
     extra = export_settings.get('extraPrompt', '')
     if view != 'auto' and view in _VIEW_PROMPTS:
         inject_parts.append(_VIEW_PROMPTS[view])
@@ -359,6 +475,14 @@ def generate_from_text(prompt: str, model_name: str = "Automatique", enhance: bo
             print("[TEXT2IMG] Human pose safety: clothed neutral default")
         inject_parts.append(pose_positive)
         pose_neg = pose_negative
+    distance_positive, distance_negative = _POSE_DISTANCE_PROMPTS.get(pose_distance, (None, None))
+    if distance_positive:
+        inject_parts.append(distance_positive)
+        pose_neg = append_negative_prompt(pose_neg, distance_negative)
+    orientation_positive, orientation_negative = _POSE_ORIENTATION_PROMPTS.get(pose_orientation, (None, None))
+    if orientation_positive:
+        inject_parts.append(orientation_positive)
+        pose_neg = append_negative_prompt(pose_neg, orientation_negative)
     if extra:
         inject_parts.append(extra)
     if inject_parts:
@@ -387,7 +511,7 @@ def generate_from_text(prompt: str, model_name: str = "Automatique", enhance: bo
         enhanced_prompt, style = enhance_prompt_with_ai(prompt, for_inpainting=False)
         full_prompt, neg = build_full_prompt(enhanced_prompt, style, for_inpainting=False)
     else:
-        neg = "painting, drawing, illustration, cartoon, anime, 3d render, cgi, airbrushed, smooth plastic skin, doll, mannequin, blurry, low quality, distorted, deformed, ugly, bad anatomy, extra fingers, missing fingers, extra limbs, bad hands, bad feet, fused toes"
+        neg = _build_text2img_negative_prompt(prompt, model_name)
         if style_prefix:
             # Style détecté (snapchat, webcam, etc.) → appliquer prefix + suffix
             full_prompt = f"{style_prefix}, {prompt}"
@@ -399,9 +523,14 @@ def generate_from_text(prompt: str, model_name: str = "Automatique", enhance: bo
             if _looks_preformatted_text2img_prompt(prompt):
                 full_prompt = prompt
                 print(f"[TEXT2IMG] Prompt déjà stylé → pas de wrapper RAW photo")
+            elif _requests_stylized_text2img(prompt, model_name):
+                full_prompt = f"{prompt}, high quality, detailed, sharp focus"
+                print(f"[TEXT2IMG] Style anime/illustration/3D demandé → pas de wrapper RAW photo")
             else:
                 full_prompt = f"RAW photo, photorealistic, {prompt}, high quality, detailed, sharp focus"
                 print(f"[TEXT2IMG] Style par défaut → RAW photo neutre")
+
+    neg = _sanitize_negative_for_requested_style(neg, prompt, model_name)
 
     # Append pose-specific negative prompt (SDXL only)
     if not is_flux:
