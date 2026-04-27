@@ -14,6 +14,7 @@ from core.models.hf_cache import single_file_sdxl_config_kwargs
 from core.models.manager_support import (
     DTYPE_NAME,
     _fix_meta_params,
+    _load_optional_sdxl_fp16_fix_vae,
     _materialize_module,
     _place_sdxl_pipe,
     _publish_runtime_progress,
@@ -697,25 +698,11 @@ class ModelManagerControlNetMixin:
             100,
             "Préparation VAE fp16-fix...",
         )
-        from diffusers import AutoencoderKL
-        try:
-            fixed_vae = AutoencoderKL.from_pretrained(
-                "madebyollin/sdxl-vae-fp16-fix", torch_dtype=TORCH_DTYPE,
-                local_files_only=True,
-            )
-        except OSError:
-            _publish_runtime_progress(
-                "download_vae",
-                55,
-                100,
-                "Téléchargement VAE fp16-fix...",
-            )
-            fixed_vae = AutoencoderKL.from_pretrained(
-                "madebyollin/sdxl-vae-fp16-fix", torch_dtype=TORCH_DTYPE,
-            )
-        self._inpaint_pipe.vae = fixed_vae
-        self._inpaint_pipe.enable_vae_slicing()
-        print(f"[MM] VAE remplacé par sdxl-vae-fp16-fix ({DTYPE_NAME}) ({_t_load.time() - _t0_load:.1f}s)")
+        fixed_vae = _load_optional_sdxl_fp16_fix_vae(f"ControlNet {model_name}")
+        if fixed_vae is not None:
+            self._inpaint_pipe.vae = fixed_vae
+            self._inpaint_pipe.enable_vae_slicing()
+            print(f"[MM] VAE remplacé par sdxl-vae-fp16-fix ({DTYPE_NAME}) ({_t_load.time() - _t0_load:.1f}s)")
         _publish_runtime_progress(
             "download_vae",
             100,

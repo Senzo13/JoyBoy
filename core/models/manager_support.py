@@ -88,6 +88,63 @@ def _publish_runtime_progress(phase: str, step: int = 0, total: int = 100, messa
         pass
 
 
+def _load_optional_sdxl_fp16_fix_vae(label: str = "SDXL"):
+    """Load madebyollin's fp16-fix VAE without forcing network access.
+
+    Diffusers/Hugging Face may make a HEAD request even when a repo is cached
+    unless ``local_files_only`` is set. For local-first UX, use the cached copy
+    when present; if offline and absent, return None so callers keep the VAE
+    bundled in the checkpoint.
+    """
+    repo_id = "madebyollin/sdxl-vae-fp16-fix"
+
+    try:
+        from diffusers import AutoencoderKL
+        from core.models.hf_cache import (
+            find_hf_cache_dir_for_repo,
+            is_hf_file_cached,
+            is_huggingface_reachable,
+            preferred_hf_hub_cache_dir,
+        )
+        from core.models import custom_cache
+    except Exception as exc:
+        print(f"[MM] VAE fp16-fix unavailable ({label}): {exc}")
+        return None
+
+    cache_dir = find_hf_cache_dir_for_repo(repo_id, cache_dir=custom_cache)
+    has_local_config = is_hf_file_cached(repo_id, "config.json", cache_dir=custom_cache)
+
+    if has_local_config:
+        try:
+            vae = AutoencoderKL.from_pretrained(
+                repo_id,
+                torch_dtype=TORCH_DTYPE,
+                local_files_only=True,
+                cache_dir=cache_dir or preferred_hf_hub_cache_dir(custom_cache),
+            )
+            print(f"[MM] VAE fp16-fix chargé depuis cache local ({label})")
+            return vae
+        except Exception as exc:
+            print(f"[MM] VAE fp16-fix cache local inutilisable ({label}): {exc}")
+
+    if not is_huggingface_reachable():
+        print(f"[MM] VAE fp16-fix absent/incomplet et HF indisponible ({label}) — VAE du checkpoint conservé")
+        return None
+
+    try:
+        _publish_runtime_progress("download_vae", 55, 100, "Téléchargement VAE fp16-fix...")
+        vae = AutoencoderKL.from_pretrained(
+            repo_id,
+            torch_dtype=TORCH_DTYPE,
+            cache_dir=preferred_hf_hub_cache_dir(custom_cache),
+        )
+        print(f"[MM] VAE fp16-fix téléchargé ({label})")
+        return vae
+    except Exception as exc:
+        print(f"[MM] VAE fp16-fix téléchargement échoué ({label}): {exc} — VAE du checkpoint conservé")
+        return None
+
+
 def _fix_meta_params(module, label=""):
     """Remplace les meta tensors (sans données) par des zéros sur CPU.
 

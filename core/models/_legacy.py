@@ -896,7 +896,7 @@ def load_outpaint_pipeline():
 
     print("Loading Outpainting pipeline (Inpaint ControlNet)...")
 
-    from diffusers import ControlNetModel, StableDiffusionXLControlNetPipeline, AutoencoderKL
+    from diffusers import ControlNetModel, StableDiffusionXLControlNetPipeline
 
     load_kwargs = get_model_loading_kwargs()
     cn_kwargs = {"torch_dtype": TORCH_DTYPE, "cache_dir": custom_cache}
@@ -917,18 +917,17 @@ def load_outpaint_pipeline():
         )
 
     print("[OUTPAINT] Loading VAE...")
-    vae = AutoencoderKL.from_pretrained(
-        "madebyollin/sdxl-vae-fp16-fix",
-        torch_dtype=TORCH_DTYPE,
-        cache_dir=custom_cache,
-    )
+    from core.models.manager_support import _load_optional_sdxl_fp16_fix_vae
+
+    vae = _load_optional_sdxl_fp16_fix_vae("outpaint")
 
     print("[OUTPAINT] Loading epiCRealism XL pipeline...")
+    pipe_kwargs = {**load_kwargs, "controlnet": controlnet_inpaint}
+    if vae is not None:
+        pipe_kwargs["vae"] = vae
     outpaint_pipe = StableDiffusionXLControlNetPipeline.from_pretrained(
         "John6666/epicrealism-xl-vxvii-crystal-clear-realism-sdxl",
-        **load_kwargs,
-        controlnet=controlnet_inpaint,
-        vae=vae
+        **pipe_kwargs,
     )
 
     outpaint_pipe.enable_vae_slicing()

@@ -18,6 +18,7 @@ from core.models.manager_support import (
     _fix_meta_params,
     _materialize_module,
     _move_pipe_to_cuda,
+    _load_optional_sdxl_fp16_fix_vae,
     _place_flux_int8_pipe,
     _place_sdxl_pipe,
     _publish_runtime_progress,
@@ -145,13 +146,11 @@ class ModelManagerSDXLLoaderMixin:
             # FIX: Remplacer le VAE SDXL par la version fp16-fix
             # Poids VAE optimisés pour fp16 (moins de perte de précision au décodage)
             # Sur macOS/MPS, _place_sdxl_pipe force aussi le decode VAE en fp32.
-            from diffusers import AutoencoderKL
-            fixed_vae = AutoencoderKL.from_pretrained(
-                "madebyollin/sdxl-vae-fp16-fix", torch_dtype=TORCH_DTYPE
-            )
-            self._inpaint_pipe.vae = fixed_vae
-            self._inpaint_pipe.enable_vae_slicing()
-            print(f"[MM] VAE remplacé par sdxl-vae-fp16-fix ({DTYPE_NAME})")
+            fixed_vae = _load_optional_sdxl_fp16_fix_vae(f"inpaint {model_name}")
+            if fixed_vae is not None:
+                self._inpaint_pipe.vae = fixed_vae
+                self._inpaint_pipe.enable_vae_slicing()
+                print(f"[MM] VAE remplacé par sdxl-vae-fp16-fix ({DTYPE_NAME})")
             self._apply_imported_model_assets(model_name)
 
             self._inpaint_pipe = optimize_pipeline(self._inpaint_pipe, f"inpaint ({model_name})")
@@ -436,19 +435,17 @@ class ModelManagerSDXLLoaderMixin:
         self._inpaint_pipe.enable_vae_tiling()
 
         # VAE fp16-fix (même que inpaint)
-        from diffusers import AutoencoderKL
         _publish_runtime_progress(
             "download_vae",
             50,
             100,
             "Préparation VAE fp16-fix...",
         )
-        fixed_vae = AutoencoderKL.from_pretrained(
-            "madebyollin/sdxl-vae-fp16-fix", torch_dtype=TORCH_DTYPE
-        )
-        self._inpaint_pipe.vae = fixed_vae
-        self._inpaint_pipe.enable_vae_slicing()
-        print(f"[MM] VAE remplacé par sdxl-vae-fp16-fix ({DTYPE_NAME})")
+        fixed_vae = _load_optional_sdxl_fp16_fix_vae(f"text2img {model_name}")
+        if fixed_vae is not None:
+            self._inpaint_pipe.vae = fixed_vae
+            self._inpaint_pipe.enable_vae_slicing()
+            print(f"[MM] VAE remplacé par sdxl-vae-fp16-fix ({DTYPE_NAME})")
         _publish_runtime_progress("download_vae", 100, 100, "VAE prêt")
         self._apply_imported_model_assets(model_name)
 
