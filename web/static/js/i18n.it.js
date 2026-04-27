@@ -139,6 +139,7 @@ Object.assign(MESSAGES.it, {
             collapse: 'Comprimi',
             expand: 'Espandi',
             chatMenu: 'Azioni chat',
+            chatMenuShiftDelete: 'Azioni chat · Maiusc+clic per eliminare',
             projectMenu: 'Azioni progetto',
         },
         modules: {

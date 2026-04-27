@@ -688,6 +688,20 @@ function getChatListAnchorPoint(event) {
     return { x: 20, y: 20 };
 }
 
+function handleChatListMenuClick(chatId, event) {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    clearChatListLongPress();
+
+    if (event?.shiftKey) {
+        closeChatListPopover();
+        deleteChat(chatId, event);
+        return;
+    }
+
+    openChatListActionMenu(chatId, event);
+}
+
 function attachChatListPopoverLifecycle(popover) {
     const closeOnPointerDown = (event) => {
         if (popover.contains(event.target)) return;

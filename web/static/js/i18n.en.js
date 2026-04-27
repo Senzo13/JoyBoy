@@ -159,6 +159,7 @@ Object.assign(MESSAGES.en, {
             collapse: 'Collapse',
             expand: 'Expand',
             chatMenu: 'Chat actions',
+            chatMenuShiftDelete: 'Chat actions · Shift+click to delete',
             projectMenu: 'Project actions',
         },
         modules: {

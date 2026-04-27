@@ -159,6 +159,7 @@ Object.assign(MESSAGES.fr, {
             collapse: 'Replier',
             expand: 'Déplier',
             chatMenu: 'Actions du chat',
+            chatMenuShiftDelete: 'Actions du chat · Shift+clic pour supprimer',
             projectMenu: 'Actions du projet',
         },
         modules: {

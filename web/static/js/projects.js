@@ -97,7 +97,7 @@ function renderSidebarChatItem(record, options = {}) {
     const iconName = isWorkspaceChat ? 'folder-code' : 'message-square';
     const chatIdArg = escapeHtml(JSON.stringify(record.id));
     const doubleClick = isWorkspaceChat ? `ondblclick="openWorkspaceFolderFromChat(${chatIdArg}, event)"` : '';
-    const menuLabel = escapeHtml(projectT('projects.chatMenu', 'Actions du chat'));
+    const menuLabel = escapeHtml(projectT('projects.chatMenuShiftDelete', 'Actions du chat · Shift+clic pour supprimer'));
 
     return `
         <div
@@ -120,7 +120,7 @@ function renderSidebarChatItem(record, options = {}) {
             ${isWorkspaceChat ? `<span class="chat-list-mode-badge" title="${workspaceName}">Dev</span>` : ''}
             ${hasRunningJob ? `<span class="chat-list-status" title="${statusTitle}"></span>` : ''}
             <span class="chat-list-date">${date}</span>
-            <button class="chat-list-menu" onclick="openChatListActionMenu(${chatIdArg}, event)" title="${menuLabel}" aria-label="${menuLabel}">
+            <button class="chat-list-menu" onclick="handleChatListMenuClick(${chatIdArg}, event)" title="${menuLabel}" aria-label="${menuLabel}">
                 <i data-lucide="more-horizontal"></i>
             </button>
         </div>
@@ -528,7 +528,7 @@ function renderProjectChats(chats, projectId) {
                             <span>${excerpt}</span>
                         </div>
                         <time>${date}</time>
-                        <button class="project-chat-row-menu" type="button" onclick="openChatListActionMenu(${chatId}, event)" aria-label="${escapeHtml(projectT('projects.chatMenu', 'Actions du chat'))}">
+                        <button class="project-chat-row-menu" type="button" onclick="handleChatListMenuClick(${chatId}, event)" title="${escapeHtml(projectT('projects.chatMenuShiftDelete', 'Actions du chat · Shift+clic pour supprimer'))}" aria-label="${escapeHtml(projectT('projects.chatMenuShiftDelete', 'Actions du chat · Shift+clic pour supprimer'))}">
                             <i data-lucide="more-horizontal"></i>
                         </button>
                     </div>
