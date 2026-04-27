@@ -1,70 +1,40 @@
-# JoyBoy - Local-First SuperAgent Harness for Chat, Code, Image, and Video
+# JoyBoy
 
-**JoyBoy is an open-source local-first SuperAgent-style AI harness that chats, researches, codes, and creates. With workspace tools, model orchestration, optional cloud/API and CLI account connectors, local packs and skills, Doctor checks, image generation, SDXL inpainting, and video workflows, it turns a consumer workstation into a private multimodal AI cockpit.**
+**JoyBoy is a local-first AI workstation for chat, coding, image generation, image editing, video experiments, model management, MCP tools, and optional extensions.**
+
+It is built to feel like a product, not a folder of scripts: launch it, let onboarding check your machine, pick a model, and start creating. JoyBoy can stay fully local by default with Ollama and local media models, while still letting you connect API providers, MCP servers, Browser Use, and private local packs when you want more power.
 
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-3776ab.svg)](scripts/requirements.txt)
-[![Local First](https://img.shields.io/badge/local--first-zero--cloud-111827.svg)](#why-joyboy)
-[![Ollama](https://img.shields.io/badge/LLM-Ollama-0f172a.svg)](#local-secrets-and-providers)
-[![Stable Diffusion](https://img.shields.io/badge/media-SDXL%20%7C%20Flux%20%7C%20Video-2563eb.svg)](#features)
+[![Local First](https://img.shields.io/badge/local--first-zero--cloud-111827.svg)](#local-first-by-default)
+[![Ollama](https://img.shields.io/badge/LLM-Ollama-0f172a.svg)](#models-and-providers)
+[![Extensions](https://img.shields.io/badge/extensions-MCP%20%7C%20packs%20%7C%20browser-2563eb.svg)](#extensions-mcp-and-browser-use)
 
-Run AI chat, web research, project-aware coding tools, image workflows, model management, and local creative tools on your own machine. JoyBoy is built for people who want an open source ChatGPT alternative, an offline AI assistant, a local Stable Diffusion / SDXL interface, and a privacy-focused agent harness without relying on a cloud account by default. When you do want cloud models, JoyBoy can also connect provider APIs and supported local CLI/OAuth accounts from the same UI.
+## What JoyBoy Does
 
-JoyBoy is especially aimed at long-tail local AI workflows: **local-first SuperAgent harness**, **local AI workstation**, **workspace-aware coding agent**, **local AI image editor**, **Ollama image generation routing**, **SDXL inpainting UI**, **CivitAI model imports**, and **8GB VRAM Stable Diffusion / SDXL workflows** on consumer hardware.
+JoyBoy brings the main local AI workflows into one interface:
+
+- **Chat** with local Ollama models or optional cloud providers.
+- **Project mode** for coding, workspace analysis, tool execution, todos, and repository work.
+- **Image generation** with local/provider models and a model catalogue.
+- **Image editing and inpainting** with brush masks, quick prompts, outpaint/expand, upscale, and before/after viewing.
+- **Video workflows** for image-to-video, video continuation, model downloads, and local GPU profiles.
+- **Model management** for local image, video, and LLM models.
+- **Gallery** with prompts, models, metadata, images, and videos.
+- **Doctor and onboarding** to check dependencies, GPU profile, providers, caches, and setup state.
+- **Extensions** through native tools, MCP connectors, Browser Use, and local packs.
+
+The goal is simple: make a private AI workstation that is powerful, understandable, and easy to operate on a real machine.
 
 ## Preview
 
-| Local chat and runtime | Image edit result |
+| Local Chat And Runtime | Image Edit Result |
 | --- | --- |
 | ![JoyBoy local chat with Ollama model selector and runtime meters](docs/assets/joyboy-chat.jpg) | ![JoyBoy image editing result with original and modified previews](docs/assets/joyboy-image-edit-result.jpg) |
 
-| Edit mode | Before/after viewer |
+| Edit Mode | Before/After Viewer |
 | --- | --- |
 | ![JoyBoy edit mode with brush, mask controls, quick prompts, and model picker](docs/assets/joyboy-edit-mode.jpg) | ![JoyBoy before and after comparison viewer](docs/assets/joyboy-before-after-viewer.jpg) |
-
-## Features
-
-- **Private local AI chat** with Ollama UI controls and local model routing.
-- **Optional cloud LLM providers** for chat and terminal agent mode, including OpenAI, Anthropic / Claude, Google Gemini, OpenRouter, DeepSeek, Moonshot / Kimi K2, MiniMax, Novita AI, Volcengine / Doubao, Zhipu / GLM, and OpenAI-compatible vLLM servers.
-- **Account connector modes** for supported developer subscriptions, including Codex CLI and Claude Code OAuth handoffs when those tools are already authenticated locally.
-- **Local-first agent harness** for routing prompts, tools, jobs, models, runtime state, and optional extensions from one app.
-- **Project mode** for Codex / Claude Code-style workspace assistance, bounded repo analysis, deferred tool discovery, terminal todos, and tool execution.
-- **Local AI workstation** that keeps chat, image generation, image editing, video tests, gallery, model imports, and runtime panels together.
-- **Web research and tool workflows** through provider-backed search/fetch tools, local skills, and pack-based extensions.
-- **Text-to-image generation** with local image models, Ollama-assisted routing, and provider imports.
-- **Local AI image editor / SDXL inpainting UI** for background edits, clothing edits, lighting, brush masks, expand/outpaint, and detail fixes.
-- **Video experiments** for local image-to-video workflows on consumer GPUs.
-- **CivitAI model imports and Hugging Face imports** with local runtime profiles and 8GB VRAM-aware Stable Diffusion / SDXL defaults.
-- **Local addons / packs** that can extend routing rules, prompt assets, model sources, and UI surfaces without polluting the public core.
-- **Gallery and metadata** for generated images/videos, prompts, models, and local artifacts.
-- **Doctor and runtime panels** for VRAM/RAM state, loaded models, provider keys, and machine readiness.
-
-## Why JoyBoy
-
-JoyBoy is designed for local AI users who care about privacy, control, and hardware limits.
-
-- **Zero cloud by default**: chats, outputs, provider secrets, and optional packs stay on your computer.
-- **Bring your own provider**: stay fully local, use API keys, or switch to supported CLI/OAuth account connectors without mixing billing modes.
-- **One local app**: chat, image generation, video tests, model picker, gallery, local packs, and runtime status live together.
-- **Harness mindset**: JoyBoy coordinates models, jobs, tools, providers, and packs instead of leaving each workflow as a separate script.
-- **Consumer GPU friendly**: profiles target real machines, including 8 GB VRAM setups.
-- **Open source core**: the public repository ships the neutral local AI workstation; optional packs remain separate.
-- **Extensible by design**: addons can add workflows without turning the core app into a private monolith.
-
-## Use Cases
-
-- Run a local ChatGPT-like or Grok-like assistant with Ollama.
-- Switch chat and project mode between local Ollama models, OpenAI GPT, Claude, Gemini, Kimi K2, OpenRouter models, and local OpenAI-compatible servers.
-- Use Codex CLI or Claude Code account handoffs for dev-agent workflows when those connectors are available on your machine.
-- Use a local LLM harness and local AI harness to coordinate chat, tools, model routing, and creative jobs.
-- Use JoyBoy as a local AI workstation for chat, image generation, image editing, runtime jobs, and model management.
-- Generate images locally with SDXL, Flux-style workflows, Ollama-assisted routing, and imported checkpoints.
-- Edit photos in a local AI image editor with SDXL inpainting, brush masks, background changes, lighting changes, and outpainting.
-- Test local image-to-video workflows without a hosted AI platform.
-- Manage Hugging Face and CivitAI model imports from a local UI.
-- Run 8GB VRAM Stable Diffusion / SDXL workflows with profiles designed for consumer GPUs.
-- Build local addons for custom routing, prompts, model presets, and creator workflows.
-- Experiment with a local Codex-style dev assistant that can understand a project workspace, search the web, and use tools without exposing every schema every turn.
 
 ## Quick Start
 
@@ -72,7 +42,7 @@ Clone the repository, then run the launcher for your platform.
 
 ### Windows
 
-Double-click `start_windows.bat` or run:
+Double-click `start_windows.bat`, or run:
 
 ```bat
 start_windows.bat
@@ -84,8 +54,6 @@ start_windows.bat
 chmod +x start_mac.command
 ./start_mac.command
 ```
-
-If macOS says the launcher is not executable, run the `chmod +x` command above once from Terminal, then launch it again.
 
 ### Linux
 
@@ -99,15 +67,164 @@ Then open:
 http://127.0.0.1:7860
 ```
 
-On first launch, JoyBoy runs onboarding, detects your machine profile, and shows a Doctor report if something is missing. The launchers include a first-time setup/repair path and a fast start path.
+On first launch, JoyBoy guides you through setup and onboarding. It detects your GPU/RAM profile, checks required dependencies, explains what the app can do, and helps you fix missing pieces without making you dig through random terminal logs.
 
-The first inpaint, text-to-image, or video run can take longer than the next ones. JoyBoy may need to download or prepare missing runtime assets such as segmentation checkpoints, SCHP human parsing files, ControlNet helpers, preview VAEs, or video components. The generation card shows setup/download progress while this happens; once cached locally, later generations reuse those assets.
+If you already completed setup, the launcher uses the fast path and starts the server directly.
 
-If you have an NVIDIA GPU (RTX, GTX, or compatible pro card) but JoyBoy logs `0.0GB VRAM` or `torch ... +cpu`, run the Windows launcher and choose **Setup complet**. That repairs the local virtual environment and reinstalls PyTorch with CUDA support. Machines without CUDA/MPS can still start JoyBoy for chat, providers, local packs, imports, and lighter tools, but heavy local image/video generation will be limited.
+## Easy To Use
 
-## Local Secrets and Providers
+JoyBoy is designed around everyday use:
 
-Provider keys are optional and stay local:
+- Launch from one script per platform.
+- Use onboarding and Doctor when something is missing.
+- Download, equip, and delete models from the model pages.
+- Pick chat, image, or video models from the UI.
+- Paste images or videos directly into the input.
+- Watch generation progress with live status, progress bars, and runtime logs.
+- Open the F10 runtime console when you want to see what JoyBoy is doing.
+- Use the update controls to pull new code without memorizing git commands.
+
+The advanced pieces are still there, but the default path is meant to be obvious.
+
+## Core Features
+
+### Chat And Local Models
+
+JoyBoy can run local chat through Ollama and can switch between installed models from the picker. It also tracks runtime state so models can be unloaded when memory gets tight.
+
+Useful for:
+
+- Private local chat.
+- Lightweight utility models.
+- Larger local LLMs when your GPU/RAM can handle them.
+- Switching between fast, creative, coding, and vision-capable models.
+
+### Coding And Project Mode
+
+Project mode gives JoyBoy a workspace-aware coding surface. It can inspect files, plan work, use tools, keep task state, and help with repository changes.
+
+Useful for:
+
+- Repo analysis.
+- Frontend/backend implementation.
+- Debugging.
+- Code review style checks.
+- Tool-driven local workflows.
+
+### Image Generation And Editing
+
+JoyBoy includes image generation, model catalogues, provider imports, SDXL/Flux-style workflows, inpainting, masks, quick prompts, expand/outpaint, upscale, and before/after comparison.
+
+Useful for:
+
+- Text-to-image.
+- Image-to-image.
+- Local inpainting.
+- Product/portrait/background edits.
+- Iterating with a visible gallery and metadata.
+
+### Video Generation And Continuation
+
+JoyBoy exposes video models through the same local model mindset: catalogue, install/equip flows, GPU-aware profiles, progress reporting, and gallery output.
+
+Useful for:
+
+- Image-to-video.
+- Video continuation.
+- Testing Wan/FastWan/LTX/FramePack-style workflows.
+- Comparing 8GB, 20GB, 24GB, 40GB, and larger GPU behavior.
+
+Video generation is still hardware-sensitive. JoyBoy tries to keep the controls friendly while making VRAM/RAM/offload behavior visible.
+
+## Extensions, MCP, And Browser Use
+
+JoyBoy has an Extensions hub because not every workflow belongs hardcoded inside the public core.
+
+There are three extension families:
+
+- **Native extensions**: built into JoyBoy, such as Browser Use and local runtime panels.
+- **MCP connectors**: tool servers for GitHub, filesystem access, databases, SaaS tools, search, deployment platforms, and other external systems.
+- **Local packs**: private addons stored outside git for custom prompts, routes, UI surfaces, model recipes, or machine-specific features.
+
+### MCP Connectors
+
+MCP lets JoyBoy connect tools without stuffing every integration directly into the app. MCP config stays local in:
+
+```text
+~/.joyboy/config.json
+```
+
+JoyBoy can show configured MCP servers, enabled tools, missing environment variables, OAuth/token requirements, and runtime health from the UI.
+
+Examples of MCP-style workflows:
+
+- GitHub repositories, issues, pull requests, and CI.
+- Filesystem access with explicit allowed folders.
+- PostgreSQL/Neon databases.
+- Netlify/Vercel/Cloudflare deployment tooling.
+- Google Workspace-style documents, sheets, and slides.
+- Market research, web fetch, and search tooling.
+
+### Browser Use
+
+Browser Use is an optional local browser automation surface. It opens a resizable right-side panel, can navigate local or public pages, take screenshots, click, scroll, type, and show a live cursor/action log while it works.
+
+You can call it from chat with:
+
+```text
+@browser-use open localhost:3000 and check the main button
+```
+
+It is especially useful for:
+
+- Testing local websites.
+- Opening localhost apps.
+- Checking frontend changes visually.
+- Navigating pages while seeing what the agent is doing.
+
+Browser Use is optional. If the runtime is missing, JoyBoy can install Playwright/Chromium locally from the UI.
+
+### Computer Use
+
+Computer Use is the planned desktop-control surface for controlling the actual computer, not just a browser tab. Because real OS mouse/keyboard control is sensitive and platform-specific, JoyBoy exposes it as a **local-pack extension surface** instead of baking it directly into the public core.
+
+The intended design is:
+
+- Visible cursor on the user's screen.
+- Screenshots and click/type/scroll actions.
+- Explicit user-controlled permissions.
+- Platform-specific implementation in a local pack.
+- Reuse of the Browser Use UI/runtime patterns where possible.
+
+Until a trusted local pack is installed, Computer Use stays visible-but-locked in the Extensions hub.
+
+## Local First By Default
+
+JoyBoy is designed for privacy and control:
+
+- No cloud account is required by default.
+- Local chats, outputs, galleries, packs, caches, and settings stay on your machine.
+- Provider keys are optional.
+- Secrets are read from environment variables, `.env`, or local UI config.
+- Local packs live outside the repository.
+- Model weights and generated files are not meant to be committed.
+
+The public repository is the neutral core. Private workflows should be added through local packs.
+
+## Models And Providers
+
+JoyBoy can work fully locally, or with optional providers.
+
+Local model paths include:
+
+- Ollama chat models.
+- Hugging Face model downloads.
+- CivitAI imports.
+- Local image models.
+- Local video models.
+- Utility models for captioning, segmentation, depth, parsing, and routing.
+
+Optional provider/API variables include:
 
 - `HF_TOKEN`
 - `CIVITAI_API_KEY`
@@ -126,23 +243,28 @@ Provider keys are optional and stay local:
 - `VLLM_BASE_URL`
 - `GLM_BASE_URL`
 
-Set them through environment variables, a local `.env`, or the JoyBoy settings UI. UI-managed secrets are stored outside git in:
+UI-managed secrets are stored outside git in:
 
 ```text
 ~/.joyboy/config.json
 ```
 
-The public repo only ships placeholders such as `HF_TOKEN=`, `CIVITAI_API_KEY=`, and optional LLM provider variables. You only need provider keys for downloads or cloud models that require them, for example gated Hugging Face models, CivitAI model imports, OpenAI GPT, Claude, Gemini, Kimi K2, or OpenRouter models. If you already use local models only, you can start without keys and add them later in the UI.
+You only need provider keys for gated downloads or cloud models. Local-only usage can start without keys.
 
-JoyBoy also supports connector-style auth for local developer tools when available. Codex CLI can be read from your local Codex auth, and Claude Code can use local Claude Code OAuth credentials. These are separate from API-key mode so selecting a subscription connector does not also consume the matching provider API key.
+## GPU And Runtime Profiles
 
-JoyBoy also supports DeerFlow-style MCP server wiring for external tools. MCP server config stays local in `~/.joyboy/config.json`, tools are loaded lazily into the terminal harness, and HTTP / SSE servers can use OAuth token injection when needed.
+JoyBoy tries to adapt to the machine it is running on:
 
-## Public Core + Local Packs
+- 8GB VRAM consumer GPUs.
+- 20GB/24GB cards.
+- 40GB cards such as A100-class machines.
+- CPU/MPS-limited machines for lighter workflows.
 
-JoyBoy separates the open source core from optional local extensions.
+The app uses GPU profiles, VRAM/RAM displays, unload controls, and model compatibility hints to make local AI less mysterious.
 
-The public core includes orchestration, routing, onboarding, Doctor checks, model/provider import flows, gallery UI, runtime storage, and pack validation.
+If CUDA is expected but JoyBoy reports CPU-only PyTorch, rerun the launcher and choose the full setup/repair path.
+
+## Public Core And Local Packs
 
 Local packs live in:
 
@@ -150,11 +272,22 @@ Local packs live in:
 ~/.joyboy/packs/<pack_id>/
 ```
 
-Some addons may target more specialized or private workflows. Those extensions stay optional, local, and outside the public core so the main repository remains neutral and maintainable.
+Packs can extend JoyBoy without polluting the public repository:
 
-Third-party packs are external addons distributed separately from JoyBoy. They are not included in the public repository, are not part of the official JoyBoy release, and may expand specific workflow areas such as human-image pipelines beyond the default public core. JoyBoy is not responsible for the content, packaging, legality, safety, or downstream use of external addons.
+- custom routing
+- prompt libraries
+- private workflows
+- machine-specific backends
+- extra UI surfaces
+- experimental model integrations
 
-See [Local Packs](docs/LOCAL_PACKS.md), [Addons](docs/ADDONS.md), and [Third-Party Packs](docs/THIRD_PARTY_PACKS.md) for the pack contract.
+Third-party packs are external addons distributed separately from JoyBoy. They are not part of the official public core and may have their own safety, licensing, and maintenance rules.
+
+See:
+
+- [Local Packs](docs/LOCAL_PACKS.md)
+- [Addons](docs/ADDONS.md)
+- [Third-Party Packs](docs/THIRD_PARTY_PACKS.md)
 
 ## Documentation
 
@@ -166,7 +299,7 @@ See [Local Packs](docs/LOCAL_PACKS.md), [Addons](docs/ADDONS.md), and [Third-Par
 - [Packaging](docs/PACKAGING.md)
 - [Third-Party Packs](docs/THIRD_PARTY_PACKS.md)
 - [VRAM Management](docs/VRAM_MANAGEMENT.md)
-- [Releases and update checks](docs/RELEASES.md)
+- [Releases and Update Checks](docs/RELEASES.md)
 - [Security and Content Policy](docs/SECURITY_AND_CONTENT_POLICY.md)
 - [Repository SEO and Discovery](docs/SEO_AND_DISCOVERY.md)
 - [Contributing Guide](CONTRIBUTING.md)
@@ -176,9 +309,20 @@ See [Local Packs](docs/LOCAL_PACKS.md), [Addons](docs/ADDONS.md), and [Third-Par
 
 ## Contributing
 
-Start with [CONTRIBUTING.md](CONTRIBUTING.md), [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md), [ROADMAP.md](ROADMAP.md), and [docs/GOOD_FIRST_ISSUES.md](docs/GOOD_FIRST_ISSUES.md).
+JoyBoy is being prepared as a clean public local AI core. Good contributions keep the app easy to understand and avoid committing secrets, generated files, model weights, caches, or local packs.
 
-Good early contributions include docs, Doctor checks, UI polish, model import UX, tests around local packs, and release hygiene. Browse open [`good first issue`](https://github.com/Senzo13/JoyBoy/issues?q=is%3Aissue%20is%3Aopen%20label%3A%22good%20first%20issue%22) tasks if you want a contained first PR.
+Good first areas:
+
+- onboarding polish
+- Doctor checks
+- UI/UX improvements
+- model catalogue reliability
+- MCP connector quality
+- tests around local packs
+- documentation
+- packaging and launcher reliability
+
+Start with [CONTRIBUTING.md](CONTRIBUTING.md), [ROADMAP.md](ROADMAP.md), and [docs/GOOD_FIRST_ISSUES.md](docs/GOOD_FIRST_ISSUES.md).
 
 ## License
 

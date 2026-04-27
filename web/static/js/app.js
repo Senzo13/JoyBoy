@@ -894,7 +894,7 @@ function autoResizeTextarea(textarea) {
     if (!textarea) return;
     const minHeight = 32;
     const maxHeight = 150;
-    textarea.style.height = 'auto';
+    textarea.style.height = '0px';
     const nextHeight = Math.max(minHeight, Math.min(textarea.scrollHeight, maxHeight));
     textarea.style.height = `${nextHeight}px`;
     textarea.style.overflowY = textarea.scrollHeight > maxHeight ? 'auto' : 'hidden';
@@ -902,6 +902,12 @@ function autoResizeTextarea(textarea) {
     if (typeof updateChatPadding === 'function') {
         requestAnimationFrame(updateChatPadding);
     }
+}
+
+function scheduleComposerTextareaResize(textarea) {
+    if (!textarea) return;
+    requestAnimationFrame(() => autoResizeTextarea(textarea));
+    setTimeout(() => autoResizeTextarea(textarea), 0);
 }
 
 function resetComposerTextarea(textareaOrId) {
@@ -913,14 +919,24 @@ function resetComposerTextarea(textareaOrId) {
     autoResizeTextarea(textarea);
 }
 
-document.getElementById('prompt-input')?.addEventListener('input', function() {
-    autoResizeTextarea(this);
-    updateSendButtonState('home');
-});
+function isComposerPromptTextarea(target) {
+    return target?.matches?.('#prompt-input, #chat-prompt');
+}
 
-document.getElementById('chat-prompt')?.addEventListener('input', function() {
-    autoResizeTextarea(this);
-    updateSendButtonState('chat');
+function syncComposerTextareaState(textarea) {
+    if (!isComposerPromptTextarea(textarea)) return;
+    scheduleComposerTextareaResize(textarea);
+    updateSendButtonState(textarea.id === 'chat-prompt' ? 'chat' : 'home');
+}
+
+document.addEventListener('input', event => {
+    syncComposerTextareaState(event.target);
+}, true);
+
+['paste', 'cut', 'drop', 'change', 'keyup', 'compositionend'].forEach(eventName => {
+    document.addEventListener(eventName, event => {
+        syncComposerTextareaState(event.target);
+    }, true);
 });
 
 // Update send button cursor based on input content

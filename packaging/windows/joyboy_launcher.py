@@ -162,6 +162,8 @@ def main() -> int:
     root = _app_root()
     app = root / "web" / "app.py"
     env = _configure_env(root)
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
 
     if not app.exists():
         print(f"[JOYBOY] web/app.py not found in packaged app root: {root}")
@@ -182,8 +184,29 @@ def main() -> int:
     print(f"[JOYBOY] URL    : {APP_URL}")
     _open_browser_when_ready()
 
+    job = None
+    assigned = False
+    if os.name == "nt":
+        try:
+            from core.infra.windows_job import assign_process_to_job, close_job, create_kill_on_close_job
+
+            job = create_kill_on_close_job()
+        except Exception as exc:
+            print(f"[JOYBOY] Windows process guard unavailable: {exc}")
+            close_job = None  # type: ignore[assignment]
+            assign_process_to_job = None  # type: ignore[assignment]
+
     process = subprocess.Popen([str(python), str(app)], cwd=str(root), env=env)
-    return int(process.wait() or 0)
+    if job and assign_process_to_job:
+        assigned = bool(assign_process_to_job(job, process))
+        if not assigned:
+            print("[JOYBOY] Windows process guard could not attach; continuing without it.")
+
+    try:
+        return int(process.wait() or 0)
+    finally:
+        if job and close_job:
+            close_job(job)
 
 
 if __name__ == "__main__":

@@ -673,6 +673,10 @@ def chat_stream():
     if not message:
         return jsonify({'error': 'Message requis'}), 400
 
+    # A cancel belongs to the previous stream. Clear stale state as soon as a
+    # new chat request starts, before routing checks that may take time.
+    _set_chat_stream_cancelled(False)
+
     # Récupérer tous les workspaces disponibles
     all_workspaces = data.get('allWorkspaces', [])
 
@@ -781,7 +785,6 @@ def chat_stream():
                 'model': (active_run.get('metadata') or {}).get('model'),
             }
         }), 409
-    _set_chat_stream_cancelled(False)
 
     # ===== ÉTAPE 1.6: Vérifier si c'est une demande de RECHERCHE WEB =====
     print(f"[WEB-CHECK] Vérification recherche web pour: '{message[:50]}...'")

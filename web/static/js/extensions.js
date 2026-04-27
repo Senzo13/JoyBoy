@@ -123,6 +123,16 @@ const JOYBOY_EXTENSION_CATALOG = [
         capabilities: ['browser_control', 'screenshots', 'click_type', 'local_preview'],
     },
     {
+        id: 'computer-use',
+        name: 'Computer Use',
+        icon: 'monitor',
+        category: 'featured',
+        source: 'pack',
+        action: 'local-pack-required',
+        developer: 'JoyBoy local pack',
+        capabilities: ['desktop_control', 'screenshots', 'click_type', 'local_preview'],
+    },
+    {
         id: 'cloudflare-browser-run',
         name: 'Browser Run MCP',
         icon: 'cloud',
@@ -763,6 +773,17 @@ function getExtensionState(item) {
             label: extensionT('extensions.status.localPack', 'Pack local'),
             icon: 'plus',
             className: 'is-available',
+            primaryLabel: extensionT('extensions.actions.openAddons', 'Ouvrir les packs locaux'),
+            primaryDisabled: false,
+        };
+    }
+
+    if (item.action === 'local-pack-required') {
+        return {
+            id: 'planned',
+            label: extensionT('extensions.status.localPackRequired', 'Pack local requis'),
+            icon: 'lock',
+            className: 'is-planned',
             primaryLabel: extensionT('extensions.actions.openAddons', 'Ouvrir les packs locaux'),
             primaryDisabled: false,
         };
@@ -1534,6 +1555,12 @@ async function runExtensionPrimaryAction(extensionId) {
     }
 
     if (item.action === 'open-addons') {
+        closeExtensionModal();
+        openAddonsHub();
+        return;
+    }
+
+    if (item.action === 'local-pack-required') {
         closeExtensionModal();
         openAddonsHub();
         return;

@@ -308,7 +308,7 @@ if exist "%PYW%" (
 ) else (
     start "" /b "%PY%" scripts\open_browser.py --url http://127.0.0.1:7860 --timeout 120 >nul 2>nul
 )
-"%PY%" -u web/app.py
+"%PY%" -u scripts\windows_run_server.py
 set EXIT_CODE=%errorlevel%
 
 REM Code 42 means backend requested restart; close this window

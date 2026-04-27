@@ -178,6 +178,15 @@
     background: rgba(56, 189, 248, 0.18);
 }
 
+.browser-use-stop {
+    color: #fca5a5;
+}
+
+.browser-use-stop:hover {
+    color: #ffffff;
+    background: rgba(248, 113, 113, 0.18);
+}
+
 .browser-use-primary:hover {
     color: #02131f;
     background: linear-gradient(135deg, #7dd3fc, #60a5fa);
@@ -363,6 +372,56 @@
     cursor: crosshair;
 }
 
+.browser-use-cursor {
+    position: absolute;
+    z-index: 5;
+    left: 50%;
+    top: 50%;
+    width: 22px;
+    height: 24px;
+    pointer-events: none;
+    opacity: 0;
+    transform: translate(2px, 2px);
+    transition: left 0.24s cubic-bezier(0.2, 0.8, 0.2, 1), top 0.24s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.16s ease;
+}
+
+.browser-use-cursor::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 17px;
+    height: 24px;
+    background: #05070b;
+    clip-path: polygon(0 0, 0 100%, 5px 78%, 9px 100%, 13px 99%, 9px 75%, 17px 75%);
+    filter:
+        drop-shadow(0 0 1px rgba(125, 211, 252, 0.98))
+        drop-shadow(0 0 3px rgba(56, 189, 248, 0.8))
+        drop-shadow(0 3px 7px rgba(0, 0, 0, 0.72));
+}
+
+.browser-use-cursor::after {
+    content: "";
+    position: absolute;
+    left: -9px;
+    top: -9px;
+    width: 30px;
+    height: 30px;
+    border-radius: 999px;
+    border: 1px solid rgba(125, 211, 252, 0.9);
+    box-shadow: 0 0 14px rgba(56, 189, 248, 0.46);
+    opacity: 0;
+    transform: scale(0.42);
+}
+
+.browser-use-cursor.is-visible {
+    opacity: 1;
+}
+
+.browser-use-cursor.is-clicking::after {
+    animation: browser-use-click-ring 0.42s ease-out;
+}
+
 .browser-use-live-progress {
     position: absolute;
     left: 12px;
@@ -377,6 +436,91 @@
     border: 1px solid rgba(125, 211, 252, 0.16);
     box-shadow: 0 14px 36px rgba(0, 0, 0, 0.35);
     backdrop-filter: blur(12px);
+}
+
+.browser-use-action-log {
+    display: grid;
+    gap: 7px;
+    padding: 10px;
+    border-radius: 13px;
+    background: rgba(7, 12, 20, 0.72);
+    border: 1px solid rgba(125, 211, 252, 0.13);
+}
+
+.browser-use-action-log[hidden] {
+    display: none !important;
+}
+
+.browser-use-action-log-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    color: #9edfff;
+    font-size: 11px;
+    font-weight: 850;
+    text-transform: uppercase;
+}
+
+.browser-use-log-clear {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border: 0;
+    border-radius: 8px;
+    color: #8fb2cf;
+    background: rgba(255, 255, 255, 0.045);
+    cursor: pointer;
+}
+
+.browser-use-log-clear:hover {
+    color: #ffffff;
+    background: rgba(56, 189, 248, 0.14);
+}
+
+.browser-use-log-clear svg {
+    width: 13px;
+    height: 13px;
+}
+
+.browser-use-action-log-list {
+    display: grid;
+    gap: 5px;
+    max-height: 126px;
+    overflow: auto;
+}
+
+.browser-use-log-row {
+    display: grid;
+    grid-template-columns: 26px minmax(0, 1fr);
+    align-items: start;
+    gap: 8px;
+    min-width: 0;
+    color: #cfe6ff;
+    font-size: 11px;
+    line-height: 1.35;
+}
+
+.browser-use-log-index {
+    display: inline-grid;
+    place-items: center;
+    width: 24px;
+    height: 20px;
+    border-radius: 7px;
+    color: #7dd3fc;
+    background: rgba(56, 189, 248, 0.1);
+    font-size: 10px;
+    font-weight: 850;
+}
+
+.browser-use-log-text {
+    min-width: 0;
+    overflow: hidden;
+    color: #d9eaff;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .browser-use-progress-top {
@@ -500,6 +644,17 @@
     }
 }
 
+@keyframes browser-use-click-ring {
+    0% {
+        opacity: 0.85;
+        transform: scale(0.35);
+    }
+    100% {
+        opacity: 0;
+        transform: scale(1.4);
+    }
+}
+
 @keyframes browser-use-text-shine {
     to {
         background-position: -220% 0;
@@ -582,6 +737,40 @@
 
 .browser-use-mention-option:hover {
     background: rgba(56, 189, 248, 0.11);
+}
+
+.browser-use-mention-option + .browser-use-mention-option {
+    margin-top: 4px;
+}
+
+.browser-use-mention-chip {
+    display: none;
+    align-items: center;
+    width: max-content;
+    max-width: 100%;
+    gap: 6px;
+    margin: -2px 0 5px;
+    padding: 4px 8px;
+    border-radius: 999px;
+    color: #7dd3fc;
+    background: rgba(56, 189, 248, 0.1);
+    border: 1px solid rgba(125, 211, 252, 0.22);
+    font-size: 12px;
+    font-weight: 850;
+    line-height: 1;
+}
+
+.browser-use-mention-chip svg {
+    width: 13px;
+    height: 13px;
+}
+
+.prompt-input-wrapper.has-browser-use-mention .browser-use-mention-chip {
+    display: inline-flex;
+}
+
+.prompt-input-wrapper.has-browser-use-mention .prompt-input {
+    caret-color: #7dd3fc;
 }
 
 .browser-use-mention-option span {

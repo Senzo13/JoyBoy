@@ -1037,6 +1037,9 @@
                 </div>
             </div>
             <div class="browser-use-header-actions">
+                <button class="browser-use-icon-btn browser-use-stop" type="button" data-browser-use-action="cancel" onclick="cancelBrowserUseAction()" data-i18n-tooltip="browserUse.stopTooltip" aria-label="Stop">
+                    <i data-lucide="square"></i>
+                </button>
                 <button class="browser-use-icon-btn" type="button" data-browser-use-action="screenshot" onclick="browserUseAction('screenshot')" data-i18n-tooltip="browserUse.refreshTooltip" aria-label="Refresh">
                     <i data-lucide="scan-eye"></i>
                 </button>
@@ -1047,13 +1050,13 @@
         </div>
         <div class="browser-use-toolbar">
             <div class="browser-use-nav">
-                <button class="browser-use-icon-btn" type="button" data-browser-use-action="back" onclick="browserUseAction('back')" aria-label="Back">
+                <button class="browser-use-icon-btn" type="button" data-browser-use-action="back" onclick="browserUseAction('back')" data-i18n-tooltip="browserUse.backTooltip" aria-label="Back">
                     <i data-lucide="arrow-left"></i>
                 </button>
-                <button class="browser-use-icon-btn" type="button" data-browser-use-action="forward" onclick="browserUseAction('forward')" aria-label="Forward">
+                <button class="browser-use-icon-btn" type="button" data-browser-use-action="forward" onclick="browserUseAction('forward')" data-i18n-tooltip="browserUse.forwardTooltip" aria-label="Forward">
                     <i data-lucide="arrow-right"></i>
                 </button>
-                <button class="browser-use-icon-btn" type="button" data-browser-use-action="reload" onclick="browserUseAction('reload')" aria-label="Reload">
+                <button class="browser-use-icon-btn" type="button" data-browser-use-action="reload" onclick="browserUseAction('reload')" data-i18n-tooltip="browserUse.reloadTooltip" aria-label="Reload">
                     <i data-lucide="rotate-cw"></i>
                 </button>
             </div>
@@ -1061,7 +1064,7 @@
                 <i data-lucide="globe-2"></i>
                 <input class="browser-use-url" id="browser-use-url" type="text" autocomplete="off" spellcheck="false" placeholder="localhost:3000">
             </label>
-            <button class="browser-use-primary" type="button" data-browser-use-action="open" onclick="navigateBrowserUseUrl()">
+            <button class="browser-use-primary" type="button" data-browser-use-action="open" onclick="navigateBrowserUseUrl()" data-i18n-tooltip="browserUse.openTooltip">
                 <i data-lucide="corner-down-right"></i>
                 <span data-i18n="browserUse.open">Ouvrir</span>
             </button>
@@ -1072,7 +1075,7 @@
                 <div>
                     <h3 data-i18n="browserUse.installTitle">Installer le runtime navigateur</h3>
                     <p data-i18n="browserUse.installBody">JoyBoy installe Playwright et Chromium localement. Rien n'est committé dans le repo.</p>
-                    <button class="browser-use-primary" type="button" data-browser-use-action="install" onclick="installBrowserUseRuntime(false, { afterCurrent: true })">
+                    <button class="browser-use-primary" type="button" data-browser-use-action="install" onclick="installBrowserUseRuntime(false, { afterCurrent: true })" data-i18n-tooltip="browserUse.installTooltip">
                         <i data-lucide="package-plus"></i>
                         <span data-i18n="browserUse.installButton">Installer</span>
                     </button>
@@ -1105,9 +1108,18 @@
                     <div class="browser-use-progress-detail" id="browser-use-progress-detail">Initialisation</div>
                 </div>
             </div>
+            <div class="browser-use-action-log" id="browser-use-action-log" hidden>
+                <div class="browser-use-action-log-head">
+                    <span data-i18n="browserUse.logsTitle">Actions</span>
+                    <button class="browser-use-log-clear" type="button" onclick="clearBrowserUseActionLog()" data-i18n-tooltip="browserUse.clearLogsTooltip" aria-label="Clear logs">
+                        <i data-lucide="trash-2"></i>
+                    </button>
+                </div>
+                <div class="browser-use-action-log-list" id="browser-use-action-log-list"></div>
+            </div>
             <div class="browser-use-commandbar" id="browser-use-tools">
                 <textarea class="browser-use-command" id="browser-use-command" rows="2" data-i18n="browserUse.commandPlaceholder" data-i18n-attr="placeholder" placeholder="Ex: ouvre localhost:3000 et vérifie le bouton principal"></textarea>
-                <button class="browser-use-command-send" type="button" data-browser-use-action="task" onclick="submitBrowserUseCommand()" aria-label="Run">
+                <button class="browser-use-command-send" type="button" data-browser-use-action="task" onclick="submitBrowserUseCommand()" data-i18n-tooltip="browserUse.sendTooltip" aria-label="Run">
                     <i data-lucide="send"></i>
                 </button>
             </div>

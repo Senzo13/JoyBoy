@@ -2,11 +2,15 @@
 // Local optional browser surface: @browser-use opens a resizable right dock.
 
 const BROWSER_USE_MENTION_RE = /(^|\s)@(browser-use|browser use|browser|iab)\b/i;
+const COMPUTER_USE_MENTION_RE = /(^|\s)@(computer-use|computer use|computer|desktop-use|desktop)\b/i;
 let browserUseStatus = null;
 let browserUseResizeState = null;
 let browserUseMentionPopover = null;
 let browserUseMentionInput = null;
 let browserUseInstallPollAbort = 0;
+let browserUseCursorTimer = null;
+let browserUseActionPollToken = 0;
+const BROWSER_USE_MANUAL_ACTIONS = new Set(['click', 'scroll', 'type', 'press', 'back', 'forward', 'reload', 'open']);
 
 function browserUseT(key, fallback = '', params = {}) {
     if (window.JoyBoyI18n?.t) return window.JoyBoyI18n.t(key, params, fallback);
@@ -18,6 +22,17 @@ function parseBrowserUseMention(text = '') {
     const match = raw.match(BROWSER_USE_MENTION_RE);
     if (!match) return null;
     const cleaned = raw.replace(BROWSER_USE_MENTION_RE, '$1').replace(/\s+/g, ' ').trim();
+    return {
+        task: cleaned,
+        label: match[2],
+    };
+}
+
+function parseComputerUseMention(text = '') {
+    const raw = String(text || '');
+    const match = raw.match(COMPUTER_USE_MENTION_RE);
+    if (!match) return null;
+    const cleaned = raw.replace(COMPUTER_USE_MENTION_RE, '$1').replace(/\s+/g, ' ').trim();
     return {
         task: cleaned,
         label: match[2],
@@ -44,6 +59,12 @@ function getBrowserUseCurrentUrl(defaultLocal = false) {
 
 function getBrowserUseCurrentTask() {
     return String(document.getElementById('browser-use-command')?.value || '').trim();
+}
+
+function getBrowserUseAgentModel() {
+    if (typeof currentJoyBoyChatModel === 'function') return currentJoyBoyChatModel();
+    if (typeof userSettings !== 'undefined' && userSettings?.chatModel) return String(userSettings.chatModel);
+    return 'qwen3.5:2b';
 }
 
 function setBrowserUseStatusText(text = '', tone = '') {
@@ -83,6 +104,46 @@ function setBrowserUseProgress(options = {}) {
     if (percentNode) percentNode.textContent = `${Math.round(percent)}%`;
 }
 
+function renderBrowserUseActionLog(status = {}) {
+    const box = document.getElementById('browser-use-action-log');
+    const list = document.getElementById('browser-use-action-log-list');
+    if (!box || !list) return;
+
+    const steps = Array.isArray(status.agent_steps) ? status.agent_steps : [];
+    const rows = steps
+        .map(step => String(step || '').trim())
+        .filter(Boolean)
+        .slice(-8);
+    const statusText = String(status.status || '').trim();
+    const detailText = String(status.detail || '').trim();
+    if (!rows.length && (statusText || detailText)) {
+        rows.push([statusText, detailText].filter(Boolean).join(' - '));
+    }
+
+    if (!rows.length) {
+        box.hidden = true;
+        list.innerHTML = '';
+        return;
+    }
+
+    box.hidden = false;
+    const baseIndex = Math.max(1, steps.length - rows.length + 1);
+    list.innerHTML = rows.map((row, index) => `
+        <div class="browser-use-log-row">
+            <span class="browser-use-log-index">${baseIndex + index}</span>
+            <span class="browser-use-log-text" title="${escapeHtml(row)}">${escapeHtml(row)}</span>
+        </div>
+    `).join('');
+    list.scrollTop = list.scrollHeight;
+}
+
+function clearBrowserUseActionLog() {
+    const box = document.getElementById('browser-use-action-log');
+    const list = document.getElementById('browser-use-action-log-list');
+    if (list) list.innerHTML = '';
+    if (box) box.hidden = true;
+}
+
 function renderBrowserUseProgressFromStatus(status = browserUseStatus) {
     const install = status?.install || {};
     if (install.active || (install.complete && !install.success)) {
@@ -95,13 +156,15 @@ function renderBrowserUseProgressFromStatus(status = browserUseStatus) {
     } else {
         setBrowserUseProgress({ visible: false });
     }
+    renderBrowserUseActionLog(status || {});
 }
 
 function setBrowserUseBusy(busy = false) {
     const panel = getBrowserUsePanel();
     panel?.classList.toggle('is-busy', !!busy);
+    const installing = !!browserUseStatus?.install?.active;
     document.querySelectorAll('[data-browser-use-action]').forEach(btn => {
-        btn.disabled = !!busy || !!browserUseStatus?.install?.active;
+        btn.disabled = installing;
     });
 }
 
@@ -116,7 +179,32 @@ function renderBrowserUseShot(data = {}) {
         img.src = data.screenshot;
         img.style.display = 'block';
         if (empty) empty.style.display = 'none';
+        const paintCursor = () => renderBrowserUseCursor(data.cursor);
+        if (img.complete) requestAnimationFrame(paintCursor);
+        else img.onload = paintCursor;
     }
+}
+
+function renderBrowserUseCursor(cursor = null) {
+    const viewport = document.getElementById('browser-use-viewport');
+    const img = document.getElementById('browser-use-shot');
+    if (!viewport || !img || !cursor || !Number.isFinite(Number(cursor.x)) || !Number.isFinite(Number(cursor.y))) return;
+
+    let node = document.getElementById('browser-use-cursor');
+    if (!node) {
+        node = document.createElement('div');
+        node.id = 'browser-use-cursor';
+        node.className = 'browser-use-cursor';
+        viewport.appendChild(node);
+    }
+
+    const x = (Number(cursor.x) / Math.max(1, img.naturalWidth || img.width)) * img.clientWidth + img.offsetLeft;
+    const y = (Number(cursor.y) / Math.max(1, img.naturalHeight || img.height)) * img.clientHeight + img.offsetTop;
+    node.style.left = `${Math.round(x)}px`;
+    node.style.top = `${Math.round(y)}px`;
+    node.classList.add('is-visible', 'is-clicking');
+    clearTimeout(browserUseCursorTimer);
+    browserUseCursorTimer = setTimeout(() => node?.classList.remove('is-clicking'), 420);
 }
 
 function renderBrowserUseInstallState(status = browserUseStatus) {
@@ -166,7 +254,9 @@ function openBrowserUsePanel(options = {}) {
         if (input) input.value = options.task;
     }
     refreshBrowserUseStatus();
+    window.JoyBoyI18n?.applyTranslations?.(panel);
     if (window.lucide) lucide.createIcons({ nodes: [panel] });
+    window.JoyTooltip?.rescan?.(panel);
 }
 
 function closeBrowserUsePanel() {
@@ -241,6 +331,16 @@ async function installBrowserUseRuntime(includeAgent = false, options = {}) {
 }
 
 async function browserUseAction(action, payload = {}) {
+    const actionName = String(action || '').toLowerCase();
+    if (browserUseActionPollToken && BROWSER_USE_MANUAL_ACTIONS.has(actionName)) {
+        try {
+            await apiSettings.browserUseAction('cancel', {});
+        } catch (error) {
+            // Best effort: the manual action will still be queued if the agent is finishing.
+        }
+    }
+    const token = Date.now();
+    browserUseActionPollToken = token;
     setBrowserUseBusy(true);
     setBrowserUseStatusText(browserUseT('browserUse.running', 'Navigation en cours...'), 'warn');
     setBrowserUseProgress({
@@ -249,12 +349,26 @@ async function browserUseAction(action, payload = {}) {
         label: browserUseT('browserUse.running', 'Navigation en cours...'),
         detail: payload.url || payload.task || browserUseT('browserUse.capturing', 'Capture de la page...'),
     });
+    renderBrowserUseActionLog({
+        status: browserUseT('browserUse.running', 'Navigation en cours...'),
+        detail: payload.url || payload.task || '',
+        agent_steps: [],
+    });
+    pollBrowserUseLiveUntilDone(token);
     try {
         const size = getBrowserUseViewportSize();
-        const result = await apiSettings.browserUseAction(action, { ...payload, ...size });
+        const modelPayload = payload.model ? {} : { model: getBrowserUseAgentModel() };
+        const runtimePayload = {
+            ...payload,
+            ...modelPayload,
+            ...size,
+            max_steps: Object.prototype.hasOwnProperty.call(payload, 'max_steps') ? payload.max_steps : (actionName === 'task' ? 0 : undefined),
+        };
+        const result = await apiSettings.browserUseAction(action, runtimePayload);
         const data = result.data || {};
+        if (data.screenshot) renderBrowserUseShot(data);
+        renderBrowserUseActionLog(data);
         if (!result.ok || !data.success) throw new Error(data.error || result.error || 'Browser Use error');
-        renderBrowserUseShot(data);
         browserUseStatus = { ...(browserUseStatus || {}), running: true, url: data.url, title: data.title, playwright_installed: true, usable: true };
         window.joyboyBrowserUseStatus = browserUseStatus;
         setBrowserUseStatusText(data.title || browserUseT('browserUse.ready', 'Runtime prêt'), 'ok');
@@ -265,7 +379,51 @@ async function browserUseAction(action, payload = {}) {
         setBrowserUseProgress({ visible: false });
         throw error;
     } finally {
+        if (browserUseActionPollToken === token) browserUseActionPollToken = 0;
         setBrowserUseBusy(false);
+    }
+}
+
+async function cancelBrowserUseAction() {
+    browserUseActionPollToken = 0;
+    setBrowserUseStatusText(browserUseT('browserUse.interrupting', 'Interruption...'), 'warn');
+    try {
+        await apiSettings.browserUseAction('cancel', {});
+        setBrowserUseProgress({ visible: false });
+    } catch (error) {
+        Toast.error(browserUseT('browserUse.title', 'Browser Use'), error.message || String(error));
+    } finally {
+        setBrowserUseBusy(false);
+    }
+}
+
+async function pollBrowserUseLiveUntilDone(token) {
+    let lastProgress = 35;
+    while (browserUseActionPollToken === token) {
+        await new Promise(resolve => setTimeout(resolve, 550));
+        if (browserUseActionPollToken !== token) break;
+        try {
+            const result = await apiSettings.getBrowserUseStatus();
+            const data = result.data || {};
+            if (!result.ok || !data.success) continue;
+            browserUseStatus = { ...(browserUseStatus || {}), ...data };
+            window.joyboyBrowserUseStatus = browserUseStatus;
+            if (data.screenshot) renderBrowserUseShot(data);
+            renderBrowserUseActionLog(data);
+            const progress = Number.isFinite(Number(data.progress))
+                ? Math.max(lastProgress, Math.min(98, Number(data.progress)))
+                : Math.min(98, lastProgress + 2);
+            lastProgress = progress;
+            setBrowserUseStatusText(data.status || data.title || browserUseT('browserUse.running', 'Navigation en cours...'), data.action_active ? 'warn' : 'ok');
+            setBrowserUseProgress({
+                visible: true,
+                percent: progress,
+                label: data.status || browserUseT('browserUse.running', 'Navigation en cours...'),
+                detail: data.detail || data.url || data.task || browserUseT('browserUse.capturing', 'Capture de la page...'),
+            });
+        } catch (error) {
+            // Polling is only for live preview; the main action request owns errors.
+        }
     }
 }
 
@@ -364,12 +522,13 @@ function bindBrowserUsePanel() {
     });
 }
 
-function buildBrowserUseUserPromptHtml(task = '') {
-    const label = browserUseT('browserUse.title', 'Browser Use');
-    const cleanTask = String(task || '').trim() || browserUseT('browserUse.openPanel', 'Ouvrir le navigateur');
+function buildAutomationUseUserPromptHtml(options = {}) {
+    const label = options.label || browserUseT('browserUse.title', 'Browser Use');
+    const icon = options.icon || 'mouse-pointer-click';
+    const cleanTask = String(options.task || '').trim() || options.fallback || '';
     return `
         <div class="browser-use-chat-request">
-            <span class="browser-use-chat-icon"><i data-lucide="mouse-pointer-click"></i></span>
+            <span class="browser-use-chat-icon"><i data-lucide="${escapeHtml(icon)}"></i></span>
             <span class="browser-use-chat-copy">
                 <strong>${escapeHtml(label)}</strong>
                 <span>${escapeHtml(cleanTask)}</span>
@@ -378,11 +537,29 @@ function buildBrowserUseUserPromptHtml(task = '') {
     `;
 }
 
+function buildBrowserUseUserPromptHtml(task = '') {
+    return buildAutomationUseUserPromptHtml({
+        label: browserUseT('browserUse.title', 'Browser Use'),
+        icon: 'mouse-pointer-click',
+        task,
+        fallback: browserUseT('browserUse.openPanel', 'Ouvrir le navigateur'),
+    });
+}
+
+function buildComputerUseUserPromptHtml(task = '') {
+    return buildAutomationUseUserPromptHtml({
+        label: browserUseT('computerUse.title', 'Computer Use'),
+        icon: 'monitor',
+        task,
+        fallback: browserUseT('computerUse.openPanel', 'Contrôler l’ordinateur'),
+    });
+}
+
 function addBrowserUseResultMessage(result = {}, task = '') {
     const ok = !!result.success;
     const text = ok
-        ? browserUseT('browserUse.openedResult', 'Navigateur ouvert : {title}', { title: result.title || result.url || task || 'OK' })
-        : browserUseT('browserUse.installHintResult', 'Browser Use est prêt dans le panneau droit. Installe le runtime si JoyBoy le demande.');
+        ? (result.answer || browserUseT('browserUse.openedResult', 'Navigateur ouvert : {title}', { title: result.title || result.url || task || 'OK' }))
+        : (result.error || browserUseT('browserUse.installHintResult', 'Browser Use est prêt dans le panneau droit. Installe le runtime si JoyBoy le demande.'));
     if (typeof addAiMessageToChat === 'function') {
         addAiMessageToChat(text);
     }
@@ -391,7 +568,35 @@ function addBrowserUseResultMessage(result = {}, task = '') {
 async function maybeHandleBrowserUsePromptSubmit(inputOrId) {
     const input = typeof inputOrId === 'string' ? document.getElementById(inputOrId) : inputOrId;
     const parsed = parseBrowserUseMention(input?.value || '');
-    if (!input || !parsed) return false;
+    const computerParsed = parsed ? null : parseComputerUseMention(input?.value || '');
+    if (!input || (!parsed && !computerParsed)) return false;
+
+    if (computerParsed) {
+        const task = computerParsed.task || browserUseT('computerUse.openPanel', 'Contrôler l’ordinateur');
+        if (typeof ensureVisibleChatForRequest === 'function') {
+            await ensureVisibleChatForRequest({ title: task });
+        } else if (typeof showChat === 'function') {
+            showChat();
+        }
+        if (typeof addUserMessageToChat === 'function') {
+            addUserMessageToChat(buildComputerUseUserPromptHtml(task), {
+                renderedHtml: true,
+                fullPrompt: `@computer-use ${task}`,
+            });
+        }
+        if (typeof resetComposerTextarea === 'function') resetComposerTextarea(input);
+        if (typeof addAiMessageToChat === 'function') {
+            addAiMessageToChat(browserUseT(
+                'computerUse.packRequired',
+                'Computer Use demande un pack local privé avant de pouvoir contrôler ton ordinateur.'
+            ));
+        }
+        if (typeof openExtensionModal === 'function') openExtensionModal('computer-use');
+        if (typeof saveCurrentChatHtml === 'function') {
+            saveCurrentChatHtml(task, getChatHtmlWithoutSkeleton?.() || '', currentChatId);
+        }
+        return true;
+    }
 
     const task = parsed.task || browserUseT('browserUse.openPanel', 'Ouvrir le navigateur');
     if (typeof ensureVisibleChatForRequest === 'function') {
@@ -425,17 +630,25 @@ function showBrowserUseMentionPopover(input) {
         browserUseMentionPopover = document.createElement('div');
         browserUseMentionPopover.className = 'browser-use-mention-popover';
         browserUseMentionPopover.innerHTML = `
-            <button type="button" class="browser-use-mention-option">
+            <button type="button" class="browser-use-mention-option" data-mention="@browser-use">
                 <span><i data-lucide="mouse-pointer-click"></i></span>
                 <strong>Browser Use</strong>
                 <small>@browser-use</small>
             </button>
+            <button type="button" class="browser-use-mention-option" data-mention="@computer-use">
+                <span><i data-lucide="monitor"></i></span>
+                <strong>Computer Use</strong>
+                <small>@computer-use</small>
+            </button>
         `;
         document.body.appendChild(browserUseMentionPopover);
-        browserUseMentionPopover.querySelector('button')?.addEventListener('click', () => {
+        browserUseMentionPopover.addEventListener('click', event => {
+            const button = event.target.closest('[data-mention]');
+            if (!button) return;
             const target = browserUseMentionInput;
             if (!target) return;
-            target.value = target.value.replace(/(^|\s)@\S*$/i, '$1@browser-use ');
+            const mention = button.dataset.mention || '@browser-use';
+            target.value = target.value.replace(/(^|\s)@\S*$/i, `$1${mention} `);
             target.dispatchEvent(new Event('input', { bubbles: true }));
             target.focus();
             hideBrowserUseMentionPopover();
@@ -456,11 +669,40 @@ function hideBrowserUseMentionPopover() {
 
 function maybeShowBrowserUseMentionFromInput(input) {
     const value = String(input?.value || '');
-    if (/(^|\s)@(?:b|br|bro|brow|browser|browser-use|iab)?$/i.test(value)) {
+    renderBrowserUseMentionChip(input);
+    if (/(^|\s)@(?:b|br|bro|brow|browser|browser-use|iab|c|co|com|computer|computer-use|d|de|desk|desktop|desktop-use)?$/i.test(value)) {
         showBrowserUseMentionPopover(input);
     } else {
         hideBrowserUseMentionPopover();
     }
+}
+
+function renderBrowserUseMentionChip(input) {
+    if (!input) return;
+    const wrapper = input.closest('.prompt-input-wrapper');
+    if (!wrapper) return;
+    const browserMention = parseBrowserUseMention(input.value || '');
+    const computerMention = browserMention ? null : parseComputerUseMention(input.value || '');
+    const active = browserMention || computerMention;
+    let chip = wrapper.querySelector('.browser-use-mention-chip');
+    if (!active) {
+        wrapper.classList.remove('has-browser-use-mention');
+        chip?.remove();
+        return;
+    }
+
+    if (!chip) {
+        chip = document.createElement('span');
+        chip.className = 'browser-use-mention-chip';
+        wrapper.insertBefore(chip, input);
+    }
+    const label = browserMention
+        ? '@browser-use'
+        : '@computer-use';
+    const icon = browserMention ? 'mouse-pointer-click' : 'monitor';
+    chip.innerHTML = `<i data-lucide="${icon}"></i><span>${escapeHtml(label)}</span>`;
+    wrapper.classList.add('has-browser-use-mention');
+    if (window.lucide) lucide.createIcons({ nodes: [chip] });
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -468,6 +710,7 @@ document.addEventListener('DOMContentLoaded', () => {
     ['prompt-input', 'chat-prompt'].forEach(id => {
         const input = document.getElementById(id);
         input?.addEventListener('input', () => maybeShowBrowserUseMentionFromInput(input));
+        input?.addEventListener('change', () => renderBrowserUseMentionChip(input));
         input?.addEventListener('blur', () => window.setTimeout(hideBrowserUseMentionPopover, 140));
     });
     refreshBrowserUseStatus();
@@ -483,6 +726,8 @@ Object.assign(window, {
     refreshBrowserUseStatus,
     installBrowserUseRuntime,
     browserUseAction,
+    cancelBrowserUseAction,
+    clearBrowserUseActionLog,
     runBrowserUseTask,
     submitBrowserUseCommand,
     navigateBrowserUseUrl,
