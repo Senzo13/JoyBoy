@@ -149,27 +149,27 @@ _VIEW_PROMPTS = {
 
 _POSE_DISTANCE_PROMPTS = {
     'very_close': (
-        'very close camera distance, subject very near the camera, tight near-camera framing',
-        'distant wide shot, far away subject, tiny subject in frame',
+        'very close framing, subject fills most of the frame, tight near-viewer composition, close foreground perspective',
+        'distant wide shot, far away subject, tiny subject in frame, full body wide framing, lots of empty surrounding space',
     ),
     'close': (
-        'close camera distance, subject near the camera, medium-close framing',
-        'far away subject, distant wide shot',
+        'close framing, subject near the viewer, medium-close composition',
+        'far away subject, distant wide shot, tiny subject in frame',
     ),
     'far': (
-        'far camera distance, wide shot, full body visible with surrounding space',
+        'far framing, wide shot, full body visible with surrounding space',
         'close-up, extreme close-up, tight crop, cropped body',
     ),
 }
 
 _POSE_ORIENTATION_PROMPTS = {
     'front': (
-        'front-facing body orientation, facing the camera',
+        'front-facing body orientation, facing the viewer',
         'back view, rear view, from behind, facing away',
     ),
     'back': (
-        'back-facing body orientation, rear view, facing away from the camera',
-        'front view, facing camera, looking at camera',
+        'back-facing body orientation, rear view, facing away from the viewer',
+        'front view, facing viewer, looking toward viewer',
     ),
 }
 
@@ -184,8 +184,9 @@ _TEXT2IMG_PHOTO_STYLE_NEGATIVE = (
     "airbrushed, smooth plastic skin, doll, mannequin"
 )
 _TEXT2IMG_QUALITY_NEGATIVE = (
-    "blurry, low quality, distorted, deformed, ugly, bad anatomy, extra fingers, "
-    "missing fingers, extra limbs, bad hands, bad feet, fused toes"
+    "blurry, low quality, worst quality, lowres, jpeg artifacts, noisy, grainy, "
+    "distorted, deformed, ugly, bad anatomy, extra fingers, missing fingers, "
+    "extra limbs, bad hands, bad feet, fused toes, duplicate, watermark, text, logo"
 )
 _TEXT2IMG_STYLIZED_NEGATIVE_TERMS = {
     "painting",
@@ -293,14 +294,29 @@ def _contains_text_marker(text: str, markers: tuple[str, ...]) -> bool:
 def _requests_stylized_text2img(prompt: str, model_name: str | None = None) -> bool:
     """Detect prompts/models that should not receive the default photo wrapper."""
     prompt_text = (prompt or "").lower()
-    model_text = (model_name or "").lower()
     has_stylized_prompt = _contains_text_marker(prompt_text, _TEXT2IMG_STYLIZED_PROMPT_MARKERS)
-    has_stylized_model = _contains_text_marker(model_text, _TEXT2IMG_STYLIZED_MODEL_MARKERS)
     has_photo_intent = _contains_text_marker(prompt_text, _TEXT2IMG_PHOTO_INTENT_MARKERS)
 
-    if has_stylized_prompt:
-        return True
-    return has_stylized_model and not has_photo_intent
+    return has_stylized_prompt and not has_photo_intent
+
+
+def _adapt_pose_prompt_for_distance(pose_prompt: str | None, pose_distance: str | None) -> str | None:
+    """Remove wide/full-body constraints when the user asks for a close framing."""
+    if not pose_prompt or pose_distance != "very_close":
+        return pose_prompt
+
+    replacements = (
+        "full body visible",
+        "full body front view",
+        "full body top-down view",
+        "full body view from above",
+        "full body view",
+    )
+    adapted = pose_prompt
+    for phrase in replacements:
+        adapted = re.sub(rf"\s*,?\s*{re.escape(phrase)}", "", adapted, flags=re.IGNORECASE)
+    adapted = re.sub(r"\s*,\s*,+", ",", adapted).strip(" ,")
+    return adapted or pose_prompt
 
 
 def _build_text2img_negative_prompt(prompt: str, model_name: str | None = None) -> str:
@@ -466,6 +482,7 @@ def generate_from_text(prompt: str, model_name: str = "Automatique", enhance: bo
     pose_safety_neg = None
     pose_positive, pose_negative = get_pose_prompts(pose)
     if pose != 'none' and pose_positive:
+        pose_positive = _adapt_pose_prompt_for_distance(pose_positive, pose_distance)
         pose_safety_prompt, pose_safety_neg = build_human_pose_safety_additions(
             " ".join(part for part in (prompt_before_export_injections, extra) if part),
             pose,

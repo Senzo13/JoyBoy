@@ -33,15 +33,15 @@ class PromptHygieneTests(unittest.TestCase):
         self.assertIn("nude", negative.lower())
         self.assertIn("exposed genitals", negative.lower())
 
-    def test_human_pose_defaults_to_clothed_without_explicit_adult_request(self):
+    def test_human_pose_runtime_pack_relaxes_public_core_safety(self):
         positive, negative = build_human_pose_safety_additions(
             "Generate it for me",
             "legs_up",
             adult_runtime_available=True,
         )
 
-        self.assertIn("fully clothed", positive.lower())
-        self.assertIn("nude", negative.lower())
+        self.assertIsNone(positive)
+        self.assertIsNone(negative)
 
     def test_explicit_adult_pose_requires_runtime_before_safety_is_relaxed(self):
         blocked_positive, blocked_negative = build_human_pose_safety_additions(
@@ -72,6 +72,22 @@ class PromptHygieneTests(unittest.TestCase):
             )
         )
 
+    def test_pose_distance_prompts_do_not_name_literal_camera(self):
+        for positive, negative in text2img._POSE_DISTANCE_PROMPTS.values():
+            combined = f"{positive}, {negative}".lower()
+            self.assertNotIn("camera", combined)
+
+        for positive, negative in text2img._POSE_ORIENTATION_PROMPTS.values():
+            combined = f"{positive}, {negative}".lower()
+            self.assertNotIn("camera", combined)
+
+    def test_very_close_distance_removes_full_body_pose_conflict(self):
+        legs_up, _ = get_pose_prompts("legs_up")
+        adapted = text2img._adapt_pose_prompt_for_distance(legs_up, "very_close")
+
+        self.assertIn("feet closer to viewer", adapted.lower())
+        self.assertNotIn("full body visible", adapted.lower())
+
     def test_text2img_detects_preformatted_photo_prompt(self):
         self.assertTrue(
             text2img._looks_preformatted_text2img_prompt(
@@ -83,6 +99,26 @@ class PromptHygieneTests(unittest.TestCase):
                 "imagine a train in motion"
             )
         )
+
+    def test_text2img_keeps_photo_negative_for_stylized_model_without_style_request(self):
+        negative = text2img._build_text2img_negative_prompt(
+            "portrait photo of a woman",
+            "Babes Illustrious By Stable Yogi (v5.5 FP16)",
+        )
+
+        self.assertIn("anime", negative.lower())
+        self.assertIn("worst quality", negative.lower())
+
+    def test_text2img_stylized_prompt_only_removes_conflicting_medium_terms(self):
+        negative = text2img._build_text2img_negative_prompt(
+            "a cosplay girl, hentai like, 3d anime",
+            "Babes Illustrious By Stable Yogi (v5.5 FP16)",
+        )
+
+        self.assertNotIn("anime", negative.lower())
+        self.assertNotIn("3d render", negative.lower())
+        self.assertIn("worst quality", negative.lower())
+        self.assertIn("bad anatomy", negative.lower())
 
     def test_french_camera_look_translation_uses_viewer_wording(self):
         translated = _preprocess_french_prompt("regarde vers la camera, vue de face")
