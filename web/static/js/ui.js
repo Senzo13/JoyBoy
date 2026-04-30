@@ -311,7 +311,7 @@ async function freeRam() {
  * Met à jour l'affichage VRAM (header chat + home)
  */
 function updateVramDisplay(data) {
-    const { vram, models, warnings = [], tips = [], resources = null } = data;
+    const { vram, models, warnings = [], tips = [], resources = null, gpu_processes = [] } = data;
 
     // Fonction helper pour mettre à jour un display VRAM
     const updateBar = (fillId, textId) => {
@@ -351,10 +351,11 @@ function updateVramDisplay(data) {
     if (totalText) totalText.textContent = vram.total.toFixed(1);
 
     if (modelsList) {
-        if (models && models.length > 0) {
+        const gpuProcesses = Array.isArray(gpu_processes) ? gpu_processes : [];
+        if ((models && models.length > 0) || gpuProcesses.length > 0) {
             // Nouveau format avec détails et bouton de déchargement
             let html = '';
-            for (const m of models) {
+            for (const m of (models || [])) {
                 const vramInfo = m.vram_gb ? `${m.vram_gb}G` : '';
                 const paramsInfo = m.params || '';
                 const fullName = m.full_name || m.name;
@@ -366,6 +367,19 @@ function updateVramDisplay(data) {
                     ${paramsInfo ? `<span class="vram-params">${paramsInfo}</span>` : ''}
                     ${vramInfo ? `<span class="vram-size">${vramInfo}</span>` : ''}
                     <span class="vram-cat">${m.category}</span>
+                </div>`;
+            }
+            for (const proc of gpuProcesses) {
+                const icon = proc.is_current ? 'activity' : (proc.is_joyboy ? 'terminal' : 'cpu');
+                const category = proc.kind === 'external' ? 'process externe' : proc.label;
+                const title = proc.cmd || proc.process_name || category;
+                html += `<div class="vram-model-row">
+                    <span class="vram-unload-btn disabled" title="${escapeHtml(uiT('ui.gpuProcessTooltip', 'Process CUDA détecté'))}">PID</span>
+                    <i data-lucide="${icon}" class="vram-icon"></i>
+                    <span class="vram-name" title="${escapeHtml(title)}">${escapeHtml(proc.process_name || 'cuda')}</span>
+                    <span class="vram-params">${escapeHtml(String(proc.pid))}</span>
+                    <span class="vram-size">${Number(proc.used_gb || 0).toFixed(1)}G</span>
+                    <span class="vram-cat">${escapeHtml(category)}</span>
                 </div>`;
             }
             modelsList.innerHTML = html;

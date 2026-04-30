@@ -32,6 +32,7 @@ from core.models.manager_lora import ModelManagerLoraMixin
 from core.models.manager_memory import ModelManagerMemoryMixin
 from core.models.manager_sdxl_loaders import ModelManagerSDXLLoaderMixin
 from core.models.manager_utility_loaders import ModelManagerUtilityLoaderMixin
+from core.infra.gpu_processes import list_gpu_processes
 
 class ModelManager(
     ModelManagerMemoryMixin,
@@ -322,6 +323,7 @@ class ModelManager(
         free_gb = 0
         models_loaded = []
         cuda_details = {}
+        gpu_processes = []
 
         # nvidia-smi pour la VRAM totale (inclut tout: CUDA, DirectX, autres apps)
         try:
@@ -349,6 +351,8 @@ class ModelManager(
                 'allocated_gb': round(torch.cuda.memory_allocated() / 1024**3, 2),
                 'cached_gb': round((torch.cuda.memory_reserved() - torch.cuda.memory_allocated()) / 1024**3, 2),
             }
+
+        gpu_processes = list_gpu_processes()
 
         # Modèles diffusers
         if self._inpaint_pipe is not None:
@@ -427,6 +431,7 @@ class ModelManager(
             'used_gb': round(used_gb, 2),
             'free_gb': round(free_gb, 2),
             'cuda_details': cuda_details,
+            'gpu_processes': gpu_processes,
             'models_loaded': models_loaded,
             'backend': self._backend,
             'gguf_quant': self._gguf_quant if self._backend == 'gguf' else None,

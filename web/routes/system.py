@@ -156,6 +156,7 @@ def get_vram_status():
         free_gb = _status['free_gb']
         models_loaded = _status['models_loaded']
         cuda_details = _status.get('cuda_details', {})
+        gpu_processes = _status.get('gpu_processes', [])
     status = _S()
     percent = round((status.used_gb / status.total_gb * 100) if status.total_gb > 0 else 0, 1)
 
@@ -330,7 +331,11 @@ def get_vram_status():
         tips.append(f"{ollama_count} modèles Ollama")
     if image_count > 0 and ollama_count > 0:
         tips.append("Image + Chat chargés")
-    if not models_detailed:
+    gpu_processes = status.gpu_processes if isinstance(status.gpu_processes, list) else []
+    if not models_detailed and gpu_processes:
+        warnings.append("VRAM utilisée par des process CUDA")
+        tips.append("Les PIDs GPU sont affichés sous la liste")
+    elif not models_detailed:
         tips.append("VRAM libre")
 
     # Ajouter CUDA context comme modèle si de la VRAM est utilisée mais pas trackée
@@ -370,6 +375,7 @@ def get_vram_status():
             'cuda_reserved': cuda_details.get('reserved_gb', 0) if cuda_details else 0,
         },
         'models': models_detailed,
+        'gpu_processes': gpu_processes,
         'warnings': warnings,
         'tips': tips,
         'resources': resources,
@@ -532,6 +538,17 @@ def hard_reset():
         print("[HARD RESET] Déchargement de tous les modèles...")
         ModelManager.get().unload_all()
         results['vram_cleared'] = True
+
+        # 3. Nettoyer les vieux workers GPU JoyBoy que le singleton courant ne possède plus.
+        try:
+            from core.infra.gpu_processes import kill_stale_joyboy_gpu_processes
+            killed = kill_stale_joyboy_gpu_processes()
+            results['gpu_processes_killed'] = killed
+            if killed:
+                print(f"[HARD RESET] {len(killed)} process GPU JoyBoy stoppé(s)")
+        except Exception as exc:
+            results['gpu_process_cleanup_error'] = str(exc)
+            print(f"[HARD RESET] Nettoyage process GPU ignoré: {exc}")
 
         print("="*60)
         print("[HARD RESET] ====== SYSTÈME RÉINITIALISÉ ======")

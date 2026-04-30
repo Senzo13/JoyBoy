@@ -77,7 +77,13 @@ stop_existing_joyboy() {
     local project_dir
     project_dir="$(pwd -P)"
     local pids
-    pids="$(pgrep -f "web/app.py" 2>/dev/null || true)"
+    pids="$(
+        {
+            pgrep -f "web/app.py" 2>/dev/null || true
+            pgrep -f "$project_dir/web/app.py" 2>/dev/null || true
+            pgrep -f "lightx2v" 2>/dev/null || true
+        } | sort -u
+    )"
 
     for pid in $pids; do
         [ -n "$pid" ] || continue
@@ -86,8 +92,10 @@ stop_existing_joyboy() {
         local cwd cmdline
         cwd="$(lsof -a -p "$pid" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p' | head -n 1)"
         cmdline="$(ps -p "$pid" -o command= 2>/dev/null || true)"
-        if [ "$cwd" = "$project_dir" ] && printf '%s' "$cmdline" | grep -q "web/app.py"; then
-            echo "   [STARTUP] Stopping previous JoyBoy server (pid $pid)..."
+        if { printf '%s' "$cmdline" | grep -Fq "$project_dir/web/app.py"; } \
+            || { [ "$cwd" = "$project_dir" ] && printf '%s' "$cmdline" | grep -Fq "web/app.py"; } \
+            || { printf '%s' "$cmdline" | grep -Fq "lightx2v" && { [ "$cwd" = "$project_dir" ] || printf '%s' "$cmdline" | grep -Fq "$project_dir"; }; }; then
+            echo "   [STARTUP] Stopping previous JoyBoy GPU process (pid $pid)..."
             kill "$pid" 2>/dev/null || true
         fi
     done
@@ -99,8 +107,10 @@ stop_existing_joyboy() {
         local cwd cmdline
         cwd="$(lsof -a -p "$pid" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p' | head -n 1)"
         cmdline="$(ps -p "$pid" -o command= 2>/dev/null || true)"
-        if [ "$cwd" = "$project_dir" ] && printf '%s' "$cmdline" | grep -q "web/app.py"; then
-            echo "   [STARTUP] Force stopping previous JoyBoy server (pid $pid)..."
+        if { printf '%s' "$cmdline" | grep -Fq "$project_dir/web/app.py"; } \
+            || { [ "$cwd" = "$project_dir" ] && printf '%s' "$cmdline" | grep -Fq "web/app.py"; } \
+            || { printf '%s' "$cmdline" | grep -Fq "lightx2v" && { [ "$cwd" = "$project_dir" ] || printf '%s' "$cmdline" | grep -Fq "$project_dir"; }; }; then
+            echo "   [STARTUP] Force stopping previous JoyBoy GPU process (pid $pid)..."
             kill -9 "$pid" 2>/dev/null || true
         fi
     done
