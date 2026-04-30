@@ -39,6 +39,48 @@ print_url_hint() {
     echo ""
 }
 
+stop_existing_joyboy() {
+    if [ "${JOYBOY_SKIP_STOP_OLD:-}" = "1" ]; then
+        return 0
+    fi
+
+    local project_dir
+    project_dir="$(pwd -P)"
+    local pids=""
+
+    if command -v pgrep >/dev/null 2>&1; then
+        pids="$(pgrep -f "web/app.py" 2>/dev/null || true)"
+    fi
+
+    for pid in $pids; do
+        [ -n "$pid" ] || continue
+        [ "$pid" = "$$" ] && continue
+        [ "$pid" = "${PPID:-}" ] && continue
+        [ -d "/proc/$pid" ] || continue
+
+        local cwd cmdline
+        cwd="$(readlink -f "/proc/$pid/cwd" 2>/dev/null || true)"
+        cmdline="$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null || true)"
+        if [ "$cwd" = "$project_dir" ] && printf '%s' "$cmdline" | grep -q "web/app.py"; then
+            echo -e "${YELLOW}[STARTUP]${NC} Stopping previous JoyBoy server (pid $pid)..."
+            kill "$pid" 2>/dev/null || true
+        fi
+    done
+
+    sleep 1
+    for pid in $pids; do
+        [ -n "$pid" ] || continue
+        [ -d "/proc/$pid" ] || continue
+        local cwd cmdline
+        cwd="$(readlink -f "/proc/$pid/cwd" 2>/dev/null || true)"
+        cmdline="$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null || true)"
+        if [ "$cwd" = "$project_dir" ] && printf '%s' "$cmdline" | grep -q "web/app.py"; then
+            echo -e "${YELLOW}[STARTUP]${NC} Force stopping previous JoyBoy server (pid $pid)..."
+            kill -9 "$pid" 2>/dev/null || true
+        fi
+    done
+}
+
 ensure_ubuntu_python_bootstrap() {
     if python3 -c "import ensurepip, venv" >/dev/null 2>&1; then
         return 0
@@ -117,6 +159,7 @@ fi
 echo ""
 echo -e "${GREEN}Starting JoyBoy...${NC}"
 print_url_hint
+stop_existing_joyboy
 
 if [ "${JOYBOY_OPEN_BROWSER:-}" = "1" ] || [ -n "${DISPLAY:-}" ] || [ -n "${WAYLAND_DISPLAY:-}" ]; then
     python scripts/open_browser.py --url "$JOYBOY_LOCAL_URL" --timeout 120 >/dev/null 2>&1 &

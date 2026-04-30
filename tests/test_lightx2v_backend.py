@@ -141,6 +141,7 @@ class LightX2VBackendTests(unittest.TestCase):
         self.assertEqual(wrapped[1], "-c")
         self.assertIn("torchaudio", wrapped[2])
         self.assertIn("decord", wrapped[2])
+        self.assertIn("ModuleSpec(\"decord\"", wrapped[2])
         self.assertEqual(wrapped[3], "lightx2v.infer")
         self.assertIn("--save_result_path", wrapped)
 

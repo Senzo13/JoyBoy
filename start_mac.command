@@ -69,6 +69,43 @@ venv_python_ok() {
     [ -x "venv/bin/python" ] && python_version_ok "venv/bin/python"
 }
 
+stop_existing_joyboy() {
+    if [ "${JOYBOY_SKIP_STOP_OLD:-}" = "1" ]; then
+        return 0
+    fi
+
+    local project_dir
+    project_dir="$(pwd -P)"
+    local pids
+    pids="$(pgrep -f "web/app.py" 2>/dev/null || true)"
+
+    for pid in $pids; do
+        [ -n "$pid" ] || continue
+        [ "$pid" = "$$" ] && continue
+        [ "$pid" = "${PPID:-}" ] && continue
+        local cwd cmdline
+        cwd="$(lsof -a -p "$pid" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p' | head -n 1)"
+        cmdline="$(ps -p "$pid" -o command= 2>/dev/null || true)"
+        if [ "$cwd" = "$project_dir" ] && printf '%s' "$cmdline" | grep -q "web/app.py"; then
+            echo "   [STARTUP] Stopping previous JoyBoy server (pid $pid)..."
+            kill "$pid" 2>/dev/null || true
+        fi
+    done
+
+    sleep 1
+    for pid in $pids; do
+        [ -n "$pid" ] || continue
+        kill -0 "$pid" 2>/dev/null || continue
+        local cwd cmdline
+        cwd="$(lsof -a -p "$pid" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p' | head -n 1)"
+        cmdline="$(ps -p "$pid" -o command= 2>/dev/null || true)"
+        if [ "$cwd" = "$project_dir" ] && printf '%s' "$cmdline" | grep -q "web/app.py"; then
+            echo "   [STARTUP] Force stopping previous JoyBoy server (pid $pid)..."
+            kill -9 "$pid" 2>/dev/null || true
+        fi
+    done
+}
+
 show_python_install_help() {
     echo "   [ERROR] Python ${MIN_PY_MAJOR}.${MIN_PY_MINOR}+ was not found."
     echo "           Install a recent Python, then run setup again."
@@ -281,6 +318,7 @@ start_app() {
     print_url_hint
     echo "   (Ctrl+C to stop)"
     echo ""
+    stop_existing_joyboy
     python scripts/open_browser.py --url "$JOYBOY_LOCAL_URL" --timeout 120 >/dev/null 2>&1 &
     python web/app.py
 

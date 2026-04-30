@@ -510,6 +510,7 @@ def _lightx2v_stub_bootstrap() -> str:
 import runpy
 import sys
 import types
+import importlib.machinery
 
 module = sys.argv[1]
 sys.argv = [module, *sys.argv[2:]]
@@ -529,23 +530,29 @@ class _UnavailableAudioOp:
 def _install_torchaudio_stub():
     torchaudio = types.ModuleType("torchaudio")
     torchaudio.__file__ = "<joyboy-lightx2v-torchaudio-stub>"
+    torchaudio.__spec__ = importlib.machinery.ModuleSpec("torchaudio", loader=None, is_package=True)
     torchaudio.__path__ = []
     torchaudio.load = _torchaudio_disabled
     torchaudio.save = _torchaudio_disabled
     torchaudio.info = _torchaudio_disabled
 
     functional = types.ModuleType("torchaudio.functional")
+    functional.__spec__ = importlib.machinery.ModuleSpec("torchaudio.functional", loader=None)
     functional.resample = _torchaudio_disabled
 
     transforms = types.ModuleType("torchaudio.transforms")
+    transforms.__spec__ = importlib.machinery.ModuleSpec("torchaudio.transforms", loader=None)
     transforms.Resample = _UnavailableAudioOp
     transforms.MelSpectrogram = _UnavailableAudioOp
     transforms.Spectrogram = _UnavailableAudioOp
     transforms.AmplitudeToDB = _UnavailableAudioOp
 
     io = types.ModuleType("torchaudio.io")
+    io.__spec__ = importlib.machinery.ModuleSpec("torchaudio.io", loader=None)
     compliance = types.ModuleType("torchaudio.compliance")
+    compliance.__spec__ = importlib.machinery.ModuleSpec("torchaudio.compliance", loader=None, is_package=True)
     kaldi = types.ModuleType("torchaudio.compliance.kaldi")
+    kaldi.__spec__ = importlib.machinery.ModuleSpec("torchaudio.compliance.kaldi", loader=None)
 
     torchaudio.functional = functional
     torchaudio.transforms = transforms
@@ -563,12 +570,14 @@ def _install_torchaudio_stub():
 def _install_decord_stub():
     decord = types.ModuleType("decord")
     decord.__file__ = "<joyboy-lightx2v-decord-stub>"
+    decord.__spec__ = importlib.machinery.ModuleSpec("decord", loader=None, is_package=True)
     decord.__path__ = []
     decord.VideoReader = _UnavailableAudioOp
     decord.AudioReader = _UnavailableAudioOp
     decord.cpu = lambda *args, **kwargs: None
     decord.gpu = lambda *args, **kwargs: None
     bridge = types.ModuleType("decord.bridge")
+    bridge.__spec__ = importlib.machinery.ModuleSpec("decord.bridge", loader=None)
     bridge.set_bridge = lambda *args, **kwargs: None
     decord.bridge = bridge
     sys.modules["decord"] = decord
