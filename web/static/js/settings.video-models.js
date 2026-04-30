@@ -4,6 +4,7 @@
 let allVideoModels = [];
 let currentVideoFilter = 'all';
 const videoModelDownloadPollers = new Map();
+let currentVideoLoraImportJobId = null;
 
 function videoModelCapabilities(model) {
     const caps = [];
@@ -93,11 +94,181 @@ async function checkVideoModelsStatus() {
             renderModelPickerList('chat');
         }
         renderCachedVideoModelLists();
+        if (typeof loadVideoLoras === 'function') loadVideoLoras();
     } catch (error) {
         const html = `<div class="settings-info">${escapeHtml(t('settings.models.genericError', 'Erreur : {error}', { error: error.message || String(error) }))}</div>`;
         if (installedList) DOM.setHtml(installedList, html);
         if (availableList) DOM.setHtml(availableList, html);
     }
+}
+
+function renderVideoLoraItem(lora) {
+    const id = escapeHtml(String(lora.id || ''));
+    const name = escapeHtml(String(lora.display_name || lora.name || lora.id || 'LoRA vidéo'));
+    const base = escapeHtml(String(lora.base_model || 'Video LoRA'));
+    const triggers = Array.isArray(lora.trigger_words || lora.trained_words)
+        ? (lora.trigger_words || lora.trained_words).join(', ')
+        : '';
+    const compatible = Array.isArray(lora.compatible_models) && lora.compatible_models.length
+        ? lora.compatible_models.join(', ')
+        : 'best-effort';
+    const enabled = lora.enabled === true;
+    const scale = Math.round(Number(lora.scale || 1) * 100);
+    const missing = lora.exists === false;
+    return `
+        <div class="ollama-model-item video-lora-item ${enabled ? 'equipped' : ''}" data-lora-id="${id}">
+            <div class="model-info">
+                <div class="model-name-row">
+                    <span class="model-name">${name}</span>
+                    ${enabled ? `<span class="uncensored-badge" style="background: rgba(34,197,94,0.15); color: #22c55e;">ACTIF</span>` : ''}
+                    ${missing ? `<span class="uncensored-badge" style="background: rgba(239,68,68,0.15); color: #ef4444;">FICHIER MANQUANT</span>` : ''}
+                </div>
+                <span class="model-desc">${base} · ${escapeHtml(lora.size_label || '')}</span>
+                <span class="model-size">Compatible: ${escapeHtml(compatible)}</span>
+                ${triggers ? `<span class="model-size">Triggers: ${escapeHtml(triggers)}</span>` : ''}
+                <div style="display:flex; gap:8px; align-items:center; margin-top:8px;">
+                    <input type="range" class="settings-slider" min="0" max="200" value="${scale}" data-lora-id="${id}" oninput="setVideoLoraScaleFromSlider(this)" ${missing ? 'disabled' : ''}>
+                    <span class="settings-slider-value" id="video-lora-scale-${id}">${scale}%</span>
+                </div>
+            </div>
+            <div class="model-actions">
+                <button class="btn-equip ${enabled ? 'equipped' : ''}" data-lora-id="${id}" onclick="toggleVideoLoraFromButton(this)" ${missing ? 'disabled' : ''}>
+                    ${enabled ? 'Désactiver' : 'Activer'}
+                </button>
+            </div>
+        </div>
+    `;
+}
+
+async function loadVideoLoras() {
+    const list = document.getElementById('video-lora-list');
+    if (!list) return;
+    list.innerHTML = `<div class="settings-info">${escapeHtml(t('common.loading', 'Chargement...'))}</div>`;
+    try {
+        const response = await fetch('/api/video-loras');
+        const data = await response.json();
+        if (!response.ok || !data.success) throw new Error(data.error || `HTTP ${response.status}`);
+        const loras = Array.isArray(data.loras) ? data.loras : [];
+        list.innerHTML = loras.length
+            ? loras.map(renderVideoLoraItem).join('')
+            : `<div class="settings-info">Aucun LoRA vidéo importé.</div>`;
+    } catch (error) {
+        list.innerHTML = `<div class="settings-info">${escapeHtml(t('settings.models.genericError', 'Erreur : {error}', { error: error.message || String(error) }))}</div>`;
+    }
+    if (window.lucide) lucide.createIcons();
+}
+
+async function setVideoLoraState(id, payload) {
+    const response = await fetch('/api/video-loras/state', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, ...payload }),
+    });
+    const data = await response.json();
+    if (!response.ok || !data.success) throw new Error(data.error || `HTTP ${response.status}`);
+    return data;
+}
+
+async function toggleVideoLoraFromButton(button) {
+    const id = button?.dataset?.loraId || '';
+    if (!id) return;
+    const item = button.closest('.video-lora-item');
+    const enabled = !item?.classList.contains('equipped');
+    try {
+        await setVideoLoraState(id, { enabled });
+        Toast.success('LoRA vidéo', enabled ? 'LoRA activé pour les prochaines vidéos' : 'LoRA désactivé');
+        loadVideoLoras();
+    } catch (error) {
+        Toast.error(t('common.error', 'Erreur'), error.message || String(error));
+    }
+}
+
+async function setVideoLoraScaleFromSlider(slider) {
+    const id = slider?.dataset?.loraId || '';
+    if (!id) return;
+    const scale = Number(slider.value || 100) / 100;
+    const label = document.getElementById(`video-lora-scale-${id}`);
+    if (label) label.textContent = `${Math.round(scale * 100)}%`;
+    clearTimeout(slider._videoLoraTimer);
+    slider._videoLoraTimer = setTimeout(async () => {
+        try {
+            await setVideoLoraState(id, { scale });
+        } catch (error) {
+            Toast.error(t('common.error', 'Erreur'), error.message || String(error));
+        }
+    }, 250);
+}
+
+async function resolveVideoLoraImportSource() {
+    const input = document.getElementById('video-lora-source-input');
+    const output = document.getElementById('video-lora-source-output');
+    const source = input?.value?.trim() || '';
+    if (!source || !output) return;
+    output.innerHTML = `<div class="settings-info">Analyse du LoRA vidéo...</div>`;
+    const result = await apiSettings.resolveModelSource(source, 'video_lora');
+    if (!result.ok || !result.data?.success) {
+        output.innerHTML = `<div class="settings-info">Erreur : ${escapeHtml(result.data?.error || result.error || 'source invalide')}</div>`;
+        return;
+    }
+    const info = result.data.resolved;
+    const triggers = Array.isArray(info.trained_words) && info.trained_words.length
+        ? `<div class="settings-label-desc">Triggers: ${escapeHtml(info.trained_words.join(', '))}</div>`
+        : '';
+    output.innerHTML = `
+        <div class="settings-label"><strong>${escapeHtml(info.display_name || source)}</strong></div>
+        <div class="settings-label-desc">${escapeHtml(info.provider || '')} · ${escapeHtml(info.model_type || 'LoRA')} · ${escapeHtml(info.base_model || '')}</div>
+        ${info.file_name ? `<div class="settings-label-desc">${escapeHtml(info.file_name)} · ${escapeHtml(info.size_label || '')}</div>` : ''}
+        ${triggers}
+        ${info.warning ? `<div class="settings-label-desc status-warn">${escapeHtml(info.warning)}</div>` : ''}
+        <div style="margin-top:10px;">
+            <button class="settings-action-btn" onclick="startVideoLoraImport()">Importer ce LoRA vidéo</button>
+        </div>
+    `;
+}
+
+async function startVideoLoraImport() {
+    const input = document.getElementById('video-lora-source-input');
+    const output = document.getElementById('video-lora-source-output');
+    const source = input?.value?.trim() || '';
+    if (!source || !output) return;
+    const result = await apiSettings.startModelImport(source, 'video_lora', false);
+    if (!result.ok || !result.data?.success) {
+        output.innerHTML = `<div class="settings-info">Erreur : ${escapeHtml(result.data?.error || result.error || 'import impossible')}</div>`;
+        return;
+    }
+    currentVideoLoraImportJobId = result.data.job?.job_id || null;
+    output.innerHTML = `<div class="settings-info">Import LoRA vidéo lancé...</div>`;
+    if (currentVideoLoraImportJobId) pollVideoLoraImportStatus(currentVideoLoraImportJobId);
+}
+
+async function pollVideoLoraImportStatus(jobId) {
+    const output = document.getElementById('video-lora-source-output');
+    if (!output || !jobId) return;
+    const result = await apiSettings.getModelImportStatus(jobId);
+    const job = result.data?.job;
+    if (!result.ok || !job) {
+        output.innerHTML = `<div class="settings-info">Import introuvable</div>`;
+        return;
+    }
+    const downloadedMB = Math.round((job.downloaded_bytes || 0) / (1024 * 1024));
+    const totalMB = Math.round((job.total_bytes || 0) / (1024 * 1024));
+    const sizeChunk = totalMB ? ` · ${downloadedMB} MB / ${totalMB} MB` : '';
+    output.innerHTML = `
+        <div class="settings-label"><strong>${escapeHtml(job.resolved?.display_name || 'LoRA vidéo')}</strong></div>
+        <div class="settings-label-desc">${escapeHtml(job.message || 'Import en cours')}</div>
+        <div class="settings-label-desc">Progression : ${Number(job.progress || 0)}%${escapeHtml(sizeChunk)}</div>
+        ${job.error ? `<div class="settings-label-desc status-error">${escapeHtml(job.error)}</div>` : ''}
+    `;
+    if (job.status === 'completed') {
+        Toast.success('LoRA vidéo importé', 'Tu peux maintenant l’activer.');
+        loadVideoLoras();
+        return;
+    }
+    if (job.status === 'error') {
+        Toast.error('Erreur import LoRA vidéo', job.error || 'Échec import');
+        return;
+    }
+    setTimeout(() => pollVideoLoraImportStatus(jobId), 1200);
 }
 
 function renderVideoModelItem(model, isInstalled) {

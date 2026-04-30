@@ -593,6 +593,32 @@ def model_source_import_status():
     })
 
 
+@settings_bp.route('/api/video-loras')
+def list_video_loras_route():
+    from core.infra.model_imports import get_imported_video_loras
+
+    return jsonify({'success': True, 'loras': get_imported_video_loras()})
+
+
+@settings_bp.route('/api/video-loras/state', methods=['POST'])
+def set_video_lora_state_route():
+    from core.infra.model_imports import set_video_lora_state
+
+    data = request.get_json(silent=True) or {}
+    lora_id = str(data.get('id', '')).strip()
+    if not lora_id:
+        return jsonify({'success': False, 'error': 'LoRA requis'}), 400
+    try:
+        state = set_video_lora_state(
+            lora_id,
+            enabled=data.get('enabled') if 'enabled' in data else None,
+            scale=data.get('scale') if 'scale' in data else None,
+        )
+    except Exception as exc:
+        return jsonify({'success': False, 'error': str(exc)}), 400
+    return jsonify({'success': True, 'state': state})
+
+
 # ========== HARNESS AUDIT ==========
 
 @settings_bp.route('/api/harness/audit')

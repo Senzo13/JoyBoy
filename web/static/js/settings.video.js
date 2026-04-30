@@ -21,6 +21,8 @@ function normalizeRuntimeVideoModelId(modelId, models = []) {
         'Wan-AI/Wan2.2-T2V-A14B-Diffusers': 'wan22-t2v-14b',
         'Wan-AI/Wan2.2-TI2V-5B': 'wan-native-5b',
         'Wan-AI/Wan2.2-I2V-A14B': 'wan-native-14b',
+        'lightx2v/Wan2.2-I2V-A14B-4step': 'lightx2v-wan22-i2v-4step',
+        'lightx2v/Wan2.2-T2V-A14B-4step': 'lightx2v-wan22-t2v-4step',
         'Lightricks/LTX-2.3-fp8': 'ltx23_fp8',
     };
     return aliases[value] || value;
@@ -225,8 +227,8 @@ function updateVideoQualityVisibility() {
 
     // Afficher le sélecteur de qualité pour les modèles qui supportent 720p/480p.
     if (qualityRow) {
-        const qualityModels = new Set(['wan22-5b', 'fastwan', 'wan-native-5b', 'lightx2v']);
-        qualityRow.style.display = qualityModels.has(model) ? '' : 'none';
+        const qualityModels = new Set(['wan22-5b', 'fastwan', 'wan-native-5b']);
+        qualityRow.style.display = (qualityModels.has(model) || model.startsWith('lightx2v-')) ? '' : 'none';
     }
 
     const modelDefaults = {
@@ -242,6 +244,9 @@ function updateVideoQualityVisibility() {
         'ltx2': { fps: 24, steps: 40, configurable: false },
         'ltx2_fp8': { fps: 24, steps: 40, configurable: false },
         'ltx23_fp8': { fps: 24, steps: 8, configurable: false },
+        'lightx2v-wan22-i2v-4step': { fps: 16, steps: 4, configurable: false },
+        'lightx2v-wan22-t2v-4step': { fps: 16, steps: 4, configurable: false },
+        'lightx2v-wan22-i2v-8gb': { fps: 16, steps: 4, configurable: false },
         'svd': { fps: 8, steps: 10, configurable: true },
         'cogvideox': { fps: 8, steps: 50, configurable: false },
         'cogvideox-q4': { fps: 8, steps: 50, configurable: false },

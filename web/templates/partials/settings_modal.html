@@ -750,11 +750,32 @@
                     <!-- Panel Vidéo -->
                     <div class="models-subpanel" id="models-video-panel">
                         <div class="models-inner-tabs" aria-label="Modèles vidéo">
-                            <button class="models-inner-tab active" id="models-video-tab-catalog" type="button" onclick="switchModelsInnerTab('models-video-panel', 'catalog', this)">Catalogue</button>
+                            <button class="models-inner-tab active" id="models-video-tab-import" type="button" onclick="switchModelsInnerTab('models-video-panel', 'import', this)">Importer LoRA</button>
+                            <button class="models-inner-tab" id="models-video-tab-catalog" type="button" onclick="switchModelsInnerTab('models-video-panel', 'catalog', this)">Catalogue</button>
                             <button class="models-inner-tab" id="models-video-tab-local" type="button" onclick="switchModelsInnerTab('models-video-panel', 'installed', this)">Installés</button>
                         </div>
 
-                        <div class="models-inner-panel active" data-inner-panel="catalog">
+                        <div class="models-inner-panel active" data-inner-panel="import">
+                            <div class="settings-section">
+                                <div class="settings-section-title">Importer un LoRA vidéo</div>
+                                <div class="settings-label-desc">Colle un lien CivitAI ou Hugging Face. JoyBoy l’enregistre comme LoRA vidéo et tu peux l’activer ci-dessous.</div>
+                                <div class="settings-row">
+                                    <div style="display:flex; gap:8px; width:100%; flex-wrap:wrap;">
+                                        <input type="text" id="video-lora-source-input" class="settings-input" placeholder="https://civitai.com/models/..." style="flex:1; min-width: 320px;">
+                                        <button class="settings-action-btn" onclick="resolveVideoLoraImportSource()">Analyser</button>
+                                    </div>
+                                </div>
+                                <div id="video-lora-source-output" class="settings-info">Aucun LoRA vidéo analysé.</div>
+                            </div>
+                            <div class="settings-section">
+                                <div class="settings-section-title">LoRA vidéo importés</div>
+                                <div id="video-lora-list" class="ollama-models-list">
+                                    <div class="settings-info">Chargement...</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="models-inner-panel" data-inner-panel="catalog">
                             <div class="settings-section">
                                 <div class="settings-section-title" id="models-video-install-title">Modèles vidéo</div>
                                 <div class="model-filters">

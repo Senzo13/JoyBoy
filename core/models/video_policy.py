@@ -308,7 +308,7 @@ def build_video_model_catalog(
     if low_vram:
         default_model = LOW_VRAM_SAFE_DEFAULT
     elif high_end:
-        high_end_preference = ("wan-native-14b", "wan22", "ltx23_fp8", "ltx2", "framepack", "hunyuan", "lightx2v-wan22-i2v-4step")
+        high_end_preference = ("lightx2v-wan22-i2v-4step", "wan-native-14b", "wan22", "ltx23_fp8", "ltx2", "framepack", "hunyuan")
         visible_ids = {item["id"] for item in visible}
         default_model = next((model_id for model_id in high_end_preference if model_id in visible_ids), None)
         default_model = default_model or (visible[0]["id"] if visible else LOW_VRAM_SAFE_DEFAULT)

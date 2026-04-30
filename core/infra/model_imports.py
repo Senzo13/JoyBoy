@@ -215,6 +215,28 @@ def _pick_civitai_file(files: list[dict], quant_policy: dict | None = None) -> d
     return priorities[0][2]
 
 
+def _pick_civitai_lora_file(files: list[dict]) -> dict | None:
+    if not files:
+        return None
+    priorities = []
+    for index, file_info in enumerate(files):
+        name = str(file_info.get("name", "")).lower()
+        metadata = file_info.get("metadata") or {}
+        file_type = str(file_info.get("type") or metadata.get("type") or "").lower()
+        score = 0
+        if file_info.get("primary"):
+            score += 25
+        if name.endswith(".safetensors"):
+            score += 40
+        if "lora" in file_type or "lora" in name:
+            score += 30
+        if any(token in name for token in ("vae", "text_encoder", "clip", "workflow", ".json", ".zip")):
+            score -= 80
+        priorities.append((score, -index, file_info))
+    priorities.sort(key=lambda item: item[0], reverse=True)
+    return priorities[0][2]
+
+
 def _extract_civitai_links(*html_chunks: str) -> list[dict]:
     seen = set()
     links = []
@@ -329,7 +351,11 @@ def _enrich_civitai_resolved(resolved: dict) -> dict:
     model_type = (model_payload or {}).get("type") or model_info.get("type") or "Unknown"
     target_family = str(resolved.get("target_family") or "image")
     quant_policy = get_import_quant_policy(target_family)
-    chosen_file = _pick_civitai_file(version.get("files") or [], quant_policy)
+    chosen_file = (
+        _pick_civitai_lora_file(version.get("files") or [])
+        if target_family == "video_lora"
+        else _pick_civitai_file(version.get("files") or [], quant_policy)
+    )
     file_name = chosen_file.get("name") if chosen_file else None
     size_bytes = int(float((chosen_file or {}).get("sizeKB") or 0) * 1024) if chosen_file else 0
     source_precision = _detect_file_precision(chosen_file, file_name)
@@ -528,9 +554,117 @@ def _register_imported_image_model(entry: dict) -> dict:
     return entry
 
 
+def _register_imported_video_lora(entry: dict) -> dict:
+    config = load_local_config()
+    imported = config.setdefault("imported_models", {}).setdefault("video_lora", [])
+    existing_idx = None
+    for idx, item in enumerate(imported):
+        if item.get("id") == entry.get("id") or (
+            item.get("provider") == entry.get("provider")
+            and item.get("model_id") == entry.get("model_id")
+            and item.get("version_id") == entry.get("version_id")
+        ):
+            existing_idx = idx
+            break
+    if existing_idx is None:
+        imported.append(entry)
+    else:
+        imported[existing_idx] = {**imported[existing_idx], **entry}
+    active = config.setdefault("active_video_loras", {})
+    active.setdefault(entry["id"], {"enabled": False, "scale": entry.get("scale", 1.0)})
+    save_local_config(config)
+    return entry
+
+
 def get_imported_image_models() -> list[dict]:
     models = load_local_config().get("imported_models", {}).get("image", [])
     return [item for item in models if isinstance(item, dict)]
+
+
+def get_imported_video_loras() -> list[dict]:
+    config = load_local_config()
+    loras = config.get("imported_models", {}).get("video_lora", [])
+    active = config.get("active_video_loras", {})
+    result = []
+    for item in loras:
+        if not isinstance(item, dict):
+            continue
+        state = active.get(item.get("id"), {})
+        result.append({
+            **item,
+            "enabled": bool(state.get("enabled", False)),
+            "scale": float(state.get("scale", item.get("scale", 1.0)) or 1.0),
+            "exists": Path(str(item.get("file_path") or "")).exists(),
+        })
+    return result
+
+
+def set_video_lora_state(lora_id: str, *, enabled: bool | None = None, scale: float | None = None) -> dict:
+    config = load_local_config()
+    loras = config.get("imported_models", {}).get("video_lora", [])
+    if not any(item.get("id") == lora_id for item in loras if isinstance(item, dict)):
+        raise ValueError("LoRA vidéo introuvable")
+    active = config.setdefault("active_video_loras", {})
+    state = active.setdefault(lora_id, {"enabled": False, "scale": 1.0})
+    if enabled is not None:
+        state["enabled"] = bool(enabled)
+    if scale is not None:
+        state["scale"] = max(0.0, min(2.0, float(scale)))
+    save_local_config(config)
+    return state
+
+
+def get_active_video_loras(video_model: str | None = None) -> list[dict]:
+    active = []
+    model_aliases = {video_model} if video_model else set()
+    if video_model and str(video_model).startswith("lightx2v-"):
+        model_aliases.update({"lightx2v", "wan22", "wan", "wan-native-14b"})
+    for item in get_imported_video_loras():
+        if not item.get("enabled") or not item.get("exists"):
+            continue
+        compatible = item.get("compatible_models") or []
+        if video_model and compatible and not (model_aliases & set(compatible)):
+            continue
+        active.append(item)
+    return active
+
+
+def apply_active_video_loras(pipe, video_model: str | None = None) -> list[dict]:
+    if pipe is None or not hasattr(pipe, "load_lora_weights"):
+        return []
+    active_loras = get_active_video_loras(video_model)
+    if not active_loras:
+        return []
+
+    loaded = []
+    adapter_names = []
+    adapter_weights = []
+    for item in active_loras:
+        lora_id = item.get("id")
+        lora_path = item.get("file_path")
+        if not lora_id or not lora_path:
+            continue
+        try:
+            if hasattr(pipe, "delete_adapters"):
+                try:
+                    pipe.delete_adapters(lora_id)
+                except Exception:
+                    pass
+            pipe.load_lora_weights(lora_path, adapter_name=lora_id)
+            adapter_names.append(lora_id)
+            adapter_weights.append(float(item.get("scale", 1.0) or 1.0))
+            loaded.append(item)
+            print(f"[VIDEO-LORA] Chargé: {item.get('name') or lora_id} scale={adapter_weights[-1]}")
+        except Exception as exc:
+            print(f"[VIDEO-LORA] Échec {item.get('name') or lora_id}: {exc}")
+
+    if adapter_names and hasattr(pipe, "set_adapters"):
+        try:
+            pipe.set_adapters(adapter_names, adapter_weights=adapter_weights)
+            print(f"[VIDEO-LORA] Adapters actifs: {dict(zip(adapter_names, adapter_weights))}")
+        except Exception as exc:
+            print(f"[VIDEO-LORA] set_adapters ignoré: {exc}")
+    return loaded
 
 
 def get_imported_model_runtime_config(model_name: str) -> dict | None:
@@ -646,6 +780,40 @@ def _start_civitai_import(job_id: str, resolved: dict, target_family: str, inclu
                     installed_recommended.append(failed)
 
     registered_model = None
+    if target_family == "video_lora" and str(file_name or "").lower().endswith((".safetensors", ".pt", ".bin")):
+        safe_name = resolved.get("model_name") or Path(file_name).stem
+        version_name = str(resolved.get("version_name") or resolved.get("version_id") or "").strip()
+        base_model = str(resolved.get("base_model") or "")
+        compatible = []
+        base_lower = base_model.lower()
+        if "wan" in base_lower:
+            compatible.extend(["wan22-5b", "fastwan", "wan22", "wan", "lightx2v", "lightx2v-wan22-i2v-4step", "lightx2v-wan22-i2v-8gb"])
+            if "2.2" in base_lower:
+                compatible.extend(["wan-native-5b", "wan-native-14b", "lightx2v-wan22-t2v-4step"])
+        if "hunyuan" in base_lower:
+            compatible.append("hunyuan")
+        if "ltx" in base_lower:
+            compatible.extend(["ltx2", "ltx2_fp8", "ltx23_fp8"])
+        registered_model = _register_imported_video_lora({
+            "id": f"video-lora-{resolved.get('model_id') or resolved.get('file_id')}-{resolved.get('version_id') or Path(file_name).stem}".strip("-"),
+            "provider": "civitai",
+            "source": resolved.get("normalized_source"),
+            "model_id": str(resolved.get("model_id") or ""),
+            "version_id": str(resolved.get("version_id") or ""),
+            "name": f"{safe_name} ({version_name or 'CivitAI'})",
+            "display_name": f"{safe_name} ({version_name or 'CivitAI'})",
+            "file_path": str(destination),
+            "file_name": file_name,
+            "model_type": resolved.get("model_type") or "LoRA",
+            "base_model": base_model,
+            "trained_words": resolved.get("trained_words") or [],
+            "trigger_words": resolved.get("trained_words") or [],
+            "size_label": resolved.get("size_label") or _size_label(destination.stat().st_size),
+            "compatible_models": sorted(set(compatible)),
+            "scale": 1.0,
+            "desc": " · ".join([base_model or "Video LoRA", "CivitAI import"]),
+        })
+
     if target_family in {"image", "generic"} and str(file_name or "").lower().endswith((".safetensors", ".ckpt")):
         positive = next((res for res in installed_recommended if res.get("usage") == "positive" and res.get("local_path")), None)
         negative = next((res for res in installed_recommended if res.get("usage") == "negative" and res.get("local_path")), None)
@@ -700,7 +868,7 @@ def _start_civitai_import(job_id: str, resolved: dict, target_family: str, inclu
 
 
 def start_model_import(source: str, target_family: str = "generic", include_recommended: bool = True) -> dict:
-    resolved = resolve_model_source(source)
+    resolved = resolve_model_source(source, target_family=target_family)
     job_id = uuid.uuid4().hex[:12]
     MODEL_IMPORTS_DIR.mkdir(parents=True, exist_ok=True)
     import_jobs[job_id] = {

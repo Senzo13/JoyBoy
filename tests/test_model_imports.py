@@ -98,6 +98,51 @@ class ModelImportTests(unittest.TestCase):
         self.assertEqual(policy["runtime_quant"], "none")
         self.assertEqual(policy["profile_quant"], "none")
 
+    def test_video_lora_import_prefers_lora_safetensors(self):
+        chosen = model_imports._pick_civitai_lora_file([
+            {"name": "workflow.json", "primary": True},
+            {"name": "wan22-motion-lora.safetensors", "primary": False, "type": "LoRA"},
+        ])
+
+        self.assertEqual(chosen["name"], "wan22-motion-lora.safetensors")
+
+    def test_start_import_resolves_with_target_family(self):
+        with patch("core.infra.model_imports.resolve_model_source", return_value={"provider": "noop"}) as resolve, \
+                patch("core.infra.model_imports.threading.Thread") as thread_cls:
+            thread_cls.return_value.start.return_value = None
+            job = model_imports.start_model_import("civitai:123", target_family="video_lora")
+
+        self.assertEqual(job["target_family"], "video_lora")
+        resolve.assert_called_once_with("civitai:123", target_family="video_lora")
+
+    def test_apply_active_video_loras_uses_diffusers_adapter_api(self):
+        class FakePipe:
+            def __init__(self):
+                self.loaded = []
+                self.adapters = None
+
+            def load_lora_weights(self, path, adapter_name=None):
+                self.loaded.append((path, adapter_name))
+
+            def set_adapters(self, names, adapter_weights=None):
+                self.adapters = (names, adapter_weights)
+
+        lora = {
+            "id": "video-lora-1",
+            "name": "Motion LoRA",
+            "file_path": "motion.safetensors",
+            "scale": 0.75,
+            "enabled": True,
+            "exists": True,
+        }
+        pipe = FakePipe()
+        with patch("core.infra.model_imports.get_active_video_loras", return_value=[lora]):
+            loaded = model_imports.apply_active_video_loras(pipe, "fastwan")
+
+        self.assertEqual(loaded, [lora])
+        self.assertEqual(pipe.loaded, [("motion.safetensors", "video-lora-1")])
+        self.assertEqual(pipe.adapters, (["video-lora-1"], [0.75]))
+
 
 if __name__ == "__main__":
     unittest.main()

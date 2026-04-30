@@ -705,6 +705,7 @@ VIDEO_MODELS = {
         "default_fps": 16,
         "backend": "lightx2v",
         "backend_status": "optional",
+        "recommended_for": ["high_end_video"],
         "lightx2v_base_repo": "Wan-AI/Wan2.2-I2V-A14B",
         "lightx2v_distill_repo": "lightx2v/Wan2.2-Distill-Models",
         "lightx2v_model_cls": "wan2.2_moe_distill",

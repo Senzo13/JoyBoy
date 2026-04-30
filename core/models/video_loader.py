@@ -1355,6 +1355,53 @@ def _ensure_ltx_openimageio_importable() -> bool:
     return False
 
 
+def _resolve_ltx_gemma_root(cache_dir):
+    """Resolve the text encoder root for ltx_pipelines without hitting gated Google repos."""
+    from huggingface_hub import snapshot_download, try_to_load_from_cache
+
+    env_root = (os.environ.get("JOYBOY_LTX_GEMMA_ROOT") or "").strip()
+    if env_root:
+        if os.path.exists(os.path.join(env_root, "config.json")):
+            print(f"[MM]   -> Gemma root via JOYBOY_LTX_GEMMA_ROOT: {env_root}")
+            return env_root
+        raise RuntimeError(
+            "JOYBOY_LTX_GEMMA_ROOT pointe vers un dossier invalide: "
+            f"{env_root} (config.json introuvable)"
+        )
+
+    # Lightricks publishes the QAT Gemma variant used by the official LTX
+    # pipelines. Avoid downloading google/gemma-3-12b-it by default because it
+    # is gated and crashes fresh cloud installs without a Hugging Face login.
+    gemma_model_id = (
+        os.environ.get("JOYBOY_LTX_GEMMA_MODEL_ID")
+        or "Lightricks/gemma-3-12b-it-qat-q4_0-unquantized"
+    ).strip()
+
+    for repo_id in (gemma_model_id, "google/gemma-3-12b-it"):
+        cached = try_to_load_from_cache(repo_id, "config.json", cache_dir=cache_dir)
+        if not isinstance(cached, str):
+            cached = try_to_load_from_cache(repo_id, "config.json")
+        if isinstance(cached, str) and os.path.exists(cached):
+            root = os.path.dirname(cached)
+            print(f"[MM]   -> Gemma trouvé en cache: {repo_id}")
+            return root
+
+    print(f"[MM]   -> Téléchargement Gemma LTX: {gemma_model_id}")
+    try:
+        return snapshot_download(
+            gemma_model_id,
+            cache_dir=cache_dir,
+            resume_download=True,
+        )
+    except Exception as exc:
+        raise RuntimeError(
+            "Impossible de préparer le text encoder LTX. Par défaut JoyBoy utilise "
+            f"{gemma_model_id}; configure JOYBOY_LTX_GEMMA_ROOT vers un dossier Gemma "
+            "déjà accepté/téléchargé, ou JOYBOY_LTX_GEMMA_MODEL_ID vers un repo accessible. "
+            f"Erreur originale: {exc}"
+        ) from exc
+
+
 def load_ltx2_fp8(custom_cache, model_name="ltx2_fp8"):
     """Load LTX-2/LTX-2.3 FP8 via ltx_pipelines officiel.
 
@@ -1434,30 +1481,9 @@ def load_ltx2_fp8(custom_cache, model_name="ltx2_fp8"):
         print("[MM]   -> Distilled LoRA...")
         distilled_lora_path = _hf_local_or_download(repo_id, distilled_lora_filename, cache_dir)
 
-    # 3. Chemin vers Gemma 3 (dans le cache HF, déjà téléchargé par le modèle diffusers ou séparément)
-    # On laisse ltx_pipelines le télécharger si besoin via le gemma_root
-    gemma_model_id = "google/gemma-3-12b-it"
-
-    # Vérifier si Gemma est dans le cache HF
-    from huggingface_hub import try_to_load_from_cache
-    gemma_cached = try_to_load_from_cache(gemma_model_id, "config.json", cache_dir=cache_dir)
-    if not isinstance(gemma_cached, str):
-        # Pas en cache custom, essayer le cache par défaut
-        gemma_cached = try_to_load_from_cache(gemma_model_id, "config.json")
-
-    if isinstance(gemma_cached, str) and os.path.exists(gemma_cached):
-        # Gemma est dans le cache, utiliser le dossier parent du config.json
-        gemma_root = os.path.dirname(gemma_cached)
-    else:
-        # Pas en cache, on passe le model_id et ltx_pipelines le téléchargera
-        # snapshot_download pour avoir le dossier complet
-        from huggingface_hub import snapshot_download
-        print("[MM]   -> Téléchargement Gemma 3 12B (~24GB)...")
-        gemma_root = snapshot_download(
-            gemma_model_id,
-            cache_dir=cache_dir,
-            resume_download=True,
-        )
+    # 3. Chemin vers Gemma 3. LTX utilise un text encoder Gemma; la variante
+    # Google est gated, donc le défaut JoyBoy passe par le repo Lightricks QAT.
+    gemma_root = _resolve_ltx_gemma_root(cache_dir)
 
     # 4. Construire le pipeline
     print("[MM]   -> Construction pipeline FP8...")

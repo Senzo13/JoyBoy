@@ -294,7 +294,48 @@ def _repo_file(cache_dir: Path, repo_id: str, relative: str) -> str:
     return str((_repo_local_dir(cache_dir, repo_id) / relative).resolve())
 
 
-def _patch_config_paths(config: dict[str, Any], meta: dict[str, Any], cache_dir: Path) -> dict[str, Any]:
+def _lightx2v_lora_role(path: str) -> str:
+    name = Path(str(path or "")).name.lower()
+    if re.search(r"(^|[_\-. ])(high|highnoise|hnoise|hn)([_\-. ]|$)", name):
+        return "high_noise_model"
+    if re.search(r"(^|[_\-. ])(low|lownoise|lnoise|ln)([_\-. ]|$)", name):
+        return "low_noise_model"
+    if re.search(r"(^|[_\-. ])h[_\-. ]", name):
+        return "high_noise_model"
+    if re.search(r"(^|[_\-. ])l[_\-. ]", name):
+        return "low_noise_model"
+    return "both"
+
+
+def _active_lightx2v_lora_configs(model_id: str, *, max_strength: float = 2.0) -> list[dict[str, Any]]:
+    try:
+        from core.infra.model_imports import get_active_video_loras
+    except Exception:
+        return []
+
+    configs: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for item in get_active_video_loras(model_id):
+        path = str(item.get("file_path") or "").strip()
+        if not path or not Path(path).is_file():
+            continue
+        try:
+            strength = float(item.get("scale", 1.0) or 1.0)
+        except (TypeError, ValueError):
+            strength = 1.0
+        strength = max(0.0, min(max_strength, strength))
+        role = _lightx2v_lora_role(path)
+        targets = ("high_noise_model", "low_noise_model") if role == "both" else (role,)
+        for target in targets:
+            key = (path, target)
+            if key in seen:
+                continue
+            seen.add(key)
+            configs.append({"path": path, "strength": strength, "models": [target]})
+    return configs
+
+
+def _patch_config_paths(config: dict[str, Any], meta: dict[str, Any], cache_dir: Path, model_id: str = "") -> dict[str, Any]:
     """Convert upstream relative checkpoint paths to local HF cache paths."""
     distill_repo = str(meta.get("lightx2v_distill_repo") or "lightx2v/Wan2.2-Distill-Models")
     lora_repo = str(meta.get("lightx2v_lora_repo") or "lightx2v/Wan2.2-Distill-Loras")
@@ -333,6 +374,13 @@ def _patch_config_paths(config: dict[str, Any], meta: dict[str, Any], cache_dir:
             else:
                 patched.append(item)
         config["lora_configs"] = patched
+
+    active_loras = _active_lightx2v_lora_configs(model_id or str(meta.get("id") or ""))
+    if active_loras:
+        existing = config.get("lora_configs") if isinstance(config.get("lora_configs"), list) else []
+        config["lora_configs"] = [*existing, *active_loras]
+        labels = [Path(str(item["path"])).name for item in active_loras]
+        print(f"[VIDEO-LORA] LightX2V LoRA configs actifs: {', '.join(labels)}")
 
     return config
 
@@ -393,7 +441,7 @@ def _build_lightx2v_config(
             config.pop("high_noise_quantized_ckpt", None)
             config.pop("low_noise_quantized_ckpt", None)
 
-    config = _patch_config_paths(config, meta, cache_dir)
+    config = _patch_config_paths(config, meta, cache_dir, model_id)
     runtime_dir.mkdir(parents=True, exist_ok=True)
     config_path = runtime_dir / f"{model_id}_{int(time.time())}.json"
     config_path.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")

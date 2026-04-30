@@ -262,7 +262,7 @@ class VideoPolicyTests(unittest.TestCase):
         )
 
         by_id = {model["id"]: model for model in catalog["models"]}
-        self.assertEqual(catalog["default_model"], "wan-native-14b")
+        self.assertEqual(catalog["default_model"], "lightx2v-wan22-i2v-4step")
         self.assertEqual(by_id["lightx2v-wan22-i2v-4step"]["launch_status"], "ready")
         self.assertEqual(by_id["lightx2v-wan22-i2v-4step"]["backend_status"], "optional")
         self.assertEqual(by_id["lightx2v-wan22-i2v-4step"]["category"], "recommended")

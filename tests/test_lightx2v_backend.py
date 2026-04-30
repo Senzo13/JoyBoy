@@ -324,6 +324,51 @@ class LightX2VBackendTests(unittest.TestCase):
                 )
             )
 
+    def test_config_injects_active_video_loras_for_lightx2v(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo_dir = root / "repo"
+            runtime_dir = root / "runtime"
+            cache_dir = root / "cache"
+            lora_path = root / "NSFW-22-L-e8.safetensors"
+            lora_path.write_bytes(b"fake")
+            self._write_repo_config(repo_dir, "configs/distill/wan22/safe.json", {"lora_configs": []})
+
+            active_loras = [{
+                "id": "video-lora-nsfw",
+                "file_path": str(lora_path),
+                "scale": 0.8,
+                "compatible_models": ["lightx2v-wan22-i2v-4step"],
+                "enabled": True,
+                "exists": True,
+            }]
+
+            with (
+                patch.object(backend, "get_lightx2v_repo_dir", return_value=repo_dir),
+                patch.object(backend, "_select_attention", return_value="torch_sdpa"),
+                patch("core.infra.model_imports.get_active_video_loras", return_value=active_loras) as active,
+            ):
+                config_path, _, _ = backend._build_lightx2v_config(
+                    "lightx2v-wan22-i2v-4step",
+                    self._meta(),
+                    cache_dir,
+                    width=832,
+                    height=480,
+                    frames=81,
+                    steps=4,
+                    fps=16,
+                    quality="480p",
+                    runtime_dir=runtime_dir,
+                )
+
+            active.assert_called_once_with("lightx2v-wan22-i2v-4step")
+            config = json.loads(config_path.read_text(encoding="utf-8"))
+            self.assertEqual(config["lora_configs"], [{
+                "path": str(lora_path),
+                "strength": 0.8,
+                "models": ["low_noise_model"],
+            }])
+
     def test_run_generation_fake_subprocess_returns_mp4_and_progress(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

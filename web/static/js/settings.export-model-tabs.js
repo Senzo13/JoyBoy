@@ -175,6 +175,9 @@ function switchModelsSubtab(type, clickedEl) {
         if (typeof checkVideoModelsStatus === 'function') {
             checkVideoModelsStatus();
         }
+        if (typeof loadVideoLoras === 'function') {
+            loadVideoLoras();
+        }
     }
 }
 
@@ -196,6 +199,9 @@ function switchModelsInnerTab(panelId, tabName, clickedEl) {
         if (typeof checkVideoModelsStatus === 'function') {
             checkVideoModelsStatus();
         }
+    }
+    if (panelId === 'models-video-panel' && tabName === 'import' && typeof loadVideoLoras === 'function') {
+        loadVideoLoras();
     }
 }
 

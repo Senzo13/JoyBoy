@@ -1,8 +1,10 @@
 import os
+import shutil
 import subprocess
 import sys
 import types
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from core.models import video_loader
@@ -146,6 +148,40 @@ class WanNativeInstallTests(unittest.TestCase):
             self.assertIn("OpenImageIO", sys.modules)
 
         self.assertFalse(available)
+
+    def test_ltx_gemma_root_prefers_env_path(self):
+        root = Path.cwd() / ".codex-test-ltx-gemma"
+        shutil.rmtree(root, ignore_errors=True)
+        root.mkdir()
+        try:
+            (root / "config.json").write_text("{}", encoding="utf-8")
+            with patch.dict(os.environ, {"JOYBOY_LTX_GEMMA_ROOT": str(root)}, clear=True):
+                resolved = video_loader._resolve_ltx_gemma_root("cache")
+        finally:
+            shutil.rmtree(root, ignore_errors=True)
+
+        self.assertEqual(resolved, str(root))
+
+    def test_ltx_gemma_root_uses_lightricks_default_download(self):
+        with patch.dict(os.environ, {}, clear=True), \
+                patch("huggingface_hub.try_to_load_from_cache", return_value=None), \
+                patch("huggingface_hub.snapshot_download", return_value="/cache/gemma") as snapshot_download:
+            resolved = video_loader._resolve_ltx_gemma_root("cache")
+
+        self.assertEqual(resolved, "/cache/gemma")
+        self.assertEqual(
+            snapshot_download.call_args.kwargs["repo_id"]
+            if "repo_id" in snapshot_download.call_args.kwargs
+            else snapshot_download.call_args.args[0],
+            "Lightricks/gemma-3-12b-it-qat-q4_0-unquantized",
+        )
+
+    def test_ltx_gemma_root_raises_actionable_error_on_download_failure(self):
+        with patch.dict(os.environ, {}, clear=True), \
+                patch("huggingface_hub.try_to_load_from_cache", return_value=None), \
+                patch("huggingface_hub.snapshot_download", side_effect=RuntimeError("401 gated")):
+            with self.assertRaisesRegex(RuntimeError, "JOYBOY_LTX_GEMMA_ROOT"):
+                video_loader._resolve_ltx_gemma_root("cache")
 
 
 if __name__ == "__main__":

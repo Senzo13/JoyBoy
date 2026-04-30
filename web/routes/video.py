@@ -417,6 +417,17 @@ def generate_video_endpoint():
                 img = continuation_context.get("anchor_image") or (base64_to_pil(image_b64) if image_b64 else None)
                 pipe = mgr.get_pipeline('video')
                 upscale_pipe = mgr.get_pipeline('video_upscale')
+                try:
+                    from core.infra.model_imports import apply_active_video_loras
+
+                    loaded_video_loras = apply_active_video_loras(pipe, video_model)
+                    if loaded_video_loras:
+                        print("[VIDEO-LORA] Actifs: " + ", ".join(
+                            str(item.get("display_name") or item.get("name") or item.get("id"))
+                            for item in loaded_video_loras
+                        ))
+                except Exception as exc:
+                    print(f"[VIDEO-LORA] Application ignorée: {exc}")
                 return generate_video(
                     img,
                     prompt=prompt,
