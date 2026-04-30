@@ -96,8 +96,8 @@
             "offload_strategy": "model_cpu_offload",
             "resolution": "512p",
             "max_frames": 121,
-            "guidance_scale": 1.0,
-            "steps": 8,
+            "guidance_scale": 4.0,
+            "steps": 40,
             "fps": 24
         },
         "ltx2_fp8": {

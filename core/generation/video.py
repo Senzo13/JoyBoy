@@ -616,7 +616,7 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
     elif is_cogvideo:
         num_steps = 50
     elif is_ltx2:
-        num_steps = 8  # LTX-2 distillé: 8 steps
+        num_steps = 40  # LTX-2 I2V recommended motion profile
     elif is_ltx2_fp8:
         num_steps = 8 if is_ltx23_fp8 else 40
     elif is_ltx:
@@ -1093,7 +1093,7 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
         generated_frames = list(video_frames)
 
     elif is_ltx2:
-        # === LTX-2 19B (distillé, 8 steps) ===
+        # === LTX-2 19B (full I2V profile, motion-first) ===
         video_prompt = _build_ltx2_motion_prompt(prompt, has_visual_source=has_visual_source)
         negative_prompt = _build_ltx2_negative_prompt(
             "shaky, glitchy, low quality, worst quality, deformed, distorted, "
@@ -1113,14 +1113,7 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
             ltx2_frames = ((ltx2_frames - 1) // 8) * 8 + 1
             print(f"[VIDEO] Frames ajusté: {target_frames} → {ltx2_frames} (formule 8k+1)")
 
-        # Sigmas distillés officiels (8 steps)
-        try:
-            from diffusers.pipelines.ltx2.utils import DISTILLED_SIGMA_VALUES
-        except ImportError:
-            # Fallback si diffusers trop ancien — sigmas officiels LTX-2 distillé
-            DISTILLED_SIGMA_VALUES = [1.0, 0.993, 0.987, 0.981, 0.975, 0.909, 0.725, 0.03]
-
-        print(f"[VIDEO] Mode: LTX-2 19B distillé — {num_steps} steps, {target_w}x{target_h}")
+        print(f"[VIDEO] Mode: LTX-2 19B I2V — {num_steps} steps, CFG 4.0, {target_w}x{target_h}")
 
         # Construire les kwargs de génération
         gen_kwargs = dict(
@@ -1131,8 +1124,8 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
             num_frames=ltx2_frames,
             frame_rate=float(fps),
             num_inference_steps=num_steps,
-            sigmas=DISTILLED_SIGMA_VALUES,
-            guidance_scale=1.0,
+            sigmas=None,
+            guidance_scale=4.0,
             generator=gen,
             callback_on_step_end=video_step_callback,
             output_type="pil",
@@ -1145,18 +1138,19 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
             try:
                 call_params = inspect.signature(pipe.__call__).parameters
                 ltx_motion_kwargs = {
-                    "noise_scale": 0.12,
-                    "image_cond_noise_scale": 0.025,
+                    "noise_scale": 0.0,
                     "decode_timestep": 0.05,
                     "decode_noise_scale": 0.025,
                 }
+                active_motion_kwargs = {}
                 for key, value in ltx_motion_kwargs.items():
                     if key in call_params:
                         gen_kwargs[key] = value
-                if any(key in gen_kwargs for key in ltx_motion_kwargs):
+                        active_motion_kwargs[key] = value
+                if active_motion_kwargs:
                     print(
                         "[VIDEO] LTX-2 I2V motion conditioning actif "
-                        f"({', '.join(key for key in ltx_motion_kwargs if key in gen_kwargs)})"
+                        f"({', '.join(f'{key}={value}' for key, value in active_motion_kwargs.items())})"
                     )
             except Exception:
                 pass

@@ -237,7 +237,7 @@ function updateVideoQualityVisibility() {
         'framepack': { fps: 18, steps: 9, configurable: false },
         'framepack-fast': { fps: 12, steps: 7, configurable: false },
         'ltx': { fps: 8, steps: 8, configurable: false },
-        'ltx2': { fps: 24, steps: 8, configurable: false },
+        'ltx2': { fps: 24, steps: 40, configurable: false },
         'ltx2_fp8': { fps: 24, steps: 40, configurable: false },
         'ltx23_fp8': { fps: 24, steps: 8, configurable: false },
         'svd': { fps: 8, steps: 10, configurable: true },
