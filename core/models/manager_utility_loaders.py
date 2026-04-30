@@ -49,6 +49,8 @@ class ModelManagerUtilityLoaderMixin:
             return video_loader.load_ltx2(custom_cache)
         if model_name == "ltx2_fp8":
             return video_loader.load_ltx2_fp8(custom_cache)
+        if model_name == "ltx23_fp8":
+            return video_loader.load_ltx2_fp8(custom_cache, model_name)
         if model_name in ("wan-native-5b", "wan-native-14b"):
             return video_loader.load_wan_native(model_name, custom_cache)
         if str(model_name or "").startswith("lightx2v-"):

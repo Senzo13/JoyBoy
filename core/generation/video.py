@@ -18,6 +18,8 @@ from core.generation.state import (
 from core.generation.video_prompts import (
     DEFAULT_SCENE_VIDEO_PROMPT,
     DEFAULT_VISUAL_SOURCE_VIDEO_PROMPT,
+    _build_ltx2_motion_prompt,
+    _build_ltx2_negative_prompt,
     _build_framepack_prompt,
     _build_video_negative_prompt,
     _build_video_prompt,
@@ -251,6 +253,9 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
         print(f"[VIDEO] Image reçue: {image.size[0]}x{image.size[1]} mode={image.mode}")
 
     has_visual_source = image is not None and not is_t2v_mode
+    normalized_audio_engine = str(audio_engine or "auto").strip().lower()
+    ltx_native_audio_requested = bool(add_audio) and normalized_audio_engine in {"auto", "native", "ltx2", "ltx-2", "ltx"}
+    _state.ltx2_audio = None
 
     def _source_fidelity_prompt(default_prompt: str) -> str:
         return _build_video_prompt(prompt, default_prompt, has_visual_source=has_visual_source)
@@ -261,6 +266,21 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
             has_visual_source=has_visual_source,
             user_prompt=prompt,
         )
+
+    def _store_ltx_native_audio(audio_data, pipe_obj=None, *, label: str = "LTX-2") -> None:
+        """Keep LTX native audio only when the user asked for audio."""
+        _state.ltx2_audio = None
+        if audio_data is None:
+            return
+        if not ltx_native_audio_requested:
+            print(f"[VIDEO] Audio {label} généré mais ignoré (Audio désactivé)")
+            return
+        _state.ltx2_audio = audio_data
+        try:
+            _state.ltx2_audio_sr = pipe_obj.vocoder.config.output_sampling_rate
+        except Exception:
+            _state.ltx2_audio_sr = 24000
+        print(f"[VIDEO] Audio {label} capturé (sample rate: {_state.ltx2_audio_sr})")
 
     # ========== INITIALISER PROGRESSION ==========
     update_video_progress(active=True, step=0, total_steps=0, pass_num=0, total_passes=1, phase='loading', message='Préparation VRAM...')
@@ -297,7 +317,8 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
     is_framepack_fast = video_model == "framepack-fast"
     is_ltx = video_model == "ltx"
     is_ltx2 = video_model == "ltx2"
-    is_ltx2_fp8 = video_model == "ltx2_fp8"
+    is_ltx23_fp8 = video_model == "ltx23_fp8"
+    is_ltx2_fp8 = video_model in ("ltx2_fp8", "ltx23_fp8")
     is_native_wan = video_model.startswith("wan-native-")  # Backend natif Wan
     is_lightx2v = video_model.startswith("lightx2v-")
     low_vram_framepack = is_framepack and 0 < float(VRAM_GB or 0) <= 10
@@ -389,7 +410,8 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
     elif is_ltx2_fp8:
         # LTX-2 19B FP8 (ltx_pipelines): two-stage pipeline, multiples de 64
         target_w, target_h = _aspect_locked_size(source_width or w, source_height or h, max_area=512 * 768, mod_value=64)
-        print(f"[VIDEO] LTX-2 FP8 ratio source: {target_w}x{target_h}")
+        ltx2_label = "LTX-2.3 FP8" if is_ltx23_fp8 else "LTX-2 FP8"
+        print(f"[VIDEO] {ltx2_label} ratio source: {target_w}x{target_h}")
     elif is_ltx2:
         # LTX-2 19B (diffusers): 512p, dimensions multiples de 32
         target_w, target_h = _aspect_locked_size(source_width or w, source_height or h, max_area=512 * 768, mod_value=32)
@@ -595,7 +617,7 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
     elif is_ltx2:
         num_steps = 8  # LTX-2 distillé: 8 steps
     elif is_ltx2_fp8:
-        num_steps = 40  # LTX-2 FP8 distillé: 40 steps
+        num_steps = 8 if is_ltx23_fp8 else 40
     elif is_ltx:
         # Détecter si pipeline distillé ou base
         try:
@@ -1071,11 +1093,12 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
 
     elif is_ltx2:
         # === LTX-2 19B (distillé, 8 steps) ===
-        video_prompt = _source_fidelity_prompt(DEFAULT_SCENE_VIDEO_PROMPT)
-        negative_prompt = (
+        video_prompt = _build_ltx2_motion_prompt(prompt, has_visual_source=has_visual_source)
+        negative_prompt = _build_ltx2_negative_prompt(
             "shaky, glitchy, low quality, worst quality, deformed, distorted, "
             "disfigured, motion smear, motion artifacts, fused fingers, "
-            "bad anatomy, weird hand, ugly, transition, static"
+            "bad anatomy, weird hand, ugly, transition",
+            has_visual_source=has_visual_source,
         )
         print(f"[VIDEO] Prompt: {video_prompt}")
 
@@ -1117,6 +1140,21 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
         # I2V si image fournie
         if image_resized is not None:
             gen_kwargs["image"] = image_resized
+            import inspect
+            try:
+                call_params = inspect.signature(pipe.__call__).parameters
+                ltx_motion_kwargs = {
+                    "image_cond_noise_scale": 0.08,
+                    "decode_timestep": 0.03,
+                    "decode_noise_scale": 0.025,
+                }
+                for key, value in ltx_motion_kwargs.items():
+                    if key in call_params:
+                        gen_kwargs[key] = value
+                if any(key in gen_kwargs for key in ltx_motion_kwargs):
+                    print("[VIDEO] LTX-2 I2V motion conditioning actif")
+            except Exception:
+                pass
 
         # output_type="np" pour pouvoir encoder audio+video ensemble
         gen_kwargs["output_type"] = "np"
@@ -1139,20 +1177,12 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
                 f = (f * 255).clip(0, 255).astype(np.uint8)
             generated_frames.append(Image.fromarray(f))
 
-        # Stocker l'audio LTX-2 pour le muxage ffmpeg
-        if audio_data is not None:
-            _state.ltx2_audio = audio_data
-            try:
-                _state.ltx2_audio_sr = pipe.vocoder.config.output_sampling_rate
-            except Exception:
-                _state.ltx2_audio_sr = 24000
-            print(f"[VIDEO] Audio LTX-2 capturé (sample rate: {_state.ltx2_audio_sr})")
-        else:
-            _state.ltx2_audio = None
+        # Stocker l'audio LTX-2 pour le muxage ffmpeg seulement si demandé.
+        _store_ltx_native_audio(audio_data, pipe, label="LTX-2")
 
     elif is_ltx2_fp8:
-        # === LTX-2 19B FP8 (ltx_pipelines natif, 2-stage distillé) ===
-        video_prompt = _source_fidelity_prompt(DEFAULT_SCENE_VIDEO_PROMPT)
+        # === LTX-2 / LTX-2.3 FP8 (ltx_pipelines natif) ===
+        video_prompt = _build_ltx2_motion_prompt(prompt, has_visual_source=has_visual_source)
         print(f"[VIDEO] Prompt: {video_prompt}")
 
         fps = 24
@@ -1163,17 +1193,26 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
             ltx2_frames = ((ltx2_frames - 1) // 8) * 8 + 1
             print(f"[VIDEO] Frames ajusté: {target_frames} → {ltx2_frames} (formule 8k+1)")
 
-        print(f"[VIDEO] Mode: LTX-2 19B FP8 (ltx_pipelines) — {target_w}x{target_h}, {ltx2_frames} frames")
+        fp8_label = "LTX-2.3 22B FP8 distillé" if is_ltx23_fp8 else "LTX-2 19B FP8"
+        print(f"[VIDEO] Mode: {fp8_label} (ltx_pipelines) — {target_w}x{target_h}, {ltx2_frames} frames")
 
         # Préparer l'image I2V (ltx_pipelines veut un chemin fichier, pas PIL)
         import tempfile
+        try:
+            from ltx_pipelines.utils.args import ImageConditioningInput
+        except Exception:
+            ImageConditioningInput = None
+
         images_arg = []
         _tmp_img_path = None
         if image_resized is not None:
             _tmp_fd, _tmp_img_path = tempfile.mkstemp(suffix='.png')
             os.close(_tmp_fd)
             image_resized.save(_tmp_img_path)
-            images_arg = [(_tmp_img_path, 0, 1.0)]  # (path, frame_index, strength)
+            if ImageConditioningInput is not None:
+                images_arg = [ImageConditioningInput(path=_tmp_img_path, frame_idx=0, strength=1.0)]
+            else:
+                images_arg = [(_tmp_img_path, 0, 1.0, 33)]  # legacy tuple fallback
             print(f"[VIDEO] I2V: image sauvée → {_tmp_img_path}")
 
         # Génération via DistilledPipeline natif
@@ -1234,13 +1273,8 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
             except Exception:
                 pass
 
-        # Stocker l'audio LTX-2 pour le muxage ffmpeg
-        if audio_data is not None:
-            _state.ltx2_audio = audio_data
-            _state.ltx2_audio_sr = 24000
-            print(f"[VIDEO] Audio LTX-2 FP8 capturé (sample rate: {_state.ltx2_audio_sr})")
-        else:
-            _state.ltx2_audio = None
+        # Stocker l'audio LTX natif pour le muxage ffmpeg seulement si demandé.
+        _store_ltx_native_audio(audio_data, label=fp8_label)
 
     elif is_ltx:
         video_prompt = _source_fidelity_prompt(DEFAULT_SCENE_VIDEO_PROMPT)
@@ -1806,7 +1840,7 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
         # audio is generated after the final concatenated clip so the sound bed
         # matches the whole video instead of only the new segment.
         ltx2_audio = getattr(_state, 'ltx2_audio', None)
-        if ltx2_audio is not None and not persisted_continuation:
+        if ltx2_audio is not None and ltx_native_audio_requested and not persisted_continuation:
             try:
                 import torch as _t
                 import tempfile, wave
@@ -1853,6 +1887,9 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
         elif ltx2_audio is not None and persisted_continuation:
             _state.ltx2_audio = None
             print("[VIDEO] Audio LTX-2 segment ignoré: audio final géré après continuation")
+        elif ltx2_audio is not None:
+            _state.ltx2_audio = None
+            print("[VIDEO] Audio LTX-2 ignoré: audio natif non demandé")
     except Exception as e:
         print(f"[VIDEO] MP4 échoué: {e}, fallback GIF...")
         from diffusers.utils import export_to_gif
@@ -1876,7 +1913,6 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
     # MMAudio is a large extra model. On 8-10GB cards it competes with video
     # generation/cache and can saturate VRAM for a non-essential post-process.
     allow_low_vram_mmaudio = os.environ.get("JOYBOY_ALLOW_MMAUDIO_LOW_VRAM", "").strip().lower() in {"1", "true", "yes", "on"}
-    normalized_audio_engine = str(audio_engine or "auto").strip().lower()
     run_mmaudio = (
         add_audio
         and video_format == "mp4"

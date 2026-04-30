@@ -24,6 +24,8 @@ import shutil
 import sys
 import subprocess
 import torch
+import types
+from importlib.machinery import ModuleSpec
 from types import MethodType
 
 from core.models import move_video_to_device, VRAM_GB, IS_HIGH_END_GPU, TORCH_DTYPE, DTYPE_NAME
@@ -97,6 +99,69 @@ def _ensure_framepack_dependency_versions():
         )
 
 
+def _run_pip_install(args, *, optional=False):
+    command = [sys.executable, "-m", "pip", "install", *args]
+    try:
+        subprocess.run(command, check=True)
+        return True
+    except subprocess.CalledProcessError as exc:
+        if optional:
+            print(f"[MM] Dépendance optionnelle indisponible ({' '.join(args)}): {exc}")
+            return False
+        raise
+
+
+def _install_wan_native_packages(packages):
+    """Install Wan runtime dependencies while isolating package failures."""
+    try:
+        _run_pip_install(packages)
+        return
+    except subprocess.CalledProcessError as exc:
+        print(f"[MM] Installation groupée des dépendances Wan échouée: {exc}")
+        print("[MM] Réessai paquet par paquet pour isoler la dépendance fautive...")
+
+    for package in packages:
+        _run_pip_install([package])
+
+
+def _ensure_wan_native_import_shims():
+    """Provide tiny shims for optional Wan imports that are not needed for I2V/T2V.
+
+    Wan's package import eagerly imports speech-to-video modules. On some cloud
+    images (notably ARM64/GH200), `decord` has no compatible wheel, but I2V/T2V
+    do not need it. The shim lets `import wan` complete and raises only if the
+    unavailable speech/video reader path is actually used.
+    """
+    try:
+        import decord  # noqa: F401
+        return
+    except Exception:
+        pass
+
+    if "decord" in sys.modules:
+        return
+
+    def _decord_unavailable(*_args, **_kwargs):
+        raise ImportError(
+            "decord is unavailable in this environment; Wan speech/video-reader "
+            "features are disabled, but I2V/T2V generation can continue."
+        )
+
+    fake_decord = types.ModuleType("decord")
+    fake_decord.__spec__ = ModuleSpec("decord", None)
+
+    class _UnavailableVideoReader:
+        def __init__(self, *_args, **_kwargs):
+            _decord_unavailable()
+
+    fake_decord.VideoReader = _UnavailableVideoReader
+    fake_decord.cpu = _decord_unavailable
+    fake_decord.gpu = _decord_unavailable
+    fake_decord.bridge = types.SimpleNamespace(set_bridge=lambda *_args, **_kwargs: None)
+    sys.modules["decord"] = fake_decord
+    print("[MM] decord absent: shim Wan activé (speech/video-reader désactivé, I2V/T2V OK).")
+
+
 def _install_wan_native_backend():
     """Install the official Wan backend without hiding torch from flash-attn.
 
@@ -106,6 +171,8 @@ def _install_wan_native_backend():
     """
     print("[MM] Installation du backend natif Wan...")
     cuda_toolkit_available = bool(os.environ.get("CUDA_HOME") or os.environ.get("CUDA_PATH") or shutil.which("nvcc"))
+    _run_pip_install(["wheel"], optional=True)
+    standard_install_failed = False
     if cuda_toolkit_available:
         command = [
             sys.executable,
@@ -119,26 +186,28 @@ def _install_wan_native_backend():
             subprocess.run(command, check=True)
             return
         except subprocess.CalledProcessError as exc:
+            standard_install_failed = True
             print(f"[MM] Installation Wan standard échouée: {exc}")
     else:
         print("[MM] CUDA toolkit absent (nvcc/CUDA_HOME). Installation Wan sans flash_attn.")
 
     print("[MM] Fallback: installation Wan sans dépendance flash_attn obligatoire...")
+    required_packages = [
+        "dashscope",
+        "easydict",
+        "einops",
+        "ftfy",
+        "imageio-ffmpeg",
+        "librosa",
+        "peft",
+    ]
+    optional_packages = [
+        # Decord has no wheel on some ARM64/GH200 images. Wan imports it via
+        # speech2video at package import time, so JoyBoy installs it when
+        # possible and otherwise injects a narrow import shim for I2V/T2V.
+        "decord",
+    ]
     fallback_commands = [
-        [
-            sys.executable,
-            "-m",
-            "pip",
-            "install",
-            "dashscope",
-            "decord",
-            "easydict",
-            "einops",
-            "ftfy",
-            "imageio-ffmpeg",
-            "librosa",
-            "peft",
-        ],
         [
             sys.executable,
             "-m",
@@ -148,7 +217,7 @@ def _install_wan_native_backend():
             "git+https://github.com/Wan-Video/Wan2.2.git",
         ],
     ]
-    if cuda_toolkit_available:
+    if cuda_toolkit_available and not standard_install_failed:
         fallback_commands.insert(0, [
             sys.executable,
             "-m",
@@ -157,8 +226,15 @@ def _install_wan_native_backend():
             "--no-build-isolation",
             "flash_attn",
         ])
+    elif cuda_toolkit_available:
+        print("[MM] flash_attn déjà tenté via Wan standard; fallback direct sans le rebuilder.")
     else:
         print("[MM] flash_attn ignoré: nvcc/CUDA_HOME absent. Wan utilisera les kernels PyTorch si possible.")
+
+    _install_wan_native_packages(required_packages)
+    for package in optional_packages:
+        _run_pip_install([package], optional=True)
+    _ensure_wan_native_import_shims()
 
     for fallback in fallback_commands:
         try:
@@ -1204,8 +1280,33 @@ def load_ltx2(custom_cache):
     }
 
 
-def load_ltx2_fp8(custom_cache):
-    """Load LTX-2 19B FP8 via ltx_pipelines officiel (checkpoint pré-quantifié).
+def _hf_local_or_download(repo_id, filename, cache_dir):
+    """Prefer JoyBoy's local mirror before asking Hugging Face again."""
+    from huggingface_hub import hf_hub_download, try_to_load_from_cache
+
+    local_dir = os.path.join(cache_dir, repo_id.replace("/", "--")) if cache_dir else ""
+    local_path = os.path.join(local_dir, filename) if local_dir else ""
+    if local_path and os.path.exists(local_path):
+        return local_path
+
+    cached = try_to_load_from_cache(repo_id, filename, cache_dir=cache_dir)
+    if isinstance(cached, str) and os.path.exists(cached):
+        return cached
+
+    cached = try_to_load_from_cache(repo_id, filename)
+    if isinstance(cached, str) and os.path.exists(cached):
+        return cached
+
+    return hf_hub_download(
+        repo_id=repo_id,
+        filename=filename,
+        cache_dir=cache_dir,
+        resume_download=True,
+    )
+
+
+def load_ltx2_fp8(custom_cache, model_name="ltx2_fp8"):
+    """Load LTX-2/LTX-2.3 FP8 via ltx_pipelines officiel.
 
     Utilise le package ltx_pipelines de Lightricks avec le checkpoint fp8 (20GB).
     Pas de quantification runtime → chargement rapide, pas de gaspillage RAM.
@@ -1214,8 +1315,9 @@ def load_ltx2_fp8(custom_cache):
         dict with 'pipe' key (TI2VidTwoStagesPipeline or DistilledPipeline),
         and 'extras' with 'ltx2_native': True.
     """
-    from core.models import IS_MAC
-    display_name = "LTX-2 19B FP8 (ltx_pipelines)"
+    from core.models import VIDEO_MODELS, IS_MAC
+    meta = VIDEO_MODELS.get(model_name, VIDEO_MODELS["ltx2_fp8"])
+    display_name = f"{meta.get('name', model_name)} (ltx_pipelines)"
     print(f"[MM] Loading {display_name}...")
 
     # 1. Auto-install ltx_pipelines si absent
@@ -1251,35 +1353,34 @@ def load_ltx2_fp8(custom_cache):
         from ltx_pipelines.distilled import DistilledPipeline
 
     # 2. Télécharger les checkpoints nécessaires via huggingface_hub
-    from huggingface_hub import hf_hub_download
     import os
 
-    repo_id = "Lightricks/LTX-2"
+    is_ltx23 = model_name == "ltx23_fp8"
+    if is_ltx23:
+        repo_id = "Lightricks/LTX-2.3-fp8"
+        upsampler_repo_id = "Lightricks/LTX-2.3"
+        checkpoint_filename = "ltx-2.3-22b-distilled-fp8.safetensors"
+        upsampler_filename = "ltx-2.3-spatial-upscaler-x2-1.1.safetensors"
+        distilled_lora_filename = None
+    else:
+        repo_id = "Lightricks/LTX-2"
+        upsampler_repo_id = repo_id
+        checkpoint_filename = "ltx-2-19b-dev-fp8.safetensors"
+        upsampler_filename = "ltx-2-spatial-upscaler-x2-1.0.safetensors"
+        distilled_lora_filename = "ltx-2-19b-distilled-lora-384.safetensors"
+
     cache_dir = custom_cache or os.path.join(os.path.dirname(__file__), '..', '..', 'models_cache')
 
-    print("[MM]   -> Téléchargement checkpoint FP8 (~20GB)...")
-    checkpoint_path = hf_hub_download(
-        repo_id=repo_id,
-        filename="ltx-2-19b-dev-fp8.safetensors",
-        cache_dir=cache_dir,
-        resume_download=True,
-    )
+    print("[MM]   -> Checkpoint FP8...")
+    checkpoint_path = _hf_local_or_download(repo_id, checkpoint_filename, cache_dir)
 
-    print("[MM]   -> Téléchargement spatial upsampler...")
-    upsampler_path = hf_hub_download(
-        repo_id=repo_id,
-        filename="ltx-2-spatial-upscaler-x2-1.0.safetensors",
-        cache_dir=cache_dir,
-        resume_download=True,
-    )
+    print("[MM]   -> Spatial upsampler...")
+    upsampler_path = _hf_local_or_download(upsampler_repo_id, upsampler_filename, cache_dir)
 
-    print("[MM]   -> Téléchargement distilled LoRA...")
-    distilled_lora_path = hf_hub_download(
-        repo_id=repo_id,
-        filename="ltx-2-19b-distilled-lora-384.safetensors",
-        cache_dir=cache_dir,
-        resume_download=True,
-    )
+    distilled_lora_path = None
+    if distilled_lora_filename:
+        print("[MM]   -> Distilled LoRA...")
+        distilled_lora_path = _hf_local_or_download(repo_id, distilled_lora_filename, cache_dir)
 
     # 3. Chemin vers Gemma 3 (dans le cache HF, déjà téléchargé par le modèle diffusers ou séparément)
     # On laisse ltx_pipelines le télécharger si besoin via le gemma_root
@@ -1288,11 +1389,11 @@ def load_ltx2_fp8(custom_cache):
     # Vérifier si Gemma est dans le cache HF
     from huggingface_hub import try_to_load_from_cache
     gemma_cached = try_to_load_from_cache(gemma_model_id, "config.json", cache_dir=cache_dir)
-    if gemma_cached is None:
+    if not isinstance(gemma_cached, str):
         # Pas en cache custom, essayer le cache par défaut
         gemma_cached = try_to_load_from_cache(gemma_model_id, "config.json")
 
-    if gemma_cached is not None:
+    if isinstance(gemma_cached, str) and os.path.exists(gemma_cached):
         # Gemma est dans le cache, utiliser le dossier parent du config.json
         gemma_root = os.path.dirname(gemma_cached)
     else:
@@ -1309,20 +1410,39 @@ def load_ltx2_fp8(custom_cache):
     # 4. Construire le pipeline
     print("[MM]   -> Construction pipeline FP8...")
     from ltx_core.loader import LoraPathStrengthAndSDOps
+    import inspect
 
-    pipe = DistilledPipeline(
-        checkpoint_path=checkpoint_path,
-        spatial_upsampler_path=upsampler_path,
-        gemma_root=gemma_root,
-        loras=[
+    loras = []
+    if distilled_lora_path:
+        loras.append(
             LoraPathStrengthAndSDOps(
                 path=distilled_lora_path,
                 strength=1.0,
                 sd_ops=None,
             )
-        ],
-        device=torch.device("cuda"),
-    )
+        )
+
+    init_params = inspect.signature(DistilledPipeline).parameters
+    pipe_kwargs = {
+        "spatial_upsampler_path": upsampler_path,
+        "gemma_root": gemma_root,
+        "loras": loras,
+        "device": torch.device("cuda"),
+    }
+    if "distilled_checkpoint_path" in init_params:
+        pipe_kwargs["distilled_checkpoint_path"] = checkpoint_path
+    else:
+        pipe_kwargs["checkpoint_path"] = checkpoint_path
+    if "checkpoint_path" in init_params and "checkpoint_path" not in pipe_kwargs:
+        pipe_kwargs["checkpoint_path"] = checkpoint_path
+    if "distilled_checkpoint_path" not in init_params:
+        pipe_kwargs.pop("distilled_checkpoint_path", None)
+    if "device" not in init_params:
+        pipe_kwargs.pop("device", None)
+    if "loras" not in init_params:
+        pipe_kwargs.pop("loras", None)
+
+    pipe = DistilledPipeline(**pipe_kwargs)
 
     # Pour GPUs < 24GB: Gemma 3 12B bf16 = ~24GB, dépasse la VRAM
     # 1. Force CPU loading (_target_device → "cpu") pour éviter safetensors OOM

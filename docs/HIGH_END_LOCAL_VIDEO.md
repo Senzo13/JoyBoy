@@ -53,6 +53,14 @@ new segment to the source MP4.
 
 ## Audio
 
-`audio_engine=auto` prefers native LTX-2 audio when available. Otherwise, when
-automatic audio is enabled, JoyBoy runs MMAudio on the final clip so continuation
-audio matches the whole video.
+`audio_engine=auto` prefers native LTX-2/LTX-2.3 audio when available. Use
+`audio_engine=native` to force the model's own synchronized audio, or keep audio
+disabled for silent clips. Otherwise, when automatic audio is enabled, JoyBoy
+runs MMAudio on the final clip so continuation audio matches the whole video.
+
+## Recent LTX Models
+
+JoyBoy exposes `LTX-2.3 22B FP8` as an experimental high-end profile through the
+official `ltx_pipelines` backend. It uses the LTX-2.3 distilled FP8 checkpoint
+with 8-step inference and the LTX-2.3 spatial upscaler. Keep `LTX-2 19B` around
+as the safer fallback while Diffusers support for LTX-2.3 catches up upstream.

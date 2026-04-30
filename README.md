@@ -71,6 +71,49 @@ On first launch, JoyBoy guides you through setup and onboarding. It detects your
 
 If you already completed setup, the launcher uses the fast path and starts the server directly.
 
+### Remote GPU / Lambda Cloud
+
+For a remote GPU machine, keep JoyBoy private with an SSH tunnel.
+
+Windows PowerShell:
+
+```powershell
+ssh -i "$env:USERPROFILE\.ssh\<KEY_NAME>" -L 7860:127.0.0.1:7860 ubuntu@<PUBLIC_IP>
+```
+
+macOS / Linux:
+
+```bash
+ssh -i ~/.ssh/<KEY_NAME> -L 7860:127.0.0.1:7860 ubuntu@<PUBLIC_IP>
+```
+
+Then clone and start JoyBoy on the remote machine:
+
+```bash
+git clone https://github.com/Senzo13/JoyBoy.git
+cd JoyBoy
+chmod +x start_linux.sh
+./start_linux.sh
+```
+
+Open `http://127.0.0.1:7860` on your local computer while the SSH session stays open.
+
+If JoyBoy is already running in one SSH terminal, open a second local terminal for the tunnel only:
+
+```powershell
+ssh -i "$env:USERPROFILE\.ssh\<KEY_NAME>" -N -L 7860:127.0.0.1:7860 ubuntu@<PUBLIC_IP>
+```
+
+If your local `7860` port is busy:
+
+```powershell
+ssh -i "$env:USERPROFILE\.ssh\<KEY_NAME>" -N -L 7861:127.0.0.1:7860 ubuntu@<PUBLIC_IP>
+```
+
+Then open `http://127.0.0.1:7861`.
+
+See [Cloud / Remote GPU Setup](docs/CLOUD_SETUP.md) for the full Lambda-style setup notes.
+
 ## Easy To Use
 
 JoyBoy is designed around everyday use:
@@ -131,7 +174,7 @@ Useful for:
 
 - Image-to-video.
 - Video continuation.
-- Testing Wan/FastWan/LTX/FramePack-style workflows.
+- Testing Wan/FastWan/LTX/LTX-2.3/FramePack-style workflows.
 - Comparing 8GB, 20GB, 24GB, 40GB, and larger GPU behavior.
 
 Video generation is still hardware-sensitive. JoyBoy tries to keep the controls friendly while making VRAM/RAM/offload behavior visible.

@@ -620,6 +620,39 @@ VIDEO_MODELS = {
         "default_steps": 40,
         "default_fps": 24,
     },
+    "ltx23_fp8": {
+        "name": "LTX-2.3 22B FP8",
+        "id": "Lightricks/LTX-2.3-fp8",
+        "hf_repos": [
+            "Lightricks/LTX-2.3-fp8",
+            "Lightricks/LTX-2.3",
+        ],
+        "hf_allow_patterns": {
+            "Lightricks/LTX-2.3-fp8": [
+                "ltx-2.3-22b-distilled-fp8.safetensors",
+            ],
+            "Lightricks/LTX-2.3": [
+                "ltx-2.3-spatial-upscaler-x2-1.1.safetensors",
+            ],
+        },
+        "hf_required_files": {
+            "Lightricks/LTX-2.3-fp8": [
+                "ltx-2.3-22b-distilled-fp8.safetensors",
+            ],
+            "Lightricks/LTX-2.3": [
+                "ltx-2.3-spatial-upscaler-x2-1.1.safetensors",
+            ],
+        },
+        "vram": "24GB+ / GH200 recommandé",
+        "description": "LTX-2.3 FP8 distillé, 8 steps, I2V + T2V + audio natif, meilleur prompt following que LTX-2, backend ltx_pipelines",
+        "supports_prompt": True,
+        "supports_image": True,
+        "low_vram_tier": "advanced",
+        "backend_status": "experimental",
+        "default_frames": 121,
+        "default_steps": 8,
+        "default_fps": 24,
+    },
     "wan-native-5b": {
         "name": "Wan 2.2 5B (Natif)",
         "id": "Wan-AI/Wan2.2-TI2V-5B",
@@ -838,6 +871,14 @@ _VIDEO_CAPABILITY_OVERRIDES = {
         "supports_audio_native": True,
         "recommended_for": ["high_end_video", "audio_video"],
         "continuation_strategy": "last_frame_i2v_ltx2_fp8",
+    },
+    "ltx23_fp8": {
+        "min_vram_gb": 24,
+        "min_ram_gb": 128,
+        "supports_t2v": True,
+        "supports_audio_native": True,
+        "recommended_for": ["high_end_video", "audio_video", "latest_ltx"],
+        "continuation_strategy": "last_frame_i2v_ltx23_fp8",
     },
     "framepack": {
         "min_vram_gb": 24,

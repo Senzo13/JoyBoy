@@ -35,6 +35,7 @@ function getVideoModelDefaults(model) {
         'ltx': { name: 'LTX-Video 2B', fps: 8, steps: 8, configurable: false },
         'ltx2': { name: 'LTX-2 19B', fps: 24, steps: 8, configurable: false },  // distillé 8 steps
         'ltx2_fp8': { name: 'LTX-2 19B FP8', fps: 24, steps: 40, configurable: false },  // fp8 pré-quantifié
+        'ltx23_fp8': { name: 'LTX-2.3 22B FP8', fps: 24, steps: 8, configurable: false },  // distillé 8 steps
         'cogvideox': { name: 'CogVideoX-5B experimental', fps: 8, steps: 50, configurable: false },
         'cogvideox-q4': { name: 'CogVideoX-5B Q4 experimental', fps: 8, steps: 50, configurable: false },
         'cogvideox-2b': { name: 'CogVideoX-2B', fps: 8, steps: 50, configurable: false },

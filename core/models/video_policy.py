@@ -23,6 +23,7 @@ VIDEO_MODEL_ALIASES = {
     "Wan-AI/Wan2.2-T2V-A14B-Diffusers": "wan22-t2v-14b",
     "Wan-AI/Wan2.2-TI2V-5B": "wan-native-5b",
     "Wan-AI/Wan2.2-I2V-A14B": "wan-native-14b",
+    "Lightricks/LTX-2.3-fp8": "ltx23_fp8",
     "lightx2v/Wan2.2-I2V-A14B-4step": "lightx2v-wan22-i2v-4step",
     "lightx2v/Wan2.2-T2V-A14B-4step": "lightx2v-wan22-t2v-4step",
 }
@@ -38,6 +39,7 @@ LOW_VRAM_BLOCKED_MODELS = {
     "ltx",
     "ltx2",
     "ltx2_fp8",
+    "ltx23_fp8",
     "wan",
     "wan22",
     "wan22-5b",
@@ -306,7 +308,7 @@ def build_video_model_catalog(
     if low_vram:
         default_model = LOW_VRAM_SAFE_DEFAULT
     elif high_end:
-        high_end_preference = ("wan-native-14b", "wan22", "ltx2", "framepack", "hunyuan", "lightx2v-wan22-i2v-4step")
+        high_end_preference = ("wan-native-14b", "wan22", "ltx23_fp8", "ltx2", "framepack", "hunyuan", "lightx2v-wan22-i2v-4step")
         visible_ids = {item["id"] for item in visible}
         default_model = next((model_id for model_id in high_end_preference if model_id in visible_ids), None)
         default_model = default_model or (visible[0]["id"] if visible else LOW_VRAM_SAFE_DEFAULT)
@@ -314,7 +316,7 @@ def build_video_model_catalog(
         # On 16-40GB machines, prefer the normal Wan 5B quality path as the
         # neutral default. FastWan stays available, but should not silently take
         # over when a saved setting is missing or from an older build.
-        normal_preference = ("wan22-5b", "wan-native-5b", "wan22", "hunyuan", "ltx2", "fastwan", "lightx2v-wan22-i2v-4step", "svd")
+        normal_preference = ("wan22-5b", "wan-native-5b", "wan22", "hunyuan", "ltx23_fp8", "ltx2", "fastwan", "lightx2v-wan22-i2v-4step", "svd")
         visible_ids = {item["id"] for item in visible}
         default_model = next((model_id for model_id in normal_preference if model_id in visible_ids), None)
         default_model = default_model or (visible[0]["id"] if visible else LOW_VRAM_SAFE_DEFAULT)

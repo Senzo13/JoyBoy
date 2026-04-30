@@ -33,6 +33,10 @@ DEFAULT_VISUAL_SOURCE_VIDEO_PROMPT = (
     "Preserve the original framing, composition, visible shapes, textures, and details."
 )
 DEFAULT_SCENE_VIDEO_PROMPT = "The visible source content comes alive with natural, smooth motion."
+LTX2_MOTION_DEFAULT = (
+    "Animate the visible source with continuous natural motion across the whole clip. "
+    "Create clear, coherent movement instead of a still image."
+)
 FRAMEPACK_MOTION_DEFAULT = "Natural visible movement of the visible source content with subtle camera parallax."
 FRAMEPACK_QUALITY_SUFFIX = (
     "Preserve the visible subject/object, outfit/materials, scene, lighting, structure, and framing. "
@@ -53,6 +57,15 @@ VISUAL_SOURCE_FIDELITY_NEGATIVE = (
 VISUAL_SOURCE_MOTION_NEGATIVE = (
     "rapid motion, hyperactive movement, fast body movement, jerky movement, exaggerated motion, sudden pose change, "
     "violent camera movement, motion speed drift"
+)
+LTX2_VISUAL_SOURCE_MOTION_SUFFIX = (
+    "Preserve the source identity, outfit/materials, framing, lighting, color grade, texture, and detail level, "
+    "but generate continuous visible motion throughout the entire clip. The subject or visible content should not stay frozen; "
+    "use coherent pose, gesture, body, head, object, clothing, hair, and camera micro-movement when relevant."
+)
+LTX2_MOTION_NEGATIVE = (
+    "still image, frozen frame, motionless subject, no visible motion, identical frames, slideshow, pose locked, "
+    "static image, static shot, frozen body, frozen hands, frozen face, temporal stutter, repeated frame"
 )
 
 
@@ -89,6 +102,32 @@ def _build_video_negative_prompt(
     additions = [VISUAL_SOURCE_FIDELITY_NEGATIVE]
     if not _allows_fast_motion(user_prompt):
         additions.append(VISUAL_SOURCE_MOTION_NEGATIVE)
+    result = base
+    for addition in additions:
+        lower = result.lower()
+        if addition.split(",", 1)[0].lower() in lower:
+            continue
+        result = addition if not result else f"{result.rstrip(' ,')}, {addition}"
+    return result
+
+
+def _build_ltx2_motion_prompt(prompt: str, *, has_visual_source: bool = True) -> str:
+    """Build an LTX-2 prompt that keeps source fidelity without freezing motion."""
+    base = (prompt or LTX2_MOTION_DEFAULT or "").strip()
+    if not has_visual_source:
+        return base
+    lower = base.lower()
+    if "continuous visible motion" in lower or "should not stay frozen" in lower:
+        return base
+    return f"{base.rstrip('. ')}. {LTX2_VISUAL_SOURCE_MOTION_SUFFIX}"
+
+
+def _build_ltx2_negative_prompt(negative_prompt: str = "", *, has_visual_source: bool = True) -> str:
+    """Negative prompt tuned for LTX-2 I2V: avoid frozen outputs without overblocking style."""
+    base = (negative_prompt or "").strip()
+    additions = [LTX2_MOTION_NEGATIVE]
+    if has_visual_source:
+        additions.append(VISUAL_SOURCE_FIDELITY_NEGATIVE)
     result = base
     for addition in additions:
         lower = result.lower()

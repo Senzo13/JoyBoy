@@ -21,6 +21,7 @@ function normalizeRuntimeVideoModelId(modelId, models = []) {
         'Wan-AI/Wan2.2-T2V-A14B-Diffusers': 'wan22-t2v-14b',
         'Wan-AI/Wan2.2-TI2V-5B': 'wan-native-5b',
         'Wan-AI/Wan2.2-I2V-A14B': 'wan-native-14b',
+        'Lightricks/LTX-2.3-fp8': 'ltx23_fp8',
     };
     return aliases[value] || value;
 }
@@ -238,6 +239,7 @@ function updateVideoQualityVisibility() {
         'ltx': { fps: 8, steps: 8, configurable: false },
         'ltx2': { fps: 24, steps: 8, configurable: false },
         'ltx2_fp8': { fps: 24, steps: 40, configurable: false },
+        'ltx23_fp8': { fps: 24, steps: 8, configurable: false },
         'svd': { fps: 8, steps: 10, configurable: true },
         'cogvideox': { fps: 8, steps: 50, configurable: false },
         'cogvideox-q4': { fps: 8, steps: 50, configurable: false },

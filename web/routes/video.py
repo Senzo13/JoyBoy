@@ -547,6 +547,14 @@ def _video_repo_allow_patterns(meta, repo_id):
     return _normalize_hf_patterns(patterns)
 
 
+def _video_repo_required_files(meta, repo_id):
+    required = (meta or {}).get("hf_required_files")
+    if not isinstance(required, dict):
+        return []
+    patterns = required.get(repo_id) or required.get(str(repo_id).replace("/", "--"))
+    return _normalize_hf_patterns(patterns)
+
+
 def _matches_hf_patterns(path, patterns):
     if not patterns:
         return True
@@ -608,6 +616,23 @@ def _video_model_downloaded(meta, cache_dir):
         except Exception:
             return False
     repos = _video_model_repos(meta)
+    required_any = any(_video_repo_required_files(meta, repo_id) for repo_id in repos)
+    if required_any:
+        try:
+            from huggingface_hub import try_to_load_from_cache
+        except Exception:
+            try_to_load_from_cache = None
+        for repo_id in repos:
+            local_dir = os.path.join(cache_dir, repo_id.replace("/", "--"))
+            for required_file in _video_repo_required_files(meta, repo_id):
+                local_path = os.path.join(local_dir, required_file)
+                if os.path.exists(local_path):
+                    continue
+                cached = try_to_load_from_cache(repo_id, required_file, cache_dir=cache_dir) if try_to_load_from_cache else None
+                if isinstance(cached, str) and os.path.exists(cached):
+                    continue
+                return False
+        return True
     return bool(repos) and all(_video_repo_downloaded(repo_id, cache_dir) for repo_id in repos)
 
 
