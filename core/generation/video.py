@@ -254,7 +254,8 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
 
     has_visual_source = image is not None and not is_t2v_mode
     normalized_audio_engine = str(audio_engine or "auto").strip().lower()
-    ltx_native_audio_requested = bool(add_audio) and normalized_audio_engine in {"auto", "native", "ltx2", "ltx-2", "ltx"}
+    ltx_native_audio_engine_selected = normalized_audio_engine in {"native", "ltx2", "ltx-2", "ltx"}
+    ltx_native_audio_requested = ltx_native_audio_engine_selected or (bool(add_audio) and normalized_audio_engine == "auto")
     _state.ltx2_audio = None
 
     def _source_fidelity_prompt(default_prompt: str) -> str:
@@ -1144,15 +1145,19 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
             try:
                 call_params = inspect.signature(pipe.__call__).parameters
                 ltx_motion_kwargs = {
-                    "image_cond_noise_scale": 0.08,
-                    "decode_timestep": 0.03,
+                    "noise_scale": 0.12,
+                    "image_cond_noise_scale": 0.025,
+                    "decode_timestep": 0.05,
                     "decode_noise_scale": 0.025,
                 }
                 for key, value in ltx_motion_kwargs.items():
                     if key in call_params:
                         gen_kwargs[key] = value
                 if any(key in gen_kwargs for key in ltx_motion_kwargs):
-                    print("[VIDEO] LTX-2 I2V motion conditioning actif")
+                    print(
+                        "[VIDEO] LTX-2 I2V motion conditioning actif "
+                        f"({', '.join(key for key in ltx_motion_kwargs if key in gen_kwargs)})"
+                    )
             except Exception:
                 pass
 
