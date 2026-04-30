@@ -111,6 +111,42 @@ class WanNativeInstallTests(unittest.TestCase):
         self.assertIs(attention_module.flash_attention, original)
         self.assertIs(model_module.flash_attention, original)
 
+    def test_ltx_openimageio_installs_when_missing(self):
+        fake_openimageio = types.ModuleType("OpenImageIO")
+        imports = {"count": 0}
+
+        def fake_import(name, *args, **kwargs):
+            if name == "OpenImageIO":
+                imports["count"] += 1
+                if imports["count"] == 1:
+                    raise ImportError(name)
+                return fake_openimageio
+            return real_import(name, *args, **kwargs)
+
+        real_import = __import__
+        with patch.dict(sys.modules, {}, clear=False), \
+                patch("builtins.__import__", side_effect=fake_import), \
+                patch("core.models.video_loader.subprocess.check_call") as check_call:
+            available = video_loader._ensure_ltx_openimageio_importable()
+
+        self.assertTrue(available)
+        check_call.assert_called_once()
+
+    def test_ltx_openimageio_uses_import_shim_when_install_fails(self):
+        def fake_import(name, *args, **kwargs):
+            if name == "OpenImageIO":
+                raise ImportError(name)
+            return real_import(name, *args, **kwargs)
+
+        real_import = __import__
+        with patch.dict(sys.modules, {}, clear=False), \
+                patch("builtins.__import__", side_effect=fake_import), \
+                patch("core.models.video_loader.subprocess.check_call", side_effect=RuntimeError("no wheel")):
+            available = video_loader._ensure_ltx_openimageio_importable()
+            self.assertIn("OpenImageIO", sys.modules)
+
+        self.assertFalse(available)
+
 
 if __name__ == "__main__":
     unittest.main()

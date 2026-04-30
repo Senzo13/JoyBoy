@@ -25,6 +25,7 @@ import sys
 import subprocess
 import torch
 import types
+import warnings
 from importlib.machinery import ModuleSpec
 from types import MethodType
 
@@ -246,6 +247,12 @@ def _patch_wan_native_attention_fallback() -> bool:
 
     attention_module.flash_attention = fallback
     model_module.flash_attention = fallback
+    warnings.filterwarnings(
+        "ignore",
+        message=r"Padding mask is disabled when using scaled_dot_product_attention\..*",
+        category=UserWarning,
+        module=r"wan\.modules\.attention",
+    )
     print("[MM] Wan natif: flash_attn absent, fallback PyTorch SDPA activé.")
     return True
 
@@ -1309,6 +1316,45 @@ def _hf_local_or_download(repo_id, filename, cache_dir):
     )
 
 
+def _ensure_ltx_openimageio_importable() -> bool:
+    """Make the optional OpenImageIO import available for ltx_pipelines.
+
+    The LTX pipeline imports its media I/O helpers at package import time. JoyBoy
+    feeds images directly and does not need that module for normal generation,
+    but the missing import still prevents ``DistilledPipeline`` from loading on
+    fresh cloud machines.
+    """
+    try:
+        import OpenImageIO  # noqa: F401
+        return True
+    except ImportError:
+        pass
+
+    print("[MM]   -> Installation OpenImageIO pour ltx_pipelines...")
+    try:
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "OpenImageIO", "-q"])
+        import OpenImageIO  # noqa: F401
+        return True
+    except Exception as exc:
+        print(f"[MM]   -> OpenImageIO indisponible ({exc.__class__.__name__}); shim import activé.")
+
+    if "OpenImageIO" not in sys.modules:
+        fake_openimageio = types.ModuleType("OpenImageIO")
+        fake_openimageio.__spec__ = ModuleSpec("OpenImageIO", None)
+
+        def _openimageio_unavailable(*_args, **_kwargs):
+            raise ImportError(
+                "OpenImageIO is unavailable in this environment; ltx_pipelines "
+                "media file helpers are disabled, but direct JoyBoy image/video "
+                "generation can continue if those helpers are not used."
+            )
+
+        fake_openimageio.ImageInput = types.SimpleNamespace(open=_openimageio_unavailable)
+        fake_openimageio.ImageOutput = types.SimpleNamespace(create=_openimageio_unavailable)
+        sys.modules["OpenImageIO"] = fake_openimageio
+    return False
+
+
 def load_ltx2_fp8(custom_cache, model_name="ltx2_fp8"):
     """Load LTX-2/LTX-2.3 FP8 via ltx_pipelines officiel.
 
@@ -1325,6 +1371,7 @@ def load_ltx2_fp8(custom_cache, model_name="ltx2_fp8"):
     print(f"[MM] Loading {display_name}...")
 
     # 1. Auto-install ltx_pipelines si absent
+    openimageio_available = _ensure_ltx_openimageio_importable()
     try:
         from ltx_pipelines.distilled import DistilledPipeline
     except (ImportError, OSError) as _e:
@@ -1354,6 +1401,7 @@ def load_ltx2_fp8(custom_cache, model_name="ltx2_fp8"):
             if _cuda_tag:
                 _pip_args += ["--index-url", f"https://download.pytorch.org/whl/{_cuda_tag.lstrip('+')}"]
             subprocess.check_call(_pip_args)
+        openimageio_available = _ensure_ltx_openimageio_importable()
         from ltx_pipelines.distilled import DistilledPipeline
 
     # 2. Télécharger les checkpoints nécessaires via huggingface_hub
@@ -1477,7 +1525,7 @@ def load_ltx2_fp8(custom_cache, model_name="ltx2_fp8"):
 
     return {
         "pipe": pipe,
-        "extras": {"ltx2_native": True}
+        "extras": {"ltx2_native": True, "openimageio": openimageio_available}
     }
 
 

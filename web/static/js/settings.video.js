@@ -223,15 +223,17 @@ function updateVideoQualityVisibility() {
     const qualityRow = document.getElementById('video-quality-row');
     const model = userSettings.videoModel || 'svd';
 
-    // Afficher le sélecteur de qualité uniquement pour les modèles 5B
+    // Afficher le sélecteur de qualité pour les modèles qui supportent 720p/480p.
     if (qualityRow) {
-        qualityRow.style.display = (model === 'wan22-5b' || model === 'fastwan') ? '' : 'none';
+        const qualityModels = new Set(['wan22-5b', 'fastwan', 'wan-native-5b', 'lightx2v']);
+        qualityRow.style.display = qualityModels.has(model) ? '' : 'none';
     }
 
     const modelDefaults = {
         'wan22': { fps: 16, steps: 40, configurable: false },
         'wan': { fps: 16, steps: 50, configurable: false },
         'wan22-5b': { fps: 24, steps: 30, configurable: true },
+        'wan-native-5b': { fps: 24, steps: 50, configurable: true },
         'fastwan': { fps: 24, steps: 3, configurable: false },
         'hunyuan': { fps: 15, steps: 12, configurable: false },
         'framepack': { fps: 18, steps: 9, configurable: false },
