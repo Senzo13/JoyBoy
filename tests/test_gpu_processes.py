@@ -1,7 +1,9 @@
 import os
 import unittest
 from pathlib import Path
+from unittest import mock
 
+from core.infra import gpu_processes
 from core.infra.gpu_processes import build_gpu_process_record
 
 
@@ -54,6 +56,23 @@ class GpuProcessTests(unittest.TestCase):
         self.assertEqual(record["kind"], "external")
         self.assertFalse(record["is_joyboy"])
         self.assertFalse(record["killable"])
+
+    @mock.patch("core.infra.gpu_processes.time.sleep", return_value=None)
+    @mock.patch("core.infra.gpu_processes.subprocess.run")
+    @mock.patch("core.infra.gpu_processes.list_gpu_processes", return_value=[])
+    def test_restart_persistenced_for_ghost_vram(self, _list_processes, run, _sleep):
+        run.side_effect = [
+            mock.Mock(returncode=0, stdout="73633\n", stderr=""),
+            mock.Mock(returncode=0, stdout="", stderr=""),
+            mock.Mock(returncode=0, stdout="0\n", stderr=""),
+        ]
+
+        result = gpu_processes.restart_persistenced_for_ghost_vram()
+
+        self.assertTrue(result["attempted"])
+        self.assertTrue(result["restarted"])
+        self.assertEqual(result["used_mb_before"], 73633)
+        self.assertEqual(result["used_mb_after"], 0)
 
 
 if __name__ == "__main__":

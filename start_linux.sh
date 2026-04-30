@@ -91,6 +91,36 @@ stop_existing_joyboy() {
     done
 }
 
+clear_ghost_gpu_vram() {
+    if [ "${JOYBOY_SKIP_GHOST_VRAM_CLEANUP:-}" = "1" ]; then
+        return 0
+    fi
+    command -v nvidia-smi >/dev/null 2>&1 || return 0
+
+    local used_mb gpu_pids
+    used_mb="$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits 2>/dev/null | head -n 1 | tr -d '[:space:]')"
+    [ -n "$used_mb" ] || return 0
+    gpu_pids="$(nvidia-smi --query-compute-apps=pid --format=csv,noheader,nounits 2>/dev/null | tr -d '[:space:]')"
+
+    if [ "$used_mb" -gt "${JOYBOY_GHOST_VRAM_THRESHOLD_MB:-2048}" ] 2>/dev/null && [ -z "$gpu_pids" ]; then
+        echo -e "${YELLOW}[STARTUP]${NC} Ghost VRAM detected (${used_mb}MiB used, no CUDA process)."
+        if command -v systemctl >/dev/null 2>&1; then
+            if [ "$(id -u)" -eq 0 ]; then
+                systemctl restart nvidia-persistenced 2>/dev/null || true
+            elif command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+                sudo -n systemctl restart nvidia-persistenced 2>/dev/null || true
+            else
+                echo -e "${YELLOW}[STARTUP]${NC} Run manually if VRAM stays high: sudo systemctl restart nvidia-persistenced"
+                return 0
+            fi
+            sleep 3
+            local after_mb
+            after_mb="$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits 2>/dev/null | head -n 1 | tr -d '[:space:]')"
+            echo -e "${GREEN}[STARTUP]${NC} Ghost VRAM cleanup: ${used_mb}MiB -> ${after_mb:-?}MiB"
+        fi
+    fi
+}
+
 ensure_ubuntu_python_bootstrap() {
     if python3 -c "import ensurepip, venv" >/dev/null 2>&1; then
         return 0
@@ -170,6 +200,7 @@ echo ""
 echo -e "${GREEN}Starting JoyBoy...${NC}"
 print_url_hint
 stop_existing_joyboy
+clear_ghost_gpu_vram
 
 if [ "${JOYBOY_OPEN_BROWSER:-}" = "1" ] || [ -n "${DISPLAY:-}" ] || [ -n "${WAYLAND_DISPLAY:-}" ]; then
     python scripts/open_browser.py --url "$JOYBOY_LOCAL_URL" --timeout 120 >/dev/null 2>&1 &

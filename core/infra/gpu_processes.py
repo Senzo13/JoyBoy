@@ -149,6 +149,75 @@ def list_gpu_processes(project_root: Path = PROJECT_ROOT) -> list[dict]:
     return processes
 
 
+def get_nvidia_memory_used_mb() -> float:
+    """Return global GPU memory used according to nvidia-smi, or 0 when unavailable."""
+    try:
+        result = subprocess.run(
+            [
+                "nvidia-smi",
+                "--query-gpu=memory.used",
+                "--format=csv,noheader,nounits",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return 0.0
+
+    if result.returncode != 0:
+        return 0.0
+    first = (result.stdout or "").splitlines()[0].strip() if result.stdout else ""
+    try:
+        return float(first)
+    except ValueError:
+        return 0.0
+
+
+def restart_persistenced_for_ghost_vram(threshold_mb: float = 2048) -> dict:
+    """Clear ghost VRAM by restarting nvidia-persistenced when no CUDA PID owns it.
+
+    The restart is attempted non-interactively. If sudo needs a password, callers
+    get a clear result and can show the manual command instead of hanging.
+    """
+    used_mb = get_nvidia_memory_used_mb()
+    processes = list_gpu_processes()
+    result = {
+        "attempted": False,
+        "restarted": False,
+        "used_mb_before": round(used_mb, 1),
+        "used_mb_after": None,
+        "process_count": len(processes),
+        "error": "",
+    }
+    if used_mb < float(threshold_mb) or processes:
+        return result
+
+    result["attempted"] = True
+    cmd = ["systemctl", "restart", "nvidia-persistenced"]
+    if hasattr(os, "geteuid") and os.geteuid() != 0:
+        cmd = ["sudo", "-n", *cmd]
+
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+    except FileNotFoundError as exc:
+        result["error"] = str(exc)
+        return result
+    except subprocess.TimeoutExpired:
+        result["error"] = "timeout"
+        return result
+
+    if proc.returncode != 0:
+        result["error"] = (proc.stderr or proc.stdout or f"exit {proc.returncode}").strip()
+        return result
+
+    time.sleep(2)
+    after_mb = get_nvidia_memory_used_mb()
+    result["used_mb_after"] = round(after_mb, 1)
+    result["restarted"] = True
+    return result
+
+
 def kill_stale_joyboy_gpu_processes(project_root: Path = PROJECT_ROOT, timeout: float = 1.0) -> list[dict]:
     """Terminate stale JoyBoy GPU processes, never the current server."""
     targets = [proc for proc in list_gpu_processes(project_root) if proc.get("killable")]

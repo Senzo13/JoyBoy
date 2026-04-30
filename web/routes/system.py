@@ -541,11 +541,21 @@ def hard_reset():
 
         # 3. Nettoyer les vieux workers GPU JoyBoy que le singleton courant ne possède plus.
         try:
-            from core.infra.gpu_processes import kill_stale_joyboy_gpu_processes
+            from core.infra.gpu_processes import kill_stale_joyboy_gpu_processes, restart_persistenced_for_ghost_vram
             killed = kill_stale_joyboy_gpu_processes()
             results['gpu_processes_killed'] = killed
             if killed:
                 print(f"[HARD RESET] {len(killed)} process GPU JoyBoy stoppé(s)")
+
+            ghost = restart_persistenced_for_ghost_vram()
+            results['ghost_vram_cleanup'] = ghost
+            if ghost.get("restarted"):
+                print(
+                    "[HARD RESET] VRAM fantôme nettoyée via nvidia-persistenced "
+                    f"({ghost.get('used_mb_before')}MiB -> {ghost.get('used_mb_after')}MiB)"
+                )
+            elif ghost.get("attempted") and ghost.get("error"):
+                print(f"[HARD RESET] VRAM fantôme détectée, restart refusé: {ghost.get('error')}")
         except Exception as exc:
             results['gpu_process_cleanup_error'] = str(exc)
             print(f"[HARD RESET] Nettoyage process GPU ignoré: {exc}")
