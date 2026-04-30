@@ -1,5 +1,7 @@
 import os
 import subprocess
+import sys
+import types
 import unittest
 from unittest.mock import patch
 
@@ -58,6 +60,56 @@ class WanNativeInstallTests(unittest.TestCase):
 
         self.assertIn("--no-build-isolation flash_attn", joined)
         self.assertIn("--no-deps git+https://github.com/Wan-Video/Wan2.2.git", joined)
+
+    def test_wan_native_patches_attention_fallback_without_flash_attn(self):
+        original = object()
+        fallback = object()
+        wan_module = types.ModuleType("wan")
+        wan_modules = types.ModuleType("wan.modules")
+        attention_module = types.ModuleType("wan.modules.attention")
+        model_module = types.ModuleType("wan.modules.model")
+        attention_module.FLASH_ATTN_2_AVAILABLE = False
+        attention_module.FLASH_ATTN_3_AVAILABLE = False
+        attention_module.flash_attention = original
+        attention_module.attention = fallback
+        model_module.flash_attention = original
+
+        with patch.dict(sys.modules, {
+            "wan": wan_module,
+            "wan.modules": wan_modules,
+            "wan.modules.attention": attention_module,
+            "wan.modules.model": model_module,
+        }):
+            patched = video_loader._patch_wan_native_attention_fallback()
+
+        self.assertTrue(patched)
+        self.assertIs(attention_module.flash_attention, fallback)
+        self.assertIs(model_module.flash_attention, fallback)
+
+    def test_wan_native_keeps_flash_attention_when_available(self):
+        original = object()
+        fallback = object()
+        wan_module = types.ModuleType("wan")
+        wan_modules = types.ModuleType("wan.modules")
+        attention_module = types.ModuleType("wan.modules.attention")
+        model_module = types.ModuleType("wan.modules.model")
+        attention_module.FLASH_ATTN_2_AVAILABLE = True
+        attention_module.FLASH_ATTN_3_AVAILABLE = False
+        attention_module.flash_attention = original
+        attention_module.attention = fallback
+        model_module.flash_attention = original
+
+        with patch.dict(sys.modules, {
+            "wan": wan_module,
+            "wan.modules": wan_modules,
+            "wan.modules.attention": attention_module,
+            "wan.modules.model": model_module,
+        }):
+            patched = video_loader._patch_wan_native_attention_fallback()
+
+        self.assertFalse(patched)
+        self.assertIs(attention_module.flash_attention, original)
+        self.assertIs(model_module.flash_attention, original)
 
 
 if __name__ == "__main__":

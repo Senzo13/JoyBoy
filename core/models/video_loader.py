@@ -217,6 +217,39 @@ def _install_wan_native_backend():
     subprocess.run(install_backend_command, check=True)
 
 
+def _patch_wan_native_attention_fallback() -> bool:
+    """Use Wan's torch SDPA attention path when FlashAttention is unavailable.
+
+    Upstream Wan imports ``flash_attention`` directly into ``wan.modules.model``.
+    The generic ``attention`` helper has a PyTorch SDPA fallback, but the direct
+    model symbol still asserts when flash-attn is not installed. Patching both
+    symbols keeps native Wan usable on ARM/GH200 images where flash-attn wheels
+    are not available.
+    """
+    try:
+        from wan.modules import attention as attention_module
+        from wan.modules import model as model_module
+    except Exception as exc:
+        print(f"[MM] Wan attention fallback non appliqué: {exc}")
+        return False
+
+    has_flash = bool(
+        getattr(attention_module, "FLASH_ATTN_2_AVAILABLE", False)
+        or getattr(attention_module, "FLASH_ATTN_3_AVAILABLE", False)
+    )
+    if has_flash:
+        return False
+
+    fallback = getattr(attention_module, "attention", None)
+    if fallback is None:
+        return False
+
+    attention_module.flash_attention = fallback
+    model_module.flash_attention = fallback
+    print("[MM] Wan natif: flash_attn absent, fallback PyTorch SDPA activé.")
+    return True
+
+
 # ============================================================
 # PER-MODEL LOADERS
 # ============================================================
@@ -1464,6 +1497,7 @@ def load_wan_native(model_name, custom_cache):
     except ImportError:
         _install_wan_native_backend()
         import wan
+    attention_fallback = _patch_wan_native_attention_fallback()
 
     from huggingface_hub import snapshot_download
     from core.models import VIDEO_MODELS
@@ -1517,5 +1551,5 @@ def load_wan_native(model_name, custom_cache):
 
     return {
         "pipe": pipe,
-        "extras": {"native": True}
+        "extras": {"native": True, "attention_fallback": attention_fallback}
     }
