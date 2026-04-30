@@ -546,7 +546,7 @@ def load_wan_21_14b(custom_cache):
         pipe, VRAM_GB,
         enable_sageattention=False,
         enable_fp8=False,
-        model_type=model_name,
+        model_type="wan",
     )
     gc.collect()
     opt_str = []

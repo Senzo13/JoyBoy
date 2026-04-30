@@ -21,7 +21,6 @@ from core.generation.video_prompts import (
     _build_ltx2_motion_prompt,
     _build_ltx2_negative_prompt,
     _build_framepack_prompt,
-    _normalize_video_prompt_language,
     _build_video_negative_prompt,
     _build_video_prompt,
 )
@@ -160,43 +159,6 @@ def unload_mmaudio():
         print("[AUDIO] MMAudio déchargé")
 
 
-def _video_motion_score(frames, *, sample_count: int = 8) -> float:
-    """Return a small mean absolute frame-difference score for generation diagnostics."""
-    if not frames or len(frames) < 2:
-        return 0.0
-
-    def _frame_gray(frame):
-        if isinstance(frame, Image.Image):
-            arr = np.array(frame.convert("L").resize((96, 96)))
-        elif isinstance(frame, np.ndarray):
-            arr = frame
-            if arr.dtype != np.uint8:
-                arr = (arr * 255).clip(0, 255).astype(np.uint8)
-            if arr.ndim == 3:
-                arr = arr[:, :, :3].mean(axis=2)
-            arr = np.array(Image.fromarray(arr.astype(np.uint8)).resize((96, 96)))
-        elif hasattr(frame, "cpu"):
-            arr = frame.detach().cpu().numpy()
-            if arr.ndim == 3 and arr.shape[0] in (3, 4):
-                arr = np.transpose(arr, (1, 2, 0))
-            if arr.max() <= 1.0:
-                arr = (arr * 255).clip(0, 255).astype(np.uint8)
-            if arr.ndim == 3:
-                arr = arr[:, :, :3].mean(axis=2)
-            arr = np.array(Image.fromarray(arr.astype(np.uint8)).resize((96, 96)))
-        else:
-            arr = np.array(frame)
-            if arr.ndim == 3:
-                arr = arr[:, :, :3].mean(axis=2)
-            arr = np.array(Image.fromarray(arr.astype(np.uint8)).resize((96, 96)))
-        return arr.astype(np.float32)
-
-    indices = np.linspace(0, len(frames) - 1, min(sample_count, len(frames)), dtype=int)
-    sampled = [_frame_gray(frames[int(index)]) for index in indices]
-    diffs = [float(np.mean(np.abs(sampled[i] - sampled[i - 1]))) for i in range(1, len(sampled))]
-    return float(np.mean(diffs)) if diffs else 0.0
-
-
 def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49, num_steps: int = 50, fps: int = 8, video_model: str = "svd", continue_from_last: bool = False, unload_after: bool = True, chat_id: str = None, pipe=None, upscale_pipe=None, cancel_check=None, add_audio: bool = False, quality: str = "720p", face_restore: str = "off", refine_passes: int = 0, release_pipe_before_export=None, continuation_context: dict | None = None, audio_engine: str = "auto", audio_prompt: str = ""):
     """
     Génère une vidéo avec le modèle sélectionné (SVD, CogVideoX, Wan2.1, etc.)
@@ -248,11 +210,6 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
         # Nouvelle vidéo = reset des frames accumulées
         _state.all_video_frames = []
         print("[VIDEO] Nouvelle vidéo (reset frames)")
-
-    original_prompt = prompt or ""
-    prompt, prompt_was_normalized = _normalize_video_prompt_language(prompt)
-    if prompt_was_normalized:
-        print(f"[VIDEO] Prompt normalisé EN: {prompt}")
 
     # Sauvegarder le prompt pour continuation future
     if prompt:
@@ -1672,13 +1629,6 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
 
     gen_time = time.time() - start_time
     print(f"[VIDEO] ⏱️ Génération: {gen_time:.1f}s ({len(generated_frames)} frames)")
-    motion_score = _video_motion_score(generated_frames)
-    print(f"[VIDEO] Score mouvement frames: {motion_score:.2f}")
-    if has_visual_source and motion_score < 1.0:
-        print(
-            "[VIDEO] ⚠️ Mouvement très faible détecté. "
-            "Le modèle a probablement trop préservé l'image source; essaye Wan natif ou LTX-2.3 FP8."
-        )
 
     # Sauvegarder la dernière frame pour continuation future (toujours PIL Image)
     if len(generated_frames) > 0:
@@ -1997,7 +1947,7 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
     session = create_video_session(
         video_path=video_path,
         frames=_state.all_video_frames,
-        prompt=original_prompt or prompt or effective_video_prompt,
+        prompt=prompt or effective_video_prompt,
         final_prompt=effective_video_prompt,
         model_id=video_model,
         model_name=model_info.get("name", video_model),
@@ -2026,7 +1976,7 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
         source="video",
         model=model_info.get("name", video_model),
         model_id=video_model,
-        prompt=original_prompt or prompt or effective_video_prompt,
+        prompt=prompt or effective_video_prompt,
         final_prompt=effective_video_prompt,
         video_session_id=session.get("id"),
         source_video_session_id=session.get("source_session_id"),

@@ -14,6 +14,60 @@ video_bp = Blueprint('video', __name__)
 video_download_status = {}
 
 
+def _rewrite_video_prompt_for_high_vram(prompt, *, chat_model=None, vram_gb=0):
+    """Rewrite/translate video prompts with the selected chat model on high-VRAM machines only."""
+    clean = str(prompt or "").strip()
+    if not clean:
+        return clean
+
+    mode = os.environ.get("JOYBOY_VIDEO_PROMPT_REWRITE", "auto").strip().lower()
+    if mode in {"0", "false", "no", "off"}:
+        return clean
+
+    try:
+        min_vram = float(os.environ.get("JOYBOY_VIDEO_PROMPT_REWRITE_MIN_VRAM_GB", "24"))
+    except ValueError:
+        min_vram = 24.0
+    try:
+        current_vram = float(vram_gb or 0)
+    except (TypeError, ValueError):
+        current_vram = 0.0
+    if mode not in {"1", "true", "yes", "on", "force"} and current_vram < min_vram:
+        return clean
+
+    try:
+        from core.utility_ai import _call_utility
+
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "Translate or rewrite the user's request into a concise English prompt for an image-to-video model. "
+                    "Preserve the user's intent. Focus on visible motion and temporal action. "
+                    "Do not add unrelated details. Reply with only the final prompt."
+                ),
+            },
+            {"role": "user", "content": clean},
+        ]
+        rewritten = _call_utility(
+            messages,
+            num_predict=140,
+            temperature=0.1,
+            timeout=20,
+            model=(str(chat_model).strip() or None),
+        )
+    except Exception as exc:
+        print(f"[VIDEO] Prompt rewrite LLM ignoré ({exc})")
+        return clean
+
+    rewritten = " ".join(str(rewritten or "").split()).strip(" \"'")
+    if not rewritten:
+        return clean
+    if rewritten.lower().startswith("prompt:"):
+        rewritten = rewritten.split(":", 1)[1].strip()
+    return rewritten or clean
+
+
 # --- Helper: lazy imports from web.app to avoid circular imports ---
 
 def _get_state():
@@ -268,6 +322,15 @@ def generate_video_endpoint():
                 }
             elif continuation_prompt and not prompt:
                 prompt = continuation_prompt
+
+        rewritten_prompt = _rewrite_video_prompt_for_high_vram(
+            prompt,
+            chat_model=chat_model,
+            vram_gb=VRAM_GB,
+        )
+        if rewritten_prompt != prompt:
+            print(f"[VIDEO] Prompt réécrit par LLM ({chat_model}): {rewritten_prompt}")
+            prompt = rewritten_prompt
 
         # T2V mode: allow no image for models that support it
         if not image_b64 and not continue_from_last:

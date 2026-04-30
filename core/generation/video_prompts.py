@@ -16,31 +16,6 @@ FAST_MOTION_INTENT_WORDS = (
     "courir", "court", "danse", "saut", "saute",
 )
 
-VIDEO_FRENCH_MOTION_SUBS = (
-    (r"\belle\s+bouge\b", "she moves"),
-    (r"\bil\s+bouge\b", "he moves"),
-    (r"\b(?:bouge|bouger|mouvement)\b", "moves"),
-    (r"\b(?:lentement|doucement)\b", "slowly"),
-    (r"\b(?:legerement|l[eé]g[eè]rement)\b", "slightly"),
-    (r"\b(?:tourne|tourner|tournant)\b", "turns"),
-    (r"\b(?:l[eè]ve|lever|levant)\b", "raises"),
-    (r"\b(?:baisse|baisser|baissant)\b", "lowers"),
-    (r"\b(?:avance|avancer|avan[çc]ant)\b", "moves forward"),
-    (r"\b(?:recule|reculer|reculant)\b", "moves backward"),
-    (r"\b(?:marche|marcher|marchant)\b", "walks"),
-    (r"\b(?:danse|danser|dansant)\b", "dances"),
-    (r"\bcheveux\b", "hair"),
-    (r"\bbras\b", "arms"),
-    (r"\bjambes?\b", "legs"),
-    (r"\bt[eê]te\b", "head"),
-    (r"\bmain(s)?\b", "hand\\1"),
-    (r"\bcorps\b", "body"),
-    (r"\bcam[eé]ra\b", "camera"),
-    (r"\bet\b", "and"),
-    (r"\bavec\b", "with"),
-)
-
-
 def _clip_safe_words(text: str, max_words: int) -> tuple[str, bool]:
     """Trim long text before CLIP truncates the important motion suffix."""
     clean = " ".join((text or "").split())
@@ -50,28 +25,6 @@ def _clip_safe_words(text: str, max_words: int) -> tuple[str, bool]:
     if len(words) <= max_words:
         return clean, False
     return " ".join(words[:max_words]).rstrip(" ,;:"), True
-
-
-def _normalize_video_prompt_language(prompt: str) -> tuple[str, bool]:
-    """Normalize common French video prompts to English before model-specific suffixes."""
-    original = (prompt or "").strip()
-    if not original:
-        return original, False
-
-    normalized = original
-    for pattern, replacement in VIDEO_FRENCH_MOTION_SUBS:
-        normalized = re.sub(pattern, replacement, normalized, flags=re.IGNORECASE)
-
-    try:
-        from core.ai.prompt_ai import _preprocess_french_prompt
-
-        normalized = _preprocess_french_prompt(normalized)
-    except Exception:
-        pass
-
-    normalized = re.sub(r"\b(?:le|la|les|un|une|des|du|de)\b", " ", normalized, flags=re.IGNORECASE)
-    normalized = re.sub(r"\s+", " ", normalized).strip(" ,")
-    return normalized, normalized != original
 
 
 DEFAULT_VISUAL_SOURCE_VIDEO_PROMPT = (
