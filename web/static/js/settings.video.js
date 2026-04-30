@@ -223,12 +223,39 @@ async function handleVideoModelSelectChange(selectEl) {
 
 function updateVideoQualityVisibility() {
     const qualityRow = document.getElementById('video-quality-row');
+    const qualitySelect = document.getElementById('settings-video-quality');
     const model = userSettings.videoModel || 'svd';
 
     // Afficher le sélecteur de qualité pour les modèles qui supportent 720p/480p.
     if (qualityRow) {
-        const qualityModels = new Set(['wan22-5b', 'fastwan', 'wan-native-5b']);
-        qualityRow.style.display = (qualityModels.has(model) || model.startsWith('lightx2v-')) ? '' : 'none';
+        const configurableQualityModels = new Set(['wan22-5b', 'fastwan', 'wan-native-5b']);
+        const fixed480Models = new Set([
+            'wan',
+            'wan22',
+            'wan-native-14b',
+            'hunyuan',
+            'ltx',
+            'ltx2',
+            'ltx2_fp8',
+            'ltx23_fp8',
+            'framepack',
+            'framepack-fast',
+            'cogvideox',
+            'cogvideox-q4',
+            'cogvideox-2b',
+        ]);
+        const isConfigurable = configurableQualityModels.has(model) || model.startsWith('lightx2v-');
+        const isFixed480 = fixed480Models.has(model);
+        qualityRow.style.display = (isConfigurable || isFixed480) ? '' : 'none';
+        if (qualitySelect) {
+            qualitySelect.disabled = isFixed480;
+            qualitySelect.title = isFixed480
+                ? 'Ce modèle est verrouillé en 480p par son backend.'
+                : '';
+            if (isFixed480 && qualitySelect.value !== '480p') {
+                qualitySelect.value = '480p';
+            }
+        }
     }
 
     const modelDefaults = {
