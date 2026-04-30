@@ -112,10 +112,10 @@ def _build_video_negative_prompt(
     user_prompt: str = "",
 ) -> str:
     base = (negative_prompt or "").strip()
-    if not has_visual_source:
-        return base
-    additions = [VISUAL_SOURCE_FIDELITY_NEGATIVE]
-    if not _allows_fast_motion(user_prompt):
+    additions = []
+    if has_visual_source:
+        additions.append(VISUAL_SOURCE_FIDELITY_NEGATIVE)
+    if has_visual_source and not _allows_fast_motion(user_prompt):
         additions.append(VISUAL_SOURCE_MOTION_NEGATIVE)
     if not _requests_stylized_video(user_prompt):
         additions.append(VIDEO_REALISM_STYLE_NEGATIVE)
@@ -139,12 +139,19 @@ def _build_ltx2_motion_prompt(prompt: str, *, has_visual_source: bool = True) ->
     return f"{base.rstrip('. ')}. {LTX2_VISUAL_SOURCE_MOTION_SUFFIX}"
 
 
-def _build_ltx2_negative_prompt(negative_prompt: str = "", *, has_visual_source: bool = True) -> str:
+def _build_ltx2_negative_prompt(
+    negative_prompt: str = "",
+    *,
+    has_visual_source: bool = True,
+    user_prompt: str = "",
+) -> str:
     """Negative prompt tuned for LTX-2 I2V: avoid frozen outputs without overblocking style."""
     base = (negative_prompt or "").strip()
     additions = [LTX2_MOTION_NEGATIVE]
     if has_visual_source:
         additions.append(VISUAL_SOURCE_FIDELITY_NEGATIVE)
+    if not _requests_stylized_video(user_prompt):
+        additions.append(VIDEO_REALISM_STYLE_NEGATIVE)
     result = base
     for addition in additions:
         lower = result.lower()

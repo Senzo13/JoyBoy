@@ -1100,6 +1100,7 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
             "disfigured, motion smear, motion artifacts, fused fingers, "
             "bad anatomy, weird hand, ugly, transition",
             has_visual_source=has_visual_source,
+            user_prompt=prompt,
         )
         print(f"[VIDEO] Prompt: {video_prompt}")
 
