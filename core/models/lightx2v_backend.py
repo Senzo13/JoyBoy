@@ -466,6 +466,8 @@ def _build_lightx2v_config(
     })
 
     if attention == "torch_sdpa":
+        config["rope_type"] = "torch"
+        config.setdefault("rope_chunk", True)
         # FP8 configs may require extra kernels. Keep the default one-shot path
         # conservative; turbo stays opt-in through JOYBOY_LIGHTX2V_TURBO.
         if not turbo_enabled:

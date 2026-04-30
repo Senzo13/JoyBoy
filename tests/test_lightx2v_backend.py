@@ -334,6 +334,8 @@ class LightX2VBackendTests(unittest.TestCase):
             self.assertNotIn("turbo_marker", config)
             self.assertNotIn("dit_quantized", config)
             self.assertNotIn("t5_quantized", config)
+            self.assertEqual(config["rope_type"], "torch")
+            self.assertTrue(config["rope_chunk"])
             self.assertEqual(config["target_video_length"], 81)
             self.assertTrue(
                 config["high_noise_original_ckpt"].endswith(
