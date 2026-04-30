@@ -81,10 +81,13 @@ class LightX2VBackendTests(unittest.TestCase):
         self.assertNotIn("torchaudio", flat_packages)
         self.assertNotIn("requirements.txt", " ".join(flat_packages))
         self.assertIn("gguf", flat_packages)
+        self.assertNotIn("decord", pip_calls[0])
+        self.assertIn(["decord"], pip_calls)
         self.assertTrue(any(call[:1] == ["--no-deps"] and "-e" in call for call in pip_calls))
 
     def test_import_checks_include_gguf_for_lightx2v_cli_startup(self):
         self.assertEqual(backend.LIGHTX2V_IMPORT_CHECKS["gguf"], "gguf")
+        self.assertNotIn("decord", backend.LIGHTX2V_IMPORT_CHECKS)
 
     def test_load_lightx2v_repairs_missing_minimal_dependency(self):
         with (
@@ -137,6 +140,7 @@ class LightX2VBackendTests(unittest.TestCase):
         self.assertEqual(wrapped[0], sys.executable)
         self.assertEqual(wrapped[1], "-c")
         self.assertIn("torchaudio", wrapped[2])
+        self.assertIn("decord", wrapped[2])
         self.assertEqual(wrapped[3], "lightx2v.infer")
         self.assertIn("--save_result_path", wrapped)
 

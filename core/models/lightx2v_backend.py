@@ -39,13 +39,16 @@ LIGHTX2V_MINIMAL_PACKAGES = [
     "imageio",
     "imageio-ffmpeg",
     "opencv-python-headless",
-    "decord",
     "av",
     "gguf",
     "ftfy",
     "prometheus-client",
     "pydantic",
     "scipy",
+]
+
+LIGHTX2V_OPTIONAL_PACKAGES = [
+    "decord",
 ]
 
 LIGHTX2V_IMPORT_CHECKS = {
@@ -55,7 +58,6 @@ LIGHTX2V_IMPORT_CHECKS = {
     "einops": "einops",
     "safetensors": "safetensors",
     "cv2": "opencv-python-headless",
-    "decord": "decord",
     "av": "av",
     "gguf": "gguf",
     "ftfy": "ftfy",
@@ -250,6 +252,11 @@ def install_lightx2v_backend(*, upgrade: bool = False) -> dict[str, Any]:
     _run_checked(["git", "-C", str(repo_dir), "checkout", "--force", LIGHTX2V_PINNED_COMMIT], timeout=120)
 
     _pip_install([*LIGHTX2V_MINIMAL_PACKAGES])
+    for package in LIGHTX2V_OPTIONAL_PACKAGES:
+        try:
+            _pip_install([package])
+        except Exception as exc:
+            print(f"[LIGHTX2V] Dépendance optionnelle indisponible ({package}): {exc}")
     _pip_install(["--no-deps", "-e", str(repo_dir)])
 
     status = get_lightx2v_backend_status()
@@ -498,7 +505,7 @@ def _lightx2v_task_requires_audio(meta: dict[str, Any]) -> bool:
     return task in {"audio", "a2v", "s2v", "speech2video", "t2v_audio", "i2v_audio"}
 
 
-def _torchaudio_stub_bootstrap() -> str:
+def _lightx2v_stub_bootstrap() -> str:
     return r'''
 import runpy
 import sys
@@ -509,6 +516,9 @@ sys.argv = [module, *sys.argv[2:]]
 
 def _torchaudio_disabled(*args, **kwargs):
     raise RuntimeError("torchaudio is disabled for this LightX2V Wan run; audio models need a torch-matched torchaudio install.")
+
+def _decord_disabled(*args, **kwargs):
+    raise RuntimeError("decord is unavailable in this JoyBoy LightX2V Wan run; video-reader tasks need a platform-compatible decord install.")
 
 class _UnavailableAudioOp:
     def __init__(self, *args, **kwargs):
@@ -550,7 +560,25 @@ def _install_torchaudio_stub():
     sys.modules["torchaudio.compliance"] = compliance
     sys.modules["torchaudio.compliance.kaldi"] = kaldi
 
+def _install_decord_stub():
+    decord = types.ModuleType("decord")
+    decord.__file__ = "<joyboy-lightx2v-decord-stub>"
+    decord.__path__ = []
+    decord.VideoReader = _UnavailableAudioOp
+    decord.AudioReader = _UnavailableAudioOp
+    decord.cpu = lambda *args, **kwargs: None
+    decord.gpu = lambda *args, **kwargs: None
+    bridge = types.ModuleType("decord.bridge")
+    bridge.set_bridge = lambda *args, **kwargs: None
+    decord.bridge = bridge
+    sys.modules["decord"] = decord
+    sys.modules["decord.bridge"] = bridge
+
 _install_torchaudio_stub()
+try:
+    import decord  # noqa: F401
+except Exception:
+    _install_decord_stub()
 runpy.run_module(module, run_name="__main__", alter_sys=True)
 '''.strip()
 
@@ -568,7 +596,7 @@ def _lightx2v_subprocess_command(cmd: list[str], meta: dict[str, Any]) -> list[s
     if allow_real_torchaudio or _lightx2v_task_requires_audio(meta):
         return cmd
     module = cmd[2]
-    return [cmd[0], "-c", _torchaudio_stub_bootstrap(), module, *cmd[3:]]
+    return [cmd[0], "-c", _lightx2v_stub_bootstrap(), module, *cmd[3:]]
 
 
 def _lightx2v_env(repo_dir: Path) -> dict[str, str]:
