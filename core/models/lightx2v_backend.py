@@ -44,6 +44,7 @@ LIGHTX2V_MINIMAL_PACKAGES = [
     "ftfy",
     "prometheus-client",
     "pydantic",
+    "pyzmq",
     "scipy",
 ]
 
@@ -63,7 +64,13 @@ LIGHTX2V_IMPORT_CHECKS = {
     "ftfy": "ftfy",
     "prometheus_client": "prometheus-client",
     "pydantic": "pydantic",
+    "zmq": "pyzmq",
     "scipy": "scipy",
+}
+
+LIGHTX2V_RUNTIME_REPAIR_IMPORTS = {
+    "zmq": "pyzmq",
+    "decord": "decord",
 }
 
 
@@ -275,6 +282,28 @@ def _run_checked(cmd: list[str], *, timeout: int = 300) -> subprocess.CompletedP
 
 def _pip_install(args: list[str]) -> None:
     _run_checked([sys.executable, "-m", "pip", "install", *args], timeout=1800)
+
+
+def _missing_module_from_logs(log_tail: list[str]) -> str:
+    for line in reversed(log_tail):
+        match = re.search(r"No module named ['\"]([^'\"]+)['\"]", line)
+        if match:
+            return match.group(1).split(".", 1)[0]
+    return ""
+
+
+def _repair_missing_lightx2v_dependency(log_tail: list[str]) -> str:
+    missing = _missing_module_from_logs(log_tail)
+    package = LIGHTX2V_RUNTIME_REPAIR_IMPORTS.get(missing) or LIGHTX2V_IMPORT_CHECKS.get(missing)
+    if not package:
+        return ""
+    print(f"[LIGHTX2V] Dépendance manquante détectée ({missing}); installation de {package} puis retry...")
+    try:
+        _pip_install([package])
+    except Exception as exc:
+        print(f"[LIGHTX2V] Réparation dépendance échouée ({package}): {exc}")
+        return ""
+    return package
 
 
 def _select_attention(prefer_turbo: bool = False) -> str:
@@ -521,6 +550,9 @@ def _torchaudio_disabled(*args, **kwargs):
 def _decord_disabled(*args, **kwargs):
     raise RuntimeError("decord is unavailable in this JoyBoy LightX2V Wan run; video-reader tasks need a platform-compatible decord install.")
 
+def _flash_attn_disabled(*args, **kwargs):
+    raise RuntimeError("flash_attn is disabled for this LightX2V Wan run; JoyBoy selected torch_sdpa instead.")
+
 class _UnavailableAudioOp:
     def __init__(self, *args, **kwargs):
         _torchaudio_disabled()
@@ -583,7 +615,38 @@ def _install_decord_stub():
     sys.modules["decord"] = decord
     sys.modules["decord.bridge"] = bridge
 
+def _install_flash_attn_stub():
+    flash_attn = types.ModuleType("flash_attn")
+    flash_attn.__file__ = "<joyboy-lightx2v-flash-attn-stub>"
+    flash_attn.__spec__ = importlib.machinery.ModuleSpec("flash_attn", loader=None, is_package=True)
+    flash_attn.__path__ = []
+    interface = types.ModuleType("flash_attn.flash_attn_interface")
+    interface.__spec__ = importlib.machinery.ModuleSpec("flash_attn.flash_attn_interface", loader=None)
+    interface.flash_attn_func = _flash_attn_disabled
+    interface.flash_attn_varlen_func = _flash_attn_disabled
+    interface.flash_attn_varlen_qkvpacked_func = _flash_attn_disabled
+    bert_padding = types.ModuleType("flash_attn.bert_padding")
+    bert_padding.__spec__ = importlib.machinery.ModuleSpec("flash_attn.bert_padding", loader=None)
+    bert_padding.index_first_axis = _flash_attn_disabled
+    bert_padding.pad_input = _flash_attn_disabled
+    bert_padding.unpad_input = _flash_attn_disabled
+    flash_attn.flash_attn_interface = interface
+    flash_attn.bert_padding = bert_padding
+    sys.modules["flash_attn"] = flash_attn
+    sys.modules["flash_attn.flash_attn_interface"] = interface
+    sys.modules["flash_attn.bert_padding"] = bert_padding
+
+def _install_flash_attn_interface_stub():
+    interface = types.ModuleType("flash_attn_interface")
+    interface.__file__ = "<joyboy-lightx2v-flash-attn-interface-stub>"
+    interface.__spec__ = importlib.machinery.ModuleSpec("flash_attn_interface", loader=None)
+    interface.flash_attn_func = _flash_attn_disabled
+    interface.flash_attn_varlen_func = _flash_attn_disabled
+    sys.modules["flash_attn_interface"] = interface
+
 _install_torchaudio_stub()
+_install_flash_attn_stub()
+_install_flash_attn_interface_stub()
 try:
     import decord  # noqa: F401
 except Exception:
@@ -718,44 +781,55 @@ def run_lightx2v_generation(
     if progress_callback:
         progress_callback(0, steps, "LightX2V: initialisation")
 
-    process = subprocess.Popen(
-        _lightx2v_subprocess_command(cmd, meta),
-        cwd=str(repo_dir),
-        env=_lightx2v_env(repo_dir),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        bufsize=1,
-    )
-
-    last_step = 0
+    repaired_packages: set[str] = set()
     log_tail: list[str] = []
-    try:
-        assert process.stdout is not None
-        for raw_line in process.stdout:
-            line = raw_line.rstrip()
-            if line:
-                print(f"[LIGHTX2V] {line}")
-                log_tail = (log_tail + [line])[-40:]
-            parsed = _parse_progress(line, steps)
-            if parsed is not None and parsed > last_step:
-                last_step = parsed
-                if progress_callback:
-                    progress_callback(last_step, steps, f"LightX2V step {last_step}/{steps}")
-            elif progress_callback and line:
-                progress_callback(last_step or None, steps, "LightX2V en cours")
-            if cancel_check and cancel_check():
+    for attempt in range(2):
+        process = subprocess.Popen(
+            _lightx2v_subprocess_command(cmd, meta),
+            cwd=str(repo_dir),
+            env=_lightx2v_env(repo_dir),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            bufsize=1,
+        )
+
+        last_step = 0
+        log_tail = []
+        try:
+            assert process.stdout is not None
+            for raw_line in process.stdout:
+                line = raw_line.rstrip()
+                if line:
+                    print(f"[LIGHTX2V] {line}")
+                    log_tail = (log_tail + [line])[-40:]
+                parsed = _parse_progress(line, steps)
+                if parsed is not None and parsed > last_step:
+                    last_step = parsed
+                    if progress_callback:
+                        progress_callback(last_step, steps, f"LightX2V step {last_step}/{steps}")
+                elif progress_callback and line:
+                    progress_callback(last_step or None, steps, "LightX2V en cours")
+                if cancel_check and cancel_check():
+                    process.terminate()
+                    raise RuntimeError("LightX2V generation cancelled")
+
+            return_code = process.wait(timeout=60)
+        finally:
+            if process.poll() is None:
                 process.terminate()
-                raise RuntimeError("LightX2V generation cancelled")
 
-        return_code = process.wait(timeout=60)
-    finally:
-        if process.poll() is None:
-            process.terminate()
+        if return_code == 0:
+            break
 
-    if return_code != 0:
+        repaired = _repair_missing_lightx2v_dependency(log_tail) if attempt == 0 else ""
+        if repaired and repaired not in repaired_packages:
+            repaired_packages.add(repaired)
+            if progress_callback:
+                progress_callback(0, steps, f"LightX2V: dépendance installée ({repaired}), retry")
+            continue
         raise RuntimeError("LightX2V a échoué: " + "\n".join(log_tail[-10:]))
 
     final_path = _find_output_video(output_path, runtime_dir)

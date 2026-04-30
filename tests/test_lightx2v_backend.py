@@ -81,13 +81,26 @@ class LightX2VBackendTests(unittest.TestCase):
         self.assertNotIn("torchaudio", flat_packages)
         self.assertNotIn("requirements.txt", " ".join(flat_packages))
         self.assertIn("gguf", flat_packages)
+        self.assertIn("pyzmq", flat_packages)
         self.assertNotIn("decord", pip_calls[0])
         self.assertIn(["decord"], pip_calls)
         self.assertTrue(any(call[:1] == ["--no-deps"] and "-e" in call for call in pip_calls))
 
     def test_import_checks_include_gguf_for_lightx2v_cli_startup(self):
         self.assertEqual(backend.LIGHTX2V_IMPORT_CHECKS["gguf"], "gguf")
+        self.assertEqual(backend.LIGHTX2V_IMPORT_CHECKS["zmq"], "pyzmq")
         self.assertNotIn("decord", backend.LIGHTX2V_IMPORT_CHECKS)
+
+    def test_runtime_repair_maps_zmq_to_pyzmq(self):
+        logs = [
+            "Traceback (most recent call last):",
+            "ModuleNotFoundError: No module named 'zmq'",
+        ]
+        with patch.object(backend, "_pip_install") as pip_install:
+            repaired = backend._repair_missing_lightx2v_dependency(logs)
+
+        self.assertEqual(repaired, "pyzmq")
+        pip_install.assert_called_once_with(["pyzmq"])
 
     def test_load_lightx2v_repairs_missing_minimal_dependency(self):
         with (
@@ -142,6 +155,8 @@ class LightX2VBackendTests(unittest.TestCase):
         self.assertIn("torchaudio", wrapped[2])
         self.assertIn("decord", wrapped[2])
         self.assertIn("ModuleSpec(\"decord\"", wrapped[2])
+        self.assertIn("flash_attn", wrapped[2])
+        self.assertIn("flash_attn_interface", wrapped[2])
         self.assertEqual(wrapped[3], "lightx2v.infer")
         self.assertIn("--save_result_path", wrapped)
 
