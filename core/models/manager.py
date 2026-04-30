@@ -344,6 +344,7 @@ class ModelManager(
         # Détails mémoire CUDA PyTorch
         if torch.cuda.is_available():
             cuda_details = {
+                'device_count': torch.cuda.device_count(),
                 'reserved_gb': round(torch.cuda.memory_reserved() / 1024**3, 2),
                 'allocated_gb': round(torch.cuda.memory_allocated() / 1024**3, 2),
                 'cached_gb': round((torch.cuda.memory_reserved() - torch.cuda.memory_allocated()) / 1024**3, 2),

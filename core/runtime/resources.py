@@ -42,6 +42,8 @@ GROUP_CONFLICTS = {
     "io": set(),
 }
 
+EXCLUSIVE_GROUPS_ON_SINGLE_GPU = {"video"}
+
 
 @dataclass(frozen=True)
 class ResourcePlan:
@@ -143,12 +145,14 @@ class ResourceScheduler:
             plan=plan.to_dict(),
         )
         with self._lock:
+            replaced = self._replace_exclusive_group_leases(lease.group, status_snapshot or {})
             self._active[lease.id] = lease
             self._recent_plans.append({
                 "at": lease.started_at,
                 "lease_id": lease.id,
                 "job_id": job_id,
                 "model_name": model_name or "",
+                "replaced_active_leases": replaced,
                 "plan": plan.to_dict(),
             })
             del self._recent_plans[:-self.max_recent_plans]
@@ -189,6 +193,22 @@ class ResourceScheduler:
             "pressure": self._pressure(status_snapshot),
             "recent_plans": recent,
         }
+
+    def _replace_exclusive_group_leases(self, group: str, status_snapshot: Dict[str, Any]) -> list[Dict[str, str]]:
+        if group not in EXCLUSIVE_GROUPS_ON_SINGLE_GPU or not self._is_single_gpu(status_snapshot):
+            return []
+
+        replaced: list[Dict[str, str]] = []
+        for lease_id, lease in list(self._active.items()):
+            if lease.group != group:
+                continue
+            self._active.pop(lease_id, None)
+            replaced.append({
+                "lease_id": lease_id,
+                "job_id": lease.job_id or "",
+                "model_name": lease.model_name,
+            })
+        return replaced
 
     @staticmethod
     def _infer_loaded_groups(models_loaded: Iterable[str]) -> Set[str]:
@@ -241,6 +261,15 @@ class ResourceScheduler:
         except (TypeError, ValueError):
             return False
         return 0 < total <= 10
+
+    @staticmethod
+    def _is_single_gpu(status_snapshot: Dict[str, Any]) -> bool:
+        cuda_details = status_snapshot.get("cuda_details") or {}
+        try:
+            count = int(cuda_details.get("device_count") or status_snapshot.get("gpu_count") or 1)
+        except (TypeError, ValueError):
+            count = 1
+        return count <= 1
 
     @staticmethod
     def _build_reason(

@@ -1,6 +1,6 @@
 import unittest
+import shutil
 from pathlib import Path
-from tempfile import TemporaryDirectory
 
 from core.runtime.jobs import JobManager
 from core.runtime.resources import ResourceScheduler, get_resource_scheduler
@@ -83,15 +83,50 @@ class ResourceSchedulerTests(unittest.TestCase):
         self.assertEqual(state["active_count"], 1)
         self.assertEqual(state["active"][0]["job_id"], "job-2")
 
+    def test_single_gpu_replaces_previous_video_lease(self):
+        scheduler = ResourceScheduler()
+        status = {"cuda_details": {"device_count": 1}}
+
+        scheduler.begin_task("video", job_id="job-ltx2", model_name="ltx2", status_snapshot=status)
+        scheduler.begin_task("video", job_id="job-fastwan", model_name="fastwan", status_snapshot=status)
+
+        state = scheduler.state({})
+        self.assertEqual(state["active_count"], 1)
+        self.assertEqual(state["active"][0]["job_id"], "job-fastwan")
+        self.assertEqual(state["active"][0]["model_name"], "fastwan")
+        self.assertEqual(
+            state["recent_plans"][-1]["replaced_active_leases"][0]["job_id"],
+            "job-ltx2",
+        )
+
+    def test_multi_gpu_keeps_parallel_video_leases(self):
+        scheduler = ResourceScheduler()
+        status = {"cuda_details": {"device_count": 2}}
+
+        scheduler.begin_task("video", job_id="job-ltx2", model_name="ltx2", status_snapshot=status)
+        scheduler.begin_task("video", job_id="job-fastwan", model_name="fastwan", status_snapshot=status)
+
+        state = scheduler.state({})
+        self.assertEqual(state["active_count"], 2)
+        self.assertEqual(
+            [lease["job_id"] for lease in state["active"]],
+            ["job-ltx2", "job-fastwan"],
+        )
+
     def test_job_terminal_state_releases_matching_scheduler_lease(self):
         scheduler = get_resource_scheduler()
         scheduler.end_task_by_job("job-cleanup-test")
         scheduler.begin_task("terminal", job_id="job-cleanup-test", model_name="qwen3.5:2b")
 
-        with TemporaryDirectory() as tmp:
-            manager = JobManager(Path(tmp) / "jobs.json")
+        tmp = Path.cwd() / ".codex-test-runtime-jobs"
+        shutil.rmtree(tmp, ignore_errors=True)
+        tmp.mkdir()
+        try:
+            manager = JobManager(tmp / "jobs.json")
             manager.create("terminal", job_id="job-cleanup-test")
             manager.complete("job-cleanup-test")
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
 
         active_ids = [lease.get("job_id") for lease in scheduler.state({}).get("active", [])]
         self.assertNotIn("job-cleanup-test", active_ids)
