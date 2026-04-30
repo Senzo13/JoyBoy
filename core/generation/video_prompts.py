@@ -15,6 +15,17 @@ FAST_MOTION_INTENT_WORDS = (
     "vite", "rapidement", "rapide", "bouge vite", "accelere", "accélère",
     "courir", "court", "danse", "saut", "saute",
 )
+STYLIZED_VIDEO_INTENT_WORDS = (
+    "anime", "manga", "hentai", "manhwa", "webtoon", "cartoon", "toon",
+    "animated", "animation", "2d animation", "2d style", "cel shading", "cel-shaded",
+    "line art", "illustration", "illustrated", "comic", "comics", "graphic novel",
+    "dessin anime", "dessin animé", "manga", "anime", "bd", "bande dessinee", "bande dessinée",
+    "style dessin", "style cartoon", "style animé", "animation 2d",
+)
+VIDEO_REALISM_STYLE_NEGATIVE = (
+    "anime, manga, hentai, cartoon, toon, comic, illustration, line art, cel shading, "
+    "2d animation, stylized drawing, doll skin, plastic skin, cgi, 3d render"
+)
 
 def _clip_safe_words(text: str, max_words: int) -> tuple[str, bool]:
     """Trim long text before CLIP truncates the important motion suffix."""
@@ -73,6 +84,11 @@ def _allows_fast_motion(text: str = "") -> bool:
     return any(word in lower for word in FAST_MOTION_INTENT_WORDS)
 
 
+def _requests_stylized_video(text: str = "") -> bool:
+    lower = f" {str(text or '').lower()} "
+    return any(word in lower for word in STYLIZED_VIDEO_INTENT_WORDS)
+
+
 def _append_visual_source_fidelity(prompt: str, *, has_visual_source: bool = True) -> str:
     """Ask video models to preserve the source quality instead of improving it."""
     base = (prompt or "").strip()
@@ -101,6 +117,8 @@ def _build_video_negative_prompt(
     additions = [VISUAL_SOURCE_FIDELITY_NEGATIVE]
     if not _allows_fast_motion(user_prompt):
         additions.append(VISUAL_SOURCE_MOTION_NEGATIVE)
+    if not _requests_stylized_video(user_prompt):
+        additions.append(VIDEO_REALISM_STYLE_NEGATIVE)
     result = base
     for addition in additions:
         lower = result.lower()
