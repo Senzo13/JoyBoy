@@ -215,6 +215,16 @@ export OLLAMA_BASE_URL=http://127.0.0.1:11434
 - prefer lighter default models
 - unload unused models from the UI
 
+### JoyBoy is killed while installing native Wan
+
+If the terminal stops during `Building wheel for flash-attn` or shows `Killed python3 web/app.py`, the machine likely ran out of system RAM while compiling optional acceleration code.
+
+By default, JoyBoy installs the native Wan backend without compiling `flash-attn`. To opt into the optional build only on a prepared machine, set:
+
+```bash
+export JOYBOY_WAN_NATIVE_INSTALL_FLASH_ATTN=1
+```
+
 ### Provider download fails
 
 - verify the provider key in `Settings > Models`

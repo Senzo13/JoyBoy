@@ -111,6 +111,10 @@ def _run_pip_install(args, *, optional=False):
         raise
 
 
+def _env_flag(name):
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _install_wan_native_packages(packages):
     """Install Wan runtime dependencies while isolating package failures."""
     try:
@@ -163,35 +167,25 @@ def _ensure_wan_native_import_shims():
 
 
 def _install_wan_native_backend():
-    """Install the official Wan backend without hiding torch from flash-attn.
+    """Install the official Wan backend without requiring flash-attn.
 
-    flash-attn reads torch during its build metadata step. pip's default build
-    isolation creates a temporary env without torch, so Wan's dependency install
-    can fail even when torch is present in JoyBoy's venv.
+    The upstream package declares flash-attn as a dependency. Building it during
+    a first video request can consume enough RAM to make the OS kill JoyBoy, so
+    the default path installs the backend with explicit runtime dependencies.
     """
     print("[MM] Installation du backend natif Wan...")
     cuda_toolkit_available = bool(os.environ.get("CUDA_HOME") or os.environ.get("CUDA_PATH") or shutil.which("nvcc"))
+    install_flash_attn = _env_flag("JOYBOY_WAN_NATIVE_INSTALL_FLASH_ATTN")
     _run_pip_install(["wheel"], optional=True)
-    standard_install_failed = False
-    if cuda_toolkit_available:
-        command = [
-            sys.executable,
-            "-m",
-            "pip",
-            "install",
-            "--no-build-isolation",
-            "git+https://github.com/Wan-Video/Wan2.2.git",
-        ]
-        try:
-            subprocess.run(command, check=True)
-            return
-        except subprocess.CalledProcessError as exc:
-            standard_install_failed = True
-            print(f"[MM] Installation Wan standard échouée: {exc}")
+    if install_flash_attn and cuda_toolkit_available:
+        print("[MM] JOYBOY_WAN_NATIVE_INSTALL_FLASH_ATTN=1: tentative flash_attn optionnelle.")
+        _run_pip_install(["--no-build-isolation", "flash_attn"], optional=True)
+    elif install_flash_attn:
+        print("[MM] flash_attn demandé mais CUDA toolkit absent (nvcc/CUDA_HOME). Installation sans flash_attn.")
     else:
-        print("[MM] CUDA toolkit absent (nvcc/CUDA_HOME). Installation Wan sans flash_attn.")
+        print("[MM] flash_attn ignoré par défaut pour éviter une compilation lourde au démarrage.")
 
-    print("[MM] Fallback: installation Wan sans dépendance flash_attn obligatoire...")
+    print("[MM] Installation Wan sans dépendance flash_attn obligatoire...")
     required_packages = [
         "dashscope",
         "easydict",
@@ -207,43 +201,20 @@ def _install_wan_native_backend():
         # possible and otherwise injects a narrow import shim for I2V/T2V.
         "decord",
     ]
-    fallback_commands = [
-        [
-            sys.executable,
-            "-m",
-            "pip",
-            "install",
-            "--no-deps",
-            "git+https://github.com/Wan-Video/Wan2.2.git",
-        ],
+    install_backend_command = [
+        sys.executable,
+        "-m",
+        "pip",
+        "install",
+        "--no-deps",
+        "git+https://github.com/Wan-Video/Wan2.2.git",
     ]
-    if cuda_toolkit_available and not standard_install_failed:
-        fallback_commands.insert(0, [
-            sys.executable,
-            "-m",
-            "pip",
-            "install",
-            "--no-build-isolation",
-            "flash_attn",
-        ])
-    elif cuda_toolkit_available:
-        print("[MM] flash_attn déjà tenté via Wan standard; fallback direct sans le rebuilder.")
-    else:
-        print("[MM] flash_attn ignoré: nvcc/CUDA_HOME absent. Wan utilisera les kernels PyTorch si possible.")
 
     _install_wan_native_packages(required_packages)
     for package in optional_packages:
         _run_pip_install([package], optional=True)
     _ensure_wan_native_import_shims()
-
-    for fallback in fallback_commands:
-        try:
-            subprocess.run(fallback, check=True)
-        except subprocess.CalledProcessError as exc:
-            if "flash_attn" in fallback:
-                print(f"[MM] flash_attn indisponible ({exc}); poursuite sans flash_attn.")
-                continue
-            raise
+    subprocess.run(install_backend_command, check=True)
 
 
 # ============================================================
