@@ -540,6 +540,14 @@ function createAuditModuleApi(moduleId) {
             return apiPost(`/api/${cleanId}/audits/${encodeURIComponent(auditId)}/compare-ai`, payload);
         },
 
+        async rerunAudit(auditId, payload = {}) {
+            return apiPost(`/api/${cleanId}/audits/${encodeURIComponent(auditId)}/rerun`, payload);
+        },
+
+        async applyGeneratedFiles(auditId, payload = {}) {
+            return apiPost(`/api/${cleanId}/audits/${encodeURIComponent(auditId)}/apply`, payload);
+        },
+
         async getModelContext() {
             return apiGet(`/api/${cleanId}/models/context`);
         },
@@ -582,6 +590,8 @@ function createAuditModuleApi(moduleId) {
 const apiSignalAtlas = createAuditModuleApi('signalatlas');
 const apiPerfAtlas = createAuditModuleApi('perfatlas');
 const apiCyberAtlas = createAuditModuleApi('cyberatlas');
+const apiCodeAtlas = createAuditModuleApi('codeatlas');
+const apiAgentGuide = createAuditModuleApi('agentguide');
 
 const apiDeployAtlas = {
     async listServers() {

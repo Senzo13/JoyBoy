@@ -287,8 +287,8 @@ function initTerminalTab() {
 // TOOL_CAPABLE_KEYWORDS, TOOL_EXCLUDED_KEYWORDS, TOOL_TOO_SMALL_SIZES,
 // isToolCapableModel(), isToolCapableModelStrict() defined in state.js
 
-function isTerminalToolCapable(modelId) {
-    return isToolCapableModelStrict(modelId);
+function isTerminalToolCapable(modelId, modelData = null) {
+    return isToolCapableModelStrict(modelId, modelData);
 }
 
 /**
@@ -311,7 +311,7 @@ async function populateTerminalModelSelect() {
     const toolCapableModels = [];
 
     for (const model of models) {
-        if (isTerminalToolCapable(model.name)) {
+        if (isTerminalToolCapable(model.name, model)) {
             toolCapableModels.push(model.name);
         }
     }

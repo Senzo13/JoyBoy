@@ -59,6 +59,8 @@ _apply_ollama_vram_env()
 # Cache pour savoir si le utility model est installé
 _utility_model_available = None
 _utility_model_warmed = False
+_model_capability_cache = {}
+_MODEL_CAPABILITY_TTL_SECONDS = 300
 
 
 def _select_utility_model(auto_pull=False):
@@ -122,6 +124,99 @@ def is_ollama_running():
         return False
 
 
+def _keyword_tool_capable(model_name: str) -> bool:
+    """Fallback conservative when Ollama does not expose model capabilities."""
+    try:
+        from config import TOOL_CAPABLE_MODELS, TOOL_EXCLUDED_MODELS
+    except Exception:
+        TOOL_CAPABLE_MODELS = {
+            "llama3.1", "llama3.2", "llama3.3",
+            "qwen2.5", "qwen3", "qwen3.5",
+            "mistral", "mixtral", "granite3", "command-r",
+            "hermes3", "nemotron", "deepseek",
+            "codestral", "codegemma", "starcoder", "devstral",
+        }
+        TOOL_EXCLUDED_MODELS = {"dolphin", "nous-hermes", "openhermes"}
+
+    lower = str(model_name or "").strip().lower()
+    if not lower:
+        return False
+    if any(excluded in lower for excluded in TOOL_EXCLUDED_MODELS):
+        return False
+    return any(fragment in lower for fragment in TOOL_CAPABLE_MODELS)
+
+
+def get_model_capabilities(model_name: str, quiet: bool = True) -> dict:
+    """Return Ollama-reported capabilities for one installed model, cached.
+
+    Newer Ollama builds expose a `capabilities` list through `/api/show`
+    (for example `["completion", "tools"]`). When absent, callers should
+    fall back to the keyword heuristic instead of hiding the model.
+    """
+    name = str(model_name or "").strip()
+    if not name:
+        return {"capabilities": [], "tools": None, "source": "empty"}
+
+    now = time.monotonic()
+    cached = _model_capability_cache.get(name)
+    if cached and now - cached[0] < _MODEL_CAPABILITY_TTL_SECONDS:
+        return dict(cached[1])
+
+    result = {"capabilities": [], "tools": None, "source": "unavailable"}
+    try:
+        response = requests.post(
+            f"{OLLAMA_BASE_URL}/api/show",
+            json={"name": name},
+            timeout=3,
+        )
+        if response.status_code != 200:
+            result["error"] = f"HTTP {response.status_code}"
+            return result
+        payload = response.json()
+        raw_capabilities = payload.get("capabilities") or []
+        if not isinstance(raw_capabilities, list):
+            raw_capabilities = []
+        capabilities = [str(item).strip().lower() for item in raw_capabilities if str(item).strip()]
+        details = payload.get("details") if isinstance(payload.get("details"), dict) else {}
+        families = details.get("families") if isinstance(details.get("families"), list) else []
+        result = {
+            "capabilities": capabilities,
+            "tools": "tools" in capabilities,
+            "vision": "vision" in capabilities or "clip" in [str(item).lower() for item in families],
+            "source": "ollama-show" if capabilities else "ollama-show-empty",
+        }
+    except Exception as exc:
+        if not quiet:
+            print(f"[OLLAMA] Erreur capacités {name}: {exc}")
+        result["error"] = str(exc)
+    finally:
+        _model_capability_cache[name] = (now, dict(result))
+    return result
+
+
+def model_supports_tools(model_name: str, model_info: dict | None = None, quiet: bool = True) -> bool:
+    """Best-effort tool calling support check.
+
+    Prefer explicit Ollama metadata when available, then use the existing
+    JoyBoy keyword fallback for older Ollama versions or custom Modelfiles.
+    """
+    if model_info:
+        if model_info.get("tool_capable") is True or model_info.get("supports_tools") is True:
+            return True
+        if model_info.get("tools") is True:
+            return True
+        capabilities = model_info.get("capabilities")
+        if isinstance(capabilities, list) and "tools" in [str(item).lower() for item in capabilities]:
+            return True
+
+    capabilities = get_model_capabilities(model_name, quiet=quiet)
+    if capabilities.get("tools") is True:
+        return True
+    if capabilities.get("tools") is False and capabilities.get("source") == "ollama-show":
+        return False
+    return _keyword_tool_capable(model_name)
+
+
 def start_ollama():
     """Démarre le serveur Ollama en arrière-plan avec limite VRAM"""
     if is_ollama_running():
@@ -177,6 +272,22 @@ def get_installed_models(quiet=False):
                 size_gb = round(size / (1024**3), 1) if size else 0
                 details = model.get("details", {})
                 families = details.get("families", [])
+                raw_capabilities = model.get("capabilities") or []
+                if isinstance(raw_capabilities, list) and raw_capabilities:
+                    capabilities = [str(item).strip().lower() for item in raw_capabilities if str(item).strip()]
+                    caps = {
+                        "capabilities": capabilities,
+                        "tools": "tools" in capabilities,
+                        "vision": "vision" in capabilities,
+                        "source": "ollama-tags",
+                    }
+                else:
+                    caps = get_model_capabilities(name, quiet=True)
+                    capabilities = caps.get("capabilities") or []
+                supports_tools = model_supports_tools(name, {
+                    "capabilities": capabilities,
+                    "tools": caps.get("tools"),
+                }, quiet=True)
                 models.append({
                     "name": name,
                     "size": f"{size_gb}GB",
@@ -184,7 +295,11 @@ def get_installed_models(quiet=False):
                     "params": details.get("parameter_size", ""),
                     "quant": details.get("quantization_level", ""),
                     "family": details.get("family", ""),
-                    "vision": "clip" in families,
+                    "vision": bool(caps.get("vision")) or "clip" in families,
+                    "capabilities": capabilities,
+                    "supports_tools": supports_tools,
+                    "tool_capable": supports_tools,
+                    "capability_source": caps.get("source", "fallback"),
                 })
             return models
     except Exception as e:

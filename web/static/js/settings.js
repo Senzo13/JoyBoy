@@ -667,6 +667,8 @@ function openAddonsHub() {
     document.body.classList.remove('perfatlas-mode');
     document.body.classList.remove('cyberatlas-mode');
     document.body.classList.remove('deployatlas-mode');
+    document.body.classList.remove('codeatlas-mode');
+    document.body.classList.remove('agentguide-mode');
     document.querySelectorAll('.sidebar-hub-btn').forEach(btn => btn.classList.remove('active'));
     document.getElementById('sidebar-addons-btn')?.classList.add('active');
 
@@ -741,6 +743,8 @@ function openModelsHub() {
     document.body.classList.remove('perfatlas-mode');
     document.body.classList.remove('cyberatlas-mode');
     document.body.classList.remove('deployatlas-mode');
+    document.body.classList.remove('codeatlas-mode');
+    document.body.classList.remove('agentguide-mode');
     document.querySelectorAll('.sidebar-hub-btn').forEach(btn => btn.classList.remove('active'));
     document.getElementById('sidebar-models-btn')?.classList.add('active');
 

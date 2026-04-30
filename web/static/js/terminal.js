@@ -2408,14 +2408,14 @@ async function downloadVisionModel() {
 // isToolCapableModel(), isToolCapableModelStrict() defined in state.js
 
 /**
- * Trouve un modèle tool-capable installé (minimum 7B)
+ * Trouve un modèle tool-capable installé.
  * @returns {string|null} Le nom du modèle trouvé, ou null
  */
 function findInstalledToolCapableModel() {
     if (!CHAT_MODELS || CHAT_MODELS.length === 0) return null;
 
     for (const model of CHAT_MODELS) {
-        if (isToolCapableModelStrict(model.id)) {
+        if (isToolCapableModelStrict(model.id, model)) {
             console.log('[TERMINAL] Modèle tool-capable trouvé:', model.id);
             return model.id;
         }

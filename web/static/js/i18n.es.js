@@ -3544,4 +3544,55 @@ Object.assign(MESSAGES.es.onboarding, {
         previewImageModel: 'Flux Fill / SDXL',
         previewTime: 'Tiempo estimado tras warmup',
     });
+Object.assign(MESSAGES.es.modules, {
+    module_codeatlas_name: 'CodeAtlas',
+    module_codeatlas_tagline: 'Auditoría local de calidad, arquitectura y regresión',
+    module_codeatlas_description: 'Notas backend/frontend, duplicación, comandos de validación y plan antes/después.',
+    module_codeatlas_outcome: 'Notas backend/frontend, riesgo de regresión y plan de corrección.',
+    module_codeatlas_point_1: 'Auditoría local determinista del proyecto',
+    module_codeatlas_point_2: 'Comparación antes/después',
+    module_agentguide_name: 'AgentGuide',
+    module_agentguide_tagline: 'Genera AGENTS.md y CLAUDE.md para guiar mejor la IA',
+    module_agentguide_description: 'Escanea un proyecto y propone guías breves, específicas, anti-duplicación y anti-regresión.',
+    module_agentguide_outcome: 'Genera AGENTS.md y CLAUDE.md adaptados al proyecto.',
+    module_agentguide_point_1: 'Instrucciones de agentes específicas del repo',
+    module_agentguide_point_2: 'Vista diff antes de aplicar',
+});
+
+Object.assign(MESSAGES.es, {
+    codework: {
+        projectPath: 'Carpeta local del proyecto',
+        pathHelp: 'JoyBoy escanea la carpeta local sin enviar el código a git ni copiar cachés/modelos.',
+        done: 'Terminado',
+        running: 'En curso',
+        queued: 'En cola',
+        error: 'Error',
+        cancelled: 'Cancelado',
+        noAudits: 'Aún no hay auditoría.',
+        noFindings: 'No se detectó ningún problema mayor.',
+        findings: 'Problemas detectados',
+        plan: 'Plan de corrección',
+        exportMd: 'Exportar MD',
+    },
+    codeatlas: {
+        title: 'Auditoría local de código',
+        description: 'Notas backend/frontend, arquitectura, mantenibilidad, regresión y plan de corrección.',
+        launch: 'Auditar',
+        empty: 'Selecciona un proyecto local para iniciar la primera auditoría.',
+        rerun: 'Relanzar y comparar',
+        delta: 'Comparación antes/después disponible',
+    },
+    agentguide: {
+        title: 'Guías IA para proyectos',
+        description: 'Genera AGENTS.md y CLAUDE.md breves, específicos, anti-duplicación y anti-regresión.',
+        launch: 'Generar',
+        empty: 'Selecciona un proyecto local para generar AGENTS.md y CLAUDE.md.',
+        generatedFiles: 'Archivos propuestos',
+        exists: '(ya existe)',
+        noGenerated: 'Aún no hay archivo generado.',
+        apply: 'Aplicar con backup',
+        applied: 'Archivos aplicados con backup si era necesario.',
+    },
+});
+
 })();

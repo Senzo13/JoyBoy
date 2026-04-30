@@ -52,10 +52,21 @@ IGNORE_FILES = {
 
 def is_model_tool_capable(model_name: str) -> bool:
     """Vérifie si le modèle supporte le function calling"""
-    model_lower = model_name.lower()
-    if any(excl in model_lower for excl in TOOL_EXCLUDED_MODELS):
-        return False
-    return any(cap in model_lower for cap in TOOL_CAPABLE_MODELS)
+    try:
+        from core.agent_runtime import is_cloud_model_name
+        if is_cloud_model_name(model_name):
+            return True
+    except Exception:
+        pass
+
+    try:
+        from core.backends.ollama_service import model_supports_tools
+        return model_supports_tools(model_name, quiet=True)
+    except Exception:
+        model_lower = model_name.lower()
+        if any(excl in model_lower for excl in TOOL_EXCLUDED_MODELS):
+            return False
+        return any(cap in model_lower for cap in TOOL_CAPABLE_MODELS)
 
 
 def should_ignore(name: str, is_dir: bool = False) -> bool:

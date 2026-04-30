@@ -815,6 +815,8 @@ function showHome(options = {}) {
     document.body.classList.remove('perfatlas-mode');
     document.body.classList.remove('cyberatlas-mode');
     document.body.classList.remove('deployatlas-mode');
+    document.body.classList.remove('codeatlas-mode');
+    document.body.classList.remove('agentguide-mode');
     document.querySelectorAll('.sidebar-hub-btn').forEach(btn => btn.classList.remove('active'));
 }
 
@@ -835,11 +837,14 @@ function showChat() {
     document.body.classList.remove('addons-mode');
     document.body.classList.remove('extensions-mode');
     document.body.classList.remove('models-mode');
+    document.body.classList.remove('projects-mode');
     document.body.classList.remove('modules-mode');
     document.body.classList.remove('signalatlas-mode');
     document.body.classList.remove('perfatlas-mode');
     document.body.classList.remove('cyberatlas-mode');
     document.body.classList.remove('deployatlas-mode');
+    document.body.classList.remove('codeatlas-mode');
+    document.body.classList.remove('agentguide-mode');
     document.querySelectorAll('.sidebar-hub-btn').forEach(btn => btn.classList.remove('active'));
     updateChatPadding();
     scrollToBottom(true);
@@ -1458,8 +1463,8 @@ function updateModelPickerDisplay() {
 
 // TOOL_CAPABLE_KEYWORDS, TOOL_EXCLUDED_KEYWORDS, isToolCapableModel() defined in state.js
 
-function isToolCapable(modelName) {
-    return isToolCapableModel(modelName);
+function isToolCapable(modelName, modelData = null) {
+    return isToolCapableModel(modelName, modelData);
 }
 
 /**
@@ -1482,7 +1487,7 @@ function _buildModelDesc(modelData, toolCapable) {
     }
 
     // 3. Capabilities
-    if (toolCapable) parts.push('Tools');
+    if (toolCapable || modelReportsToolCapability(modelData)) parts.push('Tools');
     if (modelData.vision || lower.includes('llava') || lower.includes('moondream')) parts.push('Vision');
                 if (lower.includes('dolphin') || lower.includes('uncensored')) parts.push('Open');
     if (lower.includes('coder') || lower.includes('code')) parts.push('Code');
@@ -1510,7 +1515,7 @@ async function loadTextModelsForPicker() {
         const installedNames = new Set(models.map(model => model.name));
 
         const installedChatModels = models.map(m => {
-            const toolCapable = isToolCapable(m.name);
+            const toolCapable = isToolCapable(m.name, m);
             const parts = m.name.split(':');
             const baseName = parts[0];           // qwen2.5
             const tag = parts[1] || 'latest';    // 7b, latest, etc.
@@ -1548,7 +1553,7 @@ async function loadTextModelsForPicker() {
         const availableChatModels = availableModels
             .filter(m => m?.name && !installedNames.has(m.name))
             .map(m => {
-                const toolCapable = isToolCapable(m.name);
+                const toolCapable = isToolCapable(m.name, m);
                 const displayName = typeof _formatModelName === 'function' ? _formatModelName(m.name) : m.name;
                 let badge = 'download';
                 if (m.vision) badge = 'vision';

@@ -109,5 +109,54 @@ def get_module_catalog() -> List[dict]:
             theme="deployatlas",
             category="deployment",
         ),
+        ModuleDescriptor(
+            id="codeatlas",
+            name="CodeAtlas",
+            tagline="Local code quality, architecture and regression audits",
+            description=(
+                "Backend/frontend scoring, duplicate-code detection, validation commands, "
+                "and before/after remediation plans for local projects."
+            ),
+            icon="scan-search",
+            status="active",
+            entry_view="codeatlas-view",
+            capabilities=[
+                "code_audit",
+                "backend_score",
+                "frontend_score",
+                "architecture",
+                "regression_risk",
+                "remediation_plan",
+            ],
+            premium=True,
+            available=True,
+            featured=True,
+            theme="codeatlas",
+            category="developer",
+        ),
+        ModuleDescriptor(
+            id="agentguide",
+            name="AgentGuide",
+            tagline="Generate AGENTS.md and CLAUDE.md for better AI coding",
+            description=(
+                "Scans a project, scores agent readiness, and proposes concise, "
+                "repo-specific AGENTS.md and CLAUDE.md files with anti-regression rules."
+            ),
+            icon="bot",
+            status="active",
+            entry_view="agentguide-view",
+            capabilities=[
+                "agents_md",
+                "claude_md",
+                "multi_agent_rules",
+                "regression_safety",
+                "diff_preview",
+            ],
+            premium=True,
+            available=True,
+            featured=True,
+            theme="agentguide",
+            category="developer",
+        ),
     ]
     return [module.to_dict() for module in modules]

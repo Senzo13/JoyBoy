@@ -65,11 +65,12 @@ const DEFAULT_TERMINAL_MODEL = 'qwen3.5:2b';
 // Centralized tool-capable keywords (used by ui.js, settings.js, terminal.js)
 const TOOL_CAPABLE_KEYWORDS = [
     'llama3.1', 'llama3.2', 'llama3.3',
-    'qwen2.5', 'qwen3',
+    'qwen2.5', 'qwen3', 'qwen3.5', 'qwen3-coder',
     'mistral-nemo', 'mistral-small', 'mixtral',
     'granite3', 'granite3.2',
     'command-r', 'hermes3', 'hermes-3', 'nemotron', 'athene',
-    'deepseek', 'deepseek-v2', 'deepseek-v3'
+    'deepseek', 'deepseek-v2', 'deepseek-v3',
+    'codestral', 'codegemma', 'starcoder', 'starcoder2', 'devstral'
 ];
 
 // Modèles exclus: finetunes incompatibles ou modèles "thinking" trop lents
@@ -84,13 +85,23 @@ const TOOL_SMALL_MODEL_ALLOWLIST = ['qwen3.5:2b'];
 // Exception volontaire: qwen3.5:2b est notre modèle terminal léger recommandé.
 const TOOL_TOO_SMALL_SIZES = [':0.5b', ':0.8b', ':1b', ':1.5b', ':2b'];
 
+function modelReportsToolCapability(modelData) {
+    if (!modelData || typeof modelData !== 'object') return false;
+    if (modelData.toolCapable === true || modelData.tool_capable === true) return true;
+    if (modelData.supportsTools === true || modelData.supports_tools === true) return true;
+    if (modelData.tools === true) return true;
+    const capabilities = Array.isArray(modelData.capabilities) ? modelData.capabilities : [];
+    return capabilities.some(capability => String(capability || '').toLowerCase() === 'tools');
+}
+
 /**
  * Vérifie si un modèle supporte le tool calling
  * @param {string} modelName - Nom du modèle
  * @returns {boolean}
  */
-function isToolCapableModel(modelName) {
-    const name = modelName.toLowerCase();
+function isToolCapableModel(modelName, modelData = null) {
+    if (modelReportsToolCapability(modelData)) return true;
+    const name = String(modelName || '').toLowerCase();
     if (TOOL_EXCLUDED_KEYWORDS.some(ex => name.includes(ex))) return false;
     return TOOL_CAPABLE_KEYWORDS.some(kw => name.includes(kw));
 }
@@ -100,8 +111,9 @@ function isToolCapableModel(modelName) {
  * @param {string} modelId - ID du modèle (ex: "qwen3.5:2b")
  * @returns {boolean}
  */
-function isToolCapableModelStrict(modelId) {
-    const lower = modelId.toLowerCase();
+function isToolCapableModelStrict(modelId, modelData = null) {
+    if (modelReportsToolCapability(modelData)) return true;
+    const lower = String(modelId || '').toLowerCase();
     if (TOOL_EXCLUDED_KEYWORDS.some(ex => lower.includes(ex))) return false;
     const explicitlyAllowedSmallModel = TOOL_SMALL_MODEL_ALLOWLIST.some(model => lower.includes(model));
     if (!explicitlyAllowedSmallModel && TOOL_TOO_SMALL_SIZES.some(size => lower.includes(size))) return false;

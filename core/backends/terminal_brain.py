@@ -82,10 +82,14 @@ except ImportError:
 
 def is_tool_capable(model_name: str) -> bool:
     """Vérifie si un modèle supporte le native tool calling"""
-    model_lower = model_name.lower()
-    if any(excl in model_lower for excl in TOOL_EXCLUDED_MODELS):
-        return False
-    return any(cap in model_lower for cap in TOOL_CAPABLE_MODELS)
+    try:
+        from core.backends.ollama_service import model_supports_tools
+        return model_supports_tools(model_name, quiet=True)
+    except Exception:
+        model_lower = model_name.lower()
+        if any(excl in model_lower for excl in TOOL_EXCLUDED_MODELS):
+            return False
+        return any(cap in model_lower for cap in TOOL_CAPABLE_MODELS)
 
 
 # ===== TERMINAL BRAIN =====

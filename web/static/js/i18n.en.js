@@ -3833,4 +3833,55 @@ Object.assign(MESSAGES.en.onboarding, {
         previewImageModel: 'Flux Fill / SDXL',
         previewTime: 'Estimated time after warmup',
     });
+Object.assign(MESSAGES.en.modules, {
+    module_codeatlas_name: 'CodeAtlas',
+    module_codeatlas_tagline: 'Local code quality, architecture and regression audits',
+    module_codeatlas_description: 'Backend/frontend scores, duplicate-code detection, validation commands and before/after remediation plans.',
+    module_codeatlas_outcome: 'Backend/frontend scores, regression risk and remediation plan.',
+    module_codeatlas_point_1: 'Deterministic local project audit',
+    module_codeatlas_point_2: 'Before/after comparison',
+    module_agentguide_name: 'AgentGuide',
+    module_agentguide_tagline: 'Generate AGENTS.md and CLAUDE.md for better AI coding',
+    module_agentguide_description: 'Scans a project and proposes concise, repo-specific, anti-duplication and anti-regression guides.',
+    module_agentguide_outcome: 'Generates project-specific AGENTS.md and CLAUDE.md.',
+    module_agentguide_point_1: 'Repo-specific agent instructions',
+    module_agentguide_point_2: 'Diff preview before applying',
+});
+
+Object.assign(MESSAGES.en, {
+    codework: {
+        projectPath: 'Local project folder',
+        pathHelp: 'JoyBoy scans the local folder without committing code or copying caches/models.',
+        done: 'Done',
+        running: 'Running',
+        queued: 'Queued',
+        error: 'Error',
+        cancelled: 'Cancelled',
+        noAudits: 'No audit yet.',
+        noFindings: 'No major issue detected.',
+        findings: 'Findings',
+        plan: 'Remediation plan',
+        exportMd: 'Export MD',
+    },
+    codeatlas: {
+        title: 'Local code audit',
+        description: 'Backend/frontend, architecture, maintainability, regression scores and remediation plan.',
+        launch: 'Audit',
+        empty: 'Select a local project to launch the first audit.',
+        rerun: 'Rerun and compare',
+        delta: 'Before/after comparison available',
+    },
+    agentguide: {
+        title: 'AI guides for projects',
+        description: 'Generate concise AGENTS.md and CLAUDE.md files with anti-duplication and anti-regression rules.',
+        launch: 'Generate',
+        empty: 'Select a local project to generate AGENTS.md and CLAUDE.md.',
+        generatedFiles: 'Proposed files',
+        exists: '(already exists)',
+        noGenerated: 'No generated file yet.',
+        apply: 'Apply with backup',
+        applied: 'Files applied with backup when needed.',
+    },
+});
+
 })();

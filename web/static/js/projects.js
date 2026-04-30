@@ -432,6 +432,8 @@ function showProjectView(projectId) {
     document.body.classList.remove('perfatlas-mode');
     document.body.classList.remove('cyberatlas-mode');
     document.body.classList.remove('deployatlas-mode');
+    document.body.classList.remove('codeatlas-mode');
+    document.body.classList.remove('agentguide-mode');
     document.body.classList.add('projects-mode');
     document.querySelectorAll('.sidebar-hub-btn').forEach(btn => btn.classList.remove('active'));
 

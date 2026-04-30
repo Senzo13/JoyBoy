@@ -1736,7 +1736,7 @@ function openExtensionsHub() {
 
     view.style.display = 'flex';
     document.body.classList.add('extensions-mode');
-    document.body.classList.remove('addons-mode', 'models-mode', 'projects-mode', 'modules-mode', 'signalatlas-mode', 'perfatlas-mode', 'cyberatlas-mode');
+    document.body.classList.remove('addons-mode', 'models-mode', 'projects-mode', 'modules-mode', 'signalatlas-mode', 'perfatlas-mode', 'cyberatlas-mode', 'deployatlas-mode', 'codeatlas-mode', 'agentguide-mode');
     document.querySelectorAll('.sidebar-hub-btn').forEach(btn => btn.classList.remove('active'));
     document.getElementById('sidebar-extensions-btn')?.classList.add('active');
 

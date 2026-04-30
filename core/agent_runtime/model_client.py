@@ -642,6 +642,14 @@ def _profile_model_ids(
     discovery_timeout_seconds: int,
 ) -> tuple[list[str], str, str]:
     if provider.id == "ollama":
+        try:
+            from core import ollama_service
+            installed = ollama_service.get_installed_models(quiet=True)
+            installed_names = _dedupe_model_ids([model.get("name", "") for model in installed])
+            if installed_names:
+                return installed_names, "local", ""
+        except Exception as exc:
+            return list(provider.default_models), "default", truncate_middle(str(exc), 220)
         return list(provider.default_models), "default", ""
 
     if discover_remote and configured:
@@ -720,15 +728,42 @@ def get_terminal_model_profiles(
         if configured_only and not configured:
             continue
         auth_public = _provider_auth_public(provider)
-        model_ids, source, discovery_error = _profile_model_ids(
-            provider,
-            configured=configured,
-            discover_remote=discover_remote,
-            discovery_timeout_seconds=discovery_timeout_seconds,
-        )
+        local_ollama_models_by_name: dict[str, dict[str, Any]] = {}
+        if provider.id == "ollama":
+            try:
+                from core import ollama_service
+                local_ollama_models_by_name = {
+                    str(model.get("name", "") or ""): model
+                    for model in ollama_service.get_installed_models(quiet=True)
+                    if model.get("name")
+                }
+            except Exception:
+                local_ollama_models_by_name = {}
+        if provider.id == "ollama":
+            if local_ollama_models_by_name:
+                model_ids = _dedupe_model_ids(list(local_ollama_models_by_name.keys()))
+                source = "local"
+                discovery_error = ""
+            else:
+                model_ids = list(provider.default_models)
+                source = "default"
+                discovery_error = ""
+        else:
+            model_ids, source, discovery_error = _profile_model_ids(
+                provider,
+                configured=configured,
+                discover_remote=discover_remote,
+                discovery_timeout_seconds=discovery_timeout_seconds,
+            )
         for model in model_ids:
             model_id = model if provider.id == "ollama" else f"{provider.id}:{model}"
             limits = _model_runtime_limits(provider, model)
+            local_meta = local_ollama_models_by_name.get(model, {}) if provider.id == "ollama" else {}
+            supports_tools = provider.supports_tools
+            supports_vision = provider.supports_vision
+            if provider.id == "ollama" and local_meta:
+                supports_tools = bool(local_meta.get("supports_tools") or local_meta.get("tool_capable"))
+                supports_vision = bool(local_meta.get("vision"))
             profiles.append({
                 "id": model_id,
                 "provider": provider.id,
@@ -736,12 +771,14 @@ def get_terminal_model_profiles(
                 "model": model,
                 "configured": configured,
                 "terminal_runtime": provider.terminal_runtime,
-                "supports_tools": provider.supports_tools,
-                "supports_vision": provider.supports_vision,
+                "supports_tools": supports_tools,
+                "supports_vision": supports_vision,
                 "supports_thinking": provider.supports_thinking,
+                "capabilities": local_meta.get("capabilities", []),
+                "capability_source": local_meta.get("capability_source", ""),
                 **limits,
                 "model_source": source,
-                "discovered": source == "remote",
+                "discovered": source in {"local", "remote"},
                 "discovery_error": discovery_error,
                 **auth_public,
             })

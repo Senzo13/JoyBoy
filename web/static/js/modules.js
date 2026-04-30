@@ -173,6 +173,38 @@ const NATIVE_AUDIT_MODULE_FALLBACK_CATALOG = [
         theme: 'deployatlas',
         category: 'deployment',
     },
+    {
+        id: 'codeatlas',
+        name: 'CodeAtlas',
+        tagline: 'Local code quality, architecture and regression audits',
+        description: 'Backend/frontend scoring, duplicate-code detection, validation commands, and before/after remediation plans for local projects.',
+        icon: 'scan-search',
+        status: 'active',
+        entry_view: 'codeatlas-view',
+        capabilities: ['code_audit', 'backend_score', 'frontend_score', 'architecture', 'regression_risk', 'remediation_plan'],
+        premium: true,
+        available: true,
+        locked_reason: '',
+        featured: true,
+        theme: 'codeatlas',
+        category: 'developer',
+    },
+    {
+        id: 'agentguide',
+        name: 'AgentGuide',
+        tagline: 'Generate AGENTS.md and CLAUDE.md for better AI coding',
+        description: 'Scans a project, scores agent readiness, and proposes concise repo-specific AGENTS.md and CLAUDE.md files.',
+        icon: 'bot',
+        status: 'active',
+        entry_view: 'agentguide-view',
+        capabilities: ['agents_md', 'claude_md', 'multi_agent_rules', 'regression_safety', 'diff_preview'],
+        premium: true,
+        available: true,
+        locked_reason: '',
+        featured: true,
+        theme: 'agentguide',
+        category: 'developer',
+    },
 ];
 
 function signalAtlasNormalizePageBudget(value, fallback = SIGNALATLAS_DEFAULT_PAGE_BUDGET) {
@@ -2463,7 +2495,7 @@ function currentJoyBoyChatModel() {
 }
 
 function moduleViewIds() {
-    return ['modules-view', 'signalatlas-view', 'perfatlas-view', 'cyberatlas-view', 'deployatlas-view'];
+    return ['modules-view', 'signalatlas-view', 'perfatlas-view', 'cyberatlas-view', 'deployatlas-view', 'codeatlas-view', 'agentguide-view'];
 }
 
 function hideModulesWorkspaces() {
@@ -2476,6 +2508,8 @@ function hideModulesWorkspaces() {
     stopSignalAtlasRefresh();
     stopPerfAtlasRefresh();
     window.stopCyberAtlasRefresh?.();
+    window.stopCodeAtlasRefresh?.();
+    window.stopAgentGuideRefresh?.();
 }
 
 function hideOtherJoyBoyViews() {
@@ -2502,7 +2536,7 @@ function applyModulesShellMode(activeButtonId, bodyClass) {
     hideOtherJoyBoyViews();
     clearActiveHubButtons();
     document.getElementById(activeButtonId)?.classList.add('active');
-    document.body.classList.remove('addons-mode', 'extensions-mode', 'models-mode', 'projects-mode', 'modules-mode', 'signalatlas-mode', 'perfatlas-mode', 'cyberatlas-mode', 'deployatlas-mode');
+    document.body.classList.remove('addons-mode', 'extensions-mode', 'models-mode', 'projects-mode', 'modules-mode', 'signalatlas-mode', 'perfatlas-mode', 'cyberatlas-mode', 'deployatlas-mode', 'codeatlas-mode', 'agentguide-mode');
     document.body.classList.add(bodyClass);
 }
 
@@ -3347,6 +3381,12 @@ function moduleHubOutcome(moduleId) {
     if (moduleId === 'deployatlas') {
         return moduleT('modules.module_deployatlas_outcome', 'Analyse projet, SSH, HTTPS et runbook de déploiement.');
     }
+    if (moduleId === 'codeatlas') {
+        return moduleT('modules.module_codeatlas_outcome', 'Note backend/frontend, risques de régression et plan de correction.');
+    }
+    if (moduleId === 'agentguide') {
+        return moduleT('modules.module_agentguide_outcome', 'Génère AGENTS.md et CLAUDE.md adaptés au projet.');
+    }
     return moduleT('modules.module_signalatlas_outcome', 'Analyse crawl, indexation et visibilité SEO.');
 }
 
@@ -3367,6 +3407,18 @@ function moduleHubPoints(moduleId) {
         return [
             moduleT('modules.module_deployatlas_point_1', 'Serveurs VPS enregistrés avec fingerprint SSH'),
             moduleT('modules.module_deployatlas_point_2', 'Terminal visuel, HTTPS et rollback guidé'),
+        ];
+    }
+    if (moduleId === 'codeatlas') {
+        return [
+            moduleT('modules.module_codeatlas_point_1', 'Audit déterministe local du projet'),
+            moduleT('modules.module_codeatlas_point_2', 'Comparaison avant/après correction'),
+        ];
+    }
+    if (moduleId === 'agentguide') {
+        return [
+            moduleT('modules.module_agentguide_point_1', 'Instructions agents spécifiques au repo'),
+            moduleT('modules.module_agentguide_point_2', 'Diff preview avant application'),
         ];
     }
     return [
@@ -4405,6 +4457,14 @@ async function openAuditModuleWorkspace(moduleId, auditId = null) {
     }
     if (clean === 'deployatlas') {
         await window.openDeployAtlasWorkspace?.(auditId);
+        return;
+    }
+    if (clean === 'codeatlas') {
+        await window.openCodeAtlasWorkspace?.(auditId);
+        return;
+    }
+    if (clean === 'agentguide') {
+        await window.openAgentGuideWorkspace?.(auditId);
     }
 }
 

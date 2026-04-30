@@ -98,6 +98,9 @@ TOOL_CAPABLE_MODELS = {
     'command-r', 'command-r-plus',
     'hermes3', 'hermes-3',
     'nemotron', 'athene', 'deepseek',
+    # Code/agent models not always named like their base instruct family
+    'codestral', 'codegemma', 'starcoder', 'starcoder2',
+    'devstral', 'qwen3-coder', 'qwen2.5-coder',
 }
 
 # Modèles à exclure (finetunes qui cassent le tool calling)
