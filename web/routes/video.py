@@ -50,6 +50,42 @@ def _video_prompt_rewrite_model(chat_model=None, *, vram_gb=0):
     return requested or None
 
 
+def _is_bad_video_prompt_rewrite(original, rewritten):
+    """Detect LLM meta/refusal output; video backends must receive a prompt only."""
+    clean = str(original or "").strip()
+    candidate = str(rewritten or "").strip()
+    if not candidate:
+        return True
+
+    lower = candidate.lower()
+    bad_markers = (
+        "the user is requesting",
+        "the request involves",
+        "to comply with",
+        "ethical guidelines",
+        "policy",
+        "i cannot",
+        "i can't",
+        "cannot fulfill",
+        "can't fulfill",
+        "i'm unable",
+        "as an ai",
+        "sorry",
+        "refuse",
+        "not able to",
+        "not appropriate",
+        "not allowed",
+        "i will not",
+    )
+    if any(marker in lower for marker in bad_markers):
+        return True
+
+    if len(candidate) > max(240, len(clean) * 4):
+        return True
+
+    return False
+
+
 def _prefer_lightx2v_high_end_model(video_model, *, video_models, cache_dir, vram_gb=0):
     """Prefer downloaded LightX2V over the native Wan 14B path on high-end GPUs."""
     requested = str(video_model or "").strip()
@@ -130,6 +166,9 @@ def _rewrite_video_prompt_for_high_vram(prompt, *, chat_model=None, vram_gb=0):
         return clean
     if rewritten.lower().startswith("prompt:"):
         rewritten = rewritten.split(":", 1)[1].strip()
+    if _is_bad_video_prompt_rewrite(clean, rewritten):
+        print("[VIDEO] Prompt rewrite LLM ignoré (réponse méta/refus)")
+        return clean
     return rewritten or clean
 
 

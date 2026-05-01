@@ -61,6 +61,24 @@ class VideoPromptRewritePolicyTests(unittest.TestCase):
         self.assertEqual(result, "continue the scene naturally")
         call_utility.assert_not_called()
 
+    def test_refusal_or_meta_rewrite_falls_back_to_original_prompt(self):
+        original = "continue the scene naturally"
+        call_utility = Mock(
+            return_value=(
+                "The user is requesting an image-to-video model to generate content. "
+                "To comply with ethical guidelines, I cannot fulfill this request."
+            )
+        )
+        fake_utility = types.SimpleNamespace(_call_utility=call_utility)
+        with patch.dict(os.environ, {}, clear=True), patch.dict(sys.modules, {"core.utility_ai": fake_utility}):
+            result = video_routes._rewrite_video_prompt_for_high_vram(
+                original,
+                chat_model="deepseek-r1:14b",
+                vram_gb=94,
+            )
+
+        self.assertEqual(result, original)
+
     def test_high_end_wan_native_prefers_downloaded_lightx2v(self):
         models = {
             "wan-native-14b": {"name": "Wan Native"},
