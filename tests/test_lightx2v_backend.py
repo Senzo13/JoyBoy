@@ -148,7 +148,8 @@ class LightX2VBackendTests(unittest.TestCase):
             "C:/out.mp4",
         ]
 
-        wrapped = backend._lightx2v_subprocess_command(base_cmd, self._meta())
+        with patch.dict(os.environ, {"JOYBOY_LIGHTX2V_GPUS": "single"}, clear=False):
+            wrapped = backend._lightx2v_subprocess_command(base_cmd, self._meta())
 
         self.assertEqual(wrapped[0], sys.executable)
         self.assertEqual(wrapped[1], "-c")
@@ -159,6 +160,46 @@ class LightX2VBackendTests(unittest.TestCase):
         self.assertIn("flash_attn_interface", wrapped[2])
         self.assertEqual(wrapped[3], "lightx2v.infer")
         self.assertIn("--save_result_path", wrapped)
+
+    def test_lightx2v_subprocess_uses_torch_distributed_for_multi_gpu(self):
+        base_cmd = [
+            sys.executable,
+            "-m",
+            "lightx2v.infer",
+            "--save_result_path",
+            "C:/out.mp4",
+        ]
+
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch.object(backend, "get_lightx2v_runtime_dir", return_value=Path(tmp)),
+            patch.dict(os.environ, {"JOYBOY_LIGHTX2V_GPUS": "2"}, clear=False),
+        ):
+            wrapped = backend._lightx2v_subprocess_command(base_cmd, self._meta())
+
+        self.assertEqual(wrapped[:3], [sys.executable, "-m", "torch.distributed.run"])
+        self.assertIn("--standalone", wrapped)
+        self.assertIn("--nproc_per_node", wrapped)
+        self.assertEqual(wrapped[wrapped.index("--nproc_per_node") + 1], "2")
+        self.assertIn("lightx2v.infer", wrapped)
+        self.assertIn("--save_result_path", wrapped)
+
+    def test_lightx2v_env_sets_cuda_visible_devices_from_gpu_list(self):
+        with patch.dict(os.environ, {"JOYBOY_LIGHTX2V_GPUS": "0,1"}, clear=False):
+            env = backend._lightx2v_env(Path("C:/repo"))
+
+        self.assertEqual(env["CUDA_VISIBLE_DEVICES"], "0,1")
+
+    def test_lightx2v_auto_uses_visible_cuda_gpu_count(self):
+        with (
+            patch.dict(os.environ, {}, clear=True),
+            patch("torch.cuda.device_count", return_value=2),
+        ):
+            self.assertEqual(backend._lightx2v_gpu_request(), (2, ""))
+
+    def test_lightx2v_single_override_disables_auto_multi_gpu(self):
+        with patch.dict(os.environ, {"JOYBOY_LIGHTX2V_GPUS": "single"}, clear=True):
+            self.assertEqual(backend._lightx2v_gpu_request(), (1, ""))
 
     def test_video_download_helpers_support_multi_repo_packs(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -313,7 +354,10 @@ class LightX2VBackendTests(unittest.TestCase):
             with (
                 patch.object(backend, "get_lightx2v_repo_dir", return_value=repo_dir),
                 patch.object(backend, "_select_attention", return_value="torch_sdpa"),
-                patch.dict(os.environ, {"JOYBOY_LIGHTX2V_TURBO": "1"}, clear=False),
+                patch.dict(os.environ, {
+                    "JOYBOY_LIGHTX2V_GPUS": "single",
+                    "JOYBOY_LIGHTX2V_TURBO": "1",
+                }, clear=False),
             ):
                 config_path, attention, offload = backend._build_lightx2v_config(
                     "lightx2v-wan22-i2v-4step",
@@ -346,6 +390,41 @@ class LightX2VBackendTests(unittest.TestCase):
                 )
             )
 
+    def test_config_injects_parallel_block_for_multi_gpu(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo_dir = root / "repo"
+            runtime_dir = root / "runtime"
+            cache_dir = root / "cache"
+            self._write_repo_config(repo_dir, "configs/distill/wan22/safe.json", {})
+
+            with (
+                patch.object(backend, "get_lightx2v_repo_dir", return_value=repo_dir),
+                patch.object(backend, "_select_attention", return_value="torch_sdpa"),
+                patch.dict(os.environ, {
+                    "JOYBOY_LIGHTX2V_GPUS": "2",
+                    "JOYBOY_LIGHTX2V_PARALLEL_ATTN": "ring",
+                }, clear=False),
+            ):
+                config_path, _, _ = backend._build_lightx2v_config(
+                    "lightx2v-wan22-i2v-4step",
+                    self._meta(),
+                    cache_dir,
+                    width=832,
+                    height=480,
+                    frames=81,
+                    steps=4,
+                    fps=16,
+                    quality="720p",
+                    runtime_dir=runtime_dir,
+                )
+
+            config = json.loads(config_path.read_text(encoding="utf-8"))
+            self.assertEqual(config["parallel"], {
+                "seq_p_size": 2,
+                "seq_p_attn_type": "ring",
+            })
+
     def test_config_injects_active_video_loras_for_lightx2v(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -368,6 +447,7 @@ class LightX2VBackendTests(unittest.TestCase):
             with (
                 patch.object(backend, "get_lightx2v_repo_dir", return_value=repo_dir),
                 patch.object(backend, "_select_attention", return_value="torch_sdpa"),
+                patch.dict(os.environ, {"JOYBOY_LIGHTX2V_GPUS": "single"}, clear=False),
                 patch("core.infra.model_imports.get_active_video_loras", return_value=active_loras) as active,
             ):
                 config_path, _, _ = backend._build_lightx2v_config(
@@ -412,6 +492,7 @@ class LightX2VBackendTests(unittest.TestCase):
                 patch.object(backend, "is_lightx2v_backend_available", return_value=True),
                 patch.object(backend, "get_lightx2v_repo_dir", return_value=repo_dir),
                 patch.object(backend, "get_lightx2v_runtime_dir", return_value=runtime_dir),
+                patch.dict(os.environ, {"JOYBOY_LIGHTX2V_GPUS": "single"}, clear=False),
                 patch.object(backend.subprocess, "Popen", FakeLightX2VProcess),
             ):
                 result = backend.run_lightx2v_generation(

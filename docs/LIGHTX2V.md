@@ -39,6 +39,29 @@ Turbo kernels are opt-in only. Set `JOYBOY_LIGHTX2V_TURBO=1` to try the upstream
 FP8/SageAttention path; JoyBoy falls back to the safe SDPA profile if the kernel
 is not importable.
 
+## Multi-GPU
+
+LightX2V supports distributed parallel inference. JoyBoy enables it
+automatically when more than one CUDA GPU is visible. Single-GPU installs stay
+on the normal subprocess path.
+
+For a 2x H100 cloud instance:
+
+```bash
+./start_linux.sh
+```
+
+Optional overrides:
+
+- `2` for two visible GPUs
+- `0,1` to force a specific `CUDA_VISIBLE_DEVICES` list
+- `auto`, `all`, or `max` to use every visible CUDA GPU
+- `1`, `off`, or `single` to force single-GPU mode
+
+`JOYBOY_LIGHTX2V_PARALLEL_ATTN` accepts `ulysses` or `ring`; `ulysses` is the
+default. When enabled, JoyBoy injects LightX2V's `parallel` config block and
+launches the subprocess through `torch.distributed.run`.
+
 ## Models
 
 The initial catalogue entries are:

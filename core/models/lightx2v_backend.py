@@ -319,6 +319,50 @@ def _select_attention(prefer_turbo: bool = False) -> str:
     return "torch_sdpa"
 
 
+def _lightx2v_gpu_request() -> tuple[int, str]:
+    raw = os.environ.get("JOYBOY_LIGHTX2V_GPUS", "").strip().lower()
+    if raw in {"0", "1", "off", "false", "no", "single"}:
+        return 1, ""
+
+    if not raw:
+        raw = "auto"
+
+    if "," in raw:
+        devices = [part.strip() for part in raw.split(",") if part.strip()]
+        if devices and all(part.isdigit() for part in devices):
+            return max(1, len(devices)), ",".join(devices)
+
+    if raw in {"auto", "all", "max"}:
+        visible = os.environ.get("CUDA_VISIBLE_DEVICES", "").strip()
+        if visible and visible not in {"-1", "none"}:
+            devices = [part.strip() for part in visible.split(",") if part.strip()]
+            return max(1, len(devices)), ""
+        try:
+            import torch
+
+            return max(1, int(torch.cuda.device_count() or 1)), ""
+        except Exception:
+            return 1, ""
+
+    try:
+        return max(1, int(raw)), ""
+    except ValueError:
+        return 1, ""
+
+
+def _lightx2v_parallel_config() -> dict[str, Any] | None:
+    gpu_count, _ = _lightx2v_gpu_request()
+    if gpu_count <= 1:
+        return None
+    attn_type = os.environ.get("JOYBOY_LIGHTX2V_PARALLEL_ATTN", "ulysses").strip().lower() or "ulysses"
+    if attn_type not in {"ulysses", "ring"}:
+        attn_type = "ulysses"
+    return {
+        "seq_p_size": gpu_count,
+        "seq_p_attn_type": attn_type,
+    }
+
+
 def _adjust_frames(frames: int) -> int:
     frames = max(5, int(frames or 81))
     if (frames - 1) % 4 != 0:
@@ -464,6 +508,10 @@ def _build_lightx2v_config(
         "t5_cpu_offload": bool(low_vram_profile or config.get("t5_cpu_offload", False)),
         "vae_cpu_offload": bool(low_vram_profile or config.get("vae_cpu_offload", False)),
     })
+
+    parallel = _lightx2v_parallel_config()
+    if parallel:
+        config["parallel"] = parallel
 
     if attention == "torch_sdpa":
         config["rope_type"] = "torch"
@@ -661,6 +709,8 @@ def _lightx2v_subprocess_command(cmd: list[str], meta: dict[str, Any]) -> list[s
     """Wrap `python -m lightx2v.infer` so Wan tasks avoid broken torchaudio imports."""
     if len(cmd) < 3 or cmd[1] != "-m":
         return cmd
+    gpu_count, _ = _lightx2v_gpu_request()
+    distributed = gpu_count > 1
     allow_real_torchaudio = os.environ.get("JOYBOY_LIGHTX2V_ALLOW_TORCHAUDIO", "").strip().lower() in {
         "1",
         "true",
@@ -668,8 +718,35 @@ def _lightx2v_subprocess_command(cmd: list[str], meta: dict[str, Any]) -> list[s
         "on",
     }
     if allow_real_torchaudio or _lightx2v_task_requires_audio(meta):
+        if distributed:
+            return [
+                cmd[0],
+                "-m",
+                "torch.distributed.run",
+                "--standalone",
+                "--nproc_per_node",
+                str(gpu_count),
+                "-m",
+                cmd[2],
+                *cmd[3:],
+            ]
         return cmd
     module = cmd[2]
+    if distributed:
+        bootstrap_path = get_lightx2v_runtime_dir() / "_lightx2v_bootstrap.py"
+        bootstrap_path.parent.mkdir(parents=True, exist_ok=True)
+        bootstrap_path.write_text(_lightx2v_stub_bootstrap(), encoding="utf-8")
+        return [
+            cmd[0],
+            "-m",
+            "torch.distributed.run",
+            "--standalone",
+            "--nproc_per_node",
+            str(gpu_count),
+            str(bootstrap_path),
+            module,
+            *cmd[3:],
+        ]
     return [cmd[0], "-c", _lightx2v_stub_bootstrap(), module, *cmd[3:]]
 
 
@@ -684,6 +761,9 @@ def _lightx2v_env(repo_dir: Path) -> dict[str, str]:
     env.setdefault("SENSITIVE_LAYER_DTYPE", "None")
     env.setdefault("PROFILING_DEBUG_LEVEL", "2")
     env.setdefault("FFMPEG_LOG_LEVEL", "error")
+    _, visible_devices = _lightx2v_gpu_request()
+    if visible_devices:
+        env["CUDA_VISIBLE_DEVICES"] = visible_devices
     return env
 
 
@@ -779,6 +859,12 @@ def run_lightx2v_generation(
 
     print(f"[LIGHTX2V] Backend: {repo_dir}")
     print(f"[LIGHTX2V] Attention: {attention} | offload={offload} | steps={steps} | frames={frames}")
+    parallel = _lightx2v_parallel_config()
+    if parallel:
+        print(
+            "[LIGHTX2V] Parallel: "
+            f"{parallel['seq_p_size']} GPU(s), seq={parallel['seq_p_attn_type']}"
+        )
     print(f"[LIGHTX2V] Output: {output_path}")
     if progress_callback:
         progress_callback(0, steps, "LightX2V: initialisation")
