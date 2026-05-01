@@ -43,6 +43,7 @@ LIGHTX2V_MINIMAL_PACKAGES = [
     "av",
     "gguf",
     "ftfy",
+    "kernels>=0.11.1",
     "prometheus-client",
     "pydantic",
     "pyzmq",
@@ -63,6 +64,7 @@ LIGHTX2V_IMPORT_CHECKS = {
     "av": "av",
     "gguf": "gguf",
     "ftfy": "ftfy",
+    "kernels": "kernels>=0.11.1",
     "prometheus_client": "prometheus-client",
     "pydantic": "pydantic",
     "zmq": "pyzmq",
@@ -71,6 +73,7 @@ LIGHTX2V_IMPORT_CHECKS = {
 
 LIGHTX2V_RUNTIME_REPAIR_IMPORTS = {
     "zmq": "pyzmq",
+    "kernels": "kernels>=0.11.1",
     "decord": "decord",
 }
 
