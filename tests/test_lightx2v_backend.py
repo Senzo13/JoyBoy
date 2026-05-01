@@ -34,6 +34,36 @@ class FakeLightX2VProcess:
         self.returncode = -15
 
 
+class FakeSegfaultThenSuccessLightX2VProcess:
+    calls = []
+
+    def __init__(self, cmd, **kwargs):
+        self.cmd = cmd
+        self.__class__.calls.append(list(cmd))
+        output_path = Path(cmd[cmd.index("--save_result_path") + 1])
+        if os.environ.get("JOYBOY_LIGHTX2V_GPUS") == "single":
+            self.returncode = 0
+            self.stdout = io.StringIO("step 1/4\nstep 4/4\n")
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_bytes(b"fake mp4 bytes")
+        else:
+            self.returncode = -11
+            self.stdout = io.StringIO(
+                "Root Cause (first observed failure):\n"
+                "[0]: exitcode : -11\n"
+                "Signal 11 (SIGSEGV) received by PID 12229\n"
+            )
+
+    def wait(self, timeout=None):
+        return self.returncode
+
+    def poll(self):
+        return self.returncode
+
+    def terminate(self):
+        self.returncode = -15
+
+
 class LightX2VBackendTests(unittest.TestCase):
     def _write_repo_config(self, repo_dir: Path, rel_path: str, payload: dict) -> None:
         target = repo_dir / rel_path
@@ -512,6 +542,53 @@ class LightX2VBackendTests(unittest.TestCase):
 
             self.assertTrue(result.video_path.exists())
             self.assertEqual(result.frames, 81)
+            self.assertIn((4, 4, "LightX2V terminé"), progress)
+
+    def test_run_generation_falls_back_to_single_gpu_after_distributed_sigsegv(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo_dir = root / "repo"
+            runtime_dir = root / "runtime"
+            cache_dir = root / "cache"
+            for rel in ("Wan-AI--Wan2.2-I2V-A14B", "lightx2v--Wan2.2-Distill-Models"):
+                path = cache_dir / rel
+                path.mkdir(parents=True)
+                (path / "marker.txt").write_text("ok", encoding="utf-8")
+            self._write_repo_config(repo_dir, "configs/distill/wan22/safe.json", {})
+            (repo_dir / "lightx2v").mkdir()
+            (repo_dir / "lightx2v" / "infer.py").write_text("", encoding="utf-8")
+
+            progress = []
+            image = Image.new("RGB", (64, 64), color=(20, 30, 40))
+            FakeSegfaultThenSuccessLightX2VProcess.calls = []
+
+            with (
+                patch.object(backend, "is_lightx2v_backend_available", return_value=True),
+                patch.object(backend, "get_lightx2v_repo_dir", return_value=repo_dir),
+                patch.object(backend, "get_lightx2v_runtime_dir", return_value=runtime_dir),
+                patch.dict(os.environ, {"JOYBOY_LIGHTX2V_GPUS": "2"}, clear=False),
+                patch.object(backend.subprocess, "Popen", FakeSegfaultThenSuccessLightX2VProcess),
+            ):
+                result = backend.run_lightx2v_generation(
+                    "lightx2v-wan22-i2v-4step",
+                    self._meta(),
+                    cache_dir,
+                    image=image,
+                    prompt="subtle motion",
+                    negative_prompt="",
+                    width=64,
+                    height=64,
+                    frames=82,
+                    steps=4,
+                    fps=16,
+                    progress_callback=lambda step, total, message: progress.append((step, total, message)),
+                )
+
+            self.assertTrue(result.video_path.exists())
+            self.assertEqual(len(FakeSegfaultThenSuccessLightX2VProcess.calls), 2)
+            self.assertIn("torch.distributed.run", FakeSegfaultThenSuccessLightX2VProcess.calls[0])
+            self.assertNotIn("torch.distributed.run", FakeSegfaultThenSuccessLightX2VProcess.calls[1])
+            self.assertIn((0, 4, "LightX2V: retry mono-GPU après crash multi-GPU"), progress)
             self.assertIn((4, 4, "LightX2V terminé"), progress)
 
 

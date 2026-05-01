@@ -7,6 +7,7 @@ the adapter, install/status helpers, and subprocess command construction.
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass
 import importlib.util
 import json
@@ -72,6 +73,25 @@ LIGHTX2V_RUNTIME_REPAIR_IMPORTS = {
     "zmq": "pyzmq",
     "decord": "decord",
 }
+
+
+@contextmanager
+def _temporary_env(overrides: dict[str, str | None]):
+    previous: dict[str, str | None] = {}
+    for key, value in overrides.items():
+        previous[key] = os.environ.get(key)
+        if value is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = str(value)
+    try:
+        yield
+    finally:
+        for key, value in previous.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
 
 
 @dataclass(frozen=True)
@@ -361,6 +381,39 @@ def _lightx2v_parallel_config() -> dict[str, Any] | None:
         "seq_p_size": gpu_count,
         "seq_p_attn_type": attn_type,
     }
+
+
+def _lightx2v_single_gpu_fallback_enabled() -> bool:
+    if os.environ.get("JOYBOY_LIGHTX2V_FALLBACK_ACTIVE", "").strip():
+        return False
+    return os.environ.get("JOYBOY_LIGHTX2V_SINGLE_GPU_FALLBACK", "1").strip().lower() not in {
+        "0",
+        "false",
+        "no",
+        "off",
+    }
+
+
+def _lightx2v_native_crash(return_code: int | None, log_tail: list[str]) -> bool:
+    if return_code is not None and int(return_code) < 0:
+        return True
+    joined = "\n".join(log_tail).lower()
+    crash_markers = (
+        "sigsegv",
+        "signal 11",
+        "exitcode : -11",
+        "exitcode: -11",
+        "segmentation fault",
+        "torch.distributed.elastic.multiprocessing.errors",
+    )
+    return any(marker in joined for marker in crash_markers)
+
+
+def _lightx2v_should_retry_single_gpu(return_code: int | None, log_tail: list[str]) -> bool:
+    if not _lightx2v_single_gpu_fallback_enabled():
+        return False
+    gpu_count, _ = _lightx2v_gpu_request()
+    return gpu_count > 1 and _lightx2v_native_crash(return_code, log_tail)
 
 
 def _adjust_frames(frames: int) -> int:
@@ -911,6 +964,31 @@ def run_lightx2v_generation(
 
         if return_code == 0:
             break
+
+        if _lightx2v_should_retry_single_gpu(return_code, log_tail):
+            print("[LIGHTX2V] Multi-GPU a crashé en natif; retry automatique en mono-GPU.")
+            if progress_callback:
+                progress_callback(0, steps, "LightX2V: retry mono-GPU après crash multi-GPU")
+            with _temporary_env({
+                "JOYBOY_LIGHTX2V_GPUS": "single",
+                "JOYBOY_LIGHTX2V_FALLBACK_ACTIVE": "1",
+            }):
+                return run_lightx2v_generation(
+                    model_id,
+                    meta,
+                    cache_dir,
+                    image=image,
+                    prompt=prompt,
+                    negative_prompt=negative_prompt,
+                    width=width,
+                    height=height,
+                    frames=frames,
+                    steps=steps,
+                    fps=fps,
+                    quality=quality,
+                    cancel_check=cancel_check,
+                    progress_callback=progress_callback,
+                )
 
         repaired = _repair_missing_lightx2v_dependency(log_tail) if attempt == 0 else ""
         if repaired and repaired not in repaired_packages:

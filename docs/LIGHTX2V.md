@@ -62,6 +62,11 @@ Optional overrides:
 default. When enabled, JoyBoy injects LightX2V's `parallel` config block and
 launches the subprocess through `torch.distributed.run`.
 
+If the distributed subprocess crashes in native CUDA code, for example with
+`SIGSEGV` / exit code `-11`, JoyBoy retries the same generation once in
+single-GPU mode and rebuilds the config without the parallel block. Disable
+that safety fallback with `JOYBOY_LIGHTX2V_SINGLE_GPU_FALLBACK=0`.
+
 ## Models
 
 The initial catalogue entries are:
