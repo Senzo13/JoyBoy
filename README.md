@@ -78,13 +78,13 @@ For a remote GPU machine, keep JoyBoy private with an SSH tunnel.
 Windows PowerShell:
 
 ```powershell
-ssh -i "$env:USERPROFILE\.ssh\<KEY_NAME>" -L 7860:127.0.0.1:7860 ubuntu@<PUBLIC_IP>
+ssh -L 7860:127.0.0.1:7860 ubuntu@<PUBLIC_IP>
 ```
 
 macOS / Linux:
 
 ```bash
-ssh -i ~/.ssh/<KEY_NAME> -L 7860:127.0.0.1:7860 ubuntu@<PUBLIC_IP>
+ssh -L 7860:127.0.0.1:7860 ubuntu@<PUBLIC_IP>
 ```
 
 Then clone and start JoyBoy on the remote machine:
@@ -101,13 +101,13 @@ Open `http://127.0.0.1:7860` on your local computer while the SSH session stays 
 If JoyBoy is already running in one SSH terminal, open a second local terminal for the tunnel only:
 
 ```powershell
-ssh -i "$env:USERPROFILE\.ssh\<KEY_NAME>" -N -L 7860:127.0.0.1:7860 ubuntu@<PUBLIC_IP>
+ssh -N -L 7860:127.0.0.1:7860 ubuntu@<PUBLIC_IP>
 ```
 
 If your local `7860` port is busy:
 
 ```powershell
-ssh -i "$env:USERPROFILE\.ssh\<KEY_NAME>" -N -L 7861:127.0.0.1:7860 ubuntu@<PUBLIC_IP>
+ssh -N -L 7861:127.0.0.1:7860 ubuntu@<PUBLIC_IP>
 ```
 
 Then open `http://127.0.0.1:7861`.

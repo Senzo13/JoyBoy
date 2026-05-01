@@ -8,7 +8,6 @@ Most cloud GPU providers give you:
 
 - a public IP address
 - a Linux user, often `ubuntu`
-- an SSH key name or SSH private key
 - a region and instance type
 
 Never commit a real IP address, SSH key, token, or provider-specific account URL to the repo.
@@ -26,27 +25,27 @@ Use an SSH tunnel so JoyBoy stays bound to `127.0.0.1` on the remote machine whi
 #### Windows PowerShell
 
 ```powershell
-ssh -i "$env:USERPROFILE\.ssh\<KEY_NAME>" -L 7860:127.0.0.1:7860 ubuntu@<PUBLIC_IP>
+ssh -L 7860:127.0.0.1:7860 ubuntu@<PUBLIC_IP>
 ```
 
-If you are not sure where your key is:
+Use dots in the IP address, for example `68.209.73.39`, not dashes like
+`68-209-73-39`.
+
+If Lambda gives you a longer SSH command, use that exact command and add the
+tunnel part:
 
 ```powershell
-ls "$env:USERPROFILE\.ssh"
+ssh -L 7860:127.0.0.1:7860 ubuntu@<PUBLIC_IP>
 ```
 
 #### macOS / Linux
 
 ```bash
-chmod 600 ~/.ssh/<KEY_NAME>
-ssh -i ~/.ssh/<KEY_NAME> -L 7860:127.0.0.1:7860 ubuntu@<PUBLIC_IP>
-```
-
-If your SSH config already knows the key, this is enough:
-
-```bash
 ssh -L 7860:127.0.0.1:7860 ubuntu@<PUBLIC_IP>
 ```
+
+If your provider gives you a different SSH command, use the exact user and host
+from that command.
 
 Keep the SSH session open while JoyBoy is running. On your local machine, open:
 
@@ -59,13 +58,13 @@ If JoyBoy is already running in another SSH terminal and you only need access fr
 #### Windows PowerShell
 
 ```powershell
-ssh -i "$env:USERPROFILE\.ssh\<KEY_NAME>" -N -L 7860:127.0.0.1:7860 ubuntu@<PUBLIC_IP>
+ssh -N -L 7860:127.0.0.1:7860 ubuntu@<PUBLIC_IP>
 ```
 
 #### macOS / Linux
 
 ```bash
-ssh -i ~/.ssh/<KEY_NAME> -N -L 7860:127.0.0.1:7860 ubuntu@<PUBLIC_IP>
+ssh -N -L 7860:127.0.0.1:7860 ubuntu@<PUBLIC_IP>
 ```
 
 Keep that tunnel terminal open, then browse locally to:
@@ -77,7 +76,7 @@ http://127.0.0.1:7860
 If port `7860` is already used on your own computer, map a different local port while keeping JoyBoy remote on `7860`:
 
 ```powershell
-ssh -i "$env:USERPROFILE\.ssh\<KEY_NAME>" -N -L 7861:127.0.0.1:7860 ubuntu@<PUBLIC_IP>
+ssh -N -L 7861:127.0.0.1:7860 ubuntu@<PUBLIC_IP>
 ```
 
 Then open:
@@ -188,19 +187,15 @@ After startup:
 
 ### Permission denied (publickey)
 
-Confirm the key path and user:
+Confirm the user and IP:
 
 ```bash
-ssh -i ~/.ssh/<KEY_NAME> ubuntu@<PUBLIC_IP>
+ssh ubuntu@<PUBLIC_IP>
 ```
 
-On Windows PowerShell:
-
-```powershell
-ssh -i "$env:USERPROFILE\.ssh\<KEY_NAME>" ubuntu@<PUBLIC_IP>
-```
-
-If Lambda generated the SSH command, prefer the exact user shown by Lambda, then add the `-L 7860:127.0.0.1:7860` tunnel.
+If Lambda generated a specific SSH command for the instance, use that exact
+command. To create the browser tunnel, keep the same user and host and add
+`-L 7860:127.0.0.1:7860`.
 
 ### Ollama not reachable
 

@@ -158,6 +158,7 @@ def get_vram_status():
         cuda_details = _status.get('cuda_details', {})
         gpu_processes = _status.get('gpu_processes', [])
     status = _S()
+    cuda_details = status.cuda_details if isinstance(status.cuda_details, dict) else {}
     percent = round((status.used_gb / status.total_gb * 100) if status.total_gb > 0 else 0, 1)
 
     # Récupérer les infos détaillées des modèles Ollama
@@ -343,7 +344,6 @@ def get_vram_status():
 
     # Ajouter CUDA context comme modèle si de la VRAM est utilisée mais pas trackée
     tracked_vram = sum(m.get('vram_gb', 0) or 0 for m in models_detailed)
-    cuda_details = status.cuda_details
     if cuda_details:
         # VRAM allouée par PyTorch mais pas trackée par nos modèles
         pytorch_allocated = cuda_details.get('allocated_gb', 0)
