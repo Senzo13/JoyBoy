@@ -823,14 +823,18 @@ def get_pytorch_cuda_index(cuda_version=None):
     if not HAS_CUDA:
         return None
     if not version:
-        return "https://download.pytorch.org/whl/cu124"
-    if version.startswith(("12.4", "12.5", "12.6", "12.7", "12.8", "13")):
+        return "https://download.pytorch.org/whl/cu128"
+    if version.startswith("13") or version.startswith(("12.8", "12.9")):
+        return "https://download.pytorch.org/whl/cu128"
+    if version.startswith(("12.6", "12.7")):
+        return "https://download.pytorch.org/whl/cu126"
+    if version.startswith(("12.4", "12.5")):
         return "https://download.pytorch.org/whl/cu124"
     if version.startswith(("12.1", "12.2", "12.3")):
         return "https://download.pytorch.org/whl/cu121"
     if version.startswith("11.8"):
         return "https://download.pytorch.org/whl/cu118"
-    return "https://download.pytorch.org/whl/cu124"
+    return "https://download.pytorch.org/whl/cu128"
 
 def install_pytorch_cuda(force_reinstall=False):
     """Installe PyTorch depuis l'index CUDA dans le venv courant."""
@@ -841,9 +845,12 @@ def install_pytorch_cuda(force_reinstall=False):
 
     print(f"  Index CUDA: {pip_index}")
     print("  Note: RTX is not required; JoyBoy tries CUDA on any compatible NVIDIA card.")
+    torch_packages = ["torch", "torchvision", "torchaudio"]
+    if pip_index.endswith(("/cu126", "/cu128")):
+        torch_packages = ["torch==2.8.0", "torchvision==0.23.0", "torchaudio==2.8.0"]
     cmd = [
         sys.executable, "-m", "pip", "install", "--upgrade",
-        "torch", "torchvision", "torchaudio",
+        *torch_packages,
         "--index-url", pip_index,
     ]
     if force_reinstall:

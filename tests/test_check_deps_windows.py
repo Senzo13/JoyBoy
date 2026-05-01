@@ -11,7 +11,11 @@ class CheckDepsWindowsTests(unittest.TestCase):
             check_deps.HAS_CUDA = True
             self.assertEqual(
                 check_deps.get_pytorch_cuda_index("12.6"),
-                "https://download.pytorch.org/whl/cu124",
+                "https://download.pytorch.org/whl/cu126",
+            )
+            self.assertEqual(
+                check_deps.get_pytorch_cuda_index("12.8"),
+                "https://download.pytorch.org/whl/cu128",
             )
             self.assertEqual(
                 check_deps.get_pytorch_cuda_index("12.1"),

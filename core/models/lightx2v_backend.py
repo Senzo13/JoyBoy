@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from dataclasses import dataclass
+import importlib.metadata as importlib_metadata
 import importlib.util
 import json
 import os
@@ -28,6 +29,14 @@ from core.infra.paths import get_output_dir, get_packs_dir
 LIGHTX2V_REPO_URL = "https://github.com/ModelTC/LightX2V.git"
 LIGHTX2V_PINNED_COMMIT = "3566cd5e1626965490debf91d36ea5cc11d71c46"
 LIGHTX2V_BACKEND_NAME = "lightx2v"
+LIGHTX2V_MIN_TORCH_VERSION = (2, 8)
+LIGHTX2V_TARGET_TORCH_VERSION = "2.8.0"
+LIGHTX2V_TARGET_TORCHVISION_VERSION = "0.23.0"
+LIGHTX2V_TARGET_TORCHAUDIO_VERSION = "2.8.0"
+LIGHTX2V_TORCH_CUDA_INDEXES = {
+    "cu126": "https://download.pytorch.org/whl/cu126",
+    "cu128": "https://download.pytorch.org/whl/cu128",
+}
 
 # Safe, dependency-light install set. Do not install LightX2V requirements.txt:
 # it pins torch<=2.8.0 and can downgrade JoyBoy's CUDA stack.
@@ -43,7 +52,6 @@ LIGHTX2V_MINIMAL_PACKAGES = [
     "av",
     "gguf",
     "ftfy",
-    "kernels>=0.11.1",
     "prometheus-client",
     "pydantic",
     "pyzmq",
@@ -64,7 +72,6 @@ LIGHTX2V_IMPORT_CHECKS = {
     "av": "av",
     "gguf": "gguf",
     "ftfy": "ftfy",
-    "kernels": "kernels>=0.11.1",
     "prometheus_client": "prometheus-client",
     "pydantic": "pydantic",
     "zmq": "pyzmq",
@@ -73,7 +80,6 @@ LIGHTX2V_IMPORT_CHECKS = {
 
 LIGHTX2V_RUNTIME_REPAIR_IMPORTS = {
     "zmq": "pyzmq",
-    "kernels": "kernels>=0.11.1",
     "decord": "decord",
 }
 
@@ -238,6 +244,111 @@ def _missing_lightx2v_package() -> str | None:
     return None
 
 
+def _torch_version_tuple(version: str | None = None) -> tuple[int, int, int]:
+    if version is None:
+        try:
+            import torch
+
+            version = str(torch.__version__)
+        except Exception:
+            return (0, 0, 0)
+    match = re.match(r"(\d+)\.(\d+)(?:\.(\d+))?", str(version))
+    if not match:
+        return (0, 0, 0)
+    return (
+        int(match.group(1)),
+        int(match.group(2)),
+        int(match.group(3) or 0),
+    )
+
+
+def _installed_torch_version() -> str:
+    try:
+        return str(importlib_metadata.version("torch"))
+    except Exception:
+        return ""
+
+
+def _lightx2v_torch_supports_kernels(version: str | None = None) -> bool:
+    current = _torch_version_tuple(version)
+    return current >= (*LIGHTX2V_MIN_TORCH_VERSION, 0)
+
+
+def _driver_cuda_version() -> tuple[int, int] | None:
+    try:
+        result = subprocess.run(
+            ["nvidia-smi"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except Exception:
+        return None
+    output = f"{result.stdout}\n{result.stderr}"
+    match = re.search(r"CUDA Version:\s*(\d+)\.(\d+)", output)
+    if not match:
+        return None
+    return int(match.group(1)), int(match.group(2))
+
+
+def _lightx2v_torch_cuda_index() -> str:
+    driver_cuda = _driver_cuda_version()
+    if not driver_cuda:
+        return ""
+    major, minor = driver_cuda
+    if major >= 13 or (major == 12 and minor >= 8):
+        return LIGHTX2V_TORCH_CUDA_INDEXES["cu128"]
+    if major == 12 and minor >= 6:
+        return LIGHTX2V_TORCH_CUDA_INDEXES["cu126"]
+    return ""
+
+
+def _lightx2v_stack_issue() -> str:
+    version = _installed_torch_version()
+    if not version:
+        return "torch non installe"
+    if not _lightx2v_torch_supports_kernels(version):
+        return (
+            f"torch {version} detecte; LightX2V/kernels-community requiert "
+            f"torch>={LIGHTX2V_TARGET_TORCH_VERSION}"
+        )
+    return ""
+
+
+def _ensure_lightx2v_torch_stack() -> bool:
+    """Install a Torch build compatible with LightX2V kernels when possible."""
+    issue = _lightx2v_stack_issue()
+    if not issue:
+        return True
+    if os.environ.get("JOYBOY_LIGHTX2V_AUTO_TORCH", "0").strip().lower() not in {"1", "true", "yes", "on"}:
+        print(f"[LIGHTX2V] Stack Torch incompatible: {issue}")
+        return False
+
+    cuda_index = _lightx2v_torch_cuda_index()
+    if not cuda_index:
+        print(
+            "[LIGHTX2V] Stack Torch incompatible, mais aucun wheel CUDA 12.6+ "
+            f"n'est selectionnable automatiquement: {issue}"
+        )
+        return False
+
+    print(f"[LIGHTX2V] Stack Torch incompatible: {issue}")
+    print(
+        "[LIGHTX2V] Installation du stack PyTorch compatible LightX2V: "
+        f"torch {LIGHTX2V_TARGET_TORCH_VERSION} ({cuda_index})"
+    )
+    _pip_install([
+        "--upgrade",
+        "--force-reinstall",
+        "--index-url",
+        cuda_index,
+        f"torch=={LIGHTX2V_TARGET_TORCH_VERSION}",
+        f"torchvision=={LIGHTX2V_TARGET_TORCHVISION_VERSION}",
+        f"torchaudio=={LIGHTX2V_TARGET_TORCHAUDIO_VERSION}",
+    ])
+    return _lightx2v_stack_issue() == ""
+
+
 def is_lightx2v_backend_available() -> bool:
     repo_dir = get_lightx2v_repo_dir()
     if not (repo_dir / "lightx2v" / "infer.py").exists():
@@ -248,13 +359,17 @@ def is_lightx2v_backend_available() -> bool:
 def get_lightx2v_backend_status() -> dict[str, Any]:
     repo_dir = get_lightx2v_repo_dir()
     missing_package = _missing_lightx2v_package()
+    stack_issue = _lightx2v_stack_issue()
+    installed = (repo_dir / "lightx2v" / "infer.py").exists()
     return {
         "backend": LIGHTX2V_BACKEND_NAME,
-        "ready": (repo_dir / "lightx2v" / "infer.py").exists() and missing_package is None,
+        "ready": installed and missing_package is None,
         "repo_dir": str(repo_dir),
-        "installed": (repo_dir / "lightx2v" / "infer.py").exists(),
+        "installed": installed,
         "pinned_commit": LIGHTX2V_PINNED_COMMIT,
         "missing_python_package": missing_package,
+        "torch_version": _installed_torch_version(),
+        "runtime_stack_issue": stack_issue,
     }
 
 
@@ -281,6 +396,8 @@ def install_lightx2v_backend(*, upgrade: bool = False) -> dict[str, Any]:
     _run_checked(["git", "-C", str(repo_dir), "fetch", "--depth", "1", "origin", LIGHTX2V_PINNED_COMMIT], timeout=300)
     _run_checked(["git", "-C", str(repo_dir), "checkout", "--force", LIGHTX2V_PINNED_COMMIT], timeout=120)
 
+    if os.environ.get("JOYBOY_LIGHTX2V_AUTO_TORCH", "0").strip().lower() in {"1", "true", "yes", "on"}:
+        _ensure_lightx2v_torch_stack()
     _pip_install([*LIGHTX2V_MINIMAL_PACKAGES])
     for package in LIGHTX2V_OPTIONAL_PACKAGES:
         try:
@@ -315,7 +432,25 @@ def _missing_module_from_logs(log_tail: list[str]) -> str:
     return ""
 
 
+def _lightx2v_kernels_variant_error(log_tail: list[str]) -> bool:
+    joined = "\n".join(log_tail).lower()
+    return (
+        "cannot find a build variant" in joined
+        and "kernels-community" in joined
+        and "quantization_bitsandbytes" in joined
+    )
+
+
 def _repair_missing_lightx2v_dependency(log_tail: list[str]) -> str:
+    if _lightx2v_kernels_variant_error(log_tail):
+        print("[LIGHTX2V] kernels-community incompatible avec le Torch actuel; réparation du stack Torch...")
+        try:
+            if _ensure_lightx2v_torch_stack():
+                return f"torch=={LIGHTX2V_TARGET_TORCH_VERSION}"
+        except Exception as exc:
+            print(f"[LIGHTX2V] Réparation stack Torch échouée: {exc}")
+        return ""
+
     missing = _missing_module_from_logs(log_tail)
     package = LIGHTX2V_RUNTIME_REPAIR_IMPORTS.get(missing) or LIGHTX2V_IMPORT_CHECKS.get(missing)
     if not package:
@@ -333,7 +468,8 @@ def _select_attention(prefer_turbo: bool = False) -> str:
     override = os.environ.get("JOYBOY_LIGHTX2V_ATTENTION", "").strip()
     if override:
         return override
-    if prefer_turbo:
+    gpu_count, _ = _lightx2v_gpu_request()
+    if prefer_turbo or gpu_count > 1:
         try:
             import sageattention  # noqa: F401
             return "sage_attn2"
@@ -377,9 +513,10 @@ def _lightx2v_parallel_config() -> dict[str, Any] | None:
     gpu_count, _ = _lightx2v_gpu_request()
     if gpu_count <= 1:
         return None
-    attn_type = os.environ.get("JOYBOY_LIGHTX2V_PARALLEL_ATTN", "ulysses").strip().lower() or "ulysses"
+    default_attn_type = "ring" if gpu_count <= 2 else "ulysses"
+    attn_type = os.environ.get("JOYBOY_LIGHTX2V_PARALLEL_ATTN", default_attn_type).strip().lower() or default_attn_type
     if attn_type not in {"ulysses", "ring"}:
-        attn_type = "ulysses"
+        attn_type = default_attn_type
     return {
         "seq_p_size": gpu_count,
         "seq_p_attn_type": attn_type,
@@ -817,6 +954,8 @@ def _lightx2v_env(repo_dir: Path) -> dict[str, str]:
     env.setdefault("SENSITIVE_LAYER_DTYPE", "None")
     env.setdefault("PROFILING_DEBUG_LEVEL", "2")
     env.setdefault("FFMPEG_LOG_LEVEL", "error")
+    if os.environ.get("JOYBOY_LIGHTX2V_ALLOW_HUB_KERNELS", "").strip().lower() not in {"1", "true", "yes", "on"}:
+        env["USE_HUB_KERNELS"] = "0"
     _, visible_devices = _lightx2v_gpu_request()
     if visible_devices:
         env["CUDA_VISIBLE_DEVICES"] = visible_devices

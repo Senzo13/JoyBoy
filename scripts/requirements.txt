@@ -13,7 +13,7 @@ transformers>=4.53.3,<5.0
 tokenizers>=0.21.0,<0.23
 accelerate>=0.25.0
 safetensors
-huggingface_hub>=0.20.0
+huggingface_hub>=0.34.0,<1.0
 
 # Image Processing
 Pillow>=10.0.0

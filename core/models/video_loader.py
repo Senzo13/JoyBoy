@@ -655,12 +655,14 @@ def load_hunyuan(custom_cache):
     from core.models import VIDEO_MODELS
     from core.generation.video_optimizations import optimize_video_pipeline
 
-    # Installer kernels pour les perfs d'attention
-    try:
-        import kernels
-    except ImportError:
-        print("[MM] Installation de kernels...")
-        subprocess.run([sys.executable, '-m', 'pip', 'install', 'kernels'], check=True)
+    # Hugging Face Hub kernels are optional and can conflict with the pinned
+    # transformers/diffusers stack. Keep them opt-in so video loading cannot
+    # break the main JoyBoy process by installing `kernels` globally.
+    if os.environ.get("JOYBOY_ALLOW_HUB_KERNELS", "").strip().lower() in {"1", "true", "yes", "on"}:
+        try:
+            import kernels  # noqa: F401
+        except Exception as exc:
+            print(f"[MM] Hub kernels indisponibles, fallback PyTorch ({exc.__class__.__name__})")
 
     model_id = VIDEO_MODELS["hunyuan"]["id"]
     display_name = VIDEO_MODELS["hunyuan"]["name"]

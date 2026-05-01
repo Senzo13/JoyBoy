@@ -16,7 +16,8 @@ from pathlib import Path
 PROJECT_DIR = Path(__file__).resolve().parents[1]
 REQUIREMENTS_PATH = PROJECT_DIR / "scripts" / "requirements.txt"
 TORCH_PACKAGES = {"torch", "torchvision", "torchaudio"}
-PYTORCH_CUDA_INDEX = "https://download.pytorch.org/whl/cu124"
+PYTORCH_CUDA_INDEX = "https://download.pytorch.org/whl/cu128"
+HUGGINGFACE_HUB_PIN = "huggingface_hub>=0.34.0,<1.0"
 
 
 def _requirement_name(requirement: str) -> str:
@@ -107,9 +108,9 @@ def install_packages() -> int:
                     "install",
                     "--upgrade",
                     "--prefer-binary",
-                    "torch",
-                    "torchvision",
-                    "torchaudio",
+                    "torch==2.8.0",
+                    "torchvision==0.23.0",
+                    "torchaudio==2.8.0",
                     "--index-url",
                     PYTORCH_CUDA_INDEX,
                 ],
@@ -146,6 +147,12 @@ def install_packages() -> int:
                 for requirement in failed:
                     print(f"        - {requirement}")
                 print("    The dependency checker will try targeted repairs next.")
+
+        _run_pip(
+            ["install", "--upgrade", "--force-reinstall", HUGGINGFACE_HUB_PIN],
+            "Pinning Hugging Face Hub below 1.0 for transformers/diffusers compatibility",
+            timeout=900,
+        )
 
     print()
     print("    Dependencies installed.")

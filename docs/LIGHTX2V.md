@@ -34,10 +34,22 @@ The default runtime profile uses:
 - BF16
 - block/model offload when needed
 - `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`
+- Hugging Face Hub kernels disabled in the JoyBoy process (`USE_HUB_KERNELS=0`)
 
-Turbo kernels are opt-in only. Set `JOYBOY_LIGHTX2V_TURBO=1` to try the upstream
-FP8/SageAttention path; JoyBoy falls back to the safe SDPA profile if the kernel
-is not importable.
+Turbo kernels are opt-in only. Set `JOYBOY_LIGHTX2V_TURBO=1` to try the
+upstream FP8/SageAttention path; JoyBoy falls back to the safe SDPA profile if
+the attention kernel is not importable. Do not install Hugging Face's `kernels`
+package into the main JoyBoy venv unless you are intentionally testing Hub
+kernels; it can conflict with the pinned `transformers`/`diffusers` stack.
+
+For cloud H100/A100 machines, the tested setup path uses:
+
+```bash
+python -m pip install torch==2.8.0 torchvision==0.23.0 torchaudio==2.8.0 \
+  --index-url https://download.pytorch.org/whl/cu128
+python -m pip install --upgrade --force-reinstall "huggingface-hub>=0.34.0,<1.0"
+python -m pip uninstall -y kernels
+```
 
 ## Multi-GPU
 
@@ -58,14 +70,26 @@ Optional overrides:
 - `auto`, `all`, or `max` to use every visible CUDA GPU
 - `1`, `off`, or `single` to force single-GPU mode
 
-`JOYBOY_LIGHTX2V_PARALLEL_ATTN` accepts `ulysses` or `ring`; `ulysses` is the
-default. When enabled, JoyBoy injects LightX2V's `parallel` config block and
+`JOYBOY_LIGHTX2V_PARALLEL_ATTN` accepts `ulysses` or `ring`; JoyBoy defaults to
+`ring` for two GPUs and `ulysses` for larger GPU counts. When enabled, JoyBoy
+injects LightX2V's `parallel` config block and
 launches the subprocess through `torch.distributed.run`.
 
 If the distributed subprocess crashes in native CUDA code, for example with
 `SIGSEGV` / exit code `-11`, JoyBoy retries the same generation once in
 single-GPU mode and rebuilds the config without the parallel block. Disable
 that safety fallback with `JOYBOY_LIGHTX2V_SINGLE_GPU_FALLBACK=0`.
+
+If an existing cloud venv was polluted by a bad dependency combination, repair
+it before restarting JoyBoy:
+
+```bash
+cd ~/JoyBoy
+source venv/bin/activate
+python -m pip uninstall -y kernels
+python -m pip install --upgrade --force-reinstall "huggingface-hub>=0.34.0,<1.0"
+./start_linux.sh
+```
 
 ## Models
 

@@ -24,6 +24,7 @@ if [ -z "${HUGGINGFACE_HUB_CACHE:-}" ] || [ "$HUGGINGFACE_HUB_CACHE" = "$JOYBOY_
 fi
 export HF_ASSETS_CACHE="${HF_ASSETS_CACHE:-$JOYBOY_HF_CACHE_DIR/assets}"
 export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}"
+export USE_HUB_KERNELS="${USE_HUB_KERNELS:-0}"
 JOYBOY_LOCAL_URL="${JOYBOY_LOCAL_URL:-http://127.0.0.1:7860}"
 
 print_url_hint() {

@@ -6,6 +6,11 @@ import sys
 import warnings
 import logging
 
+# Hugging Face's optional Hub kernels can import the external `kernels` package
+# during generic transformers/peft imports. JoyBoy does not use that integration
+# in the Flask process; video backends select their own attention kernels.
+os.environ.setdefault("USE_HUB_KERNELS", "0")
+
 # Supprimer les warnings xformers/Triton si d'autres modules tentent de les importer
 # (models.py désinstalle xformers au startup, mais certains imports peuvent logger)
 warnings.filterwarnings("ignore", message=".*Triton.*")
@@ -20,6 +25,50 @@ from io import BytesIO
 
 # Add parent to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# When launched as `python web/app.py`, route modules that import `web.app`
+# should reuse this running module instead of executing the bootstrap twice.
+sys.modules.setdefault("web.app", sys.modules[__name__])
+
+
+def _version_tuple(value):
+    parts = []
+    for raw in str(value or "").replace("+", ".").split("."):
+        if raw.isdigit():
+            parts.append(int(raw))
+        else:
+            break
+    return tuple((parts + [0, 0, 0])[:3])
+
+
+def _installed_version(package):
+    try:
+        import importlib.metadata as _metadata
+        return _metadata.version(package)
+    except Exception:
+        return ""
+
+
+def _run_startup_pip(args):
+    import subprocess as _sp
+    return _sp.run([sys.executable, "-m", "pip", *args], check=False).returncode == 0
+
+
+def _repair_transformers_stack():
+    allow_hub_kernels = os.environ.get("JOYBOY_ALLOW_HUB_KERNELS", "").strip().lower() in {
+        "1", "true", "yes", "on",
+    }
+    if not allow_hub_kernels and _installed_version("kernels"):
+        print("[SETUP] Retrait de kernels (optionnel, incompatible avec ce stack HF)...")
+        _run_startup_pip(["uninstall", "-y", "kernels"])
+
+    hub_version = _installed_version("huggingface-hub")
+    if hub_version and _version_tuple(hub_version) >= (1, 0, 0):
+        print(f"[SETUP] huggingface-hub {hub_version} incompatible; pin <1.0...")
+        _run_startup_pip(["install", "--upgrade", "--force-reinstall", "huggingface-hub>=0.34.0,<1.0"])
+
+
+_repair_transformers_stack()
 
 try:
     from core.infra.runtime_console import install_runtime_console
@@ -66,7 +115,10 @@ _missing_pkgs = []
 for _mod in _CRITICAL_IMPORTS:
     try:
         __import__(_mod)
-    except (ImportError, OSError):
+    except (ImportError, OSError, Exception) as _exc:
+        if _mod in {"diffusers", "transformers", "peft"}:
+            print(f"[SETUP] Import {_mod} indisponible ({_exc.__class__.__name__}); tentative réparation stack HF...")
+            _repair_transformers_stack()
         _missing_pkgs.append(_mod)
 
 if _missing_pkgs:

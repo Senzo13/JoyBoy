@@ -99,6 +99,7 @@ class LightX2VBackendTests(unittest.TestCase):
                 patch.object(backend, "get_lightx2v_repo_dir", return_value=repo_dir),
                 patch.object(backend, "_run_checked") as run_checked,
                 patch.object(backend, "_pip_install", side_effect=lambda args: pip_calls.append(list(args))),
+                patch.object(backend, "_ensure_lightx2v_torch_stack", return_value=True),
                 patch.object(backend, "get_lightx2v_backend_status", return_value={"ready": True}),
             ):
                 status = backend.install_lightx2v_backend(upgrade=True)
@@ -111,7 +112,8 @@ class LightX2VBackendTests(unittest.TestCase):
         self.assertNotIn("torchaudio", flat_packages)
         self.assertNotIn("requirements.txt", " ".join(flat_packages))
         self.assertIn("gguf", flat_packages)
-        self.assertIn("kernels>=0.11.1", flat_packages)
+        self.assertNotIn("kernels", flat_packages)
+        self.assertNotIn("kernels>=0.11.1", flat_packages)
         self.assertIn("pyzmq", flat_packages)
         self.assertNotIn("decord", pip_calls[0])
         self.assertIn(["decord"], pip_calls)
@@ -119,9 +121,9 @@ class LightX2VBackendTests(unittest.TestCase):
 
     def test_import_checks_include_gguf_for_lightx2v_cli_startup(self):
         self.assertEqual(backend.LIGHTX2V_IMPORT_CHECKS["gguf"], "gguf")
-        self.assertEqual(backend.LIGHTX2V_IMPORT_CHECKS["kernels"], "kernels>=0.11.1")
         self.assertEqual(backend.LIGHTX2V_IMPORT_CHECKS["zmq"], "pyzmq")
         self.assertNotIn("decord", backend.LIGHTX2V_IMPORT_CHECKS)
+        self.assertNotIn("kernels", backend.LIGHTX2V_IMPORT_CHECKS)
 
     def test_runtime_repair_maps_zmq_to_pyzmq(self):
         logs = [
@@ -134,15 +136,19 @@ class LightX2VBackendTests(unittest.TestCase):
         self.assertEqual(repaired, "pyzmq")
         pip_install.assert_called_once_with(["pyzmq"])
 
-    def test_runtime_repair_maps_kernels_to_versioned_package(self):
+    def test_runtime_repair_does_not_install_kernels_into_main_venv(self):
         logs = [
-            "Failed to load CPU gemm_4bit_forward from kernels-community: No module named 'kernels'.",
+            "Failed to load CPU gemm_4bit_forward from kernels-community: Cannot find a build variant for this system in kernels-community/quantization_bitsandbytes.",
         ]
-        with patch.object(backend, "_pip_install") as pip_install:
+        with (
+            patch.object(backend, "_pip_install") as pip_install,
+            patch.object(backend, "_ensure_lightx2v_torch_stack", return_value=True) as repair_torch,
+        ):
             repaired = backend._repair_missing_lightx2v_dependency(logs)
 
-        self.assertEqual(repaired, "kernels>=0.11.1")
-        pip_install.assert_called_once_with(["kernels>=0.11.1"])
+        self.assertEqual(repaired, f"torch=={backend.LIGHTX2V_TARGET_TORCH_VERSION}")
+        repair_torch.assert_called_once()
+        pip_install.assert_not_called()
 
     def test_load_lightx2v_repairs_missing_minimal_dependency(self):
         with (
@@ -231,6 +237,7 @@ class LightX2VBackendTests(unittest.TestCase):
             env = backend._lightx2v_env(Path("C:/repo"))
 
         self.assertEqual(env["CUDA_VISIBLE_DEVICES"], "0,1")
+        self.assertEqual(env["USE_HUB_KERNELS"], "0")
 
     def test_lightx2v_auto_uses_visible_cuda_gpu_count(self):
         with (

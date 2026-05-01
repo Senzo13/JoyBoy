@@ -95,23 +95,26 @@ echo -e "${GREEN}[OK]${NC} Virtual environment activated"
 # Install PyTorch with CUDA inside the venv instead of reusing the system stack.
 echo -e "${YELLOW}[SETUP]${NC} Installing PyTorch + CUDA..."
 pip install --upgrade pip
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
+pip install torch==2.8.0 torchvision==0.23.0 torchaudio==2.8.0 --index-url https://download.pytorch.org/whl/cu128
 
 # ============================================================
 # FIX VERSION CONFLICTS (Lambda Labs has system packages that conflict)
 # ============================================================
 echo -e "${YELLOW}[SETUP]${NC} Fixing version conflicts..."
 
-# huggingface-hub 1.x breaks transformers
-pip install "huggingface-hub>=0.25.0,<1.0"
+# huggingface-hub 1.x breaks the currently pinned transformers/diffusers/peft stack.
+pip install "huggingface-hub>=0.34.0,<1.0"
 
 # Install requirements
 echo -e "${YELLOW}[SETUP]${NC} Installing requirements..."
 pip install -r scripts/requirements.txt
 
-# Force reinstall the full ML stack to avoid system package conflicts
+# Force reinstall the Python ML libraries to avoid system package conflicts.
+# Keep Torch pinned separately above; reinstalling unpinned torchvision can bump
+# Torch to a version that external video packs have not validated yet.
 echo -e "${YELLOW}[SETUP]${NC} Reinstalling ML stack (fixing Lambda system conflicts)..."
-pip install --force-reinstall torchvision transformers diffusers accelerate
+pip install --force-reinstall transformers diffusers accelerate
+pip install "huggingface-hub>=0.34.0,<1.0" --force-reinstall
 
 # IMPORTANT: numpy<2 MUST be installed LAST (torchvision pulls numpy 2.x)
 # mediapipe/tensorflow need numpy<2
