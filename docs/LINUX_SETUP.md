@@ -22,12 +22,13 @@ chmod +x setup_linux.sh start_linux.sh
 # 1. Create venv
 python3 -m venv venv
 source venv/bin/activate
+python -m pip install --upgrade pip
 
 # 2. Install PyTorch + CUDA
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126
+python -m pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
 
 # 3. Install requirements
-pip install -r requirements.txt
+python -m pip install -r scripts/requirements.txt
 
 # 4. Install Ollama
 curl -fsSL https://ollama.com/install.sh | sh
@@ -71,13 +72,27 @@ huggingface-cli download Lightricks/LTX-Video
 ```bash
 # Install build dependencies
 apt-get install -y python3-dev build-essential
-pip install sageattention --no-build-isolation
+python -m pip install sageattention --no-build-isolation
 ```
 
 ### Triton errors
 ```bash
-pip uninstall triton-windows -y  # In case it was installed
-pip install triton
+python -m pip uninstall triton-windows -y  # In case it was installed
+python -m pip install triton
+```
+
+### invalid-installed-package flatbuffers
+
+If pip fails on a cloud image with an apt-managed `flatbuffers` package, recreate
+and activate JoyBoy's venv before installing:
+
+```bash
+cd ~/JoyBoy
+rm -rf venv
+python3 -m venv venv
+source venv/bin/activate
+python -m pip install --upgrade pip
+python scripts/bootstrap.py setup
 ```
 
 ### CUDA out of memory

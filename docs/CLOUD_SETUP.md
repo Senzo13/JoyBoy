@@ -143,7 +143,8 @@ chmod +x start_linux.sh
 ```bash
 python3 -m venv venv
 source venv/bin/activate
-pip install -r requirements.txt
+python -m pip install --upgrade pip
+python -m pip install -r scripts/requirements.txt
 python3 web/app.py
 ```
 
@@ -207,6 +208,34 @@ Set or override:
 
 ```bash
 export OLLAMA_BASE_URL=http://127.0.0.1:11434
+```
+
+### pip reports invalid-installed-package flatbuffers
+
+Some cloud Ubuntu images include apt-managed Python packages in the system
+Python path. With pip 24.1+, installation can fail with:
+
+```text
+Cannot process installed package flatbuffers ... Invalid version
+```
+
+Use JoyBoy from an isolated virtual environment instead of the cloud image's
+system Python:
+
+```bash
+cd ~/JoyBoy
+rm -rf venv
+python3 -m venv venv
+source venv/bin/activate
+python -m pip install --upgrade pip
+python scripts/bootstrap.py setup
+```
+
+If the virtual environment command is missing on Ubuntu/Debian:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y python3-venv python3-pip
 ```
 
 ### CUDA out of memory

@@ -79,35 +79,23 @@ export PATH="$HOME/.local/bin:$PATH"
 
 ensure_ubuntu_python_bootstrap
 
-# Check if PyTorch already installed (Lambda Labs has it)
-if python3 -c "import torch; print(torch.cuda.is_available())" 2>/dev/null | grep -q "True"; then
-    echo -e "${GREEN}[OK]${NC} PyTorch + CUDA already installed (Lambda Labs)"
-    USE_SYSTEM_PYTHON=true
-else
-    USE_SYSTEM_PYTHON=false
+# Always use an isolated venv. Some cloud images ship apt-managed Python
+# packages with Debian versions that modern pip cannot parse.
+if [ -d "venv" ] && [ ! -f "venv/bin/activate" ]; then
+    echo -e "${YELLOW}[SETUP]${NC} Removing incomplete virtual environment..."
+    rm -rf venv
 fi
-
-# Create venv if not using system Python
-if [ "$USE_SYSTEM_PYTHON" = false ]; then
-    if [ -d "venv" ] && [ ! -f "venv/bin/activate" ]; then
-        echo -e "${YELLOW}[SETUP]${NC} Removing incomplete virtual environment..."
-        rm -rf venv
-    fi
-    if [ ! -d "venv" ]; then
-        echo -e "${YELLOW}[SETUP]${NC} Creating virtual environment..."
-        python3 -m venv venv
-    fi
-    source venv/bin/activate
-    echo -e "${GREEN}[OK]${NC} Virtual environment activated"
-
-    # Install PyTorch with CUDA
-    echo -e "${YELLOW}[SETUP]${NC} Installing PyTorch + CUDA..."
-    pip install --upgrade pip
-    pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
-else
-    echo -e "${GREEN}[OK]${NC} Using system Python (no venv needed)"
-    pip install --upgrade pip
+if [ ! -d "venv" ]; then
+    echo -e "${YELLOW}[SETUP]${NC} Creating virtual environment..."
+    python3 -m venv venv
 fi
+source venv/bin/activate
+echo -e "${GREEN}[OK]${NC} Virtual environment activated"
+
+# Install PyTorch with CUDA inside the venv instead of reusing the system stack.
+echo -e "${YELLOW}[SETUP]${NC} Installing PyTorch + CUDA..."
+pip install --upgrade pip
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
 
 # ============================================================
 # FIX VERSION CONFLICTS (Lambda Labs has system packages that conflict)
