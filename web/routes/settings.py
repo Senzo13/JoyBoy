@@ -1086,13 +1086,14 @@ def gallery_list():
     # Vidéos
     if os.path.exists(videos_dir):
         for ext in ['mp4', 'webm', 'gif']:
-            for filepath in glob.glob(os.path.join(videos_dir, f'*.{ext}')):
-                name = os.path.basename(filepath)
+            pattern = os.path.join(videos_dir, '**', f'*.{ext}')
+            for filepath in glob.glob(pattern, recursive=True):
+                rel_name = os.path.relpath(filepath, videos_dir).replace(os.sep, '/')
                 files.append(build_gallery_item(
                     filepath,
                     'video',
                     'video',
-                    f'/output/videos/{name}',
+                    f'/output/videos/{rel_name}',
                 ))
 
     # Images dans output/images/
@@ -1146,6 +1147,7 @@ def gallery_delete():
 
     # Construire le chemin réel
     project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+    output_root = os.path.normpath(os.path.join(project_root, 'output'))
     real_path = os.path.join(project_root, filepath.lstrip('/'))
     real_path = os.path.normpath(real_path)
 
@@ -1153,7 +1155,7 @@ def gallery_delete():
     if not os.path.exists(real_path):
         return jsonify({'success': False, 'error': 'Fichier non trouvé'}), 404
 
-    if 'output' not in real_path:
+    if os.path.commonpath([output_root, real_path]) != output_root:
         return jsonify({'success': False, 'error': 'Chemin invalide'}), 400
 
     try:
