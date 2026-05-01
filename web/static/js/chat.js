@@ -1343,6 +1343,43 @@ function addMessageVideo(videoBase64, generationTime = null, sourceImage = null,
     const fallbackVideoUrl = serverVideoUrl ? blobVideoUrl : '';
     const downloadUrl = serverVideoUrl || blobVideoUrl || playableVideoUrl;
     const sourceType = videoFormat === 'webm' ? 'video/webm' : 'video/mp4';
+    const renderVideoCard = ({
+        src,
+        format = videoFormat,
+        sessionId = '',
+        labelText = label,
+        toolsHtml = '',
+        timeHtml = '',
+        downloadName = 'video',
+        canAutoplay = true,
+    } = {}) => {
+        const cardFormat = format || 'mp4';
+        const stableUrl = sessionId ? `/videos/session/${sessionId}` : '';
+        const serverUrl = stableUrl ? `${stableUrl}?t=${cacheTag}` : '';
+        const payload = src || '';
+        const blobUrl = payload && typeof createPlayableVideoUrl === 'function'
+            ? createPlayableVideoUrl(payload, cardFormat)
+            : (payload ? `data:video/${cardFormat};base64,${payload}` : '');
+        const videoUrl = serverUrl || blobUrl || payload;
+        if (!videoUrl) return '';
+        const fallbackUrl = serverUrl ? blobUrl : '';
+        const cardDownloadUrl = serverUrl || blobUrl || videoUrl;
+        const cardType = cardFormat === 'webm' ? 'video/webm' : 'video/mp4';
+        return `
+            <div class="result-image-container video-container video-result-container">
+                <div class="video-player-shell">
+                    <video controls ${canAutoplay ? 'autoplay loop muted' : ''} playsinline preload="auto" class="result-video" data-primary-src="${stableUrl || videoUrl || ''}" data-fallback-src="${fallbackUrl}" data-download-src="${cardDownloadUrl || ''}" data-video-session-id="${sessionId || ''}" data-chat-id="${chatId || ''}">
+                        <source src="${videoUrl}" type="${cardType}">
+                    </video>
+                    <div class="video-actions">
+                        <a href="${cardDownloadUrl}" download="${downloadName}.${cardFormat}" class="edit-btn" title="Télécharger">${downloadIcon}</a>
+                    </div>
+                </div>
+                <div class="image-label">${labelText} ${timeHtml}</div>
+                ${toolsHtml || ''}
+            </div>
+        `;
+    };
 
     const sourceHtml = sourceImage ? `
         <div class="result-image-container">
@@ -1365,6 +1402,15 @@ function addMessageVideo(videoBase64, generationTime = null, sourceImage = null,
         </button>
     ` : '';
     const continuationTools = buildVideoContinuationTools(context.anchors, context.videoSessionId, continueBtn);
+    const additionalVideos = Array.isArray(metadata?.additionalVideos) ? metadata.additionalVideos : [];
+    const additionalVideoHtml = additionalVideos.map((item, index) => renderVideoCard({
+        src: item?.video || item?.videoBase64 || item?.video_base64 || '',
+        format: item?.format || videoFormat,
+        sessionId: item?.videoSessionId || item?.video_session_id || '',
+        labelText: item?.label || 'Segment généré',
+        timeHtml: item?.totalDuration ? `<div class="generation-time">${Number(item.totalDuration).toFixed(1)}s</div>` : '',
+        downloadName: `video-segment-${index + 1}`,
+    })).join('');
 
     const messageHtml = `
         <div class="message">
@@ -1374,27 +1420,27 @@ function addMessageVideo(videoBase64, generationTime = null, sourceImage = null,
             <div class="ai-response">
                 <div class="result-images">
                     ${sourceHtml}
-                    <div class="result-image-container video-container video-result-container">
-                        <div class="video-player-shell">
-                            <video controls autoplay loop muted playsinline preload="auto" class="result-video" data-primary-src="${stableVideoUrl || playableVideoUrl || ''}" data-fallback-src="${fallbackVideoUrl}" data-download-src="${downloadUrl || ''}" data-video-session-id="${context.videoSessionId || metadataSessionId || ''}" data-chat-id="${chatId || ''}">
-                                <source src="${playableVideoUrl}" type="${sourceType}">
-                            </video>
-                            <div class="video-actions">
-                                <a href="${downloadUrl}" download="video.${videoFormat}" class="edit-btn" title="Télécharger">${downloadIcon}</a>
-                            </div>
-                        </div>
-                        <div class="image-label">${label} ${timeDisplay}</div>
-                        ${continuationTools}
-                    </div>
+                    ${additionalVideoHtml}
+                    ${renderVideoCard({
+                        src: payloadVideo,
+                        format: videoFormat,
+                        sessionId: context.videoSessionId || metadataSessionId || '',
+                        labelText: label,
+                        toolsHtml: continuationTools,
+                        timeHtml: timeDisplay,
+                        downloadName: 'video',
+                    })}
                 </div>
             </div>
         </div>
     `;
 
     messagesDiv.insertAdjacentHTML('beforeend', messageHtml);
-    const renderedVideo = messagesDiv.querySelector('.message:last-child video.result-video');
-    if (renderedVideo && typeof wirePlayableVideo === 'function') {
-        wirePlayableVideo(renderedVideo, playableVideoUrl, fallbackVideoUrl);
+    const renderedVideos = messagesDiv.querySelectorAll('.message:last-child video.result-video');
+    if (typeof wirePlayableVideo === 'function') {
+        renderedVideos.forEach((video) => {
+            wirePlayableVideo(video, video.dataset.primarySrc || video.currentSrc || '', video.dataset.fallbackSrc || '');
+        });
     }
     scrollToBottom();
 

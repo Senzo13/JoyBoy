@@ -1900,11 +1900,71 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
         video_format = "gif"
 
     continuation_merged = False
+    additional_video_results = []
     if persisted_continuation and source_video_path and video_format == "mp4":
+        pending_segment_result = None
+        segment_video_path = Path(video_path)
+        segment_frames_for_asset = len(_state.all_video_frames)
+        segment_duration_for_asset = round(segment_frames_for_asset / fps, 3) if fps else None
+        segment_session = None
+        if segment_video_path.exists() and segment_video_path.stat().st_size > 0 and segment_frames_for_asset:
+            segment_session = create_video_session(
+                video_path=segment_video_path,
+                frames=_state.all_video_frames,
+                prompt=prompt or locals().get("video_prompt") or "Image-to-video motion",
+                final_prompt=locals().get("video_prompt") or prompt or "Image-to-video motion",
+                model_id=video_model,
+                model_name=model_info.get("name", video_model),
+                fps=fps,
+                chat_id=chat_id,
+                video_format=video_format,
+                width=locals().get("w_out"),
+                height=locals().get("h_out"),
+                source_session_id=continuation_context.get("source_session_id"),
+                anchor_frame_index=continuation_context.get("anchor_frame_index"),
+                analysis_summary=continuation_context.get("analysis_summary") or {},
+                continuation_prompt=continuation_context.get("continuation_prompt") or "",
+                audio_engine=audio_engine or "auto",
+                audio_prompt=audio_prompt or "",
+            )
+            save_gallery_metadata(
+                segment_video_path,
+                schema=2,
+                asset_type="video",
+                source="video",
+                model=model_info.get("name", video_model),
+                model_id=video_model,
+                prompt=prompt or locals().get("video_prompt") or "Image-to-video motion",
+                final_prompt=locals().get("video_prompt") or prompt or "Image-to-video motion",
+                video_session_id=segment_session.get("id"),
+                source_video_session_id=segment_session.get("source_session_id"),
+                continuation_prompt=segment_session.get("continuation_prompt"),
+                analysis_summary=segment_session.get("analysis_summary"),
+                audio_engine=segment_session.get("audio_engine"),
+                audio_prompt=segment_session.get("audio_prompt"),
+                continuation_role="segment",
+                steps=num_steps,
+                fps=fps,
+                frames=segment_frames_for_asset,
+                duration_sec=segment_duration_for_asset,
+                width=w_out,
+                height=h_out,
+            )
+            pending_segment_result = {
+                "role": "continuation_segment",
+                "label": "Segment généré seul",
+                "videoSessionId": segment_session.get("id"),
+                "format": video_format,
+                "totalFrames": segment_frames_for_asset,
+                "totalDuration": segment_duration_for_asset,
+                "canContinue": False,
+            }
         merged_path = concat_video_segments(source_video_path, video_path, fps=fps)
         if merged_path:
             video_path = merged_path
             continuation_merged = True
+            if pending_segment_result:
+                additional_video_results.append(pending_segment_result)
             print(f"[VIDEO] Continuation raccordée au clip source: {video_path}")
         else:
             print("[VIDEO] Raccord continuation ignoré: segment généré conservé seul")
@@ -1969,6 +2029,7 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
     _state.last_video_session = session
     _state.last_video_total_frames = total_frames_for_asset
     _state.last_video_duration_sec = total_duration_for_asset or 0
+    _state.last_video_extra_results = additional_video_results
 
     save_gallery_metadata(
         video_path,

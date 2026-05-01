@@ -619,6 +619,7 @@ def generate_video_endpoint():
                     videoSessionId=video_info.get('video_session_id'),
                     sourceVideoSessionId=video_info.get('source_video_session_id'),
                     continuationAnchors=video_info.get('continuation_anchors') or [],
+                    additionalVideos=video_info.get('additional_videos') or [],
                     analysisSummary=video_info.get('analysis_summary') or analysis_summary,
                     audioEngine=audio_engine,
                 )

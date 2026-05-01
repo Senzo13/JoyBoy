@@ -43,6 +43,7 @@ class GenerationState:
         self.last_video_session = None
         self.last_video_total_frames = 0
         self.last_video_duration_sec = 0
+        self.last_video_extra_results = []
         self.all_video_frames = []
         self.ltx2_audio = None
         self.ltx2_audio_sr = 24000
@@ -194,6 +195,7 @@ def get_video_info():
         "source_video_session_id": public_session.get("sourceVideoSessionId") or session.get("source_session_id"),
         "continuation_anchors": public_session.get("continuationAnchors") or [],
         "analysis_summary": public_session.get("analysisSummary") or session.get("analysis_summary") or {},
+        "additional_videos": list(getattr(_state, "last_video_extra_results", []) or []),
     }
 
 
@@ -206,6 +208,7 @@ def reset_video():
     _state.last_video_session = None
     _state.last_video_total_frames = 0
     _state.last_video_duration_sec = 0
+    _state.last_video_extra_results = []
     print("[VIDEO] Reset - prêt pour nouvelle vidéo")
 
 

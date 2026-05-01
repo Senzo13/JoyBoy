@@ -1634,6 +1634,45 @@ function replaceVideoSkeletonWithReal(videoSrc, format, genTime, chatId, metadat
     const fallbackVideoUrl = serverVideoUrl ? blobVideoUrl : '';
     const downloadUrl = serverVideoUrl || blobVideoUrl || videoUrl;
     const sourceType = format === 'webm' ? 'video/webm' : 'video/mp4';
+    const renderVideoResultCard = ({
+        src,
+        cardFormat = format,
+        sessionId = '',
+        label = '',
+        controlsHtml = '',
+        extraHtml = '',
+        downloadName = 'animation',
+    } = {}) => {
+        const normalizedFormat = cardFormat || 'mp4';
+        const stableUrl = sessionId ? `/videos/session/${sessionId}` : '';
+        const cardServerUrl = stableUrl ? `${stableUrl}?t=${cacheTag}` : '';
+        const payload = src || '';
+        const cardBlobUrl = payload ? createPlayableVideoUrl(payload, normalizedFormat) : '';
+        const cardUrl = cardServerUrl || cardBlobUrl || payload;
+        if (!cardUrl) return '';
+        const cardFallbackUrl = cardServerUrl ? cardBlobUrl : '';
+        const cardDownloadUrl = cardServerUrl || cardBlobUrl || cardUrl;
+        const cardSourceType = normalizedFormat === 'webm' ? 'video/webm' : 'video/mp4';
+        return `
+            <div class="video-container video-result-container">
+                <div class="video-player-shell">
+                    <video class="result-video" controls autoplay loop muted playsinline preload="auto" data-primary-src="${stableUrl || cardUrl || ''}" data-fallback-src="${cardFallbackUrl || ''}" data-download-src="${cardDownloadUrl || ''}" data-video-session-id="${sessionId || ''}" data-chat-id="${chatId || ''}">
+                        <source src="${cardUrl}" type="${cardSourceType}">
+                    </video>
+                    ${controlsHtml || `
+                        <div class="video-controls">
+                            <button class="video-control-btn" onclick="toggleVideoPlay(this)" data-playing="true"><i data-lucide="pause"></i></button>
+                            <button class="video-control-btn" onclick="toggleVideoMute(this)" data-muted="true"><i data-lucide="volume-x"></i></button>
+                            <button class="video-control-btn" onclick="toggleVideoFullscreen(this)"><i data-lucide="maximize"></i></button>
+                            <a class="video-control-btn" href="${cardDownloadUrl}" download="${downloadName}.${normalizedFormat}"><i data-lucide="download"></i></a>
+                        </div>
+                    `}
+                </div>
+                ${label ? `<div class="image-label">${label}</div>` : ''}
+                ${extraHtml || ''}
+            </div>
+        `;
+    };
 
     // Bouton Continuer si la continuation est dispo
     if (typeof updateLastVideoContextFromResult === 'function' && metadata && Object.keys(metadata).length) {
@@ -1661,6 +1700,14 @@ function replaceVideoSkeletonWithReal(videoSrc, format, genTime, chatId, metadat
                 ${continueBtn}
             </div>
         `;
+    const additionalVideos = Array.isArray(metadata?.additionalVideos) ? metadata.additionalVideos : [];
+    const additionalVideoHtml = additionalVideos.map((item, index) => renderVideoResultCard({
+        src: item?.video || item?.videoBase64 || item?.video_base64 || '',
+        cardFormat: item?.format || format,
+        sessionId: item?.videoSessionId || item?.video_session_id || '',
+        label: `${item?.label || 'Segment généré'}${item?.totalDuration ? ` · ${Number(item.totalDuration).toFixed(1)}s` : ''}`,
+        downloadName: `video-segment-${index + 1}`,
+    })).join('');
 
     if (isGif) {
         // GIF - afficher comme image
@@ -1674,29 +1721,23 @@ function replaceVideoSkeletonWithReal(videoSrc, format, genTime, chatId, metadat
         // MP4 - player vidéo avec contrôles
         messageDiv.innerHTML = `
             <div class="ai-message">
-                <div class="video-container video-result-container">
-                    <div class="video-player-shell">
-                        <video class="result-video" controls autoplay loop muted playsinline preload="auto" data-primary-src="${stableVideoUrl || videoUrl || ''}" data-fallback-src="${fallbackVideoUrl || ''}" data-download-src="${downloadUrl || ''}" data-video-session-id="${videoSessionId || ''}" data-chat-id="${chatId || ''}">
-                            <source src="${videoUrl}" type="${sourceType}">
-                        </video>
-                        <div class="video-controls">
-                            <button class="video-control-btn" onclick="toggleVideoPlay(this)" data-playing="true"><i data-lucide="pause"></i></button>
-                            <button class="video-control-btn" onclick="toggleVideoMute(this)" data-muted="true"><i data-lucide="volume-x"></i></button>
-                            <button class="video-control-btn" onclick="toggleVideoFullscreen(this)"><i data-lucide="maximize"></i></button>
-                            <a class="video-control-btn" href="${downloadUrl}" download="animation.mp4"><i data-lucide="download"></i></a>
-                        </div>
-                    </div>
-                    ${continuationTools}
-                </div>
+                ${additionalVideoHtml}
+                ${renderVideoResultCard({
+                    src: payloadVideo,
+                    cardFormat: format,
+                    sessionId: videoSessionId || metadataSessionId || '',
+                    extraHtml: continuationTools,
+                    downloadName: 'animation',
+                })}
                 <div class="generation-time">${timeText}</div>
             </div>
         `;
     }
     if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [messageDiv] });
-    const renderedVideo = messageDiv.querySelector('video.result-video');
-    if (renderedVideo) {
-        wirePlayableVideo(renderedVideo, videoUrl, fallbackVideoUrl);
-    }
+    const renderedVideos = messageDiv.querySelectorAll('video.result-video');
+    renderedVideos.forEach((video) => {
+        wirePlayableVideo(video, video.dataset.primarySrc || video.currentSrc || '', video.dataset.fallbackSrc || '');
+    });
     if (typeof saveCurrentChatHtml === 'function') {
         const messagesDiv = document.getElementById('chat-messages');
         const html = typeof getChatHtmlWithoutSkeleton === 'function' ? getChatHtmlWithoutSkeleton() : (messagesDiv?.innerHTML || '');
