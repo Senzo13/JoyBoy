@@ -67,8 +67,8 @@
     },
 
     "video": {
-        "default_model": "wan-native-14b",
-        "high_end_models": ["wan-native-14b", "wan22", "wan22-t2v-14b", "ltx2", "ltx2_fp8", "framepack", "hunyuan"],
+        "default_model": "lightx2v-wan22-i2v-4step",
+        "high_end_models": ["lightx2v-wan22-i2v-4step", "wan-native-14b", "wan22", "wan22-t2v-14b", "ltx2", "ltx2_fp8", "framepack", "hunyuan"],
         "video_analysis_model": "qwen3-vl:32b-instruct-q8_0",
         "audio_engine": "mmaudio",
         "wan": {

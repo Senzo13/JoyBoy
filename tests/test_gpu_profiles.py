@@ -50,7 +50,8 @@ class GpuProfileTests(unittest.TestCase):
         name, profile = _select_profile(96)
 
         self.assertEqual(name, "80gb.json")
-        self.assertEqual(profile["video"]["default_model"], "wan-native-14b")
+        self.assertEqual(profile["video"]["default_model"], "lightx2v-wan22-i2v-4step")
+        self.assertIn("lightx2v-wan22-i2v-4step", profile["video"]["high_end_models"])
         self.assertIn("ltx2", profile["video"]["high_end_models"])
         self.assertEqual(profile["ollama"]["default_chat_model"], "deepseek-r1:14b")
         self.assertFalse(profile["ollama"]["auto_pull_heavy_models"])

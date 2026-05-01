@@ -68,6 +68,9 @@ local_pack_sources/
 
 # Local assistant / scratch files
 .claude/
+.codex_tmp/
+codex_tmp/
+.tmp-tests/
 Fooocus/
 nul
 tmp_old_processing.py

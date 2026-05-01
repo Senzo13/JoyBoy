@@ -13,6 +13,74 @@ import uuid
 video_bp = Blueprint('video', __name__)
 video_download_status = {}
 
+_LIGHTWEIGHT_REWRITE_MODELS = {
+    "qwen3.5:2b",
+    "qwen3.5:0.8b",
+    "qwen3:0.6b",
+    "qwen3:1.7b",
+}
+
+
+def _as_float(value, default=0.0):
+    try:
+        return float(value or 0)
+    except (TypeError, ValueError):
+        return default
+
+
+def _video_prompt_rewrite_model(chat_model=None, *, vram_gb=0):
+    """Pick the text model used to rewrite prompts before a heavy video run."""
+    configured = os.environ.get("JOYBOY_VIDEO_PROMPT_REWRITE_MODEL", "").strip()
+    if configured:
+        return configured
+
+    requested = str(chat_model or "").strip()
+    current_vram = _as_float(vram_gb)
+    try:
+        min_vram = float(os.environ.get("JOYBOY_VIDEO_PROMPT_REWRITE_HEAVY_MIN_VRAM_GB", "24"))
+    except ValueError:
+        min_vram = 24.0
+
+    if current_vram >= min_vram and (not requested or requested in _LIGHTWEIGHT_REWRITE_MODELS):
+        try:
+            from config import AUTO_HIGH_END_CHAT_MODEL
+            return AUTO_HIGH_END_CHAT_MODEL or requested or None
+        except Exception:
+            return requested or None
+    return requested or None
+
+
+def _prefer_lightx2v_high_end_model(video_model, *, video_models, cache_dir, vram_gb=0):
+    """Prefer downloaded LightX2V over the native Wan 14B path on high-end GPUs."""
+    requested = str(video_model or "").strip()
+    try:
+        from core.models.video_policy import normalize_video_model_id
+        requested = normalize_video_model_id(requested)
+    except Exception:
+        pass
+    if requested != "wan-native-14b":
+        return requested
+    if os.environ.get("JOYBOY_PREFER_LIGHTX2V_ON_HIGH_END", "1").strip().lower() in {"0", "false", "no", "off"}:
+        return requested
+    if _as_float(vram_gb) < 48.0:
+        return requested
+
+    target = os.environ.get("JOYBOY_HIGH_END_I2V_MODEL", "lightx2v-wan22-i2v-4step").strip()
+    if not target or target == requested or target not in video_models:
+        return requested
+
+    meta = video_models.get(target, {})
+    if meta.get("backend") != "lightx2v":
+        return requested
+    try:
+        if not _video_model_downloaded(meta, cache_dir):
+            return requested
+    except Exception:
+        return requested
+
+    print(f"[VIDEO_POLICY] {requested} remplacé par {target} (LightX2V déjà téléchargé sur grosse VRAM)")
+    return target
+
 
 def _rewrite_video_prompt_for_high_vram(prompt, *, chat_model=None, vram_gb=0):
     """Rewrite/translate video prompts with the selected chat model on high-VRAM machines only."""
@@ -28,10 +96,7 @@ def _rewrite_video_prompt_for_high_vram(prompt, *, chat_model=None, vram_gb=0):
         min_vram = float(os.environ.get("JOYBOY_VIDEO_PROMPT_REWRITE_MIN_VRAM_GB", "24"))
     except ValueError:
         min_vram = 24.0
-    try:
-        current_vram = float(vram_gb or 0)
-    except (TypeError, ValueError):
-        current_vram = 0.0
+    current_vram = _as_float(vram_gb)
     if mode not in {"1", "true", "yes", "on", "force"} and current_vram < min_vram:
         return clean
 
@@ -54,7 +119,7 @@ def _rewrite_video_prompt_for_high_vram(prompt, *, chat_model=None, vram_gb=0):
             num_predict=140,
             temperature=0.1,
             timeout=20,
-            model=(str(chat_model).strip() or None),
+            model=_video_prompt_rewrite_model(chat_model, vram_gb=current_vram),
         )
     except Exception as exc:
         print(f"[VIDEO] Prompt rewrite LLM ignoré ({exc})")
@@ -197,6 +262,7 @@ def generate_video_endpoint():
         image_b64 = data.get('image')
         prompt = data.get('prompt', '')
         video_model = data.get('video_model', 'svd')
+        requested_video_model = video_model
         continue_from_last = data.get('continue', False)
         add_audio = data.get('add_audio', False) is True
         face_restore = data.get('face_restore', 'off')  # 'off', 'gfpgan', 'codeformer'
@@ -205,7 +271,7 @@ def generate_video_endpoint():
             face_restore = 'codeformer'
         elif face_restore is False:
             face_restore = 'off'
-        chat_model = data.get('chat_model', 'qwen3.5:2b')
+        chat_model = str(data.get('chat_model') or '').strip()
         chat_id = data.get('chatId')
         quality = data.get('quality', '720p')
         refine_passes = int(data.get('refine_passes', 0))
@@ -226,7 +292,7 @@ def generate_video_endpoint():
         audio_prompt = str(data.get('audio_prompt') or '').strip()
 
         # Politique runtime: evite les backends connus comme instables en low VRAM.
-        from core.models import VIDEO_MODELS as _VM, VRAM_GB
+        from core.models import VIDEO_MODELS as _VM, VRAM_GB, custom_cache
         from core.models.video_policy import (
             get_runtime_video_defaults,
             is_low_vram,
@@ -240,6 +306,13 @@ def generate_video_endpoint():
             find_latest_video_session,
             get_anchor_image,
             load_video_session,
+        )
+
+        video_model = _prefer_lightx2v_high_end_model(
+            video_model,
+            video_models=_VM,
+            cache_dir=custom_cache,
+            vram_gb=VRAM_GB,
         )
 
         model_policy = resolve_video_model_for_runtime(
@@ -323,13 +396,14 @@ def generate_video_endpoint():
             elif continuation_prompt and not prompt:
                 prompt = continuation_prompt
 
+        rewrite_model = _video_prompt_rewrite_model(chat_model, vram_gb=VRAM_GB)
         rewritten_prompt = _rewrite_video_prompt_for_high_vram(
             prompt,
-            chat_model=chat_model,
+            chat_model=rewrite_model,
             vram_gb=VRAM_GB,
         )
         if rewritten_prompt != prompt:
-            print(f"[VIDEO] Prompt réécrit par LLM ({chat_model}): {rewritten_prompt}")
+            print(f"[VIDEO] Prompt réécrit par LLM ({rewrite_model or 'auto'}): {rewritten_prompt}")
             prompt = rewritten_prompt
 
         # T2V mode: allow no image for models that support it
@@ -378,7 +452,7 @@ def generate_video_endpoint():
             prompt=prompt,
             model=video_model,
             metadata={
-                "requested_model": model_policy.requested_model,
+                "requested_model": requested_video_model,
                 "effective_model": video_model,
                 "quality": quality,
                 "target_frames": target_frames,
@@ -501,7 +575,7 @@ def generate_video_endpoint():
                     total_duration=total_duration,
                     can_continue=video_info['can_continue'],
                     warning=video_policy_warning,
-                    requestedModel=model_policy.requested_model,
+                    requestedModel=requested_video_model,
                     effectiveModel=video_model,
                     videoSessionId=video_info.get('video_session_id'),
                     sourceVideoSessionId=video_info.get('source_video_session_id'),

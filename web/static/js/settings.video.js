@@ -152,8 +152,16 @@ function renderRuntimeVideoModels(catalog) {
     }
 
     const availableIds = new Set(selectableModels.map(model => model.id));
-    const rawCurrentModel = userSettings.videoModel || catalog.default_model || 'svd';
-    const currentModel = normalizeRuntimeVideoModelId(rawCurrentModel, catalog.models);
+    let rawCurrentModel = userSettings.videoModel || catalog.default_model || 'svd';
+    let currentModel = normalizeRuntimeVideoModelId(rawCurrentModel, catalog.models);
+    if (
+        catalog.high_end_video === true
+        && catalog.default_model === 'lightx2v-wan22-i2v-4step'
+        && currentModel === 'wan-native-14b'
+    ) {
+        rawCurrentModel = catalog.default_model;
+        currentModel = catalog.default_model;
+    }
     const fallbackModel = selectableModels.find(model => model.id === catalog.default_model)
         || selectableModels[0]
         || catalog.models[0];
