@@ -324,6 +324,7 @@ class ModelManager(
         models_loaded = []
         cuda_details = {}
         gpu_processes = []
+        per_gpu = []
 
         # nvidia-smi pour la VRAM totale (inclut tout: CUDA, DirectX, autres apps)
         try:
@@ -332,24 +333,71 @@ class ModelManager(
                 capture_output=True, text=True, timeout=2
             )
             if result.returncode == 0:
-                parts = result.stdout.strip().split(',')
-                if len(parts) >= 3:
-                    total_gb = float(parts[0].strip()) / 1024
-                    used_gb = float(parts[1].strip()) / 1024
-                    free_gb = float(parts[2].strip()) / 1024
+                for index, line in enumerate(result.stdout.strip().splitlines()):
+                    parts = [part.strip() for part in line.split(',')]
+                    if len(parts) < 3:
+                        continue
+                    gpu_total = float(parts[0]) / 1024
+                    gpu_used = float(parts[1]) / 1024
+                    gpu_free = float(parts[2]) / 1024
+                    per_gpu.append({
+                        'index': index,
+                        'total_gb': round(gpu_total, 2),
+                        'used_gb': round(gpu_used, 2),
+                        'free_gb': round(gpu_free, 2),
+                    })
+                if per_gpu:
+                    total_gb = sum(gpu['total_gb'] for gpu in per_gpu)
+                    used_gb = sum(gpu['used_gb'] for gpu in per_gpu)
+                    free_gb = sum(gpu['free_gb'] for gpu in per_gpu)
         except (subprocess.TimeoutExpired, FileNotFoundError, ValueError):
             if torch.cuda.is_available():
-                total_gb = torch.cuda.get_device_properties(0).total_memory / 1024**3
-                used_gb = torch.cuda.memory_reserved() / 1024**3
+                device_count = torch.cuda.device_count()
+                for index in range(device_count):
+                    gpu_total = torch.cuda.get_device_properties(index).total_memory / 1024**3
+                    gpu_used = torch.cuda.memory_reserved(index) / 1024**3
+                    gpu_free = gpu_total - gpu_used
+                    per_gpu.append({
+                        'index': index,
+                        'total_gb': round(gpu_total, 2),
+                        'used_gb': round(gpu_used, 2),
+                        'free_gb': round(gpu_free, 2),
+                    })
+                total_gb = sum(gpu['total_gb'] for gpu in per_gpu)
+                used_gb = sum(gpu['used_gb'] for gpu in per_gpu)
                 free_gb = total_gb - used_gb
+
+        if not per_gpu and torch.cuda.is_available():
+            device_count = torch.cuda.device_count()
+            for index in range(device_count):
+                gpu_total = torch.cuda.get_device_properties(index).total_memory / 1024**3
+                gpu_used = torch.cuda.memory_reserved(index) / 1024**3
+                gpu_free = gpu_total - gpu_used
+                per_gpu.append({
+                    'index': index,
+                    'total_gb': round(gpu_total, 2),
+                    'used_gb': round(gpu_used, 2),
+                    'free_gb': round(gpu_free, 2),
+                })
+            total_gb = sum(gpu['total_gb'] for gpu in per_gpu)
+            used_gb = sum(gpu['used_gb'] for gpu in per_gpu)
+            free_gb = total_gb - used_gb
 
         # Détails mémoire CUDA PyTorch
         if torch.cuda.is_available():
+            device_count = torch.cuda.device_count()
+            allocated_gb = 0.0
+            reserved_gb = 0.0
+            for index in range(device_count):
+                allocated_gb += torch.cuda.memory_allocated(index) / 1024**3
+                reserved_gb += torch.cuda.memory_reserved(index) / 1024**3
             cuda_details = {
-                'device_count': torch.cuda.device_count(),
-                'reserved_gb': round(torch.cuda.memory_reserved() / 1024**3, 2),
-                'allocated_gb': round(torch.cuda.memory_allocated() / 1024**3, 2),
-                'cached_gb': round((torch.cuda.memory_reserved() - torch.cuda.memory_allocated()) / 1024**3, 2),
+                'device_count': device_count,
+                'current_device': torch.cuda.current_device(),
+                'reserved_gb': round(reserved_gb, 2),
+                'allocated_gb': round(allocated_gb, 2),
+                'cached_gb': round(max(0.0, reserved_gb - allocated_gb), 2),
+                'per_gpu': per_gpu,
             }
 
         gpu_processes = list_gpu_processes()

@@ -1874,7 +1874,7 @@ Object.assign(MESSAGES.fr.settings, {
             modelHint: 'Modèles rapides recommandés, pas les modèles "thinking"',
             autoOption: 'Auto (premier compatible)',
             recommendedSuffix: '(recommandé)',
-            recommendedInfo: 'Recommandés : <strong>qwen2.5:7b</strong>, <strong>llama3.1:8b</strong><br>Éviter : deepseek-r1 (trop lent, modèle "thinking")',
+            recommendedInfo: 'Recommandés : <strong>qwen3.5:2b</strong>, <strong>deepseek-r1:14b</strong><br>Les 70B+ restent à installer manuellement si besoin.',
             modelInfo: 'Modèle terminal : <strong>{model}</strong>',
             modelToast: 'Modèle terminal : {model}',
             reasoningLabel: 'Raisonnement cloud',

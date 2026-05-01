@@ -331,6 +331,9 @@ def get_vram_status():
         tips.append(f"{ollama_count} modèles Ollama")
     if image_count > 0 and ollama_count > 0:
         tips.append("Image + Chat chargés")
+    gpu_count = int(cuda_details.get('device_count') or 0) if cuda_details else 0
+    if gpu_count > 1:
+        tips.append(f"{gpu_count} GPU CUDA détectés")
     gpu_processes = status.gpu_processes if isinstance(status.gpu_processes, list) else []
     if not models_detailed and gpu_processes:
         warnings.append("VRAM utilisée par des process CUDA")
@@ -371,6 +374,8 @@ def get_vram_status():
             'used': status.used_gb,
             'free': status.free_gb,
             'percent': percent,
+            'gpu_count': gpu_count,
+            'per_gpu': cuda_details.get('per_gpu', []) if cuda_details else [],
             'cuda_allocated': cuda_details.get('allocated_gb', 0) if cuda_details else 0,
             'cuda_reserved': cuda_details.get('reserved_gb', 0) if cuda_details else 0,
         },
@@ -706,7 +711,12 @@ def hardware_info():
 
     if torch.cuda.is_available():
         gpu_name = torch.cuda.get_device_name(0)
-        vram_gb = round(torch.cuda.get_device_properties(0).total_memory / (1024**3), 1)
+        gpu_count = torch.cuda.device_count()
+        per_gpu_vram = [
+            round(torch.cuda.get_device_properties(index).total_memory / (1024**3), 1)
+            for index in range(gpu_count)
+        ]
+        vram_gb = round(sum(per_gpu_vram), 1)
 
         # Déterminer le niveau VRAM (du plus haut au plus bas)
         for level in ["high_end", "extreme", "ultra", "very_high", "high", "medium", "low"]:
@@ -731,6 +741,8 @@ def hardware_info():
 
     return jsonify({
         'gpu': gpu_name,
+        'gpu_count': torch.cuda.device_count() if torch.cuda.is_available() else 0,
+        'per_gpu_vram_gb': per_gpu_vram if torch.cuda.is_available() else [],
         'vram_gb': vram_gb,
         'vram_level': vram_level,
         'ram_gb': ram_gb,

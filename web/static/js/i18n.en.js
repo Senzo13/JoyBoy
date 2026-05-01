@@ -1864,7 +1864,7 @@ Object.assign(MESSAGES.en.settings, {
             modelHint: 'Fast models recommended, not "thinking" models',
             autoOption: 'Auto (first compatible)',
             recommendedSuffix: '(recommended)',
-            recommendedInfo: 'Recommended: <strong>qwen2.5:7b</strong>, <strong>llama3.1:8b</strong><br>Avoid: deepseek-r1 (too slow, "thinking" model)',
+            recommendedInfo: 'Recommended: <strong>qwen3.5:2b</strong>, <strong>deepseek-r1:14b</strong><br>70B+ models stay manual when you really want them.',
             modelInfo: 'Terminal model: <strong>{model}</strong>',
             modelToast: 'Terminal model: {model}',
             reasoningLabel: 'Cloud reasoning',

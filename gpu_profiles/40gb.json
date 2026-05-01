@@ -111,7 +111,7 @@
 
     "ollama": {
         "max_vram_gb": 36,
-        "default_chat_model": "llama3.3:70b-instruct-q4_K_M",
+        "default_chat_model": "deepseek-r1:14b",
         "fast_chat_model": "qwen3:30b-a3b-instruct-2507-q4_K_M",
         "coder_chat_model": "qwen3-coder:30b-a3b-q4_K_M",
         "video_analysis_model": "qwen3-vl:32b-instruct-q4_K_M",

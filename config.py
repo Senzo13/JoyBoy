@@ -110,6 +110,7 @@ TOOL_EXCLUDED_MODELS = {'dolphin', 'nous-hermes', 'openhermes'}
 # Utility model - pour les checks rapides (image-check, memory-check, prompt enhance).
 # Qwen 3.5 2B reste léger, mais suit mieux les instructions que l'ancien 2.5 1.5B.
 UTILITY_MODEL = os.environ.get("JOYBOY_UTILITY_MODEL", "qwen3.5:2b").strip()
+AUTO_HIGH_END_CHAT_MODEL = os.environ.get("JOYBOY_AUTO_CHAT_MODEL", "deepseek-r1:14b").strip()
 BALANCED_40GB_CHAT_MODEL = os.environ.get("JOYBOY_40GB_CHAT_MODEL", "llama3.3:70b-instruct-q4_K_M").strip()
 FAST_40GB_CHAT_MODEL = os.environ.get("JOYBOY_FAST_40GB_CHAT_MODEL", "qwen3:30b-a3b-instruct-2507-q4_K_M").strip()
 CODER_40GB_CHAT_MODEL = os.environ.get("JOYBOY_CODER_40GB_CHAT_MODEL", "qwen3-coder:30b-a3b-q4_K_M").strip()
@@ -143,8 +144,8 @@ MODEL_RECOMMENDATIONS = {
         "high": "qwen3.5:4b",
         "very_high": "qwen3.5:4b",
         "ultra": "qwen3.5:9b",
-        "extreme": CODER_40GB_CHAT_MODEL,
-        "high_end": HIGH_END_CHAT_MODEL,
+        "extreme": AUTO_HIGH_END_CHAT_MODEL,
+        "high_end": AUTO_HIGH_END_CHAT_MODEL,
     },
     "designer": {
         "low": "qwen3.5:0.8b",
@@ -152,8 +153,8 @@ MODEL_RECOMMENDATIONS = {
         "high": "qwen3.5:4b",
         "very_high": "qwen3.5:4b",
         "ultra": "qwen3.5:9b",
-        "extreme": FAST_40GB_CHAT_MODEL,
-        "high_end": HIGH_END_CHAT_MODEL,
+        "extreme": AUTO_HIGH_END_CHAT_MODEL,
+        "high_end": AUTO_HIGH_END_CHAT_MODEL,
     },
     "student": {
         "low": "qwen3.5:0.8b",
@@ -161,8 +162,8 @@ MODEL_RECOMMENDATIONS = {
         "high": "qwen3.5:4b",
         "very_high": "qwen3.5:4b",
         "ultra": "qwen3.5:9b",
-        "extreme": BALANCED_40GB_CHAT_MODEL,
-        "high_end": HIGH_END_CHAT_MODEL,
+        "extreme": AUTO_HIGH_END_CHAT_MODEL,
+        "high_end": AUTO_HIGH_END_CHAT_MODEL,
     },
     "casual": {
         "low": "qwen3.5:0.8b",
@@ -170,8 +171,8 @@ MODEL_RECOMMENDATIONS = {
         "high": "qwen3.5:4b",
         "very_high": "qwen3.5:4b",
         "ultra": "qwen3.5:9b",
-        "extreme": BALANCED_40GB_CHAT_MODEL,
-        "high_end": HIGH_END_CHAT_MODEL,
+        "extreme": AUTO_HIGH_END_CHAT_MODEL,
+        "high_end": AUTO_HIGH_END_CHAT_MODEL,
     },
 }
 
@@ -312,7 +313,7 @@ __all__ = [
     'LOGO_PATH', 'MONOGRAM_PATH',
     'PRIMARY_COLOR', 'ACCENT_COLOR',
     'DEFAULT_STEPS', 'DEFAULT_STRENGTH', 'DEFAULT_DILATION',
-    'UTILITY_MODEL', 'ROUTER_MODEL', 'ROUTER_MODEL_CANDIDATES',
+    'UTILITY_MODEL', 'AUTO_HIGH_END_CHAT_MODEL', 'ROUTER_MODEL', 'ROUTER_MODEL_CANDIDATES',
     'BALANCED_40GB_CHAT_MODEL', 'FAST_40GB_CHAT_MODEL', 'CODER_40GB_CHAT_MODEL',
     'HIGH_END_CHAT_MODEL', 'EXTREME_CHAT_MODEL', 'EXTREME_CHAT_MODEL_INT8',
     'VIDEO_ANALYSIS_MODEL', 'VIDEO_ANALYSIS_MODEL_EXTREME',

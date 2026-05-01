@@ -6,7 +6,9 @@ machine-specific packs stay outside git.
 
 ## Local model profile
 
-- Chat: `llama3.3:70b-instruct-q8_0` for high VRAM setups.
+- Auto chat: `deepseek-r1:14b` even on high VRAM setups, so setup stays fast
+  and does not pull huge chat weights by surprise.
+- Heavy manual chat: `llama3.3:70b-instruct-q8_0`.
 - Extreme chat: `qwen3:235b-a22b-instruct-2507-q4_K_M`.
 - Extreme INT8 option: `qwen3:235b-a22b-instruct-2507-q8_0`.
 - Video keyframe analysis: `qwen3-vl:32b-instruct-q8_0`.

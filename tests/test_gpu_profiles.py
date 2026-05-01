@@ -2,6 +2,8 @@ import json
 import unittest
 from pathlib import Path
 
+from config import MODEL_RECOMMENDATIONS
+
 
 PROJECT_DIR = Path(__file__).resolve().parents[1]
 PROFILES_DIR = PROJECT_DIR / "gpu_profiles"
@@ -50,8 +52,13 @@ class GpuProfileTests(unittest.TestCase):
         self.assertEqual(name, "80gb.json")
         self.assertEqual(profile["video"]["default_model"], "wan-native-14b")
         self.assertIn("ltx2", profile["video"]["high_end_models"])
-        self.assertEqual(profile["ollama"]["default_chat_model"], "llama3.3:70b-instruct-q8_0")
+        self.assertEqual(profile["ollama"]["default_chat_model"], "deepseek-r1:14b")
         self.assertFalse(profile["ollama"]["auto_pull_heavy_models"])
+
+    def test_high_vram_auto_chat_avoids_huge_models(self):
+        for profile_models in MODEL_RECOMMENDATIONS.values():
+            self.assertEqual(profile_models["extreme"], "deepseek-r1:14b")
+            self.assertEqual(profile_models["high_end"], "deepseek-r1:14b")
 
 
 if __name__ == "__main__":

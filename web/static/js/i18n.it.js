@@ -1608,7 +1608,7 @@ Object.assign(MESSAGES.it.settings, {
             modelHint: 'Modelli rapidi consigliati, non modelli "thinking"',
             autoOption: 'Auto (primo compatibile)',
             recommendedSuffix: '(consigliato)',
-            recommendedInfo: 'Consigliati: <strong>qwen2.5:7b</strong>, <strong>llama3.1:8b</strong><br>Evita: deepseek-r1 (troppo lento, modello "thinking")',
+            recommendedInfo: 'Consigliati: <strong>qwen3.5:2b</strong>, <strong>deepseek-r1:14b</strong><br>I modelli 70B+ restano da installare manualmente.',
             modelInfo: 'Modello terminale: <strong>{model}</strong>',
             modelToast: 'Modello terminale: {model}',
             reasoningLabel: 'Ragionamento cloud',
