@@ -64,6 +64,35 @@ class FakeSegfaultThenSuccessLightX2VProcess:
         self.returncode = -15
 
 
+class FakeRingFlashThenUlyssesSuccessLightX2VProcess:
+    calls = []
+
+    def __init__(self, cmd, **kwargs):
+        self.cmd = cmd
+        self.__class__.calls.append(list(cmd))
+        output_path = Path(cmd[cmd.index("--save_result_path") + 1])
+        if os.environ.get("JOYBOY_LIGHTX2V_PARALLEL_RETRY_ACTIVE"):
+            self.returncode = 0
+            self.stdout = io.StringIO("step 1/4\nstep 4/4\n")
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_bytes(b"fake mp4 bytes")
+        else:
+            self.returncode = 1
+            self.stdout = io.StringIO(
+                "[rank0]: AttributeError: module 'flash_attn.flash_attn_interface' "
+                "has no attribute '_flash_attn_forward'\n"
+            )
+
+    def wait(self, timeout=None):
+        return self.returncode
+
+    def poll(self):
+        return self.returncode
+
+    def terminate(self):
+        self.returncode = -15
+
+
 class LightX2VBackendTests(unittest.TestCase):
     def _write_repo_config(self, repo_dir: Path, rel_path: str, payload: dict) -> None:
         target = repo_dir / rel_path
@@ -238,6 +267,51 @@ class LightX2VBackendTests(unittest.TestCase):
 
         self.assertEqual(env["CUDA_VISIBLE_DEVICES"], "0,1")
         self.assertEqual(env["USE_HUB_KERNELS"], "0")
+        self.assertEqual(env["JOYBOY_LIGHTX2V_ALLOW_REAL_FLASH_ATTN"], "0")
+
+    def test_lightx2v_parallel_defaults_to_ulysses_for_multi_gpu(self):
+        with patch.dict(os.environ, {"JOYBOY_LIGHTX2V_GPUS": "2"}, clear=True):
+            self.assertEqual(backend._lightx2v_parallel_config(), {
+                "seq_p_size": 2,
+                "seq_p_attn_type": "ulysses",
+            })
+
+    def test_lightx2v_parallel_downgrades_ring_without_flash_attn_forward(self):
+        with (
+            patch.dict(os.environ, {
+                "JOYBOY_LIGHTX2V_GPUS": "2",
+                "JOYBOY_LIGHTX2V_PARALLEL_ATTN": "ring",
+            }, clear=True),
+            patch.object(backend, "_flash_attn_forward_available", return_value=False),
+        ):
+            self.assertEqual(backend._lightx2v_parallel_config(), {
+                "seq_p_size": 2,
+                "seq_p_attn_type": "ulysses",
+            })
+
+    def test_lightx2v_parallel_strict_ring_raises_without_flash_attn_forward(self):
+        with (
+            patch.dict(os.environ, {
+                "JOYBOY_LIGHTX2V_GPUS": "2",
+                "JOYBOY_LIGHTX2V_PARALLEL_ATTN": "ring",
+                "JOYBOY_LIGHTX2V_STRICT_PARALLEL_ATTN": "1",
+            }, clear=True),
+            patch.object(backend, "_flash_attn_forward_available", return_value=False),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "ring requires flash-attn"):
+                backend._lightx2v_parallel_config()
+
+    def test_lightx2v_env_allows_real_flash_attn_only_for_working_ring(self):
+        with (
+            patch.dict(os.environ, {
+                "JOYBOY_LIGHTX2V_GPUS": "2",
+                "JOYBOY_LIGHTX2V_PARALLEL_ATTN": "ring",
+            }, clear=True),
+            patch.object(backend, "_flash_attn_forward_available", return_value=True),
+        ):
+            env = backend._lightx2v_env(Path("C:/repo"))
+
+        self.assertEqual(env["JOYBOY_LIGHTX2V_ALLOW_REAL_FLASH_ATTN"], "1")
 
     def test_lightx2v_auto_uses_visible_cuda_gpu_count(self):
         with (
@@ -471,7 +545,7 @@ class LightX2VBackendTests(unittest.TestCase):
             config = json.loads(config_path.read_text(encoding="utf-8"))
             self.assertEqual(config["parallel"], {
                 "seq_p_size": 2,
-                "seq_p_attn_type": "ring",
+                "seq_p_attn_type": "ulysses",
             })
 
     def test_config_injects_active_video_loras_for_lightx2v(self):
@@ -608,6 +682,57 @@ class LightX2VBackendTests(unittest.TestCase):
             self.assertIn("torch.distributed.run", FakeSegfaultThenSuccessLightX2VProcess.calls[0])
             self.assertNotIn("torch.distributed.run", FakeSegfaultThenSuccessLightX2VProcess.calls[1])
             self.assertIn((0, 4, "LightX2V: retry mono-GPU après crash multi-GPU"), progress)
+            self.assertIn((4, 4, "LightX2V terminé"), progress)
+
+    def test_run_generation_retries_multi_gpu_ulysses_after_ring_flash_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo_dir = root / "repo"
+            runtime_dir = root / "runtime"
+            cache_dir = root / "cache"
+            for rel in ("Wan-AI--Wan2.2-I2V-A14B", "lightx2v--Wan2.2-Distill-Models"):
+                path = cache_dir / rel
+                path.mkdir(parents=True)
+                (path / "marker.txt").write_text("ok", encoding="utf-8")
+            self._write_repo_config(repo_dir, "configs/distill/wan22/safe.json", {})
+            (repo_dir / "lightx2v").mkdir()
+            (repo_dir / "lightx2v" / "infer.py").write_text("", encoding="utf-8")
+
+            progress = []
+            image = Image.new("RGB", (64, 64), color=(20, 30, 40))
+            FakeRingFlashThenUlyssesSuccessLightX2VProcess.calls = []
+
+            with (
+                patch.object(backend, "is_lightx2v_backend_available", return_value=True),
+                patch.object(backend, "get_lightx2v_repo_dir", return_value=repo_dir),
+                patch.object(backend, "get_lightx2v_runtime_dir", return_value=runtime_dir),
+                patch.object(backend, "_flash_attn_forward_available", return_value=True),
+                patch.dict(os.environ, {
+                    "JOYBOY_LIGHTX2V_GPUS": "2",
+                    "JOYBOY_LIGHTX2V_PARALLEL_ATTN": "ring",
+                }, clear=False),
+                patch.object(backend.subprocess, "Popen", FakeRingFlashThenUlyssesSuccessLightX2VProcess),
+            ):
+                result = backend.run_lightx2v_generation(
+                    "lightx2v-wan22-i2v-4step",
+                    self._meta(),
+                    cache_dir,
+                    image=image,
+                    prompt="subtle motion",
+                    negative_prompt="",
+                    width=64,
+                    height=64,
+                    frames=82,
+                    steps=4,
+                    fps=16,
+                    progress_callback=lambda step, total, message: progress.append((step, total, message)),
+                )
+
+            self.assertTrue(result.video_path.exists())
+            self.assertEqual(len(FakeRingFlashThenUlyssesSuccessLightX2VProcess.calls), 2)
+            self.assertIn("torch.distributed.run", FakeRingFlashThenUlyssesSuccessLightX2VProcess.calls[0])
+            self.assertIn("torch.distributed.run", FakeRingFlashThenUlyssesSuccessLightX2VProcess.calls[1])
+            self.assertIn((0, 4, "LightX2V: retry multi-GPU ulysses"), progress)
             self.assertIn((4, 4, "LightX2V terminé"), progress)
 
 

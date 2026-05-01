@@ -441,6 +441,14 @@ def _lightx2v_kernels_variant_error(log_tail: list[str]) -> bool:
     )
 
 
+def _lightx2v_flash_attn_forward_error(log_tail: list[str]) -> bool:
+    joined = "\n".join(log_tail).lower()
+    return (
+        "_flash_attn_forward" in joined
+        or ("flash_attn.flash_attn_interface" in joined and "attributeerror" in joined)
+    )
+
+
 def _repair_missing_lightx2v_dependency(log_tail: list[str]) -> str:
     if _lightx2v_kernels_variant_error(log_tail):
         print("[LIGHTX2V] kernels-community incompatible avec le Torch actuel; réparation du stack Torch...")
@@ -478,6 +486,19 @@ def _select_attention(prefer_turbo: bool = False) -> str:
     return "torch_sdpa"
 
 
+def _truthy_env(name: str, default: str = "0") -> bool:
+    return os.environ.get(name, default).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _flash_attn_forward_available() -> bool:
+    try:
+        import flash_attn.flash_attn_interface as interface
+
+        return callable(getattr(interface, "_flash_attn_forward", None))
+    except Exception:
+        return False
+
+
 def _lightx2v_gpu_request() -> tuple[int, str]:
     raw = os.environ.get("JOYBOY_LIGHTX2V_GPUS", "").strip().lower()
     if raw in {"0", "1", "off", "false", "no", "single"}:
@@ -513,10 +534,19 @@ def _lightx2v_parallel_config() -> dict[str, Any] | None:
     gpu_count, _ = _lightx2v_gpu_request()
     if gpu_count <= 1:
         return None
-    default_attn_type = "ring" if gpu_count <= 2 else "ulysses"
-    attn_type = os.environ.get("JOYBOY_LIGHTX2V_PARALLEL_ATTN", default_attn_type).strip().lower() or default_attn_type
+    default_attn_type = "ulysses"
+    requested_attn_type = os.environ.get("JOYBOY_LIGHTX2V_PARALLEL_ATTN", "").strip().lower()
+    attn_type = requested_attn_type or default_attn_type
     if attn_type not in {"ulysses", "ring"}:
         attn_type = default_attn_type
+    if attn_type == "ring" and not _flash_attn_forward_available():
+        if _truthy_env("JOYBOY_LIGHTX2V_STRICT_PARALLEL_ATTN"):
+            raise RuntimeError(
+                "LightX2V multi-GPU ring requires flash-attn with _flash_attn_forward. "
+                "Install flash-attn or use JOYBOY_LIGHTX2V_PARALLEL_ATTN=ulysses."
+            )
+        print("[LIGHTX2V] ring demande flash-attn; passage auto en ulysses pour garder le multi-GPU.")
+        attn_type = "ulysses"
     return {
         "seq_p_size": gpu_count,
         "seq_p_attn_type": attn_type,
@@ -532,6 +562,30 @@ def _lightx2v_single_gpu_fallback_enabled() -> bool:
         "no",
         "off",
     }
+
+
+def _lightx2v_parallel_retry_enabled() -> bool:
+    if os.environ.get("JOYBOY_LIGHTX2V_PARALLEL_RETRY_ACTIVE", "").strip():
+        return False
+    return os.environ.get("JOYBOY_LIGHTX2V_PARALLEL_RETRY", "1").strip().lower() not in {
+        "0",
+        "false",
+        "no",
+        "off",
+    }
+
+
+def _lightx2v_should_retry_ulysses(log_tail: list[str]) -> bool:
+    if not _lightx2v_parallel_retry_enabled():
+        return False
+    gpu_count, _ = _lightx2v_gpu_request()
+    parallel = _lightx2v_parallel_config()
+    return (
+        gpu_count > 1
+        and bool(parallel)
+        and parallel.get("seq_p_attn_type") == "ring"
+        and _lightx2v_flash_attn_forward_error(log_tail)
+    )
 
 
 def _lightx2v_native_crash(return_code: int | None, log_tail: list[str]) -> bool:
@@ -783,6 +837,7 @@ import runpy
 import sys
 import types
 import importlib.machinery
+import os
 
 module = sys.argv[1]
 sys.argv = [module, *sys.argv[2:]]
@@ -887,9 +942,17 @@ def _install_flash_attn_interface_stub():
     interface.flash_attn_varlen_func = _flash_attn_disabled
     sys.modules["flash_attn_interface"] = interface
 
+def _real_flash_attn_forward_available():
+    try:
+        import flash_attn.flash_attn_interface as interface
+        return callable(getattr(interface, "_flash_attn_forward", None))
+    except Exception:
+        return False
+
 _install_torchaudio_stub()
-_install_flash_attn_stub()
-_install_flash_attn_interface_stub()
+if os.environ.get("JOYBOY_LIGHTX2V_ALLOW_REAL_FLASH_ATTN", "").strip().lower() not in {"1", "true", "yes", "on"} or not _real_flash_attn_forward_available():
+    _install_flash_attn_stub()
+    _install_flash_attn_interface_stub()
 try:
     import decord  # noqa: F401
 except Exception:
@@ -956,6 +1019,11 @@ def _lightx2v_env(repo_dir: Path) -> dict[str, str]:
     env.setdefault("FFMPEG_LOG_LEVEL", "error")
     if os.environ.get("JOYBOY_LIGHTX2V_ALLOW_HUB_KERNELS", "").strip().lower() not in {"1", "true", "yes", "on"}:
         env["USE_HUB_KERNELS"] = "0"
+    parallel = _lightx2v_parallel_config()
+    if parallel and parallel.get("seq_p_attn_type") == "ring" and _flash_attn_forward_available():
+        env["JOYBOY_LIGHTX2V_ALLOW_REAL_FLASH_ATTN"] = "1"
+    else:
+        env.setdefault("JOYBOY_LIGHTX2V_ALLOW_REAL_FLASH_ATTN", "0")
     _, visible_devices = _lightx2v_gpu_request()
     if visible_devices:
         env["CUDA_VISIBLE_DEVICES"] = visible_devices
@@ -1106,6 +1174,31 @@ def run_lightx2v_generation(
 
         if return_code == 0:
             break
+
+        if _lightx2v_should_retry_ulysses(log_tail):
+            print("[LIGHTX2V] ring/flash-attn incompatible; retry multi-GPU en ulysses.")
+            if progress_callback:
+                progress_callback(0, steps, "LightX2V: retry multi-GPU ulysses")
+            with _temporary_env({
+                "JOYBOY_LIGHTX2V_PARALLEL_ATTN": "ulysses",
+                "JOYBOY_LIGHTX2V_PARALLEL_RETRY_ACTIVE": "1",
+            }):
+                return run_lightx2v_generation(
+                    model_id,
+                    meta,
+                    cache_dir,
+                    image=image,
+                    prompt=prompt,
+                    negative_prompt=negative_prompt,
+                    width=width,
+                    height=height,
+                    frames=frames,
+                    steps=steps,
+                    fps=fps,
+                    quality=quality,
+                    cancel_check=cancel_check,
+                    progress_callback=progress_callback,
+                )
 
         if _lightx2v_should_retry_single_gpu(return_code, log_tail):
             print("[LIGHTX2V] Multi-GPU a crashé en natif; retry automatique en mono-GPU.")

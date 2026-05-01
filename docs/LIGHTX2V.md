@@ -71,7 +71,10 @@ Optional overrides:
 - `1`, `off`, or `single` to force single-GPU mode
 
 `JOYBOY_LIGHTX2V_PARALLEL_ATTN` accepts `ulysses` or `ring`; JoyBoy defaults to
-`ring` for two GPUs and `ulysses` for larger GPU counts. When enabled, JoyBoy
+`ulysses` because it is the most portable multi-GPU path. `ring` is only kept
+when the local `flash_attn` build exposes LightX2V's required private forward
+API; otherwise JoyBoy silently downgrades it to `ulysses` to keep both GPUs
+active. When enabled, JoyBoy
 injects LightX2V's `parallel` config block and
 launches the subprocess through `torch.distributed.run`.
 

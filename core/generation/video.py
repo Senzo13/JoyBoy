@@ -602,7 +602,7 @@ def generate_video(image: Image.Image, prompt: str = "", target_frames: int = 49
     # Modèles configurables (respectent le slider): wan22-5b, svd
     # Modèles fixes (hardcodé): fastwan, wan22, cogvideo, ltx, hunyuan
     if is_lightx2v:
-        num_steps = max(1, min(8, int(num_steps or model_info.get("default_steps") or 4)))
+        num_steps = max(1, int(model_info.get("default_steps") or 4))
     elif is_native_wan:
         # Backend natif: 50 pour 5B, 40 pour 14B (configs officielles)
         num_steps = 40 if video_model == "wan-native-14b" else 50
