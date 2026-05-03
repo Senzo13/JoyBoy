@@ -16,6 +16,7 @@ from pathlib import Path
 PROJECT_DIR = Path(__file__).resolve().parents[1]
 REQUIREMENTS_PATH = PROJECT_DIR / "scripts" / "requirements.txt"
 TORCH_PACKAGES = {"torch", "torchvision", "torchaudio"}
+PY312_MAX_OPTIONAL_PACKAGES = {"basicsr", "realesrgan", "gfpgan"}
 PYTORCH_CUDA_INDEX = "https://download.pytorch.org/whl/cu128"
 HUGGINGFACE_HUB_PIN = "huggingface_hub>=0.34.0,<1.0"
 
@@ -96,10 +97,25 @@ def install_packages() -> int:
         if _requirement_name(requirement) not in TORCH_PACKAGES
     ]
 
+    skipped_optional: list[str] = []
+    if sys.version_info >= (3, 13):
+        filtered_base_requirements: list[str] = []
+        for requirement in base_requirements:
+            req_name = _requirement_name(requirement)
+            if req_name in PY312_MAX_OPTIONAL_PACKAGES:
+                skipped_optional.append(requirement)
+            else:
+                filtered_base_requirements.append(requirement)
+        base_requirements = filtered_base_requirements
+
     print()
     print("    Installing JoyBoy Python dependencies")
     print(f"    Requirements: {len(requirements)} package entries")
     print("    Tip: big wheels can still be limited by PyPI/Hugging Face/CDN speed, not your local fiber.")
+    if skipped_optional:
+        print("    Skipping optional upscaling packages (Python >3.12):")
+        for requirement in skipped_optional:
+            print(f"      - {requirement}")
 
     if torch_requirements:
         if _has_nvidia_gpu():

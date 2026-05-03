@@ -319,10 +319,10 @@ def get_local_python_exe():
     return os.path.join(get_local_python_dir(), "bin", "python3")
 
 def is_python_compatible():
-    """Vérifie si Python actuel est compatible avec xformers (3.11 ou 3.12)"""
+    """Vérifie si Python actuel est compatible avec xformers (3.8 à 3.12)."""
     major = sys.version_info.major
     minor = sys.version_info.minor
-    # xformers supporte Python 3.8-3.12, pas 3.13+
+    # xformers supporte Python 3.8-3.12, pas Python > 3.12
     return major == 3 and 8 <= minor <= 12
 
 def download_file(url, dest):
@@ -663,8 +663,9 @@ DEPENDENCIES = {**CRITICAL_DEPS, **NON_CRITICAL_DEPS}
 # Ces packages ont un nom pip différent du module importable.
 PIP_ONLY_CHECK = []
 
-# Packages optionnels (upscaling - incompatibles Python 3.13)
+# Packages optionnels (upscaling - souvent incompatibles Python > 3.12)
 OPTIONAL_PACKAGES = ["realesrgan", "basicsr"]
+PY312_MAX_OPTIONAL_PACKAGES = {"realesrgan", "basicsr", "gfpgan"}
 
 # Package GGUF backend (modèles quantizés, économie VRAM)
 GGUF_PACKAGE = "stable-diffusion-cpp-python"
@@ -977,9 +978,10 @@ def fix_xformers():
 
     if result.returncode != 0:
         print(f"    [!] Install failed: {result.stderr[:200] if result.stderr else 'unknown error'}")
-        # Python 3.13 n'a souvent pas de wheel pré-compilé
-        if "3.13" in sys.version:
-            print("    [!] Python 3.13 detected - xformers has no prebuilt wheel")
+        # Python > 3.12 n'a souvent pas de wheel pré-compilé.
+        if not is_python_compatible():
+            py_version = f"{sys.version_info.major}.{sys.version_info.minor}"
+            print(f"    [!] Python {py_version} detected - xformers has no prebuilt wheel")
             print("    [!] Solution: use Python 3.11 or 3.12")
         return False
 
@@ -1000,9 +1002,10 @@ def fix_xformers():
     print("    [!] xformers is not working, uninstalling...")
     run_pip(["uninstall", "-y", "xformers"], quiet=True)
 
-    if "3.13" in sys.version:
+    if not is_python_compatible():
+        py_version = f"{sys.version_info.major}.{sys.version_info.minor}"
         print("\n    ╔════════════════════════════════════════════════════╗")
-        print("    ║  PYTHON 3.13 IS NOT SUPPORTED BY XFORMERS          ║")
+        print(f"    ║  PYTHON {py_version} IS NOT SUPPORTED BY XFORMERS          ║")
         print("    ║  Solutions:                                         ║")
         print("    ║  1. Install Python 3.11 or 3.12                     ║")
         print("    ║  2. Use SDPA (built in, nearly as fast)             ║")
@@ -1432,27 +1435,30 @@ def main():
     # ==========================================
     # CHECK VERSION PYTHON POUR XFORMERS
     # ==========================================
-    if not is_python_compatible():
+    if HAS_CUDA and not is_python_compatible():
         print("\n" + "=" * 50)
-        print("  PYTHON INCOMPATIBLE WITH XFORMERS")
+        print("  PYTHON OUT OF XFORMERS RANGE")
         print("=" * 50)
         print(f"\n  Current Python: {sys.version.split()[0]}")
         print("  xformers requires Python 3.8 to 3.12")
+        print("  JoyBoy will continue with SDPA fallback (xformers disabled).")
 
-        # Vérifier si Python 3.12 local existe déjà
-        local_python = get_local_python_exe()
-        if os.path.exists(local_python):
-            print(f"\n  [OK] Local Python 3.12 found: {local_python}")
-            print("  [!] BUT the venv is still using Python 3.13!")
-            print("\n  Recreating the venv with Python 3.12...")
-        else:
-            print("\n  Installing local Python 3.12...")
+        # Sur Windows, tenter la migration automatique vers Python 3.12 pour
+        # conserver les optimisations NVIDIA quand c'est possible.
+        if IS_WINDOWS:
+            local_python = get_local_python_exe()
+            if os.path.exists(local_python):
+                print(f"\n  [OK] Local Python 3.12 found: {local_python}")
+                print("  [!] BUT the venv is still using a newer Python.")
+                print("\n  Recreating the venv with Python 3.12...")
+            else:
+                print("\n  Installing local Python 3.12...")
 
-        if recreate_venv_with_python312():
-            return 99  # Relancer le script avec le nouveau venv
-        else:
-            print("\n  [!] Failed - install Python 3.12 manually")
-            return 1
+            if recreate_venv_with_python312():
+                return 99  # Relancer le script avec le nouveau venv
+
+            print("\n  [WARN] Automatic Python 3.12 migration failed.")
+            print("  [WARN] Continuing with current Python and SDPA fallback.")
 
     # ==========================================
     # CHECK BUILD TOOLS (AVANT les installations)
@@ -1537,8 +1543,8 @@ def main():
             print(f"  [MISSING] {package} - installing...")
             install_package(package)
         else:
-            # Python 3.13+, skip car incompatible
-            print(f"  [SKIP] {package} (incompatible Python 3.13+)")
+            # Python > 3.12, skip car souvent incompatible
+            print(f"  [SKIP] {package} (incompatible Python >3.12)")
 
     # Nunchaku (Flux Fill INT4 — wheel spécial, pas sur PyPI)
     print("\n  Optional package (INT4 quantization):")
@@ -1591,8 +1597,19 @@ def main():
         print(f"  Installing {len(missing)} missing package(s)")
         print("-" * 50 + "\n")
 
+        python_limited_missing = []
+        install_targets = []
+        for module, package in missing:
+            if package in PY312_MAX_OPTIONAL_PACKAGES and not is_python_compatible():
+                python_limited_missing.append((module, package))
+            else:
+                install_targets.append((module, package))
+
+        for _, package in python_limited_missing:
+            print(f"  [SKIP] {package} (optional, incompatible Python >3.12)")
+
         # Vérifier si des packages manquants nécessitent un compilateur C++
-        needs_compiler = any(package in NEEDS_BUILD_TOOLS for _, package in missing)
+        needs_compiler = any(package in NEEDS_BUILD_TOOLS for _, package in install_targets)
         if needs_compiler and IS_WINDOWS and not has_build_tools():
             print("  [!] C++ compiler required for: basicsr, gfpgan, insightface")
             print("  [!] Installing Visual C++ Build Tools automatically...\n")
@@ -1600,7 +1617,7 @@ def main():
 
         # Installer les pré-requis d'abord (Cython avant basicsr, onnxruntime avant insightface)
         prereqs_needed = []
-        for module, package in missing:
+        for module, package in install_targets:
             if package in ("gfpgan", "basicsr", "realesrgan"):
                 prereqs_needed.append("Cython")
             if package == "insightface":
@@ -1610,7 +1627,7 @@ def main():
                 print(f"  [PRE-REQ] Installing {prereq}...")
                 install_package(prereq)
 
-        for module, package in missing:
+        for module, package in install_targets:
             if package == "torch":
                 print("  Installing PyTorch with CUDA..." if HAS_CUDA else "  Installing PyTorch CPU...")
                 if HAS_CUDA:
