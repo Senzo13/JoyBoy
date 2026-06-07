@@ -41,6 +41,7 @@ PUBLIC_FILES = (
     "VERSION",
     "config.py",
     "start_windows.bat",
+    "setup_windows.bat",
 )
 
 PUBLIC_DIRS = (

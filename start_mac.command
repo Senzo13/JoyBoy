@@ -318,10 +318,23 @@ start_app() {
     if ! venv_python_ok; then
         echo "   [ERROR] Virtual environment uses Python $(python_version_label "venv/bin/python")."
         echo "           JoyBoy needs Python ${MIN_PY_MAJOR}.${MIN_PY_MINOR}+."
+        echo "           Run Full setup (option 1) to recreate the venv."
         echo "           Setup will recreate the venv now."
         sleep 1
         setup
         return
+    fi
+
+    python scripts/bootstrap.py setup-needed --quiet
+    SETUP_STATE_CHECK=$?
+    if [ "$SETUP_STATE_CHECK" = "10" ]; then
+        echo "   [!] JoyBoy setup state is missing or stale."
+        echo "       Full setup will refresh this older install now."
+        sleep 1
+        setup
+        return
+    elif [ "$SETUP_STATE_CHECK" != "0" ]; then
+        echo "   [!] Could not verify setup state; continuing startup."
     fi
 
     echo "   Python: $(python --version 2>&1)"

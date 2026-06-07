@@ -12,6 +12,12 @@ Double-click `start_windows.bat` or run:
 start_windows.bat
 ```
 
+To force setup/repair after updating an older JoyBoy clone:
+
+```bat
+setup_windows.bat
+```
+
 If the window opens and closes immediately, launch it from Command Prompt so the
 error stays visible:
 
@@ -31,16 +37,28 @@ JoyBoy also writes Windows launch logs in:
 From Terminal:
 
 ```bash
-chmod +x start_mac.command
+chmod +x start_mac.command setup_mac.command
 ./start_mac.command
 ```
 
 If macOS says the launcher is not executable, run `chmod +x start_mac.command` once, then launch it again.
 
+To force setup/repair after updating an older JoyBoy clone:
+
+```bash
+./setup_mac.command
+```
+
 ### Linux
 
 ```bash
 ./start_linux.sh
+```
+
+To force setup/repair:
+
+```bash
+./setup_linux.sh
 ```
 
 ## 2. Open the app

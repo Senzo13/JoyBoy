@@ -61,6 +61,12 @@ The scoring is intentionally conservative. Docs-only churn should not publish a
 release by itself, while runtime fixes, generation changes, UI work, tests, and
 release infrastructure count more.
 
+For the release PR step to be fully automatic, the repository must allow
+GitHub Actions to create pull requests, or provide a `RELEASE_PR_TOKEN` secret
+with pull request write access. If PR creation is blocked, the workflow still
+pushes the `release/v...` branch and adds a manual compare link to the job
+summary instead of failing the run.
+
 Manual stable releases can still use the classic path:
 
 1. Update `VERSION`.

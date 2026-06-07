@@ -80,7 +80,7 @@ jobs:
       - name: Open or update release PR
         if: steps.plan.outputs.should_release == 'true'
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.RELEASE_PR_TOKEN || github.token }}
         shell: bash
         run: |
           set -euo pipefail
@@ -88,10 +88,44 @@ jobs:
           TAG="${{ steps.plan.outputs.tag }}"
           NOTES="${{ steps.plan.outputs.notes_path }}"
           TITLE="Release ${TAG}"
-          PR_URL="$(gh pr list --head "$BRANCH" --json url --jq '.[0].url')"
+          COMPARE_URL="${{ github.server_url }}/${{ github.repository }}/compare/main...${BRANCH}?expand=1"
+          PR_URL="$(gh pr list --head "$BRANCH" --json url --jq '.[0].url' 2>pr_list_error.log || true)"
           if [ -n "$PR_URL" ]; then
-            gh pr edit "$PR_URL" --title "$TITLE" --body-file "$NOTES"
-            echo "Updated $PR_URL" >> "$GITHUB_STEP_SUMMARY"
+            if gh pr edit "$PR_URL" --title "$TITLE" --body-file "$NOTES" 2>pr_error.log; then
+              echo "Updated $PR_URL" >> "$GITHUB_STEP_SUMMARY"
+            else
+              ERROR="$(cat pr_error.log)"
+              echo "::warning::Release branch was pushed, but updating the release PR failed. See the job summary."
+              {
+                echo "Release branch pushed, but PR update failed."
+                echo ""
+                echo "Update the PR manually: $PR_URL"
+                echo ""
+                echo "Failure:"
+                echo ""
+                echo '```text'
+                printf '%s\n' "$ERROR"
+                echo '```'
+              } >> "$GITHUB_STEP_SUMMARY"
+            fi
           else
-            gh pr create --base main --head "$BRANCH" --title "$TITLE" --body-file "$NOTES"
+            if PR_URL="$(gh pr create --base main --head "$BRANCH" --title "$TITLE" --body-file "$NOTES" 2>pr_error.log)"; then
+              echo "Opened $PR_URL" >> "$GITHUB_STEP_SUMMARY"
+            else
+              ERROR="$(cat pr_error.log)"
+              echo "::warning::Release branch was pushed, but creating the release PR failed. See the job summary for the manual PR link."
+              {
+                echo "Release branch pushed, but PR creation failed."
+                echo ""
+                echo "Create it manually: $COMPARE_URL"
+                echo ""
+                echo "To automate PR creation, enable GitHub Actions pull request creation for this repository or configure a RELEASE_PR_TOKEN secret with pull request write access."
+                echo ""
+                echo "Failure:"
+                echo ""
+                echo '```text'
+                printf '%s\n' "$ERROR"
+                echo '```'
+              } >> "$GITHUB_STEP_SUMMARY"
+            fi
           fi
