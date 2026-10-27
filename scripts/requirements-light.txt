@@ -1,0 +1,8 @@
+# No torch, Ollama, diffusion runtime or local model downloads.
+Flask>=3.1,<4
+Pillow>=10.4,<13
+numpy>=1.26,<3
+requests>=2.32,<3
+python-dotenv>=1.0,<2
+# The official SDK v1 maintenance line; intentionally avoid a v2 major upgrade.
+mcp>=1.28,<2

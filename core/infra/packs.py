@@ -546,6 +546,17 @@ def is_adult_runtime_available() -> bool:
     return False
 
 
+def get_studio_feature_exposure_map(*, codex_authenticated: bool, image_api_configured: bool) -> dict:
+    """Light UI and MCP share these provider locks; no pack is required for core tools."""
+    return {
+        "chat": {"visible": True, "locked": not codex_authenticated,
+                 "reason": "Connect with Codex CLI: codex login"},
+        "image_api": {"visible": True, "locked": not image_api_configured,
+                      "reason": "Set OPENAI_API_KEY locally; separate API billing"},
+        "masked_composite": {"visible": True, "locked": False},
+    }
+
+
 def get_feature_exposure_map() -> dict:
     flags = get_feature_flags()
     public_repo_mode = bool(flags.get("public_repo_mode", False))

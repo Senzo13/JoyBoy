@@ -562,16 +562,7 @@ function draw(e) {
     // Le radius doit aussi être scalé pour dessiner à la bonne taille
     const radius = (brushSize / 2 / editZoomLevel) * Math.max(scaleX, scaleY);
 
-    if (currentBrushMode === 'eraser') {
-        editCtx.globalCompositeOperation = 'destination-out';
-    } else {
-        editCtx.globalCompositeOperation = 'source-over';
-    }
-    editCtx.fillStyle = 'rgba(255, 255, 255, 1.0)';
-
-    editCtx.beginPath();
-    editCtx.arc(x, y, radius, 0, Math.PI * 2);
-    editCtx.fill();
+    JoyBoyMask.dot(editCtx, x, y, radius, currentBrushMode === 'eraser');
 }
 
 function handleTouchStart(e) {
@@ -593,16 +584,7 @@ function handleTouchMove(e) {
     const y = ((touch.clientY - rect.top) / editZoomLevel) * scaleY;
     const radius = (brushSize / 2 / editZoomLevel) * Math.max(scaleX, scaleY);
 
-    if (currentBrushMode === 'eraser') {
-        editCtx.globalCompositeOperation = 'destination-out';
-    } else {
-        editCtx.globalCompositeOperation = 'source-over';
-    }
-    editCtx.fillStyle = 'rgba(255, 255, 255, 1.0)';
-
-    editCtx.beginPath();
-    editCtx.arc(x, y, radius, 0, Math.PI * 2);
-    editCtx.fill();
+    JoyBoyMask.dot(editCtx, x, y, radius, currentBrushMode === 'eraser');
 }
 
 function clearEditCanvas() {
@@ -682,34 +664,7 @@ async function generateEdit() {
         addToPromptHistory(prompt);
     }
 
-    const maskCanvas = document.createElement('canvas');
-    maskCanvas.width = editCanvas.width;
-    maskCanvas.height = editCanvas.height;
-    const maskCtx = maskCanvas.getContext('2d');
-
-    maskCtx.fillStyle = 'black';
-    maskCtx.fillRect(0, 0, maskCanvas.width, maskCanvas.height);
-
-    const imageData = editCtx.getImageData(0, 0, editCanvas.width, editCanvas.height);
-    const maskData = maskCtx.getImageData(0, 0, maskCanvas.width, maskCanvas.height);
-
-    // Convertir le dessin en masque avec niveaux de gris
-    // Le pinceau doux crée des transitions plus douces dans le masque
-    for (let i = 0; i < imageData.data.length; i += 4) {
-        const alpha = imageData.data[i + 3];
-        if (alpha > 0) {
-            // Mapper l'alpha du dessin vers l'intensité du masque
-            // Alpha 0 = noir (pas de modification), Alpha 255 = blanc (modification complète)
-            const intensity = Math.round((alpha / 255) * 255);
-            maskData.data[i] = intensity;
-            maskData.data[i + 1] = intensity;
-            maskData.data[i + 2] = intensity;
-            maskData.data[i + 3] = 255;
-        }
-    }
-    maskCtx.putImageData(maskData, 0, 0);
-
-    const maskDataUrl = maskCanvas.toDataURL('image/png');
+    const maskDataUrl = JoyBoyMask.export(editCanvas);
     const savedEditImageSrc = editImageSrc;
 
     closeEditModal();

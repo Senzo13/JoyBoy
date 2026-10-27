@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="fr">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="joyboy-token" content="{{ token }}">
+    <title>JoyBoy Light</title>
+    <link rel="stylesheet" href="/static/css/light.css">
+    <script src="/static/js/mask-canvas.js" defer></script>
+    <script src="/static/js/light.js" defer></script>
+</head>
+<body>
+<header><a class="brand" href="/">JoyBoy <span>LIGHT</span></a><p>Un canevas local. Codex à vos côtés.</p><span id="connection" role="status">Connexion…</span></header>
+<main>
+    <section class="studio" aria-labelledby="studio-title">
+        <div class="section-head"><div><p class="eyebrow">IMAGE LAB</p><h1 id="studio-title">Chaque détail, à sa place.</h1></div><label class="button">Ajouter une image<input id="upload" type="file" accept="image/png,image/jpeg,image/webp" hidden></label></div>
+        <div class="toolbar" aria-label="Outils de sélection">
+            <select id="tool" aria-label="Outil"><option value="brush">Pinceau</option><option value="rectangle">Rectangle</option><option value="eraser">Gomme</option></select>
+            <label>Taille <input id="brush" type="range" min="2" max="200" value="40"></label>
+            <button id="undo" class="quiet">Annuler trait</button><button id="clear" class="quiet">Effacer masque</button>
+            <label class="quiet"><input id="show-mask" type="checkbox" checked> Masque</label>
+        </div>
+        <div id="viewport"><div id="empty"><span>＋</span><h2>Commencez par une image</h2><p>Peignez la zone à modifier.<br>Le reste du canevas restera intact.</p></div><div id="canvas-wrap" hidden><img id="source" alt="Image de travail"><canvas id="mask" aria-label="Dessinez la zone à modifier"></canvas></div></div>
+        <div class="canvas-meta"><span id="dimensions">Dimensions originales conservées</span><button id="compare" class="quiet" disabled>Voir l’original</button><a id="download" class="quiet" hidden>Télécharger le PNG</a></div>
+        <div class="edit-panel"><label for="edit-prompt">Que voulez-vous changer ?</label><textarea id="edit-prompt" placeholder="Remplacer le vase par une petite lampe en céramique…" rows="2"></textarea>
+            <div class="actions"><span id="image-state">Images OpenAI : vérification…</span><button id="generate" data-feature="image_api">Créer une image</button><button id="edit" class="primary" data-feature="image_api">Modifier la sélection</button></div>
+            <details><summary>Appliquer un calque déjà généré</summary><p>Importez un résultat de même taille. Seule la sélection sera recomposée.</p><label class="button quiet">Choisir le calque<input id="candidate" type="file" accept="image/png,image/jpeg,image/webp" hidden></label></details>
+        </div>
+        <div id="verification" role="status" hidden></div>
+        <div class="section-head history-head"><h2>Images et versions</h2><button id="refresh" class="quiet">Actualiser</button></div><div id="gallery"></div>
+    </section>
+    <aside class="chat" aria-labelledby="chat-title"><div class="section-head"><div><p class="eyebrow">CODEX</p><h2 id="chat-title">La conversation continue.</h2></div><button id="new-chat" class="quiet">Nouveau</button></div>
+        <label class="model-label" for="model">Modèle disponible dans Codex</label><select id="model"><option value="">Choix par défaut</option></select>
+        <div id="messages" aria-live="polite"><div class="chat-intro"><div class="orb">✦</div><h3>Une idée, une question,<br>un regard sur votre image.</h3><p>Connexion officielle à votre session Codex.<br>Les images jointes servent à l’analyse visuelle.</p></div></div>
+        <form id="chat-form"><textarea id="chat-text" aria-label="Message pour Codex" placeholder="Parlez à Codex…" rows="3" required></textarea><div class="actions"><label><input id="attach" type="checkbox"> Joindre l’image active</label><button id="send" class="primary" data-feature="chat">Envoyer</button></div></form>
+        <p class="fineprint">Chat : accès et limites de votre session Codex.<br>Génération et édition : API OpenAI facturée séparément.</p>
+    </aside>
+</main><div id="notice" role="status" hidden></div>
+</body>
+</html>

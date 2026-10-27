@@ -38,6 +38,24 @@ The goal is simple: make a private AI workstation that is powerful, understandab
 
 ## Quick Start
 
+### Lightweight Codex + image studio (prototype)
+
+For chat through your official local Codex session and image editing without
+installing local GPU models, run this from a clone of the repository:
+
+```bash
+python3 scripts/start_light.py
+```
+
+Open `http://127.0.0.1:7861`. Python 3.11+ is required; on Windows use
+`py -3 scripts/start_light.py`. The small environment and image versions live
+outside the repository in `~/.joyboy`. Codex manages its own login. Image API
+generation/edits require `OPENAI_API_KEY` and separate API billing. Import,
+selection and local masked composition also work without an API key.
+
+See [Light mode and MCP](docs/LIGHT_MODE.md) for capabilities, limits, pixel
+protection, and the MCP configuration for Codex.
+
 Clone the repository, then run the launcher for your platform.
 
 ### Windows

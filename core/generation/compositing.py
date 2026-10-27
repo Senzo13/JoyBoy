@@ -447,7 +447,7 @@ def laplacian_pyramid_blend(original: Image.Image, result: Image.Image, mask: Im
     return Image.fromarray(blended)
 
 
-def composite_with_original(original: Image.Image, result: Image.Image, mask: Image.Image, feather_pixels: int = 12, color_match: bool = True) -> Image.Image:
+def composite_with_original(original: Image.Image, result: Image.Image, mask: Image.Image, feather_pixels: int = 12, color_match: bool = True, *, strict: bool = False) -> Image.Image:
     """
     Composite le résultat avec l'original via alpha blending avec feathering amélioré.
 
@@ -456,6 +456,18 @@ def composite_with_original(original: Image.Image, result: Image.Image, mask: Im
     zone VAE et pixels originaux. Pas de Poisson blending (casse les couleurs
     sur les gros masques).
     """
+    if strict:
+        # Cloud masks guide the model; this local merge enforces the selection.
+        # Keep the original canvas and alpha, including zero-alpha RGB pixels.
+        if original.size != result.size or original.size != mask.size:
+            raise ValueError("Original, result and mask must have identical dimensions")
+        selection = mask.convert("L")
+        if feather_pixels > 0:
+            from PIL import ImageChops
+            softened = selection.filter(ImageFilter.GaussianBlur(feather_pixels))
+            selection = ImageChops.darker(selection, softened)
+        return Image.composite(result.convert("RGBA"), original.convert("RGBA"), selection)
+
     import cv2
     from scipy.ndimage import gaussian_filter
 
