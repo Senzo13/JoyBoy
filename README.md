@@ -48,17 +48,36 @@ Double-click `start_windows.bat`, or run:
 start_windows.bat
 ```
 
+To force a full setup or repair after updating an older clone, double-click
+`setup_windows.bat` or run:
+
+```bat
+setup_windows.bat
+```
+
 ### macOS
 
 ```bash
-chmod +x start_mac.command
+chmod +x start_mac.command setup_mac.command
 ./start_mac.command
+```
+
+To force a full setup or repair after updating an older clone:
+
+```bash
+./setup_mac.command
 ```
 
 ### Linux
 
 ```bash
 ./start_linux.sh
+```
+
+To force a full setup or repair:
+
+```bash
+./setup_linux.sh
 ```
 
 Then open:
@@ -70,6 +89,8 @@ http://127.0.0.1:7860
 On first launch, JoyBoy guides you through setup and onboarding. It detects your GPU/RAM profile, checks required dependencies, explains what the app can do, and helps you fix missing pieces without making you dig through random terminal logs.
 
 If you already completed setup, the launcher uses the fast path and starts the server directly.
+If the local setup marker is missing or stale after updating an older clone,
+the launcher refreshes setup automatically before starting.
 
 ### Remote GPU / Lambda Cloud
 

@@ -53,10 +53,10 @@ def _reset_package_dir(package_dir: Path) -> None:
 
 
 def _copy_public_core(package_dir: Path, platform_name: str) -> None:
-    base_files = tuple(name for name in PUBLIC_FILES if name != "start_windows.bat")
+    base_files = tuple(name for name in PUBLIC_FILES if name not in {"start_windows.bat", "setup_windows.bat"})
     extra_files = {
-        "macos": ("start_mac.command",),
-        "linux": ("start_linux.sh",),
+        "macos": ("start_mac.command", "setup_mac.command"),
+        "linux": ("start_linux.sh", "setup_linux.sh"),
     }.get(platform_name, ())
     for name in (*base_files, *extra_files):
         source = PROJECT_DIR / name
@@ -168,7 +168,13 @@ def _write_manifest(package_dir: Path, platform_name: str, launcher: str, runtim
 
 
 def _chmod_launchers(package_dir: Path, launcher: str) -> None:
-    for path in [package_dir / launcher, package_dir / "start_linux.sh", package_dir / "start_mac.command"]:
+    for path in [
+        package_dir / launcher,
+        package_dir / "start_linux.sh",
+        package_dir / "setup_linux.sh",
+        package_dir / "start_mac.command",
+        package_dir / "setup_mac.command",
+    ]:
         if path.exists():
             current = path.stat().st_mode
             path.chmod(current | 0o755)

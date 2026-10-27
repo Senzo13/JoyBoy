@@ -300,6 +300,24 @@ if exist "venv\Scripts\python.exe" (
     goto setup
 )
 
+"%PY%" scripts\bootstrap.py setup-needed --quiet
+set BOOTSTRAP_CHECK=%errorlevel%
+if "%BOOTSTRAP_CHECK%"=="10" (
+    echo.
+    echo    [!] JoyBoy setup state is missing or stale.
+    echo    [!] Full setup will refresh this older install now.
+    echo.
+    timeout /t 2 >nul
+    set "SETUP_RETRIES=0"
+    goto setup
+)
+if not "%BOOTSTRAP_CHECK%"=="0" (
+    echo.
+    echo    [!] Could not verify setup state; continuing startup.
+    echo.
+    timeout /t 2 >nul
+)
+
 REM If NVIDIA exists but PyTorch is CPU-only, image/video acceleration is limited.
 REM Warn without auto-switching to setup, otherwise a failed repair loops forever.
 if "%JOYBOY_SKIP_CUDA_REPAIR_PROMPT%"=="1" goto skip_cuda_repair_check

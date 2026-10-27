@@ -1,7 +1,10 @@
 import unittest
+from pathlib import Path
 
 from scripts import check_deps
 from scripts import windows_venv
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 class CheckDepsWindowsTests(unittest.TestCase):
@@ -47,6 +50,21 @@ class WindowsVenvHelperTests(unittest.TestCase):
     def test_setup_log_lives_outside_git_tracked_core(self):
         self.assertEqual(windows_venv.LOG_PATH.name, "windows_setup_last.log")
         self.assertIn(".joyboy", windows_venv.LOG_PATH.parts)
+
+
+class WindowsLauncherStaticTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.launcher = (PROJECT_ROOT / "start_windows.bat").read_text(encoding="utf-8")
+
+    def test_launcher_refreshes_missing_setup_state(self):
+        self.assertIn("scripts\\bootstrap.py setup-needed --quiet", self.launcher)
+        self.assertIn("Full setup will refresh this older install now.", self.launcher)
+
+    def test_dedicated_setup_launcher_exists(self):
+        setup_launcher = PROJECT_ROOT / "setup_windows.bat"
+        self.assertTrue(setup_launcher.exists())
+        self.assertIn("start_windows.bat\" --setup", setup_launcher.read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

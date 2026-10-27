@@ -8,8 +8,10 @@ entrypoint for setup and doctor checks.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
+import platform
 import subprocess
 import sys
 from pathlib import Path
@@ -19,6 +21,14 @@ PROJECT_DIR = Path(__file__).resolve().parents[1]
 INSTALL_DEPS = PROJECT_DIR / "scripts" / "install_deps.py"
 CHECK_DEPS = PROJECT_DIR / "scripts" / "check_deps.py"
 DEFAULT_LOCAL_ADULT_PACK_SOURCE = PROJECT_DIR / "local_pack_sources" / "local-advanced-runtime"
+SETUP_STATE_VERSION = 1
+SETUP_STATE_PATH = PROJECT_DIR / ".joyboy" / "setup_state.json"
+SETUP_REFRESH_NEEDED_EXIT_CODE = 10
+SETUP_FINGERPRINT_FILES = (
+    PROJECT_DIR / "scripts" / "requirements.txt",
+    INSTALL_DEPS,
+    CHECK_DEPS,
+)
 
 if str(PROJECT_DIR) not in sys.path:
     sys.path.insert(0, str(PROJECT_DIR))
@@ -49,6 +59,62 @@ def _run(command: list[str], title: str) -> int:
     return int(completed.returncode or 0)
 
 
+def _file_digest(path: Path) -> str:
+    digest = hashlib.sha256()
+    digest.update(str(path.relative_to(PROJECT_DIR)).replace("\\", "/").encode("utf-8"))
+    digest.update(b"\0")
+    if path.exists():
+        digest.update(path.read_bytes())
+    return digest.hexdigest()
+
+
+def build_setup_fingerprint() -> str:
+    digest = hashlib.sha256()
+    digest.update(f"setup-state-v{SETUP_STATE_VERSION}".encode("utf-8"))
+    for path in SETUP_FINGERPRINT_FILES:
+        digest.update(_file_digest(path).encode("ascii"))
+    return digest.hexdigest()
+
+
+def build_setup_state() -> dict[str, str | int]:
+    return {
+        "schema": SETUP_STATE_VERSION,
+        "fingerprint": build_setup_fingerprint(),
+        "python": f"{sys.version_info.major}.{sys.version_info.minor}",
+        "platform": platform.system().lower() or sys.platform,
+    }
+
+
+def write_setup_state() -> None:
+    SETUP_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    SETUP_STATE_PATH.write_text(json.dumps(build_setup_state(), indent=2), encoding="utf-8")
+
+
+def read_setup_state() -> dict | None:
+    try:
+        data = json.loads(SETUP_STATE_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def setup_refresh_status() -> tuple[bool, str]:
+    state = read_setup_state()
+    if not state:
+        return True, "setup state is missing"
+
+    current = build_setup_state()
+    if state.get("schema") != current["schema"]:
+        return True, "setup state version changed"
+    if state.get("platform") != current["platform"]:
+        return True, "setup was created for another platform"
+    if state.get("python") != current["python"]:
+        return True, "Python environment changed"
+    if state.get("fingerprint") != current["fingerprint"]:
+        return True, "setup dependencies changed"
+    return False, "setup state is current"
+
+
 def run_setup() -> int:
     configure_download_cache_env()
 
@@ -60,7 +126,21 @@ def run_setup() -> int:
     if exit_code != 0:
         return exit_code
 
-    return _run([sys.executable, str(CHECK_DEPS)], "Verify optimized dependencies")
+    exit_code = _run([sys.executable, str(CHECK_DEPS)], "Verify optimized dependencies")
+    if exit_code == 0:
+        write_setup_state()
+        print(f"\n[BOOTSTRAP] Setup state updated: {SETUP_STATE_PATH}")
+    return exit_code
+
+
+def run_setup_needed(json_mode: bool = False, quiet: bool = False) -> int:
+    needed, reason = setup_refresh_status()
+    if json_mode:
+        print(json.dumps({"needed": needed, "reason": reason}, indent=2, ensure_ascii=False))
+    elif not quiet:
+        status = "needed" if needed else "current"
+        print(f"[BOOTSTRAP] Setup {status}: {reason}")
+    return SETUP_REFRESH_NEEDED_EXIT_CODE if needed else 0
 
 
 def run_doctor(json_mode: bool = False) -> int:
@@ -81,6 +161,8 @@ def run_doctor(json_mode: bool = False) -> int:
         if check.get("action"):
             print(f"  Action: {check['action']}")
     return 0 if report.get("status") != "error" else 1
+
+
 def run_pack_install(source: str | None = None, kind: str = "adult", activate: bool = True, replace: bool = True) -> int:
     from core.infra.packs import import_pack_from_directory, set_pack_active
 
@@ -105,6 +187,9 @@ def main() -> int:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     subparsers.add_parser("setup", help="Install/update Python dependencies and run dependency checks")
+    setup_needed_parser = subparsers.add_parser("setup-needed", help="Check whether setup should be rerun")
+    setup_needed_parser.add_argument("--json", action="store_true", help="Print setup status as JSON")
+    setup_needed_parser.add_argument("--quiet", action="store_true", help="Only use the exit code")
     doctor_parser = subparsers.add_parser("doctor", help="Run JoyBoy doctor checks")
     doctor_parser.add_argument("--json", action="store_true", help="Print doctor report as JSON")
     pack_parser = subparsers.add_parser("pack-install", help="Install a local pack source into ~/.joyboy/packs")
@@ -117,6 +202,8 @@ def main() -> int:
 
     if args.command == "setup":
         return run_setup()
+    if args.command == "setup-needed":
+        return run_setup_needed(json_mode=bool(args.json), quiet=bool(args.quiet))
     if args.command == "doctor":
         return run_doctor(json_mode=bool(args.json))
     if args.command == "pack-install":

@@ -183,6 +183,14 @@ elif [ -d "venv" ] && [ ! -f "venv/bin/activate" ]; then
 elif [ -f "venv/bin/activate" ]; then
     source venv/bin/activate
     echo -e "${GREEN}[OK]${NC} Virtual environment activated"
+    python scripts/bootstrap.py setup-needed --quiet
+    setup_state_check=$?
+    if [ "$setup_state_check" = "10" ]; then
+        echo -e "${YELLOW}[SETUP]${NC} Setup state is missing or stale; refreshing this older install..."
+        python scripts/bootstrap.py setup || exit 1
+    elif [ "$setup_state_check" != "0" ]; then
+        echo -e "${YELLOW}[SETUP]${NC} Could not verify setup state; continuing startup."
+    fi
 else
     echo -e "${GREEN}[OK]${NC} Using system Python"
 fi

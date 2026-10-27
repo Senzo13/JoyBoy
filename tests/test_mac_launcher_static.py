@@ -24,6 +24,15 @@ class MacLauncherStaticTests(unittest.TestCase):
         self.assertIn('rm -rf venv', self.launcher)
         self.assertIn("Existing virtual environment uses Python", self.launcher)
 
+    def test_launcher_refreshes_missing_setup_state(self):
+        self.assertIn("scripts/bootstrap.py setup-needed --quiet", self.launcher)
+        self.assertIn("Full setup will refresh this older install now.", self.launcher)
+
+    def test_dedicated_setup_launcher_exists(self):
+        setup_launcher = PROJECT_ROOT / "setup_mac.command"
+        self.assertTrue(setup_launcher.exists())
+        self.assertIn("./start_mac.command --setup", setup_launcher.read_text(encoding="utf-8"))
+
 
 if __name__ == "__main__":
     unittest.main()
